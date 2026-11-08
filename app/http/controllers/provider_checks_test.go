@@ -11,6 +11,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	"rllmx/app/oauth"
 	"rllmx/app/repository"
 )
 
@@ -349,4 +350,121 @@ func TestModelsOfAnUnknownConnectionIs404(t *testing.T) {
 func testRegistryFS(id, url string) fstest.MapFS {
 	body := fmt.Sprintf(`{"id":%q,"category":"apikey","transport":{"baseUrl":%q},"auth":{"scheme":"bearer","header":"Authorization"},"models":[{"id":"gpt-5","name":"GPT-5"},{"id":"gpt-4o","name":"GPT-4o"},{"id":"gpt-4o-mini","name":"GPT-4o Mini"}]}`, id, url+"/v1/chat/completions")
 	return fstest.MapFS{"data/" + id + ".json": {Data: []byte(body)}}
+}
+
+// scriptedLogin is a LoginChecker that answers what the test tells it to.
+type scriptedLogin struct {
+	refreshed bool
+	err       error
+	asked     []string
+}
+
+func (s *scriptedLogin) Ensure(_ context.Context, id string) (bool, error) {
+	s.asked = append(s.asked, id)
+	return s.refreshed, s.err
+}
+
+func loginConn(t *testing.T, m *mgmtRig, authType, email string, fields map[string]string) repository.Connection {
+	t.Helper()
+	conn, err := m.st.Connections().Create(context.Background(), repository.ConnInput{Provider: "claude", AuthType: authType, Email: email, Fields: fields}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return conn
+}
+
+func TestTestingALoginChecksItsTokenWithoutAskingTheProvider(t *testing.T) {
+	cases := []struct {
+		name      string
+		login     scriptedLogin
+		valid     bool
+		message   string
+		refreshed bool
+		status    string
+	}{
+		{"fresh", scriptedLogin{}, true, "", false, "active"},
+		{"renewed", scriptedLogin{refreshed: true}, true, "", true, "active"},
+		{"dead", scriptedLogin{err: oauth.ErrExpired}, false, "needs to be reconnected", false, "error"},
+		{"no token", scriptedLogin{err: oauth.ErrNoToken}, false, "no access token", false, "error"},
+		{"cannot renew", scriptedLogin{err: oauth.ErrNoRefresh}, false, "token refresh failed", false, "error"},
+		{"provider refused", scriptedLogin{err: &oauth.Error{Class: oauth.ClassRejected}}, false, "token refresh failed", false, "error"},
+		{"store down", scriptedLogin{err: oauth.ErrStorage}, false, "token refresh failed", false, "error"},
+	}
+	for _, tc := range cases {
+		m := newMgmtRig(t)
+		login := tc.login
+		m.pc.Refresher = &login
+		conn := loginConn(t, m, "oauth", "a@b.c", map[string]string{"accessToken": `"AT"`, "refreshToken": `"RT"`})
+		out := m.ok(t, "POST", "/api/providers/"+conn.ID+"/test", "", 200)
+		if out["valid"] != tc.valid {
+			t.Errorf("%s: valid = %v", tc.name, out["valid"])
+		}
+		if tc.message != "" && out["error"] != tc.message {
+			t.Errorf("%s: error = %v, want %q", tc.name, out["error"], tc.message)
+		}
+		if got, _ := out["refreshed"].(bool); got != tc.refreshed {
+			t.Errorf("%s: refreshed = %v", tc.name, out["refreshed"])
+		}
+		if len(login.asked) != 1 || login.asked[0] != conn.ID {
+			t.Errorf("%s: asked %v", tc.name, login.asked)
+		}
+		got, _, _ := m.st.Connections().Get(context.Background(), conn.ID)
+		if st, _ := got.Doc().GetString("testStatus"); st != tc.status {
+			t.Errorf("%s: testStatus = %q, want %q", tc.name, st, tc.status)
+		}
+	}
+}
+
+func TestATestNeverClearsAnExpiredMark(t *testing.T) {
+	m := newMgmtRig(t)
+	m.pc.Refresher = &scriptedLogin{}
+	conn := loginConn(t, m, "oauth", "a@b.c", map[string]string{"accessToken": `"AT"`, "refreshToken": `"RT"`, "testStatus": `"expired"`})
+	out := m.ok(t, "POST", "/api/providers/"+conn.ID+"/test", "", 200)
+	if out["valid"] != true {
+		t.Fatalf("%v", out)
+	}
+	got, _, _ := m.st.Connections().Get(context.Background(), conn.ID)
+	if st, _ := got.Doc().GetString("testStatus"); st != repository.StatusExpired {
+		t.Fatalf("a passing test cleared the mark: %q", st)
+	}
+}
+
+func TestOnlyALoginOfAProviderWithOneIsTestedThatWay(t *testing.T) {
+	m := newMgmtRig(t)
+	login := &scriptedLogin{}
+	m.pc.Refresher = login
+
+	pasted := loginConn(t, m, "access_token", "", map[string]string{"accessToken": `"AT"`})
+	before, _, _ := m.st.Connections().Get(context.Background(), pasted.ID)
+	out := m.ok(t, "POST", "/api/providers/"+pasted.ID+"/test", "", 200)
+	if out["error"] != "test not supported yet" {
+		t.Fatalf("a pasted token: %v", out)
+	}
+	after, _, _ := m.st.Connections().Get(context.Background(), pasted.ID)
+	if before.Data != after.Data {
+		t.Fatal("an unsupported test wrote the row")
+	}
+
+	other, err := m.st.Connections().Create(context.Background(), repository.ConnInput{
+		Provider: "github", AuthType: "oauth", Email: "g@b.c", Fields: map[string]string{"accessToken": `"AT"`},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out := m.ok(t, "POST", "/api/providers/"+other.ID+"/test", "", 200); out["error"] != "test not supported yet" {
+		t.Fatalf("a provider without a login: %v", out)
+	}
+	if len(login.asked) != 0 {
+		t.Fatalf("the refresher was asked about %v", login.asked)
+	}
+}
+
+func TestALoginAnswerCarriesNoSecret(t *testing.T) {
+	m := newMgmtRig(t)
+	m.pc.Refresher = &scriptedLogin{err: &oauth.Error{Class: oauth.ClassRejected}}
+	conn := loginConn(t, m, "oauth", "a@b.c", map[string]string{"accessToken": `"SECRET-AT"`, "refreshToken": `"SECRET-RT"`})
+	_, _, raw := m.call("POST", "/api/providers/"+conn.ID+"/test", "", true)
+	if strings.Contains(raw, "SECRET") {
+		t.Fatalf("%s", raw)
+	}
 }

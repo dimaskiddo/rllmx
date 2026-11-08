@@ -39,6 +39,15 @@ type ProvidersController struct {
 	Registry *upstream.Registry
 	DB       func() *repository.Store
 	Checker  *Checker
+	// Refresher renews and checks the tokens of OAuth accounts; nil leaves
+	// those accounts untestable.
+	Refresher LoginChecker
+}
+
+// LoginChecker renews an OAuth account's token when it is due and says whether
+// the account holds a usable one.
+type LoginChecker interface {
+	Ensure(ctx context.Context, id string) (refreshed bool, err error)
 }
 
 func (c *ProvidersController) store() *repository.Store {

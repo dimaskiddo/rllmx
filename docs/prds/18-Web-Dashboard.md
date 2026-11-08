@@ -2,7 +2,7 @@
 
 **Status:** todo · **Steps:** Phase 4
 
-`web/` does not exist yet. Phase 4 builds it; nothing is embedded.
+`web/` holds only the OAuth callback page since step 1.9a: `web/embed.go` (`web.Static`, `go:embed static`), `static/callback.html` and `static/js/callback.js`, served by `GET /callback` and `GET /static/js/callback.js` (both public; no inline script, because the page CSP is `default-src 'self'`). Phase 4 builds the rest of the dashboard in the same folder.
 
 Static files embedded with `go:embed`: one HTML shell per page, hand-written CSS with variables, ES modules, no framework, no bundler, no runtime CDN. A small `ui.js` provides a text-safe element builder, a fetch wrapper, a router, toasts and modals. Pages call the same `/api/*` paths and JSON shapes as the reference dashboard. The page table is below.
 
@@ -61,7 +61,7 @@ Plain HTML, ES modules, CSS; same flows and `/api/*` contract (PRD 18).
 ---
 
 ## Remaining work
-**Phase 4.** Nothing built; no `web/` folder and nothing embedded yet.
+**Phase 4.** Only the callback page (1.9a) is built; the rest of `web/` is not.
 
 - [ ] 4.0: written stack-spike decision in `ARCHITECTURE.md` before any framework enters `web/`
 - [ ] 4.1: shell, routing, i18n (`web/static/i18n/{en,id}.json`), login, keys, connections

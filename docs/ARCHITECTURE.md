@@ -53,7 +53,9 @@ Packages not drawn in the graph: `failure` (error bodies per client format), `se
 
 `catalog` (the models a caller can call, for `GET /v1/models` and its relatives; it reads the stores, asks a user node for its own list through the checker's guarded client, and never writes) is called by the models controller, which gets it from `providers.CatalogSource` on the first request, like the pipeline.
 
-`combo`, `health`, `access`, `oauth`, `media`, `saver`, `skill`, `plan` and `probe` do not exist yet; each arrives with its step (`TASKS.md`).
+`oauth` (account logins: the authorize address, the in-process login store, the token client, the paste parser and the fixed-port callback listener; no HTTP types) is called by the OAuth controller and reuses the guarded dialer, the PKCE helpers of `oidc` and the binding of `sso`; `web` holds the embedded static files (only the callback page until Phase 4). `oauth` also renews tokens (`Refresher`: before a request, after a refusal, in a background loop run by the `rllmx.oauth` runner, and for the connection test); `pipeline` asks it through a small interface and sends a login's token as a bearer token. The headers a login's token carries are computed in `pipeline` from the provider's data, and `translate.Cloak` disguises a Claude request from another client (1.9c).
+
+`combo`, `health`, `access`, `media`, `saver`, `skill`, `plan` and `probe` do not exist yet; each arrives with its step (`TASKS.md`).
 
 ---
 

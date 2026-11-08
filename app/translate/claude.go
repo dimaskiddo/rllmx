@@ -71,6 +71,9 @@ func (ClaudeCodec) ReadRequest(body []byte, c *Ctx) (*Request, error) {
 	case "disabled":
 		req.Thinking = Thinking{Mode: "none"}
 	}
+	if d := g.Get("thinking.display").String(); d != "" && req.Thinking.Set() {
+		req.Thinking.Display = d
+	}
 	req.Extra = extraOf(body, claudeKnown)
 	return req, nil
 }
@@ -273,7 +276,7 @@ func (ClaudeCodec) ReadResponse(body []byte, c *Ctx) (*Response, error) {
 			if args == "" {
 				args = "{}"
 			}
-			msg.ToolCalls = append(msg.ToolCalls, ToolCall{ID: b.Get("id").String(), Name: b.Get("name").String(), Arguments: args})
+			msg.ToolCalls = append(msg.ToolCalls, ToolCall{ID: b.Get("id").String(), Name: c.RestoreTool(b.Get("name").String()), Arguments: args})
 		}
 	}
 	resp.Message = msg

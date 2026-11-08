@@ -73,7 +73,7 @@ Matched skills are not stored with the usage row (metadata only); a later phase 
 | 5 | Hash of the first 50 characters of the assistant text (at least 50 needed; 5000 entries) | derived |
 | 6 | One id per connection (1000 entries) | made up |
 
-Made-up ids are a random UUID plus the time in milliseconds and expire after two hours. The pipeline will hold one store; the Claude disguise (1.9) and the Codex headers (1.10) read it, and `Bound` gives the keyed value an upstream sees. Nothing reads the id yet. `conversation` also owns `ClaudePrefix`, `TrimClaudePrefix` and `UserIDSession`; `translate` and `pipeline` call them. `routing` owns the Anthropic node rule (`IsAnthropicNode`, `SpeaksAnthropic`).
+Made-up ids are a random UUID plus the time in milliseconds and expire after two hours. The pipeline holds one store (`Deps.Sessions`, made when none is given) and resolves the id once an account is chosen, because the last fallback is one id per account. Since 1.9c the Claude user id and `x-claude-code-session-id` carry the id without its `claude:` prefix, and Codex's `session_id` carries `Bound`, the keyed hash, never the client's value. The helper names an earlier draft listed here (`ClaudePrefix`, `TrimClaudePrefix`, `UserIDSession`, `IsAnthropicNode`, `SpeaksAnthropic`) were never written: `translate.SessionOf` reads the session out of a user id, and the disguise needs nothing else.
 
 **Session cache** (planned, `app/conversation/`). In-memory LRU, 2000 entries, 4 hours, keyed by `x-session-id` or `session-id`. On repeat turns a skill already injected becomes a one-line reminder. After an account failover every later turn of that session gets a short continuity notice.
 

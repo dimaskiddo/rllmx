@@ -34,6 +34,10 @@ type Job struct {
 	RequestBytes int
 	// Buffer adds the client buffer to usage objects sent to the client.
 	Buffer bool
+	// Rewrite changes an upstream event before a passthrough sends it on; nil
+	// leaves every event as it came. Only the passthrough path uses it, because
+	// a translated stream goes through the codec, which has its own hook.
+	Rewrite func(event string, data []byte) []byte
 	// Now is the clock for the first-byte time; nil uses time.Now.
 	Now func() time.Time
 }

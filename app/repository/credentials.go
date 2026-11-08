@@ -166,3 +166,32 @@ func (r *ConnectionsRepo) RecordTest(ctx context.Context, id string, ok bool, me
 		return err
 	})
 }
+
+// MarkExpired records that a connection's refresh token was refused for good:
+// testStatus becomes expired, so the selector skips it, with a fixed message
+// and the time. It writes only while the stored refresh token is still old, as
+// SwapCredentials does, so a token another caller already rotated is not
+// declared dead on a stale answer. It reports whether it wrote.
+func (r *ConnectionsRepo) MarkExpired(ctx context.Context, id, old, message string, at time.Time) (bool, error) {
+	var marked bool
+	err := r.s.Tx(ctx, func(tx contractsdb.Tx) error {
+		c, d, err := r.lockRow(tx, id)
+		if err != nil {
+			return err
+		}
+		if cur, _ := d.GetString("refreshToken"); cur != old {
+			return nil
+		}
+		for k, v := range map[string]string{"testStatus": StatusExpired, "lastError": message, "lastErrorAt": dialect.FormatTimestamp(at)} {
+			if err := d.SetString(k, v); err != nil {
+				return err
+			}
+		}
+		if _, err = r.writeData(tx, c, d); err != nil {
+			return err
+		}
+		marked = true
+		return nil
+	})
+	return marked, err
+}

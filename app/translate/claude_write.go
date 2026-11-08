@@ -277,6 +277,9 @@ func applyClaudeThinking(o obj, r *Request, c *Ctx) {
 	case "auto":
 		o["thinking"] = obj{"type": "adaptive"}
 	}
+	if t, ok := o["thinking"].(obj); ok && th.Display != "" && t["type"] != "disabled" {
+		t["display"] = th.Display
+	}
 }
 
 // claudeMessages turns hub turns into Claude turns. A tool result is its own

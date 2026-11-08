@@ -20,6 +20,7 @@ import (
 	apphttp "rllmx/app/http"
 	"rllmx/app/http/controllers"
 	"rllmx/app/identity"
+	"rllmx/app/oauth"
 	"rllmx/app/oidc"
 	"rllmx/app/repository"
 	"rllmx/app/saml"
@@ -56,6 +57,12 @@ type HTTP struct {
 	Stream *settings.Stream
 	// Upstream is the outbound network setting: connect timeout and allow list.
 	Upstream *settings.Upstream
+	// OAuth runs account logins. Its listeners stop with the server.
+	OAuth *oauth.Service
+	// Refresher renews the tokens of logged-in accounts.
+	Refresher *oauth.Refresher
+	// OAuthSettings is the checked OAUTH_* configuration.
+	OAuthSettings *settings.OAuth
 }
 
 // HTTPOf returns the bound HTTP pieces. A missing binding means the provider is
@@ -119,6 +126,10 @@ func (r *ServerServiceProvider) Register(app foundation.Application) {
 		if err != nil {
 			return nil, err
 		}
+		oauthCfg, err := settings.LoadOAuth(cfg)
+		if err != nil {
+			return nil, err
+		}
 		allowSSO := sso.ParseAllow(cfg.GetString("auth.sso_allow"))
 		a := auth.NewAuthenticator(
 			auth.NewStore(db),
@@ -141,17 +152,21 @@ func (r *ServerServiceProvider) Register(app foundation.Application) {
 			return err == nil
 		}
 		a.SSOAllow = allowSSO.Allows
+		login, refresher := newLogin(app, registry, oauthCfg, upstreamCfg)
 		return &HTTP{
-			Settings:     s,
-			Guard:        apphttp.NewGuard(a, s.TrustLoopback),
-			Trust:        apphttp.NewTrust(s.TrustedProxies),
-			Auth:         a,
-			SSO:          sso.NewClient(upstreamCfg.Allow),
-			Registry:     registry,
-			Checker:      controllers.NewChecker(upstreamCfg.Allow),
-			Capabilities: capabilities,
-			Stream:       streamCfg,
-			Upstream:     upstreamCfg,
+			Settings:      s,
+			Guard:         apphttp.NewGuard(a, s.TrustLoopback),
+			Trust:         apphttp.NewTrust(s.TrustedProxies),
+			Auth:          a,
+			SSO:           sso.NewClient(upstreamCfg.Allow),
+			Registry:      registry,
+			Checker:       controllers.NewChecker(upstreamCfg.Allow),
+			Capabilities:  capabilities,
+			Stream:        streamCfg,
+			Upstream:      upstreamCfg,
+			OAuth:         login,
+			Refresher:     refresher,
+			OAuthSettings: oauthCfg,
 		}, nil
 	})
 }
@@ -232,7 +247,7 @@ func (r *ServerServiceProvider) Runners(app foundation.Application) []foundation
 	route := app.MakeRoute()
 	server := apphttp.NewServer(h.Settings, apphttp.Rewrite(route), h.Guard, route.GetRoutes, app.MakeLog())
 	server.WaitFor(DataOf(app).Gate)
-	return []foundation.Runner{server}
+	return []foundation.Runner{server, newOAuthRunner(app, h, h.OAuthSettings)}
 }
 
 // cacheOrNil returns the grouped cache, or nil when the cache provider is not

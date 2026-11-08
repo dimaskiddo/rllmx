@@ -21,6 +21,9 @@ const (
 	accountLockKey  = "modelLock___all"
 	maxReasonRunes  = 200
 
+	// StatusActive is what `testStatus` holds for a working account.
+	StatusActive = "active"
+
 	// StatusExpired is what the `testStatus` field of a connection's data holds
 	// when its refresh token was refused for good. Account selection skips it
 	// until it is reconnected.

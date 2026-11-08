@@ -6,7 +6,9 @@ import (
 	"net/http"
 
 	"rllmx/app/executor"
+	"rllmx/app/oauth"
 	"rllmx/app/repository"
+	"rllmx/app/translate"
 )
 
 func credential(conn repository.Connection) string {
@@ -22,22 +24,34 @@ func credential(conn repository.Connection) string {
 // the failure to report; the answer may itself be an error that is not the
 // account's fault.
 func (c *call) try(ctx context.Context, conn repository.Connection) (Output, *accountFail) {
+	conn, err := c.ready(ctx, conn)
+	if err != nil {
+		return Output{}, &accountFail{expired: true}
+	}
 	c.attemptStart = c.p.d.Now()
 	if !c.upStream {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, c.p.d.BodyTimeout)
 		defer cancel()
 	}
-	req := executor.Request{
-		URL: c.url(), Body: c.body, Stream: c.upStream, Entry: c.dest.entry,
-		Key: credential(conn), Auth: c.dest.auth,
-	}
-	if c.p.d.Overrides != nil {
-		req.Overrides = c.p.d.Overrides.Headers(ctx, c.dest.provider)
-	}
-	resp, err := c.p.d.Executor.Execute(ctx, req)
+	resp, err := c.send(ctx, conn)
 	if err != nil {
 		return c.executeFailed(ctx, err)
+	}
+	if c.retryable(conn, resp.Status) {
+		first := executor.ReadError(resp.Status, resp.Body)
+		_ = resp.Body.Close()
+		fresh, rerr := c.p.d.Refresher.Renew(ctx, conn)
+		switch {
+		case errors.Is(rerr, oauth.ErrExpired):
+			return Output{}, &accountFail{expired: true}
+		case rerr != nil:
+			c.logRefresh(rerr)
+			return Output{}, &accountFail{status: first.Status, text: first.Message, resetAt: first.ResetAt}
+		}
+		if resp, err = c.send(ctx, fresh); err != nil {
+			return c.executeFailed(ctx, err)
+		}
 	}
 	c.row.TTFBMs = c.p.d.Now().Sub(c.attemptStart).Milliseconds()
 	if resp.Status >= http.StatusBadRequest {
@@ -46,6 +60,27 @@ func (c *call) try(ctx context.Context, conn repository.Connection) (Output, *ac
 		return Output{}, &accountFail{status: e.Status, text: e.Message, resetAt: e.ResetAt}
 	}
 	return c.respond(ctx, resp)
+}
+
+// send makes one upstream call on a connection. The disguise is rebuilt for
+// each call, so a retry on the next account never inherits another account's
+// names.
+func (c *call) send(ctx context.Context, conn repository.Connection) (executor.Response, error) {
+	p := c.prepare(conn)
+	c.tctx.ToolName = nil
+	if p.cloaked {
+		names := p.names
+		c.tctx.ToolName = func(n string) string { return translate.Uncloak(n, names, true) }
+	}
+	c.cloakedNames = p.names
+	req := executor.Request{
+		URL: p.url, Body: p.body, Stream: c.upStream, Entry: c.dest.entry,
+		Key: credential(conn), Auth: p.auth,
+	}
+	if c.p.d.Overrides != nil {
+		req.Overrides = c.p.d.Overrides.Headers(ctx, c.dest.provider)
+	}
+	return c.p.d.Executor.Execute(ctx, req)
 }
 
 func (c *call) executeFailed(ctx context.Context, err error) (Output, *accountFail) {

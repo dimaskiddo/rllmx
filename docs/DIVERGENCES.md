@@ -31,8 +31,26 @@ Each row carries the number, what we do differently and why it is better, includ
 | 23 | CLI | 4 | [23-…](prds/23-CLI.md) |
 | **Total** | | **226** | |
 
-**Kinds**, as each row's Why column says: *improvement* fixes a reference defect. *trade-off* is a deliberate cost. *scope cut* is a reference feature not adopted. *planned* and *temporary* name the step that resolves them. Numbers 196-199 and 201 are retired: the framework choice they recorded stays citable.
+## Kinds
 
-**Tally:** 226 numbers — 192 improvements, 5 trade-offs, 16 scope cuts, 4 planned, 3 temporary, 5 retired.
+Each row's Why column says which kind it is. Every number is counted once, by the marker in its row.
+
+| Kind | Meaning | Count | Numbers |
+|---|---|---|---|
+| Improvement | Fixes a reference defect | 187 | Every row with no other marker |
+| New feature | Something neither reference has | 3 | 24, 32, 148 |
+| Trade-off | A deliberate cost | 5 | 33, 81, 91, 138, 141 |
+| Scope cut | A reference feature not adopted | 16 | 3, 6, 9, 10, 11, 16, 48, 89, 105, 158, 159, 160, 161, 162, 202, 214 |
+| Planned | Names the step that resolves it | 6 | 7, 8, 25, 66, 102, 120 |
+| Temporary | Stopgap until a named step | 2 | 93, 104 |
+| Retired | A framework choice or a rule that no longer applies; the number stays citable | 6 | 196, 197, 198, 199, 201, 222 |
+| Built as planned | Was only a schedule change and is now done | 1 | 216 |
+| **Total** | | **226** | |
+
+How a row is counted:
+- A row with no marker is an improvement. A row marked *partial* is one too, and so are 112-114 and 118, where only a sub-point waits for a later step.
+- A row that is both a scope cut and marked planned (3, 11, 159, 160) counts as a scope cut.
+- 25 is a new feature planned for 2.3, and counts as planned.
+- Recount from the PRD rows when a row is added or its marker changes.
 
 A divergence in a `done` PRD is built and tested; in a `todo` PRD it is a decision taken, not yet code.

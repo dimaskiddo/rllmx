@@ -6,6 +6,9 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
+
 	"rllmx/app/executor"
 	"rllmx/app/stream"
 	"rllmx/app/translate"
@@ -154,6 +157,7 @@ func (c *call) relay(ctx context.Context, resp executor.Response, src stream.Sou
 	res := stream.Run(ctx, stream.Job{
 		Body: resp.Body, Source: src, UpstreamFormat: c.dest.format, ClientFormat: c.format, Ctx: c.tctx,
 		Client: lc, Timers: c.p.d.Timers, RequestBytes: len(c.body), Buffer: true, Now: c.p.d.Now,
+		Rewrite: c.restoreEvent(),
 	})
 	if errors.Is(res.Err, stream.ErrClientGone) {
 		c.setUsage(res.Usage)
@@ -208,4 +212,29 @@ func (l *lazyClient) Raw(b []byte) error {
 		return errNotOpen
 	}
 	return l.client.Raw(b)
+}
+
+// restoreEvent undoes the disguise on a passthrough stream: the one event that
+// names a tool, the start of a tool_use block, gets the client's name back. It
+// is nil when the attempt renamed nothing, so an undisguised stream is forwarded
+// byte for byte.
+func (c *call) restoreEvent() func(event string, data []byte) []byte {
+	if c.tctx.ToolName == nil || c.dest.format != translate.FormatClaude {
+		return nil
+	}
+	return func(_ string, data []byte) []byte {
+		if gjson.GetBytes(data, "type").String() != "content_block_start" || gjson.GetBytes(data, "content_block.type").String() != "tool_use" {
+			return data
+		}
+		name := gjson.GetBytes(data, "content_block.name").String()
+		back := c.tctx.RestoreTool(name)
+		if back == name {
+			return data
+		}
+		out, err := sjson.SetBytes(data, "content_block.name", back)
+		if err != nil {
+			return data
+		}
+		return out
+	}
 }

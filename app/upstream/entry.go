@@ -43,6 +43,8 @@ type Entry struct {
 	// Auth is how a pasted key is checked. Nil means the generic prober cannot
 	// check this provider.
 	Auth *Auth `json:"auth,omitempty"`
+	// OAuth is how an account of this provider is connected by logging in.
+	OAuth *OAuth `json:"oauth,omitempty"`
 	// ForceStream marks a provider that only answers as a stream, so a client
 	// that asked for JSON gets the stream collected into one answer.
 	ForceStream bool    `json:"forceStream,omitempty"`

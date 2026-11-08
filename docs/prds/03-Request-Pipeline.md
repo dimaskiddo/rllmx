@@ -76,7 +76,7 @@ flowchart TD
 |---|---|---|---|---|
 | Guard (key, session, loopback) | `dashboardGuard.js`, `sse/services/auth.js` | `app/http`, `app/auth` | partial (class table, locality, deny-all authenticator; key lookup and session 1.6; restricted-key check 2.2) | 1.6 |
 | Key access restriction | `sse/services/keyAccess.js` | `app/access` | todo | 2.2 |
-| Session identity | `utils/sessionManager.js` | `app/conversation` | built in 1.8c (client-named id by reference priority, else opening assistant text, else per connection, two-hour life; `Bound` keyed hash; the pipeline does not read the id yet: the Claude disguise (1.9) and Codex headers (1.10) do; continuity store 3.2) | 1.8c |
+| Session identity | `utils/sessionManager.js` | `app/conversation` | built in 1.8c (client-named id by reference priority, else opening assistant text, else per connection, two-hour life; `Bound` keyed hash; the pipeline reads it since 1.9c, once an account is chosen: the Claude user id and session header, and a keyed hash for Codex's `session_id`; continuity store 3.2) | 1.8c |
 | Bypass (warmup, title) | `utils/bypassHandler.js` | `app/pipeline` | done (1.8d: runs after parse and before model resolution, so it works for a combo name and with no account; D143 one row, D223 the client's own codec writes the reply) | 1.8d |
 | Capability detection (current-turn needs: vision, pdf, audio, video) | `services/combo.js` (`detectRequiredCapabilities`) | `app/translate` | todo (`DetectNeeds`, `Needs.Met`; combo step calls it) | 1.8 |
 | Capacity adapter (fallback pools per capability) | `services/capacityAdapter.js` | `app/combo` | todo | 2.4 |
@@ -87,12 +87,12 @@ flowchart TD
 | Account selection and strategies | `sse/services/auth.js` | `app/account` | done (selector; D82-83, D212; called by the pipeline loop since 1.8c) | 1.8c |
 | Error rules and backoff | `config/errorConfig.js`, `services/accountFallback.js` | `app/account` | done (D84-85; called by the pipeline loop since 1.8c) | 1.8c |
 | Per-model locks (`modelLock_*`) | `sse/services/auth.js` | `app/account`, `app/repository` | done (write and clear in `app/repository`, read by the selector since 1.7b) | 1.7 |
-| Token refresh: proactive, reactive, background, dedup | `services/tokenRefresh*`, `sse/services/backgroundTokenRefresh.js` | `app/oauth` | todo (D155-156) | 1.9 |
+| Token refresh: proactive, reactive, background, dedup | `services/tokenRefresh*`, `sse/services/backgroundTokenRefresh.js` | `app/oauth` | done (1.9b: proactive before a request, reactive on 401 and 403 with one retry, background loop, the connection test; D155-157) | 1.9b |
 | Format detection, transport, target format | `services/provider.js` | `app/pipeline` | built in 1.8c (endpoint decides the client format; a model's `targetFormat`, else the transport format; nodes by type and `apiType`) | 1.8c |
-| Native passthrough | `utils/clientDetector.js` | `app/pipeline` | partial (the stream layer passes through when client and upstream formats are equal, whatever the client tool; client tool detection from headers; provider-native client not disguised; Claude normalization in `app/translate`, D142; gemini-cli, antigravity, codex 1.10) | 1.8 |
+| Native passthrough | `utils/clientDetector.js` | `app/pipeline` | partial (the stream layer passes through when client and upstream formats are equal, whatever the client tool; client tool detection from headers since 1.9c, from an allow-listed header set (`pipeline.PickHeaders`); a Claude Code client is never disguised; Claude normalization in `app/translate`, D142; the Codex and Gemini CLI body shapes 1.10) | 1.8, 1.9c |
 | Claude request preparation (`prepareClaudeRequest`) | `translator/formats/claude.js` | `app/translate` | todo (D118) | 1.8 |
-| Tool-name cloaking | `utils/claudeCloaking.js` | `app/translate` | todo (tool suffix, decoys, billing block, user id, restore on body and stream) | 1.8 |
-| Executor base, retry, URL fallback | `executors/base.js` | `app/executor` | built in 1.8c (in-place retry by status, data overrides, 2 s default delay; `baseUrls` fallback never tried: no shipped provider needs it, D102; no 401 refresh until 1.9, D222) | 1.8c |
+| Tool-name cloaking | `utils/claudeCloaking.js` | `app/translate`, `app/pipeline` | done (1.9c: tool suffix, decoys, billing block, user id, restore on the body and on both stream paths; D185, D193, D216) | 1.9c |
+| Executor base, retry, URL fallback | `executors/base.js` | `app/executor` | built in 1.8c (in-place retry by status, data overrides, 2 s default delay; `baseUrls` fallback never tried: no shipped provider needs it, D102; a 401 or 403 on a login renews its token and retries once since 1.9b, D222 retired) | 1.8c |
 | Streaming: SSE parse and emit, usage, timers | `utils/stream.js`, `streamHandler.js` | `app/stream` | done (1.8b; run by the pipeline since 1.8c) | 1.8b |
 | Forced SSE to JSON, non-stream translation | `handlers/chatCore/*` | `app/stream`, `app/pipeline` | built in 1.8c (`Collect` for a stream-only provider; a buffered body through the codecs) | 1.8c |
 | Usage save, daily aggregate, cost | `src/lib/db/repos/usageRepo.js` | `app/analytics`, `app/pipeline` | partial (one row per request on every path with price and error class, built in 1.8c; the writer is wired in 1.8d; `app/usage` query surface unbuilt) | 1.8c |
@@ -103,7 +103,7 @@ flowchart TD
 ---
 
 ## Remaining work
-**Phase 1 continues with 1.9.** The engine (1.8c), every chat route (1.8d, 1.8e), the model catalog (1.8f) and the response cache (1.8g) are built.
+**Phase 1 continues with 1.10** (1.9, the OAuth login, the refresh and the disguise, is built). The engine (1.8c), every chat route (1.8d, 1.8e), the model catalog (1.8f) and the response cache (1.8g) are built.
 
 - [x] Parse, resolve, target format, the account loop, the per-account core, the usage row on every path (1.8c)
 - [x] Request-scoped 4xx handling, per-format error bodies, HTML upstream error cleanup (a 2xx HTML page or non-stream type on a streaming call is a 502, D149) (1.8c)

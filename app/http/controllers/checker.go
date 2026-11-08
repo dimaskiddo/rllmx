@@ -35,6 +35,11 @@ const (
 	OutcomeProviderError
 	OutcomeUnexpected
 	OutcomeUnsupported
+	// The three below belong to a login's token, which is renewed and checked
+	// but never sent to the provider.
+	OutcomeReconnect
+	OutcomeRefreshFailed
+	OutcomeNoToken
 )
 
 var outcomeText = map[Outcome]string{
@@ -49,6 +54,9 @@ var outcomeText = map[Outcome]string{
 	OutcomeProviderError: "provider error",
 	OutcomeUnexpected:    "unexpected response",
 	OutcomeUnsupported:   "test not supported yet",
+	OutcomeReconnect:     "needs to be reconnected",
+	OutcomeRefreshFailed: "token refresh failed",
+	OutcomeNoToken:       "no access token",
 }
 
 // Message is the fixed text for an outcome; a valid one has none.

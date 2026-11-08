@@ -1141,3 +1141,91 @@ func TestRecordTestCutsALongMessageAndRefusesBadRows(t *testing.T) {
 		t.Errorf("the corrupt row was rewritten: %s", raw)
 	}
 }
+
+func TestMarkExpiredWritesOnlyWhileTheTokenIsTheOneThatDied(t *testing.T) {
+	s := newMigrated(t)
+	ctx := context.Background()
+	c := mkConn(t, s, ConnInput{Provider: "claude", AuthType: "oauth", Email: "e@x.io",
+		Fields: map[string]string{"accessToken": `"a"`, "refreshToken": `"rt1"`, "testStatus": `"active"`}})
+	at := time.Date(2026, 11, 8, 10, 0, 0, 0, time.UTC)
+
+	marked, err := s.Connections().MarkExpired(ctx, c.ID, "other", "needs to be reconnected", at)
+	if err != nil || marked {
+		t.Fatalf("a stale token was marked: %v %v", marked, err)
+	}
+	got, _, _ := s.Connections().Get(ctx, c.ID)
+	if st, _ := got.Doc().GetString("testStatus"); st != "active" {
+		t.Fatalf("status = %q", st)
+	}
+
+	marked, err = s.Connections().MarkExpired(ctx, c.ID, "rt1", "needs to be reconnected", at)
+	if err != nil || !marked {
+		t.Fatalf("marked %v, err %v", marked, err)
+	}
+	got, _, _ = s.Connections().Get(ctx, c.ID)
+	d := got.Doc()
+	if st, _ := d.GetString("testStatus"); st != StatusExpired {
+		t.Fatalf("status = %q", st)
+	}
+	if msg, _ := d.GetString("lastError"); msg != "needs to be reconnected" {
+		t.Fatalf("lastError = %q", msg)
+	}
+	if when, _ := d.GetString("lastErrorAt"); when != dialect.FormatTimestamp(at) {
+		t.Fatalf("lastErrorAt = %q", when)
+	}
+	if tok, _ := d.GetString("refreshToken"); tok != "rt1" {
+		t.Fatalf("the refresh token changed: %q", tok)
+	}
+}
+
+func TestAMarkNeverLandsOnARotatedTokenWhateverTheOrder(t *testing.T) {
+	s := newMigrated(t)
+	ctx := context.Background()
+	c := mkConn(t, s, ConnInput{Provider: "codex", AuthType: "oauth", Email: "f@x.io",
+		Fields: map[string]string{"accessToken": `"a"`, "refreshToken": `"rt1"`}})
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	swaps := 0
+	for i := range 10 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if i%2 == 0 {
+				_, won, err := s.Connections().SwapCredentials(ctx, c.ID, "rt1", map[string]string{"refreshToken": `"next` + strconv.Itoa(i) + `"`})
+				if err != nil {
+					t.Errorf("swap %d: %v", i, err)
+				}
+				if won {
+					mu.Lock()
+					swaps++
+					mu.Unlock()
+				}
+				return
+			}
+			if _, err := s.Connections().MarkExpired(ctx, c.ID, "rt1", "needs to be reconnected", time.Now()); err != nil {
+				t.Errorf("mark %d: %v", i, err)
+			}
+		}()
+	}
+	wg.Wait()
+	if swaps != 1 {
+		t.Fatalf("%d swaps won, want exactly 1: one spent token is rotated once", swaps)
+	}
+	got, _, _ := s.Connections().Get(ctx, c.ID)
+	if rt, _ := got.Doc().GetString("refreshToken"); !strings.HasPrefix(rt, "next") {
+		t.Fatalf("the refresh token is %q", rt)
+	}
+	// Once the token is rotated a mark for the old one writes nothing, so it
+	// cannot declare the new token dead.
+	again, _ := s.Connections().MarkExpired(ctx, c.ID, "rt1", "x", time.Now())
+	if again {
+		t.Fatal("a mark landed on a rotated token")
+	}
+}
+
+func TestMarkExpiredFailsOnAMissingRow(t *testing.T) {
+	s := newMigrated(t)
+	if _, err := s.Connections().MarkExpired(context.Background(), "nope", "", "m", time.Now()); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v", err)
+	}
+}

@@ -157,7 +157,7 @@ func TestNothingFromTheUpstreamIsEverReturned(t *testing.T) {
 
 func TestEveryOutcomeHasOneFixedMessage(t *testing.T) {
 	seen := map[string]Outcome{}
-	for o := OutcomeInvalidKey; o <= OutcomeUnsupported; o++ {
+	for o := OutcomeInvalidKey; o <= OutcomeNoToken; o++ {
 		m := o.Message()
 		if m == "" {
 			t.Errorf("outcome %d has no message", o)

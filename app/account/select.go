@@ -3,6 +3,7 @@ package account
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"sync"
@@ -20,6 +21,9 @@ var (
 	// ErrNoConnections means the provider has nothing to select: no connection,
 	// all inactive, excluded or expired, or none able to serve the model.
 	ErrNoConnections = errors.New("account: no connection available")
+	// ErrAllExpired means every connection that could have served was refused
+	// for good and has to be connected again. It is an ErrNoConnections too.
+	ErrAllExpired = fmt.Errorf("%w: every account needs to be reconnected", ErrNoConnections)
 )
 
 // AllLockedError says when the first locked connection frees up. The pipeline
@@ -133,13 +137,17 @@ func (s *Selector) Select(ctx context.Context, req Request) (Selection, error) {
 	now := s.now()
 
 	var usable, locked []repository.Connection
-	skipped := 0
+	skipped, expired := 0, 0
 	for _, c := range all {
 		if c.Corrupt {
 			skipped++
 			continue
 		}
-		if req.Exclude[c.ID] || Expired(c) || !ModelEnabled(c, req.RequestedModel) {
+		if req.Exclude[c.ID] || !ModelEnabled(c, req.RequestedModel) {
+			continue
+		}
+		if Expired(c) {
+			expired++
 			continue
 		}
 		if LockActive(c.Doc(), req.Model, now) {
@@ -152,6 +160,9 @@ func (s *Selector) Select(ctx context.Context, req Request) (Selection, error) {
 	if len(usable) == 0 {
 		if len(locked) > 0 {
 			return Selection{Skipped: skipped}, allLocked(locked, req.Model, now)
+		}
+		if expired > 0 {
+			return Selection{Skipped: skipped}, ErrAllExpired
 		}
 		return Selection{Skipped: skipped}, ErrNoConnections
 	}

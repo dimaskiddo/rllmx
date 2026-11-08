@@ -30,6 +30,10 @@ type Base struct {
 	Chat *controllers.ChatController
 	// Models is the model catalog handler; nil leaves its routes out.
 	Models *controllers.ModelsController
+	// OAuth is the account login handler; nil leaves its routes out.
+	OAuth *controllers.OAuthController
+	// Callback serves the page a provider redirects the browser to.
+	Callback *controllers.CallbackController
 }
 
 // Web declares the route tables. Every route goes through guard.Handle, which
@@ -99,6 +103,18 @@ func Web(router route.Route, guard *apphttp.Guard, base Base) {
 		guard.Handle(router, apphttp.ClassLLM, nethttp.MethodGet, "/v1/models", m.List)
 		guard.Handle(router, apphttp.ClassLLM, nethttp.MethodGet, "/v1/models/*path", m.Show)
 		guard.Handle(router, apphttp.ClassLLM, nethttp.MethodGet, "/v1beta/models", m.Gemini)
+	}
+
+	if o := base.OAuth; o != nil {
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/oauth/{provider}/authorize", o.Authorize)
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodPost, "/api/oauth/exchange", o.Exchange)
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodPost, "/api/oauth/callback", o.Callback)
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/oauth/status", o.Status)
+	}
+
+	if cb := base.Callback; cb != nil {
+		guard.Handle(router, apphttp.ClassPublic, nethttp.MethodGet, "/callback", cb.Page)
+		guard.Handle(router, apphttp.ClassPublic, nethttp.MethodGet, "/static/js/callback.js", cb.Script)
 	}
 
 	router.Fallback(guard.Fallback(router.GetRoutes))

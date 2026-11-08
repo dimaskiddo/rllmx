@@ -43,6 +43,9 @@ func (r *runner) passthrough(ctx context.Context) {
 		} else if !gjson.ValidBytes(data) {
 			continue
 		}
+		if r.j.Rewrite != nil {
+			data = r.j.Rewrite(ev.Name, data)
+		}
 		r.track.Feed(data)
 		reader.count(r.track, data)
 		if reader.failed(data) {

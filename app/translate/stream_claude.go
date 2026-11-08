@@ -13,6 +13,7 @@ import (
 
 // claudeReader reads Messages API events.
 type claudeReader struct {
+	c       *Ctx
 	started bool
 	// kind is what each content block index holds: text, thinking, tool, skip.
 	kind   map[int]string
@@ -23,7 +24,7 @@ type claudeReader struct {
 
 // NewStreamReader returns the reader for Messages API streams.
 func (ClaudeCodec) NewStreamReader(c *Ctx) StreamReader {
-	return &claudeReader{kind: map[int]string{}, tool: map[int]int{}}
+	return &claudeReader{c: c, kind: map[int]string{}, tool: map[int]int{}}
 }
 
 func (r *claudeReader) Flush() []Chunk { return nil }
@@ -68,7 +69,7 @@ func (r *claudeReader) Read(event string, data []byte) ([]Chunk, error) {
 			n := r.nTools
 			r.nTools++
 			r.tool[idx] = n
-			return []Chunk{{ToolCalls: []ToolCallDelta{{Index: n, ID: b.Get("id").String(), Name: b.Get("name").String()}}}}, nil
+			return []Chunk{{ToolCalls: []ToolCallDelta{{Index: n, ID: b.Get("id").String(), Name: r.c.RestoreTool(b.Get("name").String())}}}}, nil
 		default:
 			r.kind[idx] = "skip"
 		}

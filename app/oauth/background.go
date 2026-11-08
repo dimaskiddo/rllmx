@@ -1,0 +1,101 @@
+package oauth
+
+import (
+	"context"
+	"time"
+
+	"rllmx/app/repository"
+)
+
+// Timing of the background pass.
+const (
+	FirstPass = 10 * time.Second
+	PassEvery = 5 * time.Minute
+)
+
+// due picks the accounts a pass renews: active, readable, not expired, with a
+// refresh token and a known expiry within the flow's lead time or half an
+// hour, whichever is longer.
+func (r *Refresher) pending(list []repository.Connection) []repository.Connection {
+	now := r.now()
+	var out []repository.Connection
+	for _, c := range list {
+		if c.AuthType != "oauth" || c.Corrupt || !c.IsActive {
+			continue
+		}
+		d := c.Doc()
+		if status, _ := d.GetString("testStatus"); status == repository.StatusExpired {
+			continue
+		}
+		f, ok := r.Flow(c.Provider)
+		if !ok {
+			continue
+		}
+		if rt, _ := d.GetString("refreshToken"); rt == "" {
+			continue
+		}
+		exp, known := timeOf(d, "expiresAt")
+		if !known {
+			continue
+		}
+		window := max(time.Duration(f.Refresh.LeadSeconds)*time.Second, backgroundMin)
+		if exp.Sub(now) < window {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// Pass renews every account that is close to expiry, one at a time, pausing
+// between them. One account failing never stops the pass; only the class of a
+// failure is logged. It returns how many accounts it renewed.
+func (r *Refresher) Pass(ctx context.Context, gap time.Duration) int {
+	st, err := r.store()
+	if err != nil {
+		return 0
+	}
+	active := true
+	list, err := st.List(ctx, repository.ConnFilter{IsActive: &active})
+	if err != nil {
+		r.warn("oauth: the background pass could not list accounts")
+		return 0
+	}
+	renewed := 0
+	for i, c := range r.pending(list) {
+		if ctx.Err() != nil {
+			return renewed
+		}
+		if i > 0 && gap > 0 {
+			if r.wait(ctx, gap) != nil {
+				return renewed
+			}
+		}
+		if _, err := r.Refresh(ctx, c.ID, ""); err != nil {
+			r.warn("oauth: the background renewal of a %s account failed: %s", c.Provider, reason(err))
+			continue
+		}
+		renewed++
+	}
+	return renewed
+}
+
+// reason names a failure without provider text.
+func reason(err error) string {
+	if c := ClassOf(err); c != "" {
+		return string(c)
+	}
+	return err.Error()
+}
+
+// Loop runs a pass after FirstPass and then every PassEvery until ctx ends. The
+// caller starts it only when the store is open.
+func (r *Refresher) Loop(ctx context.Context, gap time.Duration) {
+	delay := FirstPass
+	for {
+		if r.wait(ctx, delay) != nil {
+			return
+		}
+		r.Pass(ctx, gap)
+		delay = PassEvery
+	}
+}

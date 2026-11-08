@@ -51,12 +51,13 @@ The **Step** column names the `TASKS.md` step that adds the group. No code reads
 | Logging | `LOG_CHANNEL` (`single`; `daily` or `stack` also), `LOG_LEVEL` (info). The file, the formatter (`text` or `json`) and the retention days are keys of the channel in `config/logging.go` (`storage/logs/rllmx.log`), not variables. No `print` flag: the framework drops console output on a custom driver, and nothing is copied to the console | 1.3 |
 | Streams | `STREAM_STALL_TIMEOUT` (360s, 5s to 1h), `STREAM_FIRST_CHUNK_TIMEOUT` (200s, 5s to 1h), `STREAM_USAGE_WAIT` (3s, 100ms to 30s; how long a finished turn waits for a late usage report), all read in 1.8b; `STREAM_EMPTY_PEEK_DEADLINE` (45s, 1s to 10m) (planned, 2.4) | 1.8b, 2.4 |
 | Upstream | `UPSTREAM_CONNECT_TIMEOUT` (60s, 1s to 10m), `UPSTREAM_ALLOW_PRIVATE` (empty: public targets only; host names, addresses or CIDRs; link-local and the cloud metadata addresses are refused even when listed) | 1.6b |
-| OAuth refresh | `OAUTH_BACKGROUND_REFRESH` (true), `OAUTH_REFRESH_DELAY` (1500ms, pause between accounts), `OAUTH_REFRESH_GOOGLE_DELAY` (12s), `OAUTH_CALLBACK_HOST` (127.0.0.1) | 1.9 |
+| OAuth login | `OAUTH_CALLBACK_HOST` (127.0.0.1): an IP address, the bind address of the fixed-port login listener (built in 1.9a) | 1.9a |
+| OAuth refresh | `OAUTH_BACKGROUND_REFRESH` (true) and `OAUTH_REFRESH_DELAY` (1500ms, 0s to 1m, pause between accounts), built in 1.9b. `OAUTH_REFRESH_GOOGLE_DELAY` (12s) joins in 1.10 with the first provider that sets `slowRefresh` | 1.9b, 1.10 |
 | Media | `MEDIA_VIDEO_TIMEOUT`, `MEDIA_SEARXNG_URL` (empty) (planned) | 1.11 |
 | Token savers | `SAVER_HEADROOM_URL` (`http://localhost:8787`) (planned) | 3.1 |
 | Catalog | `CATALOG_SYNC` (true; `false` turns sync off) (planned) | 2.6 |
 | Translator | `TRANSLATOR_ENABLED` (false) (planned) | 2.6 |
-| OAuth clients | `OAUTH_<PROVIDER>_CLIENT_ID` for antigravity, claude, codex, github, google, iflow, kimi, kimi_coding, minimax_code, muse, nous, trae, windsurf, xai; `_CLIENT_SECRET` only for antigravity, google, iflow, trae. Default empty, which disables that provider's login; `.env.example` carries working values. `google` serves Gemini and Gemini CLI, `minimax_code` both MiniMax Code regions, `xai` xAI and Grok CLI | 1.9, 1.10 |
+| OAuth clients | `OAUTH_<PROVIDER>_CLIENT_ID` for antigravity, claude, codex, github, google, iflow, kimi, kimi_coding, minimax_code, muse, nous, trae, windsurf, xai; `_CLIENT_SECRET` only for antigravity, google, iflow, trae. Default empty, which disables that provider's login; `.env.example` carries working values. `google` serves Gemini and Gemini CLI, `minimax_code` both MiniMax Code regions, `xai` xAI and Grok CLI. Built in 1.9a: `OAUTH_CLAUDE_CLIENT_ID` and `OAUTH_CODEX_CLIENT_ID` (at most 256 characters, no spaces or control characters) | 1.9a, 1.10 |
 | Provider overrides | `PROVIDER_AZURE_ENDPOINT`, `..._AZURE_DEPLOYMENT`, `..._AZURE_API_VERSION`, `..._AZURE_ORGANIZATION`, `..._MIMO_PLATFORM_URL`, `..._COMMANDCODE_BASE_URL` (planned) | 1.10 |
 
 ### Not Read

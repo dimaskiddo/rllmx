@@ -46,26 +46,24 @@ The Claude and Gemini placeholder thinking signatures are data in `thinking.json
 
 ### Claude Disguise
 
-**Moved to 1.9 (divergence 216).** The disguise needs an OAuth account to exist and to test against, so it lands with the Claude provider's login. Claude *preparation* below is built in 1.8a, because an Anthropic API key needs it today.
+**Built in 1.9c (divergence 216).** `translate.Cloak` shapes a finished Claude body and `pipeline` decides when and with which headers. Claude *preparation* below is separate and was built in 1.8a, because an Anthropic API key needs it.
 
-**Follow the reference exactly.** Add no validation, cap, gate or opt-out: how a deployer uses the router with a provider is their concern. A real reference defect (wrong derivation, a crash) is still fixed and recorded as a divergence. Client headers never reach the upstream raw; the pipeline passes derived values.
+**Follow the reference.** Add no gate or opt-out: a deployer who does not want the disguise does not connect a Claude login. The registry's `oauth.disguise` flag says which provider asks for it (only `claude`). Client headers never reach the upstream raw; the pipeline passes derived values.
 
-The reference's behavior, with no switch. After an account is chosen, a request for the `claude` provider with an OAuth token (`sk-ant-oat`) from a client that is not Claude Code gets:
-- every client tool without a `type` renamed with the suffix `_ide` (in the tool list, in every `tool_use` of the history and in a forced `tool_choice`);
-- twenty decoy tools;
-- a billing block as the first system block;
-- `metadata.user_id` when the client sent none (the session in it comes from `app/conversation`).
-
-A node that fronts Anthropic gets the billing block and user id only.
+A request is disguised when all of these hold: the upstream format is Claude, the connection is a login of a provider whose data sets `disguise`, its token begins `sk-ant-oat`, and the client is not Claude Code (a Claude Code client is native: its body is already right). Then, in this order, on the finished body:
+1. a billing block becomes `system[0]` (a string system becomes two blocks; nothing is added if `system[0]` already starts with the prefix). Its `cch` is the first five hex characters of SHA-256 over the body as it stood before this step, the build part is three random hex characters, and the version is `2.1.280`;
+2. `metadata.user_id` is added when the client sent none: `{"device_id":…,"account_uuid":…,"session_id":…}`, the ids derived from the token and the session from `app/conversation` with any `claude:` prefix removed;
+3. every client tool without a `type` is renamed with the suffix `_ide`, in the tool list, in every `tool_use` of the history and in a forced `tool_choice` that names a renamed tool; twenty decoy tools follow. A body with no tools gets steps 1 and 2 only.
 
 | Item | Behavior |
 |---|---|
-| Name map | Lives on the request context, replaced on every attempt |
-| Answers | Every Claude answer, body or stream, loses a trailing `_ide` from a tool name, by the map or, when the map is gone, by the suffix. The decoy names end in no suffix |
-| `anthropic-beta` | The client's header is merged as sent into the list picked for the model (`claude`, and nodes serving a `claude-*` model) or into the registry list (`anthropic`) |
-| Session header | `x-claude-code-session-id` is sent for an OAuth token on `claude` |
-| Other nodes | A node whose base URL is not Anthropic's also gets the key as a bearer token and loses `x-app`, the browser-access header and `claude-code-20250219` |
-| Client headers | Never copied. The pipeline passes these derived values |
+| Name map | Built for each attempt on each account, so a retry never carries another account's names |
+| Answers | A tool name in the answer is restored by the map; while the attempt was disguised a trailing `_ide` the map misses is dropped too, and a name that ends in no suffix (every decoy) is left alone. Non-stream: when the answer is read. Stream to a translated format: in the Claude stream reader, at the one event that names a tool. Stream to a Claude client: `stream.Job.Rewrite` on that event. An attempt that was not disguised never changes a name (divergence 193) |
+| `anthropic-beta` | Built per request from the registry's `oauth.beta`: the base flags, the heavy flags for models starting with one of its prefixes, minus the summary flag when the body says `thinking.display` is `summarized`, then the client's own flags (read from the allow-listed `Anthropic-Beta` header, each a plain token, at most 32, header at most 2 KiB), without repeats |
+| Session header | `x-claude-code-session-id` carries the session the user id holds |
+| Identity headers | The `oauth.identity` set (user agent, `X-App`, `X-Stainless-*`, the browser-access header) and the `oauth.urlSuffix` (`?beta=true`), for a login's token only; an API key on the same provider gets neither |
+| Other nodes | A node whose base URL is not Anthropic's also gets the key as a bearer token and loses `x-app`, the browser-access header and `claude-code-20250219` **(not built: no node serves Claude through this path yet, 1.10)** |
+| Client headers | Never copied. `Input.Header` holds only the headers the pipeline reads (`pipeline.PickHeaders`) |
 
 ### Claude Preparation (`prepareClaude`)
 
@@ -130,7 +128,7 @@ All go through the OpenAI hub; no direct pairs (PRD 7). References under `transl
 - [x] The capability tables in `app/upstream` (1.8a)
 - [x] The stream direction of every codec: readers and writers for OpenAI, Claude, Responses, Gemini and Ollama; hold-for-usage; the `<think>` tag split for Responses; Claude `Read` tool argument repair (1.8b)
 - [x] Image prefetch (`app/prefetch`, 1.8d): Gemini and Ollama targets only, magic bytes decide the type
-- [ ] Claude cloak: tool suffix, decoys, billing block, user id, restore on body and stream — **1.9**
+- [x] Claude cloak: tool suffix, decoys, billing block, user id, restore on body and stream (1.9c)
 - [ ] Step 1.10: gemini-cli, antigravity, vertex, kiro, cursor and commandcode translators
 
 ---
@@ -157,8 +155,8 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 186 | Rules for every upstream format (so `temperature` also dropped from native Claude body); strip after injection; exclusion one glob; image fetch up to 3 redirects, 20 s limit, through SSRF guard; rules validated on load (no empty rule, no negative cap, no credential-shaped pattern, no exclude without match) | One rule table for every route; bad table stops the start instead of misrouting traffic |
 | 190 | Endpoint alone decides: `/v1/chat/completions` OpenAI, `/v1/messages` Claude, `/v1/responses` Responses, `/v1beta/models/*` Gemini, `/v1/api/chat` Ollama. Body of another shape gets that format's error | One rule per route; wrong-shape body fails loudly instead of being served as a format the client did not choose |
 | 142 | Every Claude-format body bound for Anthropic or a node fronting it | Removes only what Anthropic rejects; no dependence on a header |
-| 193 | Removed on every route returning Claude answers, with or without cloak, so genuine tool named `x_ide` from uncloaked upstream loses its suffix | Name map gone after retry or reconnect, so suffix is the fallback. Narrow to cloaked requests if it shows up in real use (trade-off) |
-| 216 | The Claude disguise (tool suffix, decoys, billing block, user id) is built with the Claude OAuth provider in step 1.9 instead of 1.8 **(planned 1.9)** | It needs an OAuth account to exist and to test against; Claude preparation, which an API key needs, is built in 1.8a (planned) |
+| 193 | A tool name loses a trailing `_ide` only on an attempt that was disguised, by the map first and the suffix as the fallback; an attempt that renamed nothing never changes a name. The reference strips it on every Claude answer | A genuine tool named `x_ide` from an undisguised request keeps its name. The map is rebuilt for every attempt here, so it is never lost across a retry and the suffix is only a backstop **(narrowed in 1.9c)** |
+| 216 | The Claude disguise (tool suffix, decoys, billing block, user id) was built with the Claude OAuth provider in step 1.9c instead of 1.8 **(done, 1.9c)** | It needs an OAuth account to exist and to test against; Claude preparation, which an API key needs, is built in 1.8a (planned) |
 | 217 | Every writer holds its closing event until the usage report or `STREAM_USAGE_WAIT` | A usage trailer sent after the finish chunk reaches Claude and Gemini clients too |
 | 218 | An upstream error event (Claude `error`, Responses `response.failed`, Gemini or Ollama error body, an OpenAI `error` object) fails the stream with the client's own error frame | The reference dropped it and the stream ended with no finish and no error |
 
@@ -179,3 +177,13 @@ Deliberate differences from the references in this area. Numbers are stable and 
 **Streams meet at the hub chunk, and the writer owns the hold.** Every reader emits `Chunk`s whose first one carries the role, with at most one finish and usage as a separate report merged by maximum; every writer holds its closing event until usage arrives (`Held`, `Close`). That is what let one usage timer in `app/stream` serve five formats, and what makes the all-pair test (25 reader/writer pairs over one scripted turn) a real check rather than five unrelated ones.
 
 **A whole-call format cannot be fed fragments.** Gemini and Ollama carry a tool call in one part or line, so their writers collect fragments and send the call with the turn. The first version wrote each fragment and produced two calls for one.
+
+**The disguise is a body transform, not a codec concern.** `Cloak` runs on the finished Claude body with `gjson` and `sjson`, so every other byte of the client's request, the cache markers `prepareClaude` placed and the key order stay as they were; a test counts markers before and after and another checks a tool list is identical from turn to turn. The codec learned two things only: to carry `thinking.display` (the beta list depends on it) and to give a tool name back through `Ctx.ToolName`.
+
+**Restoring a name happens where the name appears.** A Messages stream names a tool once, in `content_block_start`. The translated path restores it in the stream reader, the collected path goes through the same reader, and the passthrough path (a Claude client on a Claude upstream) forwards frames untouched, so it gets a one-event `Rewrite` hook that is nil when nothing was renamed.
+
+**One mutant was an equivalent branch.** `Uncloak` first refused to strip a decoy name, but no decoy ends in `_ide`, so the guard could never fire; it was removed and the comment says why.
+
+**A thinking field was being dropped.** The hub kept the thinking mode, level and budget but not `display`, so a Claude client that asked for summaries lost them even on a Claude upstream. It is carried now, and it joins the response-cache key.
+
+**Not verified without a live account:** that Anthropic accepts a disguised request, that the nine beta flags are still the current list, and that the version strings (`claude-cli/2.1.280`, `codex_cli_rs/0.159.0`) are still accepted.

@@ -90,6 +90,9 @@ type Thinking struct {
 	Mode   string
 	Level  string
 	Budget int
+	// Display is how thinking is shown ("summarized", "omitted"), carried only
+	// between Claude clients and Claude upstreams.
+	Display string
 }
 
 // Set reports whether anything was asked.

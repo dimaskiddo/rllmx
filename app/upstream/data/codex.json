@@ -4,6 +4,30 @@
   "category": "oauth",
   "display": { "name": "OpenAI Codex" },
   "transport": { "baseUrl": "https://chatgpt.com/backend-api/codex/responses", "format": "openai-responses" },
+  "oauth": {
+    "flow": "code-pkce",
+    "authorizeUrl": "https://auth.openai.com/oauth/authorize",
+    "tokenUrl": "https://auth.openai.com/oauth/token",
+    "scope": "openid profile email offline_access",
+    "params": [
+      { "name": "id_token_add_organizations", "value": "true" },
+      { "name": "codex_cli_simplified_flow", "value": "true" },
+      { "name": "originator", "value": "codex_cli_rs" }
+    ],
+    "redirect": "fixed",
+    "fixedPort": 1455,
+    "callbackPath": "/auth/callback",
+    "exchange": "form",
+    "hook": "codex",
+    "refresh": { "encoding": "json", "leadSeconds": 600, "maxAgeSeconds": 691200 },
+    "identity": {
+      "originator": "codex_cli_rs",
+      "User-Agent": "codex_cli_rs/0.159.0",
+      "version": "0.159.0"
+    },
+    "session": { "name": "session_id", "keyed": true },
+    "account": { "name": "ChatGPT-Account-ID", "from": ["workspaceId", "chatgptAccountId", "accountId"] }
+  },
   "models": [
     { "id": "gpt-6.1-sol", "name": "GPT 6.1 Sol" },
     { "id": "gpt-6.1-terra", "name": "GPT 6.1 Terra" },

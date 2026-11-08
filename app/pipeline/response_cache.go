@@ -172,14 +172,17 @@ func (c *call) cached(ctx context.Context) (Output, bool) {
 }
 
 // requestKey is the key of the answer to this request: who asked, in which
-// format, where it went and with what thinking, and the canonical body. The
+// format and with which command line tool, where it went and with what
+// thinking, and the canonical body. The tool is part of it because a request
+// from Claude Code and the same body from another client leave as different
+// upstream requests. The
 // thinking is the decision after the name suffix and the model's own settings,
 // so a setting that changes it can never share an entry with one that does not.
 func (c *call) requestKey(body []byte) string {
 	t := c.tctx.Thinking
 	return cacheKey(
-		c.in.Caller.ID, c.format, c.dest.provider, c.dest.model,
-		t.Mode, t.Level, strconv.Itoa(t.Budget), string(body),
+		c.in.Caller.ID, c.format, c.dest.provider, c.dest.model, c.client,
+		t.Mode, t.Level, strconv.Itoa(t.Budget), t.Display, string(body),
 	)
 }
 

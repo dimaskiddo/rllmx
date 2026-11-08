@@ -138,6 +138,11 @@ func (r *Registry) add(e Entry) error {
 			return err
 		}
 	}
+	if e.OAuth != nil {
+		if err := e.OAuth.validate(); err != nil {
+			return err
+		}
+	}
 	seen := map[string]bool{}
 	for _, m := range e.Models {
 		if m.ID == "" || len(m.ID) > maxNameBytes {

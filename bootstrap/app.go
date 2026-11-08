@@ -21,6 +21,7 @@ import (
 	"rllmx/app/sso"
 	"rllmx/config"
 	"rllmx/routes"
+	"rllmx/web"
 )
 
 // Boot builds the application. Artisan commands run inside Create, before Boot
@@ -44,10 +45,12 @@ func Boot(version, commit string) contractsfoundation.Application {
 			base.OIDC = oidcController(h)
 			base.SAML = samlController(h)
 			db := func() *repository.Store { return providers.DataOf(facades.App()).Runner.Store() }
-			base.Providers = &controllers.ProvidersController{Registry: h.Registry, DB: db, Checker: h.Checker}
+			base.Providers = &controllers.ProvidersController{Registry: h.Registry, DB: db, Checker: h.Checker, Refresher: h.Refresher}
 			base.Nodes = &controllers.NodesController{Registry: h.Registry, DB: db, Checker: h.Checker}
 			base.Chat = &controllers.ChatController{Pipe: providers.NewPipelineSource(facades.App()).Get, Log: facades.Log()}
 			base.Models = &controllers.ModelsController{Catalog: providers.NewCatalogSource(facades.App()).Get, Log: facades.Log()}
+			base.OAuth = &controllers.OAuthController{Service: h.OAuth, Auth: h.Auth, Server: h.Settings}
+			base.Callback = &controllers.CallbackController{Files: web.Static}
 			routes.Web(facades.Route(), h.Guard, base)
 		}).
 		WithProviders(Providers(version)).

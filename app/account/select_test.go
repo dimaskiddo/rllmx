@@ -569,3 +569,39 @@ func TestEmptyConnectionIDsAreIgnored(t *testing.T) {
 }
 
 var _ = dialect.Now
+
+func TestOnlyExpiredAccountsAreReportedAsAllExpired(t *testing.T) {
+	r := newRig(t, `{}`)
+	r.add(t, "p", "dead1", map[string]string{"apiKey": `"k"`, "testStatus": `"expired"`})
+	r.add(t, "p", "dead2", map[string]string{"apiKey": `"k"`, "testStatus": `"expired"`})
+	_, err := r.sel.Select(context.Background(), Request{Provider: "p"})
+	if !errors.Is(err, ErrAllExpired) || !errors.Is(err, ErrNoConnections) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestAnExpiredAccountBesideALiveOneIsNotAllExpired(t *testing.T) {
+	r := newRig(t, `{}`)
+	r.add(t, "p", "dead", map[string]string{"apiKey": `"k"`, "testStatus": `"expired"`})
+	live := r.add(t, "p", "live", nil)
+	if got := r.pick(t, Request{Provider: "p"}); got.ID != live.ID {
+		t.Fatalf("picked %s", got.Name)
+	}
+	_, err := r.sel.Select(context.Background(), Request{Provider: "p", Exclude: map[string]bool{live.ID: true}})
+	if !errors.Is(err, ErrAllExpired) {
+		t.Fatalf("with the live one tried, only the dead one is left: %v", err)
+	}
+}
+
+func TestNothingAtAllIsNotAllExpired(t *testing.T) {
+	r := newRig(t, `{}`)
+	_, err := r.sel.Select(context.Background(), Request{Provider: "nobody"})
+	if !errors.Is(err, ErrNoConnections) || errors.Is(err, ErrAllExpired) {
+		t.Fatalf("err = %v", err)
+	}
+	live := r.add(t, "p", "live", nil)
+	_, err = r.sel.Select(context.Background(), Request{Provider: "p", Exclude: map[string]bool{live.ID: true}})
+	if !errors.Is(err, ErrNoConnections) || errors.Is(err, ErrAllExpired) {
+		t.Fatalf("an excluded live account is not an expired one: %v", err)
+	}
+}

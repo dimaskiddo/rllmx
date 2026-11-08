@@ -1,11 +1,13 @@
 package providers
 
 import (
+	"context"
 	"errors"
 	nethttp "net/http"
 	"net/http/httptest"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/goravel/framework/contracts/binding"
 	"github.com/goravel/framework/contracts/config"
@@ -17,6 +19,7 @@ import (
 	"github.com/goravel/framework/hash"
 
 	"rllmx/app/data"
+	"rllmx/app/oauth"
 	"rllmx/tests"
 )
 
@@ -71,6 +74,9 @@ func (f *fakeApp) Fresh(keys ...any) {
 func (f *fakeApp) MakeConfig() config.Config { return f.cfg }
 func (f *fakeApp) MakeRoute() route.Route    { return f.route }
 func (f *fakeApp) MakeLog() log.Log          { return f.log }
+
+// Context is the application context, which the real container always has.
+func (f *fakeApp) Context() context.Context { return context.Background() }
 
 // MakeHash returns the framework's bcrypt hasher at a low cost, so a provider
 // test does not spend a real bcrypt round.
@@ -188,12 +194,82 @@ func TestRunnersReturnsTheServerRunner(t *testing.T) {
 	}
 	app := &fakeApp{values: map[any]any{BindingHTTP: bound, BindingData: &Data{Gate: data.NewGate()}}, route: tests.NewRoute(t), log: &tests.Log{}}
 	runners := (&ServerServiceProvider{}).Runners(app)
-	if len(runners) != 1 || runners[0].Signature() != "rllmx:http" || !runners[0].ShouldRun() {
+	if len(runners) != 2 || runners[0].Signature() != "rllmx:http" || !runners[0].ShouldRun() {
 		t.Fatalf("runners = %v", runners)
 	}
 	withPriority, ok := runners[0].(foundation.RunnerWithShutdownPriority)
 	if !ok || withPriority.ShutdownPriority() >= 0 {
 		t.Fatal("the server must declare a shutdown priority ahead of the default")
+	}
+	if runners[1].Signature() != "rllmx.oauth" || !runners[1].ShouldRun() {
+		t.Fatalf("the login runner is missing: %v", runners[1].Signature())
+	}
+	if err := runners[1].Shutdown(); err != nil {
+		t.Fatalf("shutdown: %v", err)
+	}
+}
+
+func oauthRunnerOver(t *testing.T, enabled bool, gate *data.Gate) *oauthRunner {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	return &oauthRunner{
+		listeners: &oauth.Listeners{Host: "127.0.0.1", Sessions: oauth.NewSessions()},
+		refresher: &oauth.Refresher{Store: func() oauth.Store { return nil }, Now: time.Now,
+			Wait: func(ctx context.Context, _ time.Duration) error { return ctx.Err() }},
+		gate: gate, enabled: enabled, ctx: ctx, cancel: cancel,
+	}
+}
+
+func TestTheBackgroundRenewalIsOffWhenSwitchedOff(t *testing.T) {
+	r := oauthRunnerOver(t, false, data.NewGate())
+	done := make(chan error, 1)
+	go func() { done <- r.Run() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("run: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("a switched-off renewal kept the runner busy")
+	}
+}
+
+func TestTheBackgroundRenewalWaitsForTheDataGateAndStopsOnShutdown(t *testing.T) {
+	gate := data.NewGate()
+	r := oauthRunnerOver(t, true, gate)
+	done := make(chan error, 1)
+	go func() { done <- r.Run() }()
+	select {
+	case <-done:
+		t.Fatal("the renewal started before the stores were open")
+	case <-time.After(100 * time.Millisecond):
+	}
+	if err := r.Shutdown(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("run: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("shutdown did not stop the renewal")
+	}
+}
+
+func TestAFailedDataStartEndsTheBackgroundRenewal(t *testing.T) {
+	gate := data.NewGate()
+	r := oauthRunnerOver(t, true, gate)
+	done := make(chan error, 1)
+	go func() { done <- r.Run() }()
+	gate.Fail()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("run: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("a failed start left the renewal waiting")
 	}
 }
 

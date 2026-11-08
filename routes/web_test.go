@@ -228,3 +228,54 @@ func TestModelRoutesAreLeftOutWithoutAController(t *testing.T) {
 		t.Fatal("the route is declared without a controller")
 	}
 }
+
+func oauthRoutes(t *testing.T) (*goravelgin.Route, *apphttp.Guard) {
+	t.Helper()
+	r := tests.NewRoute(t)
+	g := apphttp.NewGuard(nil, true)
+	r.SetGlobalMiddleware([]contractshttp.Middleware{&middleware.RequestId{}, &middleware.Guard{Guard: g}})
+	Web(r, g, Base{OAuth: &controllers.OAuthController{}, Callback: &controllers.CallbackController{}})
+	return r, g
+}
+
+func TestTheLoginRoutesNeedASessionAndTheCallbackPageIsPublic(t *testing.T) {
+	r, g := oauthRoutes(t)
+	for _, rt := range [][2]string{
+		{"GET", "/api/oauth/{provider}/authorize"}, {"POST", "/api/oauth/exchange"},
+		{"POST", "/api/oauth/callback"}, {"GET", "/api/oauth/status"},
+	} {
+		if class, ok := g.RouteClass(rt[0], rt[1]); !ok || class != apphttp.ClassAlwaysProtected {
+			t.Errorf("%s %s: class = %d ok=%v", rt[0], rt[1], class, ok)
+		}
+	}
+	for _, p := range []string{"/callback", "/static/js/callback.js"} {
+		if class, ok := g.RouteClass("GET", p); !ok || class != apphttp.ClassPublic {
+			t.Errorf("GET %s: class = %d ok=%v", p, class, ok)
+		}
+	}
+	if rec := call(r, nethttp.MethodGet, "/api/oauth/claude/authorize"); rec.Code != 401 {
+		t.Errorf("authorize without a session: %d", rec.Code)
+	}
+	if rec := call(r, nethttp.MethodPost, "/api/oauth/exchange"); rec.Code != 401 {
+		t.Errorf("exchange without a session: %d", rec.Code)
+	}
+}
+
+func TestTheStaticAndParameterisedLoginRoutesDoNotCollide(t *testing.T) {
+	_, g := oauthRoutes(t)
+	if _, ok := g.RouteClass("GET", "/api/oauth/status"); !ok {
+		t.Fatal("status is not routed beside the {provider} route")
+	}
+	if _, ok := g.RouteClass("POST", "/api/oauth/exchange"); !ok {
+		t.Fatal("exchange is not routed beside the {provider} route")
+	}
+}
+
+func TestTheLoginRoutesAreLeftOutWithoutTheirControllers(t *testing.T) {
+	_, g := build(t)
+	for _, p := range []string{"/callback", "/static/js/callback.js", "/api/oauth/status"} {
+		if _, ok := g.RouteClass("GET", p); ok {
+			t.Errorf("%s is declared without a controller", p)
+		}
+	}
+}

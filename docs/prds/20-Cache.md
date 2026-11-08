@@ -36,7 +36,7 @@ Built in 1.8f (the node model list) and 1.8g (the response-cache switch and the 
 | Key lookups | `apikeys` / SHA-256 of the key | 10 s | `KeyStore.Changed` |
 
 - A settings write calls `Store.OnSettingsChange` after commit: the app purges `settings`, `overrides` and `response`, and resets the selector's settings copy and the auth snapshot. A write from another process (`rllmx artisan password:reset`) is not announced, so it shows only after the TTL.
-- The selector reads connections live, because locks and sticky counters change per request. `Selector.settingsDoc`, `auth.Snapshot` and `routing.Snapshot` are small typed copies held in process. The refresh-result cache comes with 1.9.
+- The selector reads connections live, because locks and sticky counters change per request. `Selector.settingsDoc`, `auth.Snapshot` and `routing.Snapshot` are small typed copies held in process. The refresh-result cache (10 s, memory only, collapses concurrent renewals of one refresh token) is built in 1.9b.
 
 ### Namespaces
 
@@ -53,7 +53,7 @@ Only `settings`, `apikeys`, `models`, `limiter`, `response` and `toolcalls` may 
 | `toolcalls` | Gemini thought signatures by tool call, so a client that drops one does not break the next turn, owned by the Gemini codec in `app/translate`. Key: SHA-256 of the API key id and the call id, never the bare id; value: model family and signature; 1 hour; a signature is never offered to a model of another family | Configured driver |
 | `connections` | Connection lists with tokens | Memory only |
 | `refresh` | Refreshed credentials (10 s result cache) | Memory only |
-| `oauth` | Login sessions with PKCE verifiers or private keys | Memory only |
+| `oauth` | Login sessions with PKCE verifiers or private keys (reserved: the 1.9a store is an in-process map, because `Begin` has to be one atomic step) | Memory only |
 | `discovery` | One identity provider's OpenID metadata and signing keys, 1 h, dropped when the settings row is written | Memory only: it holds no credential, but a sign-in must finish on the instance that started it, so sharing it buys nothing |
 | SSO stores (not a group) | Pending sign-ins (`app/sso`, 10,000, ten minutes) and the SAML assertion replay set (`app/saml`, 100,000, until the assertion's own expiry, a day at most) | Dedicated in-process maps with their own caps, never Redis: a sign-in must finish on the instance that started it, and a shared replay set would put a lock on the request path for nothing |
 
@@ -69,7 +69,7 @@ Off by default. Built in 1.8g: `app/pipeline/response_cache.go` (switches, key, 
 |---|---|
 | Switches | Setting `responseCache` `{enabled, ttlSeconds, maxEntryKb}` **and**, per API key, kv scope `rllmResponseCache` (key = key id, value `{"enabled":true}`; no row, a malformed row or a value other than a JSON `true` is off). Both must be on; a failed read of either is off. `ttlSeconds` defaults to 3600 and must be 1 to 604800, `maxEntryKb` to 512 and 1 to 4096; a missing or out-of-range value takes the default, because `Effective` merges defaults only at the top level. The setting is read through the `settings` group (30 s) and the flag through `apikeys` (10 s) |
 | Applies to | A non-stream request from a real API key (not the anonymous local caller) that sends `X-Rllm-Cache: use` or an explicit `temperature` of exactly 0 (`temperature`, `generationConfig.temperature`, `options.temperature`; an absent, `null` or string value does not count). `X-Rllm-Cache: bypass` wins over a zero temperature. A request body over 4 MiB, or one whose JSON repeats a key at any depth, is not cached: the codecs read the first of two equal keys and `encoding/json` the last, so such a body has no single meaning to key on |
-| Key | SHA-256 over length-prefixed parts: API key id (first), client format, provider, resolved model, effective thinking (mode, level, budget), and the canonical body (the JSON without the top-level `stream`, keys sorted at every depth, numbers kept as written). Two keys never share an entry. The context marker (`[1m]`) is not a separate part: it is stripped from the model name before the body is read, changes nothing upstream, and so shares the plain request's entry. **Client tool joins the key in 1.9**, when the Claude disguise (D216) first makes the upstream body depend on it |
+| Key | SHA-256 over length-prefixed parts: API key id (first), client format, provider, resolved model, effective thinking (mode, level, budget), and the canonical body (the JSON without the top-level `stream`, keys sorted at every depth, numbers kept as written). Two keys never share an entry. The context marker (`[1m]`) is not a separate part: it is stripped from the model name before the body is read, changes nothing upstream, and so shares the plain request's entry. **The client tool joins the key since 1.9c**, after the provider, because the Claude disguise (D216) makes the upstream body depend on it; the thinking display joins it too |
 | Never cached | Non-200 answers, answers that contain tool calls (in the message or the finish reason), entries over `maxEntryKb` or 4 MiB, streams |
 | Hit | The lookup runs after the model is resolved and before the image prefetch, the translation and any account selection. The stored client-format body is written as one 200 `application/json` response with `X-Rllm-Cache: hit`. No account is selected, no lock or counter is touched, no upstream call. The usage row has `cached` set, status 200, the resolved provider and model, no connection, attempt 0, cost 0, and replays the first call's prompt, completion, cached and reasoning counts (`CacheWrite` is 0). The stored body already carries the client buffer (D218) |
 | Headers | `X-Rllm-Cache: hit` or `miss` on a delivered 200 when the cache was consulted; a miss is reported whether or not the answer was then stored. An error answer carries none. `bypass` skips lookup and store and adds no header. The header is on the CORS expose and allow lists |
@@ -88,7 +88,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | # | What we do differently | Why it is better |
 |---|---|---|
 | 189 | Store is shared cache (memory, Redis, Valkey) under `toolcalls` namespace; key is hash of API key id + call id only; 1 hour; one signature per entry (16 KiB); no disk tier; signature read back only by a model of the family that issued it | Bare id would let one API key guess another's entry; lost signature costs one re-ask |
-| 23 | TTL cache (memory or Redis), singleflight loading: key lookups, secret-free settings projection, provider overrides (memory only), model catalog state. Connection lists live; refresh-result cache with 1.9. Credential namespaces memory-only; any failure a miss; settings or catalog write drops entries | Lower latency; one node fetch per window instead of per call |
+| 23 | TTL cache (memory or Redis), singleflight loading: key lookups, secret-free settings projection, provider overrides (memory only), model catalog state. Connection lists live; refresh-result cache built in 1.9b. Credential namespaces memory-only; any failure a miss; settings or catalog write drops entries | Lower latency; one node fetch per window instead of per call |
 | 24, 148 | Optional, off by default, on only when setting and API key's own flag both on; key starts with API key id; no streams, errors, tool-call answers. Hit recorded `cached` at zero cost, replays first call's token counts (reference has no cache, so no rule to follow) | **New feature** |
 | 199 | Retired: the cache is the `Cache` facade, not a store of our own | Recorded so the number stays citable (framework choice) |
 
@@ -102,7 +102,7 @@ Built and tested: `app/cache` (groups, generational purge, the memory-only crede
 - [x] The first readers of the cache: the node model list (1.8f), the response-cache projection and the per-key flag (1.8g)
 - [ ] Writing the per-key flag, and calling `KeyStore.Changed` and removing the kv row when a key is deleted: the key API (2.1)
 - [ ] Writing the `responseCache` setting: the settings API (2.6)
-- [ ] Client tool in the key: 1.9
+- [x] Client tool in the key (1.9c)
 
 ---
 

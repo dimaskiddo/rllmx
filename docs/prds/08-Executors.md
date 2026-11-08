@@ -161,7 +161,7 @@ Every provider the references ship, with executor kind, status and delivering st
 | Executor | Status | Providers |
 |---|---|---|
 | default | todo 1.10 | cline, clinepass, gitlab, glm, kilocode, kimi, muse, xai |
-| default | todo 1.10 | claude |
+| default | partial (1.9c: a login's headers and address suffix, the computed beta list and the disguise are data and `pipeline`, no executor code) | claude |
 | specialized | todo 1.10 | codebuddy-cn, codebuddy-intl, codex, github, grok-cli, minimax-code, minimax-code-global |
 | specialized | todo 1.10 | antigravity, cursor, iflow, qoder, qoder-cn, xiaomi-mimo, zed |
 | specialized | out | trae, windsurf |
@@ -210,7 +210,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 171 | Token dropped after key minted | Nothing uses it again; failing account signs in again; one less long-lived secret on disk |
 | 173 | POST body carries them; address must be bare https origin; id, secret bounded, free of control characters; secret sealed with account | Secret in URL lands in logs and history; address with path or credentials cannot redirect exchange |
 | 174 | Only provider whose data says `appFromAccount` reads an application from request; any other refuses one | Request cannot swap OAuth application of a provider that has its own |
-| 222 | A 401 or 403 is an account failure (locks it, next account) until the refresh lands in 1.9 **(temporary, 1.9)** | The reference refreshes and retries once; there is nothing to refresh before 1.9 |
+| 222 | **Retired in 1.9b.** A 401 or 403 on a login's token now renews the token and sends the request once more; a second refusal, and a refusal on an API key, is an account failure (locks it, next account). It was temporary until the refresh landed | The reference refreshes and retries once; so does the pipeline now |
 | 176 | Fixed word `router`, as chat headers do (D164) | Host name does not leave the machine |
 | 181 | Refused mint: fixed text (401 or 403) to client, nothing GitHub said in logs; server error on mint retryable | Provider text out of answers and logs |
 | 98, 99 | "Test not supported yet", nothing written; node's own base URL | Working connection stays green |

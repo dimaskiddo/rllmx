@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"context"
 	"errors"
 	nethttp "net/http"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"rllmx/app/catalog"
 	"rllmx/app/document"
+	"rllmx/app/oauth"
 	"rllmx/app/upstream"
 )
 
@@ -26,6 +28,9 @@ var outcomeStatus = map[Outcome]int{
 	OutcomeProviderError: nethttp.StatusBadGateway,
 	OutcomeUnexpected:    nethttp.StatusBadGateway,
 	OutcomeUnsupported:   nethttp.StatusNotImplemented,
+	OutcomeReconnect:     nethttp.StatusConflict,
+	OutcomeRefreshFailed: nethttp.StatusBadGateway,
+	OutcomeNoToken:       nethttp.StatusConflict,
 }
 
 // verdict is the wire form of a check: valid, or one fixed message.
@@ -111,6 +116,7 @@ func (c *ProvidersController) Test(ctx contractshttp.Context) contractshttp.Resp
 	started := time.Now()
 
 	var res Result
+	refreshed := false
 	switch {
 	case upstream.NodeKind(conn.Provider) != "":
 		node, found, nerr := st.Nodes().Get(rc, conn.Provider)
@@ -123,6 +129,8 @@ func (c *ProvidersController) Test(ctx contractshttp.Context) contractshttp.Resp
 		base, _ := node.Doc().GetString("baseUrl")
 		model, _ := conn.Doc().GetString("defaultModel")
 		res = c.Checker.CheckNode(rc, Node{Type: node.Type, BaseURL: base}, key, model, true)
+	case conn.AuthType == "oauth" && c.oauthEntry(conn.Provider):
+		res, refreshed = c.checkLogin(rc, conn.ID)
 	case conn.AuthType != "apikey":
 		res = Result{Outcome: OutcomeUnsupported}
 	default:
@@ -144,6 +152,9 @@ func (c *ProvidersController) Test(ctx contractshttp.Context) contractshttp.Resp
 		}
 	}
 	out := verdict(res)
+	if refreshed {
+		out["refreshed"] = true
+	}
 	out["latencyMs"] = at.Sub(started).Milliseconds()
 	out["testedAt"] = at.UTC().Format(time.RFC3339)
 	return ctx.Response().Json(nethttp.StatusOK, out)
@@ -239,4 +250,29 @@ func (c *NodesController) Validate(ctx contractshttp.Context) contractshttp.Resp
 	}
 	res := c.Checker.CheckNode(ctx.Request().Origin().Context(), Node{Type: typ, BaseURL: base}, b.APIKey, strings.TrimSpace(b.ModelID), false)
 	return ctx.Response().Json(nethttp.StatusOK, verdict(res))
+}
+
+// oauthEntry reports whether a registry provider has a login, so its OAuth
+// accounts can be checked here.
+func (c *ProvidersController) oauthEntry(provider string) bool {
+	e, ok := c.Registry.ByID(provider)
+	return ok && e.OAuth != nil && c.Refresher != nil
+}
+
+// checkLogin checks an OAuth account without asking the provider: it renews the
+// token when it is due, then looks for one that has not run out. The outcome is
+// one of a few fixed words.
+func (c *ProvidersController) checkLogin(ctx context.Context, id string) (Result, bool) {
+	refreshed, err := c.Refresher.Ensure(ctx, id)
+	switch {
+	case err == nil:
+		return Result{Outcome: OutcomeValid, Method: "refresh"}, refreshed
+	case errors.Is(err, oauth.ErrExpired):
+		return Result{Outcome: OutcomeReconnect}, false
+	case errors.Is(err, oauth.ErrNoToken):
+		return Result{Outcome: OutcomeNoToken}, false
+	case errors.Is(err, oauth.ErrStorage):
+		return Result{Outcome: OutcomeRefreshFailed}, false
+	}
+	return Result{Outcome: OutcomeRefreshFailed}, false
 }

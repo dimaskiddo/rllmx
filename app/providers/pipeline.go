@@ -72,6 +72,7 @@ func buildPipeline(app foundation.Application) (*pipeline.Pipeline, error) {
 		Settings:      store.Settings(),
 		Prefetch:      prefetch.New(),
 		ResponseCache: responseCache(app, store),
+		Refresher:     h.Refresher,
 		Timers:        stream.Timers{FirstChunk: h.Stream.FirstChunk, Stall: h.Stream.Stall, UsageWait: h.Stream.UsageWait},
 		Log:           log,
 	})

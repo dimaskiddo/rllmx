@@ -21,6 +21,9 @@ type accountFail struct {
 	class   string
 	text    string
 	resetAt time.Time
+	// expired marks an account whose refresh token is dead. The mark is already
+	// stored and is the stronger state, so nothing is locked on top of it.
+	expired bool
 }
 
 func classOf(status int) string {

@@ -22,6 +22,7 @@ func (c *call) parse() (Output, bool) {
 		return c.fail(http.StatusNotFound, "not_found", "Not found"), false
 	}
 	c.format = format
+	c.client = clientTool(c.in.Header, c.in.UserAgent)
 	c.row.SourceFormat = format
 	c.tctx = translate.NewCtx(format, format)
 

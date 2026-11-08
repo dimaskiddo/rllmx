@@ -58,7 +58,7 @@ func (c *ChatController) Serve(ctx contractshttp.Context) contractshttp.Response
 	}
 	out := p.Handle(r.Context(), pipeline.Input{
 		Path: r.URL.Path, Body: body, Caller: caller,
-		RequestID: middleware.RequestIdFrom(ctx), UserAgent: r.UserAgent(),
+		RequestID: middleware.RequestIdFrom(ctx), UserAgent: r.UserAgent(), Header: pipeline.PickHeaders(r.Header),
 		AcceptJSON: wantsJSON(r.Header.Get("Accept")),
 		Cache:      cacheMode(r.Header.Get(pipeline.CacheHeader)),
 	}, open)

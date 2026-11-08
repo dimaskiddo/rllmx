@@ -96,8 +96,18 @@ func newRig(t *testing.T, steps ...tests.Reply) *rig {
 
 	forced := `{"id":"forced","category":"apikey","display":{"name":"F"},"forceStream":true,"transport":{"baseUrl":"` + up.URL + `/v1/chat/completions","format":"openai"},"models":[{"id":"fm"}]}`
 	gem := `{"id":"gem","alias":"gem","category":"apikey","display":{"name":"G"},"transport":{"baseUrl":"` + up.URL + `/v1beta/models","format":"gemini"},"auth":{"scheme":"raw","header":"x-goog-api-key"},"models":[{"id":"g-vision"}]}`
+	sub := `{"id":"sub","category":"oauth","display":{"name":"S"},"transport":{"baseUrl":"` + up.URL + `/v1/messages","format":"claude"},` +
+		`"oauth":{"flow":"code-pkce","authorizeUrl":"https://a.example/authorize","tokenUrl":"https://a.example/token","scope":"s","redirect":"local","exchange":"json",` +
+		`"refresh":{"encoding":"json","leadSeconds":300},"disguise":true,"urlSuffix":"?beta=true",` +
+		`"identity":{"User-Agent":"claude-cli/9.9.9 (external, sdk-cli)","X-App":"cli"},` +
+		`"beta":{"base":["base-a","oauth-x","redact-y"],"heavy":["heavy-1"],"heavyPrefixes":["claude-opus","claude-sonnet"],"summary":"redact-y"},` +
+		`"session":{"name":"x-claude-code-session-id"}},"models":[{"id":"claude-x"},{"id":"claude-opus-5"}]}`
+	subx := `{"id":"subx","category":"oauth","display":{"name":"X"},"transport":{"baseUrl":"` + up.URL + `/v1/chat/completions","format":"openai"},` +
+		`"oauth":{"flow":"code-pkce","authorizeUrl":"https://a.example/authorize","tokenUrl":"https://a.example/token","scope":"s","redirect":"local","exchange":"json",` +
+		`"refresh":{"encoding":"json","leadSeconds":300},"identity":{"originator":"codex_cli_rs","User-Agent":"codex_cli_rs/9.9.9","version":"9.9.9"},` +
+		`"session":{"name":"session_id","keyed":true},"account":{"name":"ChatGPT-Account-ID","from":["workspaceId","chatgptAccountId","accountId"]}},"models":[{"id":"x1"}]}`
 	reg, err := upstream.Load(fstest.MapFS{
-		"data/forced.json": {Data: []byte(forced)}, "data/gem.json": {Data: []byte(gem)},
+		"data/forced.json": {Data: []byte(forced)}, "data/gem.json": {Data: []byte(gem)}, "data/sub.json": {Data: []byte(sub)}, "data/subx.json": {Data: []byte(subx)},
 	}, "data")
 	if err != nil {
 		t.Fatal(err)

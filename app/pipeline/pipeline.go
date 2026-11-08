@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"rllmx/app/analytics"
+	"rllmx/app/conversation"
 	"rllmx/app/failure"
 	"rllmx/app/identity"
 	"rllmx/app/stream"
@@ -34,6 +35,9 @@ type Input struct {
 	Caller    identity.Caller
 	RequestID string
 	UserAgent string
+	// Header holds the request headers the pipeline reads (see PickHeaders),
+	// never the whole set.
+	Header http.Header
 	// AcceptJSON is set when the client asked for JSON and not for an event
 	// stream. It turns off a default stream, never an explicit one.
 	AcceptJSON bool
@@ -70,6 +74,9 @@ func New(d Deps) (*Pipeline, error) {
 	}
 	if d.BodyTimeout <= 0 {
 		d.BodyTimeout = defaultBodyTimeout
+	}
+	if d.Sessions == nil {
+		d.Sessions = conversation.NewStore(d.Now)
 	}
 	return &Pipeline{d: d}, nil
 }
@@ -108,7 +115,11 @@ type call struct {
 	cacheKey  string
 	cacheOpts cacheSettings
 
-	requested    string
+	requested string
+	client    string
+	// cloakedNames maps the tools the last attempt renamed back to the client's
+	// names; the passthrough stream restores them from it.
+	cloakedNames map[string]string
 	attempt      int
 	attemptStart time.Time
 	errClass     string

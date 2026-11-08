@@ -31,6 +31,18 @@ type Ctx struct {
 	Calls SignatureStore
 	// BudgetOf maps a thinking level to its token budget. May be nil.
 	BudgetOf func(level string) int
+	// ToolName gives a tool name the upstream returned back to the client. It is
+	// set only while the attempt was disguised (see Cloak) and nil otherwise, so
+	// a name is never changed on an attempt that renamed nothing.
+	ToolName func(name string) string
+}
+
+// RestoreTool gives an upstream tool name back to the client.
+func (c *Ctx) RestoreTool(name string) string {
+	if c == nil || c.ToolName == nil {
+		return name
+	}
+	return c.ToolName(name)
 }
 
 // Budget is the token budget of a thinking level for this request's model.

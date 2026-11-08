@@ -71,7 +71,7 @@ sequenceDiagram
 | `/api/providers` (list, create), `/api/providers/{id}` (get, update, delete) | `app/http/controllers` | done (1.7c; D86-88, D93, D104, D213) | 1.7c |
 | `/api/providers/{id}/overrides` | `app/http/controllers` | done (1.7c; D147; `builtinHeaders` empty until 1.7d) | 1.7c |
 | `GET /v1/models`, `/v1/models/info`, `/v1/models/{id}`, `GET /v1beta/models` | `app/catalog`, `app/http/controllers` | done (1.8f; D225, D226; combos join the list in 2.4; live catalogs 1.10) | 1.8f |
-| `/api/providers/{id}/test`, `/api/providers/validate` | `app/http/controllers` | partial (API-key, node and registry probes built in 1.7d; OAuth, AWS, cookie and special probes answer "test not supported yet" until 1.9 and 1.10; D95-99, D215) | 1.7d, 1.9, 1.10 |
+| `/api/providers/{id}/test`, `/api/providers/validate` | `app/http/controllers` | partial (API-key, node and registry probes built in 1.7d; an OAuth account of a provider with a login is checked without a call to the provider since 1.9b (renew when due, then look for a held token); AWS, cookie, special probes and pasted tokens answer "test not supported yet" until 1.10; D95-99, D215) | 1.7d, 1.9, 1.10 |
 | `/api/providers/{id}/models` | `app/http/controllers` | partial (nodes: the node's own `/models`; registry: embedded list plus `customModels`, minus `disabledModels`, no request; both built in 1.7d; live catalog per OAuth provider 1.10) | 1.7d, 1.10 |
 | `/api/provider-nodes` (list, create), `/{id}` (update, delete) | `app/http/controllers` | done (1.7c; D90, D91) | 1.7c |
 | `/api/provider-nodes/validate` | `app/http/controllers` | done (1.7d; D96-99) | 1.7d |
@@ -83,7 +83,7 @@ sequenceDiagram
 | `/api/pricing` | `app/http/controllers` | todo | 2.6 |
 | `/api/translator/*` | `app/http/controllers` | todo | 2.6 |
 | `/api/media-providers/tts/*/voices` | `app/http/controllers`, `app/media` | todo | 1.11 |
-| `/api/oauth/{provider}/authorize`, `exchange`, `callback`, `status`, `device-code`, `poll` and `/callback` | `app/oauth`, `app/http/controllers`, `web` | todo for claude, codex (D150-154); replaces `[provider]/[action]` | 1.9 |
+| `/api/oauth/{provider}/authorize`, `exchange`, `callback`, `status`, `device-code`, `poll` and `/callback` | `app/oauth`, `app/http/controllers`, `web` | partial (1.9a: authorize, exchange, callback, status and `/callback` for claude and codex, D150-153; `device-code` and `poll` are 1.10); replaces `[provider]/[action]` | 1.9a, 1.10 |
 | `/api/oauth/*` importers (codex, grok-cli, cursor, kiro, zed, xiaomi-mimo, gitlab pat, iflow cookie) plus Windsurf, Zed, Trae, Mimo callback shapes | `app/oauth` | todo | 1.10 |
 
 ---

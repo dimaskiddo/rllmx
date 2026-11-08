@@ -8,6 +8,7 @@ import (
 
 	"rllmx/app/account"
 	"rllmx/app/analytics"
+	"rllmx/app/conversation"
 	"rllmx/app/document"
 	"rllmx/app/executor"
 	"rllmx/app/repository"
@@ -79,7 +80,11 @@ type Deps struct {
 	Prefetch  Prefetch
 	// ResponseCache is the opt-in answer cache; nil is off.
 	ResponseCache *ResponseCache
-	Timers        stream.Timers
+	// Refresher renews OAuth tokens; nil leaves them as stored.
+	Refresher Refresher
+	// Sessions names the conversation a request belongs to; nil makes one.
+	Sessions *conversation.Store
+	Timers   stream.Timers
 	// BodyTimeout bounds reading a whole non-stream answer; zero means ten minutes.
 	BodyTimeout time.Duration
 	Log         log.Log
