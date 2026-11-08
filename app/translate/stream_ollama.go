@@ -1,7 +1,6 @@
 package translate
 
 import (
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -22,16 +21,16 @@ func (OllamaCodec) NewStreamReader(c *Ctx) StreamReader {
 
 func (r *ollamaReader) Flush() []Chunk { return nil }
 
-func (r *ollamaReader) Read(_ string, data []byte) ([]Chunk, error) {
+func (r *ollamaReader) Read(_ string, data []byte) []Chunk {
 	if !gjson.ValidBytes(data) {
-		return nil, nil
+		return nil
 	}
 	g := gjson.ParseBytes(data)
 	if !g.IsObject() {
-		return nil, nil
+		return nil
 	}
 	if e := g.Get("error"); e.Exists() && !g.Get("message").Exists() {
-		return []Chunk{{Err: readErrorObject(e)}}, nil
+		return []Chunk{{Err: readErrorObject(e)}}
 	}
 	ch := Chunk{Model: g.Get("model").String()}
 	ch.Text = g.Get("message.content").String()
@@ -63,9 +62,9 @@ func (r *ollamaReader) Read(_ string, data []byte) ([]Chunk, error) {
 		ch.Role = RoleAssistant
 	}
 	if ch.Text == "" && ch.Reasoning == "" && len(ch.ToolCalls) == 0 && ch.FinishReason == "" && ch.Role == "" {
-		return nil, nil
+		return nil
 	}
-	return []Chunk{ch}, nil
+	return []Chunk{ch}
 }
 
 // ollamaWriter writes /api/chat lines. Exactly one line has done:true.
@@ -88,13 +87,12 @@ func (w *ollamaWriter) line(msg obj, extra obj) Frame {
 	for k, v := range extra {
 		o[k] = v
 	}
-	b, _ := json.Marshal(o)
-	return Frame{Data: b}
+	return Frame{Data: frameData(o)}
 }
 
-func (w *ollamaWriter) Write(c Chunk) ([]Frame, error) {
+func (w *ollamaWriter) Write(c Chunk) []Frame {
 	if c.Err != nil {
-		return nil, nil
+		return nil
 	}
 	if !w.started {
 		w.started = true
@@ -114,7 +112,7 @@ func (w *ollamaWriter) Write(c Chunk) ([]Frame, error) {
 	if w.g.see(c) {
 		out = append(out, w.release()...)
 	}
-	return out, nil
+	return out
 }
 
 // hold collects the pieces of a call; an Ollama line carries it whole.

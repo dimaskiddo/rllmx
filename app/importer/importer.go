@@ -420,7 +420,7 @@ func readSettings(ctx context.Context, src contractsdb.DB, p *Plan, opt Options)
 	}
 	doc, err := document.ParseDoc(raw[0])
 	if err != nil {
-		return errors.New("importer: the source settings row is not valid JSON")
+		return fmt.Errorf("importer: the source settings row is not valid JSON: %w", err)
 	}
 	for _, k := range doc.Keys() {
 		v, _ := doc.GetRaw(k)

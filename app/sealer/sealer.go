@@ -12,7 +12,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -70,16 +69,6 @@ func New(secret []byte) (*Box, error) {
 		return nil, fmt.Errorf("sealer: %w", err)
 	}
 	return &Box{aead: aead, nonceKey: nonceKey}, nil
-}
-
-// ParseSecret decodes the 64-hex-character form of the secret. The error never
-// contains the value.
-func ParseSecret(s string) ([]byte, error) {
-	raw, err := hex.DecodeString(s)
-	if err != nil || len(raw) != SecretBytes {
-		return nil, errors.New("sealer: the secret must be 64 hex characters")
-	}
-	return raw, nil
 }
 
 // IsSealed reports whether s carries the sealed prefix.

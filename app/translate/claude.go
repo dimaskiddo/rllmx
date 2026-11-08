@@ -20,7 +20,7 @@ var claudeKnown = set("model", "messages", "system", "tools", "tool_choice", "st
 
 // billingHeader is a first system line Claude Code adds for the upstream's own
 // accounting; it is not part of the conversation and is removed on the way in.
-var billingHeader = "x-anthropic-billing-header:"
+const billingHeader = "x-anthropic-billing-header:"
 
 // ReadRequest reads a Messages body.
 func (ClaudeCodec) ReadRequest(body []byte, c *Ctx) (*Request, error) {
@@ -138,7 +138,11 @@ func readClaudeMessage(m gjson.Result) []Message {
 	for _, b := range content.Array() {
 		switch b.Get("type").String() {
 		case "text":
-			parts = append(parts, Part{Type: PartText, Text: b.Get("text").String()})
+			part := Part{Type: PartText, Text: b.Get("text").String()}
+			if cc := b.Get("cache_control"); cc.IsObject() {
+				part.Cache = json.RawMessage(cc.Raw)
+			}
+			parts = append(parts, part)
 		case "image":
 			if b.Get("source.type").String() == "base64" {
 				parts = append(parts, Part{Type: PartImage, MediaType: b.Get("source.media_type").String(), Data: b.Get("source.data").String()})

@@ -37,7 +37,8 @@ func NewAuthController(a *auth.Authenticator, trust apphttp.Trust) *AuthControll
 	return &AuthController{Auth: a, Trust: trust, Now: time.Now, slots: make(chan struct{}, max(runtime.NumCPU(), 1))}
 }
 
-// Login answers POST /api/auth/login. The order is the one PRD 2 fixes.
+// Login answers POST /api/auth/login. Every attempt is counted before the
+// password is compared, so parallel guesses cannot all see the old count.
 func (c *AuthController) Login(ctx contractshttp.Context) contractshttp.Response {
 	r := ctx.Request().Origin()
 	var body struct {

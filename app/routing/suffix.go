@@ -5,6 +5,8 @@ package routing
 import (
 	"strconv"
 	"strings"
+
+	"rllmx/app/upstream"
 )
 
 const (
@@ -19,8 +21,6 @@ const (
 	ThinkingLevel  = "level"
 	ThinkingBudget = "budget"
 )
-
-var levels = map[string]bool{"minimal": true, "low": true, "medium": true, "high": true, "xhigh": true, "max": true, "ultra": true}
 
 // Thinking is the override a `name(value)` suffix carries. The zero value means
 // the suffix was absent or its value unknown.
@@ -72,7 +72,7 @@ func parseThinking(v string) Thinking {
 		return Thinking{Mode: ThinkingNone}
 	case v == "auto":
 		return Thinking{Mode: ThinkingAuto}
-	case levels[v]:
+	case upstream.IsEffortLevel(v):
 		return Thinking{Mode: ThinkingLevel, Level: v}
 	}
 	if n, err := strconv.Atoi(v); err == nil && n >= 1 && n <= maxBudget && v == strconv.Itoa(n) {

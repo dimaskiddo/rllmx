@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
 	goravelgin "github.com/goravel/gin"
@@ -175,6 +176,84 @@ func TestGuardMatrixForTheClientAPI(t *testing.T) {
 				t.Errorf("%s [%s]: got %d, want %d", c.note, path, rec.Code, c.want)
 			}
 		}
+	}
+}
+
+// throttledAuth adds the key limiter to fakeAuth: a lock after limit refused keys
+// from one peer.
+type throttledAuth struct {
+	fakeAuth
+	limit int
+	fails map[string]int
+}
+
+func (a *throttledAuth) KeyLocked(r *nethttp.Request) time.Duration {
+	if a.fails[r.RemoteAddr] >= a.limit {
+		return 30 * time.Second
+	}
+	return 0
+}
+
+func (a *throttledAuth) KeyFailed(r *nethttp.Request) { a.fails[r.RemoteAddr]++ }
+
+func TestARemoteCallerGuessingKeysIsLocked(t *testing.T) {
+	a := &throttledAuth{fakeAuth: fakeAuth{invalid: true}, limit: 3, fails: map[string]int{}}
+	s := guardApp(t, a, true)
+	key := map[string]string{"Authorization": "Bearer sk-guess"}
+	for i := range 3 {
+		if rec := s.call(remotePeer, "POST", "/v1/chat/completions", key); rec.Code != 401 {
+			t.Fatalf("guess %d: got %d, want 401", i, rec.Code)
+		}
+	}
+	rec := s.call(remotePeer, "POST", "/v1/chat/completions", key)
+	if rec.Code != 429 || rec.Header().Get("Retry-After") != "30" {
+		t.Fatalf("locked caller got %d with Retry-After %q", rec.Code, rec.Header().Get("Retry-After"))
+	}
+	if a.fails[remotePeer.remote] != 3 {
+		t.Fatalf("a locked request counted as a failure: %d", a.fails[remotePeer.remote])
+	}
+}
+
+func TestALockedCallerGetsNoAnswerForAValidKey(t *testing.T) {
+	a := &throttledAuth{fakeAuth: fakeAuth{key: true}, limit: 1, fails: map[string]int{remotePeer.remote: 1}}
+	rec := guardApp(t, a, true).call(remotePeer, "POST", "/v1/chat/completions", map[string]string{"Authorization": "Bearer sk-real"})
+	if rec.Code != 429 {
+		t.Fatalf("got %d: a locked address must not learn whether a key is right", rec.Code)
+	}
+}
+
+func TestALockedCallerWithoutAKeyStillGets401(t *testing.T) {
+	a := &throttledAuth{fakeAuth: fakeAuth{}, limit: 1, fails: map[string]int{remotePeer.remote: 9}}
+	if rec := guardApp(t, a, true).call(remotePeer, "POST", "/v1/chat/completions", nil); rec.Code != 401 {
+		t.Fatalf("got %d: a call with no key is not a guess", rec.Code)
+	}
+}
+
+func TestAnotherCallerIsNotLockedByTheFirst(t *testing.T) {
+	a := &throttledAuth{fakeAuth: fakeAuth{key: true}, limit: 1, fails: map[string]int{"198.51.100.1:5000": 9}}
+	rec := guardApp(t, a, true).call(remotePeer, "POST", "/v1/chat/completions", map[string]string{"Authorization": "Bearer sk-real"})
+	if rec.Code != 200 {
+		t.Fatalf("got %d, want 200", rec.Code)
+	}
+}
+
+func TestALocalCallerAndAKeylessCallIsNeverCounted(t *testing.T) {
+	a := &throttledAuth{fakeAuth: fakeAuth{invalid: true}, limit: 1, fails: map[string]int{}}
+	s := guardApp(t, a, true)
+	for range 3 {
+		s.call(localPeer, "POST", "/v1/chat/completions", map[string]string{"Authorization": "Bearer sk-bad"})
+	}
+	if len(a.fails) != 0 {
+		t.Fatalf("a local caller was counted: %v", a.fails)
+	}
+	b := &throttledAuth{fakeAuth: fakeAuth{}, limit: 1, fails: map[string]int{}}
+	for range 3 {
+		if rec := guardApp(t, b, true).call(remotePeer, "POST", "/v1/chat/completions", nil); rec.Code != 401 {
+			t.Fatalf("keyless remote call got %d, want 401", rec.Code)
+		}
+	}
+	if len(b.fails) != 0 {
+		t.Fatalf("a call without a key was counted: %v", b.fails)
 	}
 }
 

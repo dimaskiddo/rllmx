@@ -5,10 +5,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+
+	"rllmx/app/document"
 )
 
 // Disguise makes a Claude request from another client look like Claude Code's
@@ -213,22 +216,47 @@ func renameHistory(body []byte) []byte {
 	if !msgs.IsArray() {
 		return body
 	}
-	for i, m := range msgs.Array() {
+	// Each message is edited on its own text and the array is written back once,
+	// so the whole body is copied one time however many calls the history holds.
+	var out strings.Builder
+	changed := false
+	last := 0 // offset in msgs.Raw already copied
+	for _, m := range msgs.Array() {
+		raw := m.Raw
 		content := m.Get("content")
-		if !content.IsArray() {
+		if content.IsArray() {
+			for j, b := range content.Array() {
+				if b.Get("type").String() != "tool_use" {
+					continue
+				}
+				next, err := sjson.Set(raw, "content."+strconv.Itoa(j)+".name", b.Get("name").String()+toolSuffix)
+				if err != nil {
+					continue
+				}
+				raw = next
+			}
+		}
+		if raw == m.Raw {
 			continue
 		}
-		for j, b := range content.Array() {
-			if b.Get("type").String() != "tool_use" {
-				continue
-			}
-			path := fmt.Sprintf("messages.%d.content.%d.name", i, j)
-			if next, err := sjson.SetBytes(body, path, b.Get("name").String()+toolSuffix); err == nil {
-				body = next
-			}
+		if !changed {
+			out.Grow(len(msgs.Raw) + 64)
+			changed = true
 		}
+		start := m.Index - msgs.Index
+		out.WriteString(msgs.Raw[last:start])
+		out.WriteString(raw)
+		last = start + len(m.Raw)
 	}
-	return body
+	if !changed {
+		return body
+	}
+	out.WriteString(msgs.Raw[last:])
+	next, err := sjson.SetRawBytes(body, "messages", []byte(out.String()))
+	if err != nil {
+		return body
+	}
+	return next
 }
 
 // Uncloak gives a tool name back to the client. The map decides; while the
@@ -249,7 +277,4 @@ func Uncloak(name string, names map[string]string, cloaked bool) string {
 	return strings.TrimSuffix(name, toolSuffix)
 }
 
-func quote(s string) string {
-	out, _ := sjson.Set("", "v", s)
-	return gjson.Get(out, "v").Raw
-}
+func quote(s string) string { return document.Encode(s) }

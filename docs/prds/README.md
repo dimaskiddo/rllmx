@@ -13,7 +13,7 @@ One file per area. Each carries its status, the steps that deliver it, the desig
 | 05 | [Account Selection, Error Rules & Backoff](05-Account-Selection-and-Backoff.md) | partial | 1.7 |
 | 06 | [OAuth & Token Refresh](06-OAuth-and-Token-Refresh.md) | partial | 1.9a, 1.9b, 1.9c, 1.10 |
 | 07 | [Format Translation](07-Format-Translation.md) | partial | 1.8, 1.10 |
-| 08 | [Executors](08-Executors.md) | todo | 1.10 |
+| 08 | [Executors](08-Executors.md) | partial | 1.8c, 1.10a to 1.10h |
 | 09 | [Streaming](09-Streaming.md) | partial | 1.0, 1.8, 2.4 |
 | 10 | [Token Savers](10-Token-Savers.md) | todo | 3.1 |
 | 11 | [Skills, Session & Auto Plan](11-Skills-Session-and-Auto-Plan.md) | todo | 3.2 to 3.4 |
@@ -36,7 +36,7 @@ One file per area. Each carries its status, the steps that deliver it, the desig
 
 | File | Holds |
 |---|---|
-| `../AGENTS.md` | Scope, rules, build and security constraints, the compatibility contract |
+| `../AGENTS.md` | Scope, workflow, Go rules (concurrency, memory, security, clean code), Goravel and build constraints, the compatibility contract |
 | `TASKS.md` | Current step, open items, what you must decide |
 | `ARCHITECTURE.md` | Module map, key design decisions, terminal commands |
 | `WORKFLOWS.md` | Startup order, operator procedures, the Parity Sync playbook |

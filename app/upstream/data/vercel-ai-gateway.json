@@ -1,0 +1,25 @@
+{
+  "id": "vercel-ai-gateway",
+  "alias": "vercel-ai-gateway",
+  "aliases": [
+    "vercel"
+  ],
+  "category": "apikey",
+  "display": {
+    "name": "Vercel AI Gateway"
+  },
+  "transport": {
+    "baseUrl": "https://ai-gateway.vercel.sh/v1/chat/completions",
+    "retry": {
+      "429": {
+        "attempts": 1,
+        "delayMs": 5000
+      }
+    }
+  },
+  "auth": {
+    "scheme": "bearer",
+    "header": "Authorization"
+  },
+  "models": []
+}

@@ -224,18 +224,6 @@ func TestThinkingPrecedence(t *testing.T) {
 	}
 }
 
-func TestClampLevelMovesToTheNearestDeclaredOne(t *testing.T) {
-	declared := []string{"low", "high", "max"}
-	for in, want := range map[string]string{"low": "low", "high": "high", "medium": "low", "xhigh": "high", "ultra": "max", "none": "low", "banana": "low"} {
-		if got := ClampLevel(in, declared, LevelOrder); got != want {
-			t.Errorf("%s: %q, want %q", in, got, want)
-		}
-	}
-	if got := ClampLevel("medium", nil, LevelOrder); got != "medium" {
-		t.Errorf("no declared set: %q", got)
-	}
-}
-
 func TestThinkingIsDroppedWhenTheLastTurnIsNotTheUsers(t *testing.T) {
 	r := &Request{Thinking: Thinking{Mode: "level", Level: "high"}, Messages: []Message{user("x"), {Role: RoleAssistant, Content: TextPart("prefill")}}}
 	DropThinkingForPrefill(r)

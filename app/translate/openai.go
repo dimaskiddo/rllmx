@@ -1,6 +1,7 @@
 package translate
 
 import (
+	"cmp"
 	"encoding/json"
 	"strings"
 
@@ -81,7 +82,7 @@ func readOpenAIMessage(m gjson.Result) Message {
 		msg.Role = RoleSystem
 	}
 	msg.Content = readOpenAIContent(m.Get("content"))
-	msg.Reasoning = firstNonEmptyStr(m.Get("reasoning_content").String(), m.Get("reasoning").String())
+	msg.Reasoning = cmp.Or(m.Get("reasoning_content").String(), m.Get("reasoning").String())
 	for _, tc := range m.Get("tool_calls").Array() {
 		msg.ToolCalls = append(msg.ToolCalls, ToolCall{
 			ID: tc.Get("id").String(), Name: tc.Get("function.name").String(),
@@ -92,15 +93,6 @@ func readOpenAIMessage(m gjson.Result) Message {
 		msg.ToolCalls[0].Signature = sig
 	}
 	return msg
-}
-
-func firstNonEmptyStr(vals ...string) string {
-	for _, v := range vals {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
 }
 
 // argsText is the arguments of a call as JSON text: a string stays as it is, an
@@ -174,7 +166,8 @@ func (OpenAICodec) WriteRequest(r *Request, c *Ctx) ([]byte, error) {
 	o := obj{"model": r.Model}
 	msgs := make([]any, 0, len(r.Messages))
 	for _, m := range r.Messages {
-		if w, ok := writeOpenAIMessage(m); ok {
+		if w, ok := writeOpenAIMessage(m, c.Entry.Transport.Quirks.PreserveCacheControl); ok {
+			injectReasoning(w, m, reasoningScope(c))
 			msgs = append(msgs, w)
 		}
 	}
@@ -245,17 +238,18 @@ func (OpenAICodec) WriteRequest(r *Request, c *Ctx) ([]byte, error) {
 	return json.Marshal(withExtra(o, r.Extra))
 }
 
-func writeOpenAIMessage(m Message) (obj, bool) {
+func writeOpenAIMessage(m Message, keepCache bool) (obj, bool) {
 	// A message with no content, no tool call and no tool result carries nothing.
-	if m.Role != RoleTool && len(m.ToolCalls) == 0 && strings.TrimSpace(m.Text()) == "" && !hasNonText(m.Content) {
+	text := m.Text()
+	if m.Role != RoleTool && len(m.ToolCalls) == 0 && strings.TrimSpace(text) == "" && !hasNonText(m.Content) {
 		return nil, false
 	}
 	w := obj{"role": string(m.Role)}
 	switch {
-	case onlyText(m.Content):
-		w["content"] = m.Text()
+	case onlyText(m.Content) && !(keepCache && hasCache(m.Content)):
+		w["content"] = text
 	default:
-		w["content"] = openAIContent(m.Content)
+		w["content"] = openAIContent(m.Content, keepCache)
 	}
 	if m.Name != "" {
 		w["name"] = m.Name
@@ -273,7 +267,7 @@ func writeOpenAIMessage(m Message) (obj, bool) {
 			calls = append(calls, call)
 		}
 		w["tool_calls"] = calls
-		if m.Text() == "" {
+		if text == "" {
 			w["content"] = nil
 		}
 	}
@@ -294,12 +288,25 @@ func hasNonText(parts []Part) bool {
 
 func onlyText(parts []Part) bool { return !hasNonText(parts) }
 
-func openAIContent(parts []Part) []any {
+func hasCache(parts []Part) bool {
+	for _, p := range parts {
+		if len(p.Cache) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func openAIContent(parts []Part, keepCache bool) []any {
 	out := make([]any, 0, len(parts))
 	for _, p := range parts {
 		switch p.Type {
 		case PartText:
-			out = append(out, obj{"type": "text", "text": p.Text})
+			t := obj{"type": "text", "text": p.Text}
+			if keepCache && len(p.Cache) > 0 {
+				t["cache_control"] = p.Cache
+			}
+			out = append(out, t)
 		case PartImage:
 			u := p.URL
 			if u == "" && p.Data != "" {
@@ -371,7 +378,7 @@ func firstPositive(vals ...int64) int64 {
 
 // WriteResponse writes the hub answer as a Chat Completions body.
 func (OpenAICodec) WriteResponse(r *Response, c *Ctx) ([]byte, error) {
-	msg, _ := writeOpenAIMessage(r.Message)
+	msg, _ := writeOpenAIMessage(r.Message, false)
 	if msg == nil {
 		msg = obj{"role": "assistant", "content": ""}
 	}

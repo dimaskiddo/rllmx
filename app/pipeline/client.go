@@ -2,8 +2,9 @@ package pipeline
 
 import (
 	"net/http"
-	"regexp"
 	"strings"
+
+	"rllmx/app/upstream"
 )
 
 // Client tools, named by what the reference calls them.
@@ -67,8 +68,6 @@ const (
 	maxBetaHeader = 2048
 )
 
-var betaFlagPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
-
 // clientFlags reads the beta flags a client sent. A value over 2 KiB, a flag
 // that is not a plain token and more than 32 flags are dropped, so a client can
 // neither inject a header line nor grow the list without bound.
@@ -80,7 +79,7 @@ func clientFlags(h http.Header) []string {
 		}
 		for _, f := range strings.Split(v, ",") {
 			f = strings.TrimSpace(f)
-			if betaFlagPattern.MatchString(f) {
+			if upstream.BetaFlag(f) {
 				out = append(out, f)
 			}
 			if len(out) >= maxClientBeta {

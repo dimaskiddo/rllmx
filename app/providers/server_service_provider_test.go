@@ -3,9 +3,13 @@ package providers
 import (
 	"context"
 	"errors"
+	"fmt"
 	nethttp "net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,6 +26,39 @@ import (
 	"rllmx/app/oauth"
 	"rllmx/tests"
 )
+
+func TestAFailedSecretReadIsRetriedAndLoggedOnce(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, jwtFile)
+	if err := os.WriteFile(path, []byte("short"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var logged []string
+	get := fileSecret(dir, func(format string, args ...any) { logged = append(logged, fmt.Sprintf(format, args...)) })
+
+	for range 3 {
+		if got := get(); got != nil {
+			t.Fatalf("a short file gave a secret: %q", got)
+		}
+	}
+	if len(logged) != 1 {
+		t.Fatalf("logged %d times, want once: %v", len(logged), logged)
+	}
+
+	good := strings.Repeat("a", 40)
+	if err := os.WriteFile(path, []byte(good), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := string(get()); got != good {
+		t.Fatalf("the failure was kept: got %q", got)
+	}
+	if err := os.WriteFile(path, []byte(strings.Repeat("b", 40)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := string(get()); got != good {
+		t.Fatal("a read secret changed while the process ran")
+	}
+}
 
 // fakeApp implements the few container calls the provider makes. Any other
 // method panics through the nil embedded interface. It models the framework's

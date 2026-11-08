@@ -19,7 +19,8 @@ import (
 	"rllmx/app/sso"
 )
 
-// DiscoveryTTL is how long one issuer's metadata is cached: an hour, per PRD 2.
+// DiscoveryTTL is how long one issuer's metadata is cached. Providers change
+// it rarely, and a settings write purges it at once.
 const DiscoveryTTL = time.Hour
 
 // ErrDiscovery means the issuer's metadata could not be read or is unusable.

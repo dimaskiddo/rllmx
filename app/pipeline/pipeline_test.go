@@ -106,8 +106,21 @@ func newRig(t *testing.T, steps ...tests.Reply) *rig {
 		`"oauth":{"flow":"code-pkce","authorizeUrl":"https://a.example/authorize","tokenUrl":"https://a.example/token","scope":"s","redirect":"local","exchange":"json",` +
 		`"refresh":{"encoding":"json","leadSeconds":300},"identity":{"originator":"codex_cli_rs","User-Agent":"codex_cli_rs/9.9.9","version":"9.9.9"},` +
 		`"session":{"name":"session_id","keyed":true},"account":{"name":"ChatGPT-Account-ID","from":["workspaceId","chatgptAccountId","accountId"]}},"models":[{"id":"x1"}]}`
+	wire := `{"id":"wire","category":"apikey","display":{"name":"W"},"transport":{"baseUrl":"` + up.URL + `/v1/chat/completions","format":"openai","urlSuffix":"?v=1",` +
+		`"headers":{"X-Title":"rllmx"},"retry":{"429":{"attempts":1,"delayMs":10}},"reasoningInject":"all"},` +
+		`"auth":{"scheme":"bearer","header":"Authorization"},"models":[{"id":"short","upstreamId":"vendor/long-name"}]}`
+	acct := `{"id":"acct","category":"freeTier","display":{"name":"A"},"transport":{"baseUrl":"` + up.URL + `/accounts/{accountId}/chat/completions","format":"openai"},` +
+		`"auth":{"scheme":"bearer","header":"Authorization"},"models":[{"id":"am"}]}`
+	cdx := `{"id":"cdx","category":"apikey","display":{"name":"C"},"executor":"codex","forceStream":true,` +
+		`"transport":{"baseUrl":"` + up.URL + `/codex/responses","format":"openai-responses","quirks":{"inlineImages":true}},` +
+		`"auth":{"scheme":"bearer","header":"Authorization"},"models":[{"id":"cm","levels":["low","medium","high","xhigh"]},{"id":"cm-vision","levels":["low","medium"]},{"id":"cl","lite":true,"levels":["low","medium","high"]}]}`
+	grk := `{"id":"grk","category":"apikey","display":{"name":"G"},"executor":"grok-cli","forceStream":true,` +
+		`"transport":{"baseUrl":"` + up.URL + `/grok/responses","format":"openai-responses","headers":{"x-grok-client-identifier":"grok-shell"}},` +
+		`"auth":{"scheme":"bearer","header":"Authorization"},"models":[{"id":"gm","levels":["low","high"]},{"id":"gn"}]}`
 	reg, err := upstream.Load(fstest.MapFS{
+		"data/cdx.json": {Data: []byte(cdx)}, "data/grk.json": {Data: []byte(grk)},
 		"data/forced.json": {Data: []byte(forced)}, "data/gem.json": {Data: []byte(gem)}, "data/sub.json": {Data: []byte(sub)}, "data/subx.json": {Data: []byte(subx)},
+		"data/wire.json": {Data: []byte(wire)}, "data/acct.json": {Data: []byte(acct)},
 	}, "data")
 	if err != nil {
 		t.Fatal(err)
@@ -133,7 +146,7 @@ func newRig(t *testing.T, steps ...tests.Reply) *rig {
 		Resolver: &routing.Resolver{Registry: reg, Snapshot: routing.NewSnapshot(source{}, nil)},
 		Selector: account.NewSelector(account.SelectorOptions{Conns: st.Connections(), Settings: tests.Settings{}, Log: log}),
 		Reporter: rep,
-		Executor: &executor.Default{Client: http.DefaultClient, Sleep: instant},
+		Executor: executor.NewMux(&executor.Default{Client: http.DefaultClient, Sleep: instant}, executor.Options{}),
 		Nodes:    st.Nodes(), Registry: reg, Caps: caps, Prices: table, Usage: rows,
 		Timers: stream.Timers{FirstChunk: 300 * time.Millisecond, Stall: 300 * time.Millisecond, UsageWait: 50 * time.Millisecond},
 		Log:    log,

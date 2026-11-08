@@ -56,7 +56,7 @@ flowchart TD
 | `X-Rllm-Cache` header: request `use`/`bypass`, response `hit`/`miss` | `app/pipeline`, `app/http/controllers` | done (1.8g; D24, D148) | 1.8g |
 | `POST /v1/messages` | `app/http/controllers` | done (1.8e) | 1.8e |
 | `POST /v1/messages/count_tokens` | `app/http/controllers`, `app/translate` | done (1.8e: local estimate, runes over four, no upstream, no row; D117) | 1.8e |
-| `POST /v1/responses`, `/v1/responses/compact` | `app/http/controllers` | done (1.8e: compact is served as a plain Responses call, nothing written into the body; the upstream `/compact` path comes with Codex, D120) | 1.8e, 1.10 |
+| `POST /v1/responses`, `/v1/responses/compact` | `app/http/controllers` | done (1.8e: compact is a plain Responses call for every provider but Codex; 1.10b: a Codex call goes to the upstream `/compact` path and the JSON answer is forwarded as sent, D120) | 1.8e, 1.10b |
 | `POST /v1beta/models/{m}:generateContent`, `:streamGenerateContent` | `app/http/controllers` | done (1.8e; D224) | 1.8e |
 | `GET /v1/models`, `/v1/models/info`, `/v1/models/{m}`, `GET /v1beta/models` | `app/http/controllers`, `app/catalog` | done (1.8f; D225, D226) | 1.8f |
 | `POST /v1/api/chat` (Ollama) | `app/http/controllers` | done (1.8e: NDJSON by default, JSON for `stream:false` or `Accept: application/json`; D136) | 1.8e |
@@ -125,7 +125,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 |---|---|---|
 | 49 | Connection aborted | Truncation visible |
 | 192 | Short instruction text of our own writing (reference's is the official prompt, which we do not copy) | Backend refuses request with no instructions. Whether it checks the text unverified; real account must confirm (`TASKS.md` Open items) |
-| 120 | Never written; upstream `/compact` path with Codex **(planned 1.10)** | Strict upstreams reject unknown fields |
+| 120 | Never written into the body; the upstream `/compact` path is chosen for Codex only, by the route (built in 1.10b); any other provider gets a plain Responses call. The compaction answer is forwarded to the client as sent | Strict upstreams reject unknown fields |
 | 220 | Locks clear only after the answer is accepted: a non-empty body that parsed, or a stream that delivered an event. A page, an empty body or a broken stream clears nothing and locks nothing (reference clears on the status line) | An upstream that returns 200 with junk does not heal an account |
 | 221 | A non-stream upstream body has a total time cap (10 minutes); the reference has none | A server that sends headers and then goes quiet cannot hold a request for ever |
 | 223 | A bypass reply is a typed response written by the client's own codec, and a prefill `{` matches plain string content too. The reference builds an OpenAI reply by hand and translates it: Claude non-stream came back with empty content and no stop reason, Claude streams ended with `[DONE]`, OpenAI streams carried a stray `data: null`, and a missing `stream` meant a stream | The reply is well formed in every client format and a missing `stream` is false (D191) |

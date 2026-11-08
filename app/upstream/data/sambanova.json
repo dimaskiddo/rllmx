@@ -1,0 +1,25 @@
+{
+  "id": "sambanova",
+  "alias": "samba",
+  "aliases": [
+    "sambanova-ai"
+  ],
+  "category": "apikey",
+  "display": {
+    "name": "SambaNova"
+  },
+  "transport": {
+    "baseUrl": "https://api.sambanova.ai/v1/chat/completions"
+  },
+  "auth": {
+    "scheme": "bearer",
+    "header": "Authorization",
+    "validateUrl": "https://api.sambanova.ai/v1/models"
+  },
+  "models": [
+    {
+      "id": "MiniMax-M2.7",
+      "name": "MiniMax M2.7"
+    }
+  ]
+}

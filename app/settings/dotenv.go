@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"maps"
 	"os"
 	"path/filepath"
 	"slices"
 
 	"github.com/subosito/gotenv"
+
+	"rllmx/app/file"
 )
 
 const maxDotenvBytes = 1 << 20
@@ -31,12 +32,12 @@ func ReadKeys(path string) ([]string, error) {
 	}
 	defer f.Close()
 
-	raw, err := io.ReadAll(io.LimitReader(f, maxDotenvBytes+1))
+	raw, err := file.ReadCapped(f, maxDotenvBytes)
+	if errors.Is(err, file.ErrTooLarge) {
+		return nil, fmt.Errorf("%s: file larger than %d bytes", filepath.Base(path), maxDotenvBytes)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", filepath.Base(path), errors.Unwrap(err))
-	}
-	if len(raw) > maxDotenvBytes {
-		return nil, fmt.Errorf("%s: file larger than %d bytes", filepath.Base(path), maxDotenvBytes)
 	}
 
 	vars, err := gotenv.StrictParse(bytes.NewReader(raw))

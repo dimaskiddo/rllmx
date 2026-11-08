@@ -12,7 +12,7 @@ type Frame struct {
 // event at a time; a payload that is not valid for the format yields nothing.
 // Flush runs when the upstream ends and returns whatever it left open.
 type StreamReader interface {
-	Read(event string, data []byte) ([]Chunk, error)
+	Read(event string, data []byte) []Chunk
 	Flush() []Chunk
 }
 
@@ -21,7 +21,7 @@ type StreamReader interface {
 // gets the counts whichever order the upstream sent them in. An error chunk
 // is not a writer's business: the transport answers it with the failure frame.
 type StreamWriter interface {
-	Write(Chunk) ([]Frame, error)
+	Write(Chunk) []Frame
 	// Held reports a finish waiting for its usage report.
 	Held() bool
 	// Close ends the stream: it releases a held finish and writes the end marker.

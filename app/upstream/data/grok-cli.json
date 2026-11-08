@@ -1,13 +1,90 @@
 {
   "id": "grok-cli",
   "alias": "gcli",
-  "aliases": ["grok-build", "gb"],
+  "aliases": [
+    "grok-build",
+    "gb"
+  ],
   "category": "oauth",
-  "display": { "name": "Grok CLI (Grok Build)" },
-  "transport": { "baseUrl": "https://cli-chat-proxy.grok.com/v1/responses", "format": "openai-responses" },
+  "display": {
+    "name": "Grok CLI (Grok Build)"
+  },
+  "transport": {
+    "baseUrl": "https://cli-chat-proxy.grok.com/v1/responses",
+    "format": "openai-responses",
+    "headers": {
+      "User-Agent": "grok-shell/1.0.44 (linux; x86_64)",
+      "x-grok-client-identifier": "grok-shell",
+      "x-grok-client-version": "1.0.44"
+    },
+    "retry": {
+      "429": {
+        "attempts": 1,
+        "delayMs": 5000
+      },
+      "502": {
+        "attempts": 2,
+        "delayMs": 1500
+      },
+      "503": {
+        "attempts": 2,
+        "delayMs": 1500
+      }
+    }
+  },
   "models": [
-    { "id": "grok-build", "name": "Grok Build" },
-    { "id": "grok-4.7", "name": "Grok 4.7" },
-    { "id": "grok-4.5", "name": "Grok 4.5" }
-  ]
+    {
+      "id": "grok-build",
+      "name": "Grok Build"
+    },
+    {
+      "id": "grok-4.7",
+      "name": "Grok 4.7"
+    },
+    {
+      "id": "grok-4.5",
+      "name": "Grok 4.5",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "id": "grok-4.5-high",
+      "name": "Grok 4.5 (High)",
+      "upstreamId": "grok-4.5",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "id": "grok-4.5-medium",
+      "name": "Grok 4.5 (Medium)",
+      "upstreamId": "grok-4.5",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
+      "id": "grok-4.5-low",
+      "name": "Grok 4.5 (Low)",
+      "upstreamId": "grok-4.5",
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    }
+  ],
+  "executor": "grok-cli",
+  "forceStream": true
 }

@@ -1,12 +1,111 @@
 {
   "rules": [
-    { "pattern": "claude-opus-*", "drop": ["temperature"] },
-    { "pattern": "o1*", "drop": ["temperature", "top_p", "presence_penalty", "frequency_penalty"] },
-    { "pattern": "o3*", "drop": ["temperature", "top_p", "presence_penalty", "frequency_penalty"] },
-    { "pattern": "o4*", "drop": ["temperature", "top_p", "presence_penalty", "frequency_penalty"] },
-    { "pattern": "gpt-5*", "drop": ["temperature", "top_p", "presence_penalty", "frequency_penalty"] },
-    { "pattern": "gpt-6*", "drop": ["temperature", "top_p", "presence_penalty", "frequency_penalty"] },
-    { "provider": "deepseek", "pattern": "deepseek-reasoner", "drop": ["temperature", "top_p", "presence_penalty", "frequency_penalty"] },
-    { "provider": "github", "dropMessageFields": ["reasoning_content"], "flattenContent": true }
+    {
+      "pattern": "claude-opus-*",
+      "drop": [
+        "temperature"
+      ]
+    },
+    {
+      "pattern": "o1*",
+      "drop": [
+        "temperature",
+        "top_p",
+        "presence_penalty",
+        "frequency_penalty"
+      ]
+    },
+    {
+      "pattern": "o3*",
+      "drop": [
+        "temperature",
+        "top_p",
+        "presence_penalty",
+        "frequency_penalty"
+      ]
+    },
+    {
+      "pattern": "o4*",
+      "drop": [
+        "temperature",
+        "top_p",
+        "presence_penalty",
+        "frequency_penalty"
+      ]
+    },
+    {
+      "pattern": "gpt-5*",
+      "drop": [
+        "temperature",
+        "top_p",
+        "presence_penalty",
+        "frequency_penalty"
+      ]
+    },
+    {
+      "pattern": "gpt-6*",
+      "drop": [
+        "temperature",
+        "top_p",
+        "presence_penalty",
+        "frequency_penalty"
+      ]
+    },
+    {
+      "provider": "deepseek",
+      "pattern": "deepseek-reasoner",
+      "drop": [
+        "temperature",
+        "top_p",
+        "presence_penalty",
+        "frequency_penalty"
+      ]
+    },
+    {
+      "provider": "github",
+      "dropMessageFields": [
+        "reasoning_content"
+      ],
+      "flattenContent": true
+    },
+    {
+      "provider": "cerebras",
+      "drop": [
+        "client_metadata"
+      ],
+      "dropMessageFields": [
+        "reasoning_content",
+        "reasoning",
+        "reasoning_details"
+      ]
+    },
+    {
+      "provider": "mistral",
+      "drop": [
+        "client_metadata"
+      ],
+      "dropMessageFields": [
+        "reasoning_content",
+        "reasoning",
+        "reasoning_details"
+      ]
+    },
+    {
+      "provider": "groq",
+      "dropMessageFields": [
+        "reasoning_content",
+        "reasoning",
+        "reasoning_details"
+      ]
+    },
+    {
+      "provider": "cloudflare-ai",
+      "flattenContent": true
+    },
+    {
+      "provider": "volcengine-ark",
+      "pattern": "*kimi*",
+      "capOutput": 32768
+    }
   ]
 }

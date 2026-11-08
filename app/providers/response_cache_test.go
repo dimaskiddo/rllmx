@@ -3,6 +3,7 @@ package providers
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/goravel/framework/contracts/foundation"
 
@@ -76,5 +77,24 @@ func TestAWriteToTheSettingsRowPurgesTheCacheThroughTheStore(t *testing.T) {
 		if _, ok := c.Get(g, key); ok {
 			t.Errorf("%s survived a settings write", g)
 		}
+	}
+}
+
+func TestAWriteToTheSettingsRowFreesTheResponseBudget(t *testing.T) {
+	st := store.Migrated(t)
+	rc := responseCache(responseApp(t, "", true), st.Store)
+	for i := 0; i < rc.Budget.MaxEntries; i++ {
+		if !rc.Budget.Reserve(1, time.Hour) {
+			t.Fatalf("entry %d refused", i)
+		}
+	}
+	if rc.Budget.Reserve(1, time.Hour) {
+		t.Fatal("the budget was not full")
+	}
+	if err := st.Settings().Patch(context.Background(), map[string]string{"responseCache": `{"enabled":true}`}); err != nil {
+		t.Fatal(err)
+	}
+	if !rc.Budget.Reserve(1, time.Hour) {
+		t.Fatal("purged answers still counted against the budget")
 	}
 }

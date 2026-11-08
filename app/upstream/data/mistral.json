@@ -1,0 +1,30 @@
+{
+  "id": "mistral",
+  "alias": "mistral",
+  "category": "apikey",
+  "display": {
+    "name": "Mistral"
+  },
+  "transport": {
+    "baseUrl": "https://api.mistral.ai/v1/chat/completions"
+  },
+  "auth": {
+    "scheme": "bearer",
+    "header": "Authorization",
+    "validateUrl": "https://api.mistral.ai/v1/models"
+  },
+  "models": [
+    {
+      "id": "mistral-large-latest",
+      "name": "Mistral Large 3"
+    },
+    {
+      "id": "codestral-latest",
+      "name": "Codestral"
+    },
+    {
+      "id": "mistral-medium-latest",
+      "name": "Mistral Medium 3"
+    }
+  ]
+}

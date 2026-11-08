@@ -75,6 +75,9 @@ func New(d Deps) (*Pipeline, error) {
 	if d.BodyTimeout <= 0 {
 		d.BodyTimeout = defaultBodyTimeout
 	}
+	if d.MaxAnswer <= 0 {
+		d.MaxAnswer = maxAnswer
+	}
 	if d.Sessions == nil {
 		d.Sessions = conversation.NewStore(d.Now)
 	}

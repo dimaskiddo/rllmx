@@ -5,6 +5,7 @@
 package conversation
 
 import (
+	"container/list"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -22,9 +23,24 @@ const (
 )
 
 type entry struct {
+	key      string
 	id       string
 	lastUsed time.Time
 }
+
+// table is a bounded map in least-recently-used order: the front of the list is
+// the oldest use, so dropping the expired and the oldest is O(1) each.
+type table struct {
+	limit int
+	byKey map[string]*list.Element
+	order *list.List // of *entry, oldest first
+}
+
+func newTable(limit int) *table {
+	return &table{limit: limit, byKey: map[string]*list.Element{}, order: list.New()}
+}
+
+func (t *table) len() int { return len(t.byKey) }
 
 // Store holds the ids the program derives or makes up, and the key that binds
 // an id to a connection. It is safe for concurrent use.
@@ -33,8 +49,8 @@ type Store struct {
 	key [32]byte
 
 	mu      sync.Mutex
-	derived map[string]*entry
-	madeUp  map[string]*entry
+	derived *table
+	madeUp  *table
 }
 
 // NewStore returns a Store. now is the clock; nil means time.Now. The binding
@@ -44,7 +60,7 @@ func NewStore(now func() time.Time) *Store {
 	if now == nil {
 		now = time.Now
 	}
-	s := &Store{now: now, derived: map[string]*entry{}, madeUp: map[string]*entry{}}
+	s := &Store{now: now, derived: newTable(maxDerived), madeUp: newTable(maxMadeUp)}
 	if _, err := rand.Read(s.key[:]); err != nil {
 		panic("conversation: no randomness: " + err.Error())
 	}
@@ -65,41 +81,41 @@ func (s *Store) Bound(sessionID, connectionID string) string {
 
 // lookup returns the id stored under key, refreshing it, or false when it is
 // absent or has expired.
-func (s *Store) lookup(table map[string]*entry, key string) (string, bool) {
-	e, ok := table[key]
+func (s *Store) lookup(t *table, key string) (string, bool) {
+	el, ok := t.byKey[key]
 	if !ok {
 		return "", false
 	}
+	e := el.Value.(*entry)
 	now := s.now()
 	if now.Sub(e.lastUsed) > Life {
-		delete(table, key)
+		t.remove(el)
 		return "", false
 	}
 	e.lastUsed = now
+	t.order.MoveToBack(el)
 	return e.id, true
 }
 
-// store adds an id, dropping expired entries first and then the oldest one when
-// the table is still full.
-func (s *Store) store(table map[string]*entry, limit int, key, id string) {
+func (t *table) remove(el *list.Element) {
+	delete(t.byKey, el.Value.(*entry).key)
+	t.order.Remove(el)
+}
+
+// store adds an id, dropping expired entries from the old end first and then
+// the oldest one when the table is still full.
+func (s *Store) store(t *table, key, id string) {
 	now := s.now()
-	if len(table) >= limit {
-		var oldestKey string
-		var oldest time.Time
-		for k, e := range table {
-			if now.Sub(e.lastUsed) > Life {
-				delete(table, k)
-				continue
-			}
-			if oldestKey == "" || e.lastUsed.Before(oldest) {
-				oldestKey, oldest = k, e.lastUsed
-			}
-		}
-		if len(table) >= limit && oldestKey != "" {
-			delete(table, oldestKey)
-		}
+	if old, ok := t.byKey[key]; ok {
+		t.remove(old)
 	}
-	table[key] = &entry{id: id, lastUsed: now}
+	for el := t.order.Front(); el != nil && now.Sub(el.Value.(*entry).lastUsed) > Life; el = t.order.Front() {
+		t.remove(el)
+	}
+	for t.len() >= t.limit {
+		t.remove(t.order.Front())
+	}
+	t.byKey[key] = t.order.PushBack(&entry{key: key, id: id, lastUsed: now})
 }
 
 // madeUpID is a random id plus the time in milliseconds.

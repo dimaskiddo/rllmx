@@ -1,7 +1,6 @@
 package stream
 
 import (
-	"html"
 	"mime"
 	"regexp"
 	"strings"
@@ -41,11 +40,7 @@ func KindOf(contentType string) Kind {
 	return KindOther
 }
 
-var (
-	titleTag = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
-	anyTag   = regexp.MustCompile(`<[^>]*>`)
-	blanks   = regexp.MustCompile(`\s+`)
-)
+var titleTag = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
 
 // PageTitle reads a short, markup-free line from an HTML page an upstream
 // returned in place of an answer: the title, else the stripped body when it is
@@ -63,16 +58,4 @@ func PageTitle(body []byte) string {
 	return ""
 }
 
-func clean(s string) string {
-	s = anyTag.ReplaceAllString(s, " ")
-	s = html.UnescapeString(s)
-	s = anyTag.ReplaceAllString(s, " ")
-	s = blanks.ReplaceAllString(s, " ")
-	s = strings.Map(func(r rune) rune {
-		if r < 0x20 || r == 0x7f {
-			return -1
-		}
-		return r
-	}, s)
-	return strings.ToValidUTF8(text.CutBytes(strings.TrimSpace(s), 160), "")
-}
+func clean(s string) string { return text.StripMarkup(s, 160) }

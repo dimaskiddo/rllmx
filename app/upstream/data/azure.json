@@ -1,0 +1,9 @@
+{
+  "id": "azure",
+  "alias": "azure",
+  "category": "apikey",
+  "display": { "name": "Azure OpenAI" },
+  "executor": "azure",
+  "transport": { "format": "openai" },
+  "models": []
+}

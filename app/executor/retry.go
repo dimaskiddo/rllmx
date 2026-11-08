@@ -21,9 +21,9 @@ type Rule struct {
 	Delay    time.Duration
 }
 
-// DefaultRetry is the table every provider starts with. A 429 is not retried in
+// defaultRetry is the table every provider starts with. A 429 is not retried in
 // place: another account serves it.
-var DefaultRetry = map[int]Rule{
+var defaultRetry = map[int]Rule{
 	http.StatusBadGateway:         {Attempts: 3, Delay: 3 * time.Second},
 	http.StatusServiceUnavailable: {Attempts: 3, Delay: 2 * time.Second},
 	http.StatusGatewayTimeout:     {Attempts: 2, Delay: 3 * time.Second},
@@ -61,3 +61,5 @@ func drain(rc io.ReadCloser) {
 	_, _ = io.Copy(io.Discard, io.LimitReader(rc, maxDrain))
 	_ = rc.Close()
 }
+
+func msDuration(ms int) time.Duration { return time.Duration(ms) * time.Millisecond }

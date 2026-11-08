@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"rllmx/app/text"
 	"rllmx/app/upstream"
 )
 
@@ -21,7 +22,7 @@ var ErrUnreachable = errors.New("executor: the upstream could not be reached")
 // everything from the request: address, format, auth block, headers.
 type Default struct {
 	Client *http.Client
-	// Retry replaces DefaultRetry when set.
+	// Retry replaces defaultRetry when set.
 	Retry map[int]Rule
 	// Sleep returns a channel that fires after d; nil uses a real timer. Tests
 	// pass a fake so retries cost no time.
@@ -37,8 +38,14 @@ func (d *Default) Execute(ctx context.Context, req Request) (Response, error) {
 	}
 	table := d.Retry
 	if table == nil {
-		table = DefaultRetry
+		table = defaultRetry
 	}
+	table = retryTable(table, req.Entry)
+	target, err := fillAccount(req)
+	if err != nil {
+		return Response{}, err
+	}
+	req.URL = target
 	tries := map[int]int{}
 	for {
 		resp, err := d.once(ctx, req)
@@ -96,11 +103,15 @@ func (d *Default) once(ctx context.Context, req Request) (Response, error) {
 }
 
 // headers fills h in the order that lets nothing a data file or an operator
-// writes replace the credential: content type, the provider's static headers,
-// the key, the stream marker, and last the operator's overrides, from which
-// credential and framing headers are dropped again here.
+// writes replace the credential: content type, the provider's transport
+// headers, its auth headers and the key, the stream marker, and last the
+// operator's overrides, from which credential and framing headers are dropped
+// again here.
 func headers(h http.Header, req Request, auth *upstream.Auth) {
 	h.Set("Content-Type", "application/json")
+	for k, v := range req.Entry.Transport.Headers {
+		h.Set(k, v)
+	}
 	if auth != nil {
 		for k, v := range auth.RequestHeaders(req.Key) {
 			h.Set(k, v)
@@ -110,7 +121,7 @@ func headers(h http.Header, req Request, auth *upstream.Auth) {
 		h.Set("Accept", "text/event-stream")
 	}
 	for k, v := range req.Overrides {
-		if upstream.ReservedHeader(k) || !upstream.HeaderName(k) || strings.IndexFunc(v, isControl) >= 0 {
+		if upstream.ReservedHeader(k) || !upstream.HeaderName(k) || text.HasASCIIControl(v) {
 			continue
 		}
 		if auth != nil && strings.EqualFold(k, auth.Header) {
@@ -119,5 +130,3 @@ func headers(h http.Header, req Request, auth *upstream.Auth) {
 		h.Set(k, v)
 	}
 }
-
-func isControl(r rune) bool { return r < 0x20 || r == 0x7f }

@@ -60,7 +60,7 @@ func TestReservedCoversIDsAliasesAndLocalNames(t *testing.T) {
 func TestModelsAreACopy(t *testing.T) {
 	reg, _ := Default()
 	list := reg.Models("openai")
-	if len(list) == 0 || !reg.HasModel("openai", "gpt-4o") || reg.HasModel("openai", "claude-opus-5") {
+	if len(list) == 0 {
 		t.Fatalf("models %d", len(list))
 	}
 	list[0].ID = "changed"

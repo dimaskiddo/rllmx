@@ -3,10 +3,11 @@ package translate
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/tidwall/gjson"
 )
@@ -26,16 +27,16 @@ func (OpenAICodec) NewStreamReader(c *Ctx) StreamReader {
 
 func (r *openAIReader) Flush() []Chunk { return nil }
 
-func (r *openAIReader) Read(_ string, data []byte) ([]Chunk, error) {
+func (r *openAIReader) Read(_ string, data []byte) []Chunk {
 	if !gjson.ValidBytes(data) {
-		return nil, nil
+		return nil
 	}
 	g := gjson.ParseBytes(data)
 	if !g.IsObject() {
-		return nil, nil
+		return nil
 	}
 	if e := g.Get("error"); e.Exists() {
-		return []Chunk{{Err: readErrorObject(e)}}, nil
+		return []Chunk{{Err: readErrorObject(e)}}
 	}
 	ch := Chunk{ID: g.Get("id").String(), Model: g.Get("model").String(), Created: g.Get("created").Int()}
 	if u := g.Get("usage"); u.IsObject() && u.Get("prompt_tokens").Exists() {
@@ -55,13 +56,13 @@ func (r *openAIReader) Read(_ string, data []byte) ([]Chunk, error) {
 		}
 	}
 	if ch.Text == "" && ch.Reasoning == "" && len(ch.ToolCalls) == 0 && ch.FinishReason == "" && ch.Usage == nil && r.started {
-		return nil, nil
+		return nil
 	}
 	if !r.started {
 		r.started = true
 		ch.Role = RoleAssistant
 	}
-	return []Chunk{ch}, nil
+	return []Chunk{ch}
 }
 
 // toolCall reads one fragment. A fragment that opens an index without an id
@@ -141,13 +142,25 @@ func (w *openAIWriter) streamID(in string) string {
 	if w.id != "" {
 		return w.id
 	}
-	if in == "" || in == "chat" || in == "completion" || len(in) < 8 {
-		var b [8]byte
-		_, _ = rand.Read(b[:])
-		in = "chatcmpl-" + hex.EncodeToString(b[:])
+	w.id = StrictStreamID(in)
+	return w.id
+}
+
+// WeakStreamID reports an id a strict client would refuse: empty, a generic
+// word or shorter than eight characters.
+func WeakStreamID(id string) bool {
+	return id == "" || id == "chat" || id == "completion" || len(id) < 8
+}
+
+// StrictStreamID returns in when a strict client accepts it, and a fresh random
+// chatcmpl id otherwise.
+func StrictStreamID(in string) string {
+	if !WeakStreamID(in) {
+		return in
 	}
-	w.id = in
-	return in
+	var b [8]byte
+	_, _ = rand.Read(b[:])
+	return "chatcmpl-" + hex.EncodeToString(b[:])
 }
 
 func (w *openAIWriter) frame(delta obj, finish any, usage *Usage) Frame {
@@ -156,13 +169,106 @@ func (w *openAIWriter) frame(delta obj, finish any, usage *Usage) Frame {
 	if usage != nil {
 		o["usage"] = openAIUsage(*usage)
 	}
-	b, _ := json.Marshal(o)
+	return Frame{Data: frameData(o)}
+}
+
+// textFrame is frame for the delta almost every chunk carries: an optional
+// role, text and reasoning, no tool call and no finish. It writes the bytes in
+// the key order obj gives (sorted), so the output is the same as frame's, with
+// one buffer and no maps.
+func (w *openAIWriter) textFrame(role bool, text, reasoning string) Frame {
+	b := make([]byte, 0, 160+len(text)+len(reasoning)+len(w.id)+len(w.model))
+	b = append(b, `{"choices":[{"delta":{`...)
+	comma := false
+	put := func(key, val string) {
+		if comma {
+			b = append(b, ',')
+		}
+		comma = true
+		b = append(b, '"')
+		b = append(b, key...)
+		b = append(b, `":`...)
+		b = appendJSONString(b, val)
+	}
+	// Sorted: content, reasoning_content, role.
+	if text != "" {
+		put("content", text)
+	}
+	if reasoning != "" {
+		put("reasoning_content", reasoning)
+	}
+	if role {
+		put("role", "assistant")
+	}
+	b = append(b, `},"finish_reason":null,"index":0}],"created":`...)
+	b = strconv.AppendInt(b, w.created, 10)
+	b = append(b, `,"id":`...)
+	b = appendJSONString(b, w.id)
+	b = append(b, `,"model":`...)
+	b = appendJSONString(b, w.model)
+	b = append(b, `,"object":"chat.completion.chunk"}`...)
 	return Frame{Data: b}
 }
 
-func (w *openAIWriter) Write(c Chunk) ([]Frame, error) {
+// appendJSONString appends s as a JSON string exactly as encoding/json writes
+// it: <, > and & as \u00XX, U+2028 and U+2029 escaped, invalid UTF-8 replaced by
+// U+FFFD. A fuzz test holds it to json.Marshal.
+func appendJSONString(b []byte, s string) []byte {
+	const hex = "0123456789abcdef"
+	b = append(b, '"')
+	start := 0
+	for i := 0; i < len(s); {
+		if c := s[i]; c < utf8.RuneSelf {
+			if c >= 0x20 && c != '"' && c != '\\' && c != '<' && c != '>' && c != '&' {
+				i++
+				continue
+			}
+			b = append(b, s[start:i]...)
+			switch c {
+			case '\\', '"':
+				b = append(b, '\\', c)
+			case '\b':
+				b = append(b, '\\', 'b')
+			case '\f':
+				b = append(b, '\\', 'f')
+			case '\n':
+				b = append(b, '\\', 'n')
+			case '\r':
+				b = append(b, '\\', 'r')
+			case '\t':
+				b = append(b, '\\', 't')
+			default:
+				b = append(b, '\\', 'u', '0', '0', hex[c>>4], hex[c&0xF])
+			}
+			i++
+			start = i
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(s[i:])
+		if r == utf8.RuneError && size == 1 {
+			b = append(b, s[start:i]...)
+			b = append(b, '\\', 'u', 'f', 'f', 'f', 'd')
+			i += size
+			start = i
+			continue
+		}
+		if r == ' ' || r == ' ' {
+			b = append(b, s[start:i]...)
+			b = append(b, `\u202`...)
+			b = append(b, hex[r&0xF])
+			i += size
+			start = i
+			continue
+		}
+		i += size
+	}
+	b = append(b, s[start:]...)
+	return append(b, '"')
+}
+
+func (w *openAIWriter) Write(c Chunk) []Frame {
 	if c.Err != nil {
-		return nil, nil
+		return nil
 	}
 	w.streamID(c.ID)
 	if w.model == "" {
@@ -175,6 +281,16 @@ func (w *openAIWriter) Write(c Chunk) ([]Frame, error) {
 		}
 	}
 	var out []Frame
+	if len(c.ToolCalls) == 0 && (c.Text != "" || c.Reasoning != "") {
+		role := !w.roled
+		w.roled = true
+		w.started = true
+		out = append(out, w.textFrame(role, c.Text, c.Reasoning))
+		if w.g.see(c) {
+			out = append(out, w.finishFrame())
+		}
+		return out
+	}
 	delta := obj{}
 	if !w.roled {
 		delta["role"] = "assistant"
@@ -209,7 +325,7 @@ func (w *openAIWriter) Write(c Chunk) ([]Frame, error) {
 	if w.g.see(c) {
 		out = append(out, w.finishFrame())
 	}
-	return out, nil
+	return out
 }
 
 func (w *openAIWriter) finishFrame() Frame {

@@ -1,0 +1,38 @@
+{
+  "id": "sensenova",
+  "alias": "sensenova",
+  "category": "apikey",
+  "display": {
+    "name": "SenseNova"
+  },
+  "transport": {
+    "baseUrl": "https://token.sensenova.cn/v1/chat/completions"
+  },
+  "auth": {
+    "scheme": "bearer",
+    "header": "Authorization",
+    "validateUrl": "https://token.sensenova.cn/v1/models"
+  },
+  "models": [
+    {
+      "id": "sensenova-6.8-flash-lite",
+      "name": "SenseNova 6.8 Flash Lite"
+    },
+    {
+      "id": "deepseek-v4-flash",
+      "name": "DeepSeek V4 Flash"
+    },
+    {
+      "id": "deepseek-flash",
+      "name": "DeepSeek V4.1 Flash"
+    },
+    {
+      "id": "glm-5.2",
+      "name": "GLM-5.2"
+    },
+    {
+      "id": "kimi-k3",
+      "name": "Kimi K3"
+    }
+  ]
+}

@@ -36,6 +36,9 @@ type sent struct {
 	url  string
 	body []byte
 	auth *upstream.Auth
+	// session is the conversation id the upstream sees: a keyed hash bound to
+	// the account, never a value a client chose.
+	session string
 	// names maps each renamed tool back to the client's name; cloaked says the
 	// body was disguised, so a name may be restored by its suffix.
 	names   map[string]string
@@ -48,6 +51,9 @@ type sent struct {
 // another client is disguised as the tool's own.
 func (c *call) prepare(conn repository.Connection) sent {
 	out := sent{url: c.url(), body: c.body, auth: c.dest.auth}
+	if c.dest.entry.Executor == upstream.ExecutorCodex || c.dest.entry.Executor == upstream.ExecutorGrokCLI {
+		out.session = c.p.d.Sessions.Bound(c.session(conn), conn.ID)
+	}
 	if !c.signedIn(conn) {
 		return out
 	}

@@ -75,14 +75,16 @@ func (m Machine) Ensure(dir string) (string, error) {
 	return m.hash(raw), nil
 }
 
-// hash is first 16 hex of sha256(raw + salt), the format PRD 2 fixes.
+// hash is the first 16 hex of sha256(raw + salt). Keys already issued embed this
+// value, so the format cannot change.
 func (m Machine) hash(raw string) string {
 	sum := sha256.Sum256(append([]byte(raw), m.salt...))
 	return hex.EncodeToString(sum[:])[:machineLen]
 }
 
 // readRaw reads and checks the raw id: the file is trimmed and must fit the
-// length and alphabet PRD 2 states. A file that fails is never overwritten.
+// length and alphabet of an id this program wrote. A file that fails is never
+// overwritten, because replacing the id would orphan every key issued with it.
 func readRaw(path string) (string, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {

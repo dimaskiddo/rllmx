@@ -77,8 +77,9 @@ type SelectorOptions struct {
 	Now func() time.Time
 }
 
-// Selector picks a connection for a request. Picking is serialized per
-// provider, so the usage counters it writes cannot race inside one process.
+// Selector picks a connection for a request. Round-robin picking is serialized
+// per provider, so the usage counters it writes cannot race inside one process;
+// fill-first writes nothing and runs unordered.
 type Selector struct {
 	conns    ConnReader
 	settings *settingsCache
@@ -86,7 +87,7 @@ type Selector struct {
 	now      func() time.Time
 
 	mu    sync.Mutex
-	locks map[string]*sync.Mutex
+	locks map[string]chan struct{}
 }
 
 // NewSelector returns a Selector.
@@ -97,26 +98,32 @@ func NewSelector(o SelectorOptions) *Selector {
 	}
 	return &Selector{
 		conns:    o.Conns,
-		settings: &settingsCache{src: o.Settings, now: now},
+		settings: newSettingsCache(o.Settings, now),
 		log:      o.Log,
 		now:      now,
-		locks:    map[string]*sync.Mutex{},
+		locks:    map[string]chan struct{}{},
 	}
 }
 
-// InvalidateSettings drops the cached settings, so a change made in this
-// process applies to the next selection.
-func (s *Selector) InvalidateSettings() { s.settings.drop() }
-
-func (s *Selector) providerLock(p string) *sync.Mutex {
+// providerLock returns the one-slot semaphore of a provider. A channel, not a
+// mutex, so a request that is cancelled while it waits leaves the queue.
+func (s *Selector) providerLock(p string) chan struct{} {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	l := s.locks[p]
 	if l == nil {
-		l = &sync.Mutex{}
+		l = make(chan struct{}, 1)
 		s.locks[p] = l
 	}
 	return l
+}
+
+// needsLock says whether picking writes the rotation counters. Only round-robin
+// does; fill-first reads and decides, so concurrent picks need no order. A
+// failed settings read takes the lock too, and fails again in choose.
+func (s *Selector) needsLock(ctx context.Context, provider string) bool {
+	settings, err := s.settings.get(ctx)
+	return err != nil || strategyFor(settings, provider) == strategyRound
 }
 
 // Select returns the connection that should serve req. It fails with
@@ -125,9 +132,15 @@ func (s *Selector) Select(ctx context.Context, req Request) (Selection, error) {
 	if err := ctx.Err(); err != nil {
 		return Selection{}, err
 	}
-	lock := s.providerLock(req.Provider)
-	lock.Lock()
-	defer lock.Unlock()
+	if s.needsLock(ctx, req.Provider) {
+		lock := s.providerLock(req.Provider)
+		select {
+		case lock <- struct{}{}:
+			defer func() { <-lock }()
+		case <-ctx.Done():
+			return Selection{}, ctx.Err()
+		}
+	}
 
 	active := true
 	all, err := s.conns.List(ctx, repository.ConnFilter{Provider: req.Provider, IsActive: &active})

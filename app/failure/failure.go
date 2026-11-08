@@ -229,18 +229,11 @@ func writeJSON(w http.ResponseWriter, status int, body []byte, extra http.Header
 	_, _ = w.Write(body)
 }
 
-// WriteUnavailable answers 503 when every account is locked. It sets
-// Retry-After (whole seconds, at least 1) and adds the same moment to the body
-// as retryAfter, so a combo that reads the body finds it too. extra carries the
-// upstream's own hints, such as rate-limit counters; the router's Retry-After
-// replaces any it holds.
-func WriteUnavailable(w http.ResponseWriter, f Format, msg string, retryAt, now time.Time, extra http.Header) {
-	body, h := Unavailable(f, msg, retryAt, now, extra)
-	writeJSON(w, http.StatusServiceUnavailable, body, h)
-}
-
-// Unavailable is the body and extra headers of the 503 WriteUnavailable sends,
-// for a caller that builds its own response.
+// Unavailable is the body and extra headers of the 503 sent when every account
+// is locked. Retry-After is whole seconds, at least 1, and the same moment is
+// added to the body as retryAfter, so a combo that reads the body finds it too.
+// extra carries the upstream's own hints, such as rate-limit counters; the
+// router's Retry-After replaces any it holds.
 func Unavailable(f Format, msg string, retryAt, now time.Time, extra http.Header) ([]byte, http.Header) {
 	secs := max(int64((retryAt.Sub(now)+time.Second-1)/time.Second), 1)
 	body := Body(f, http.StatusServiceUnavailable, msg)

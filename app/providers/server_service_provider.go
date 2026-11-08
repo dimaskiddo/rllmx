@@ -102,7 +102,11 @@ func (r *ServerServiceProvider) Register(app foundation.Application) {
 		if err != nil {
 			return nil, err
 		}
-		secret, err := sessionSecretSource(cfg)
+		var logf func(string, ...any)
+		if l := app.MakeLog(); l != nil {
+			logf = l.Warningf
+		}
+		secret, err := sessionSecretSource(cfg, logf)
 		if err != nil {
 			return nil, err
 		}
@@ -152,11 +156,13 @@ func (r *ServerServiceProvider) Register(app foundation.Application) {
 			return err == nil
 		}
 		a.SSOAllow = allowSSO.Allows
+		trust := apphttp.NewTrust(s.TrustedProxies)
+		a.ClientAddr = trust.ClientAddr
 		login, refresher := newLogin(app, registry, oauthCfg, upstreamCfg)
 		return &HTTP{
 			Settings:      s,
 			Guard:         apphttp.NewGuard(a, s.TrustLoopback),
-			Trust:         apphttp.NewTrust(s.TrustedProxies),
+			Trust:         trust,
 			Auth:          a,
 			SSO:           sso.NewClient(upstreamCfg.Allow),
 			Registry:      registry,
@@ -174,7 +180,7 @@ func (r *ServerServiceProvider) Register(app foundation.Application) {
 // sessionSecretSource returns a getter for the session secret. JWT_SECRET wins;
 // with none set, DATA_DIR/jwt-secret is read on first use, because the data
 // runner creates it after every provider has registered.
-func sessionSecretSource(cfg config.Config) (func() []byte, error) {
+func sessionSecretSource(cfg config.Config, logf func(format string, args ...any)) (func() []byte, error) {
 	if raw := cfg.GetString("jwt.secret"); raw != "" {
 		if len(raw) < 32 {
 			return nil, errors.New("providers: JWT_SECRET: must be at least 32 characters")
@@ -185,14 +191,33 @@ func sessionSecretSource(cfg config.Config) (func() []byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	var once sync.Once
+	return fileSecret(dir, logf), nil
+}
+
+// fileSecret reads DATA_DIR/jwt-secret on first use and keeps the value. A
+// failed read is not kept, so a file that was briefly unreadable works on the
+// next request; each failure is logged once per change of cause, never the value.
+func fileSecret(dir string, logf func(format string, args ...any)) func() []byte {
+	var mu sync.Mutex
 	var secret []byte
+	var lastErr string
 	return func() []byte {
-		once.Do(func() {
-			secret, _ = readJWTFile(dir)
-		})
+		mu.Lock()
+		defer mu.Unlock()
+		if secret != nil {
+			return secret
+		}
+		s, err := readJWTFile(dir)
+		if err != nil {
+			if msg := err.Error(); logf != nil && msg != lastErr {
+				lastErr = msg
+				logf("session secret unavailable, every session is refused: %v", err)
+			}
+			return nil
+		}
+		secret = s
 		return secret
-	}, nil
+	}
 }
 
 // EnsureSessionSecret creates DATA_DIR/jwt-secret when JWT_SECRET is unset and

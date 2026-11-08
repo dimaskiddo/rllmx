@@ -17,7 +17,7 @@ One configuration for every upstream call (`network.NewTransport`, `network.NewC
 |---|---|
 | TLS | Always verified, 1.2 or newer |
 | Response headers | Bounded by `UPSTREAM_CONNECT_TIMEOUT` |
-| HTTP/2 | Where the provider supports it |
+| HTTP/2 | Where the provider supports it. Every client is stdlib `net/http`; `golang.org/x/net/http2` only where stdlib cannot (h2c for Cursor) |
 | Proxy | None. `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY` and `NO_PROXY` are not read |
 | Redirects | `MaxRedirects` 0 means the default of 5, a negative value follows none, a caller may lower it. Never https to http. Image prefetch, probes and the SSO client use 3; the key `Checker` refuses any redirect to another host, port or scheme |
 | Body cap | 1 MiB by default; a negative value turns the cap and the overall timeout off for streamed answers |
@@ -80,6 +80,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 209 | The probe follows at most three redirects, and its own host is the one entry on the allow list it uses | A load balancer's relocation to `/api/health` works; a redirect anywhere else is refused by the same guard, so a compromised local answer cannot steer the probe |
 | 214 | The outbound proxy and proxy pool feature is removed, not deferred: no `proxyPools` table is created, no `outboundProxy*` default is merged, no route or setting takes a proxy field. On a database imported from 9router the table, `proxyPoolFitness` and every stored proxy key stay exactly as stored, and `db:import-config` still skips the three `outboundProxy*` names | A router that dials direct has nothing to configure; leaving foreign data alone keeps the file openable by 9router (scope cut) |
 | 215 | A key check stores and returns only its own fixed message (`Invalid API key`, `could not connect`, ...), never the provider's text, status or address. A `Checker` pass does not erase a cooldown and a failing check creates none | The reference stores the provider's error text in the connection, where a key, an address or a prompt fragment can land; a probe is not a request and must not hide or invent a lock (improvement) |
+| 230 | A host name on the operator's allow list is still refused when it resolves to a link-local or metadata address (`169.254/16`, `fe80::/10`, `fd00:ec2::254`, also through the mapped, compatible and NAT64 forms). The list lifts the Internal class only; the Never class has no entry that lifts it. `64:ff9b:1::/48` is Internal | Whoever controls DNS for a listed name could otherwise point it at the cloud metadata service; the dialer already held this rule for an address literal and the name path did not (improvement) |
 | 4 | Loopback calls only. **(partial)** no compose file ships | No exposed sidecar |
 | 146 | One rule in `network`: `localhost`, loopback address, brackets, trailing dot, IPv4-mapped form; zoned address never local | Guard, URL checks, provider checks cannot disagree |
 | 31, 75, 76 | Guard is the dialer: resolve once, keep permitted addresses, dial that address, every redirect hop too; covers every user-defined base URL. Link-local, metadata always refused; loopback, private only via `UPSTREAM_ALLOW_PRIVATE`. **(partial)** image prefetch has no allow list (stricter); web fetch in 1.11 | No rebinding window; cannot be forgotten on a new route |

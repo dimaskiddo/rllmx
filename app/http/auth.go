@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	nethttp "net/http"
+	"time"
 
 	"rllmx/app/identity"
 )
@@ -17,6 +18,14 @@ type Authenticator interface {
 	RequireLogin(ctx context.Context) bool
 	// RequireAPIKey reports whether a local client API call needs a valid key.
 	RequireAPIKey(ctx context.Context) bool
+}
+
+// keyLimiter is the optional part of an Authenticator that throttles callers who
+// present refused API keys. A guard whose authenticator lacks it does not
+// throttle.
+type keyLimiter interface {
+	KeyLocked(r *nethttp.Request) time.Duration
+	KeyFailed(r *nethttp.Request)
 }
 
 // denyAll is the authenticator of a guard built without one: nobody is signed

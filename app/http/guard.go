@@ -5,7 +5,9 @@ import (
 	nethttp "net/http"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
 	"github.com/goravel/framework/contracts/route"
@@ -136,7 +138,20 @@ func (g *Guard) Protect(ctx contractshttp.Context) {
 	keyOK := false
 	var caller identity.Caller
 	if class == ClassLLM {
+		limiter, throttled := g.auth.(keyLimiter)
+		throttled = throttled && !local
+		if throttled && identity.ExtractKey(r) != "" {
+			if wait := limiter.KeyLocked(r); wait > 0 {
+				secs := max(int64((wait+time.Second-1)/time.Second), 1)
+				ctx.Response().Header("Retry-After", strconv.FormatInt(secs, 10))
+				deny(ctx, nethttp.StatusTooManyRequests, "")
+				return
+			}
+		}
 		res := g.auth.APIKey(r)
+		if throttled && res.Status == identity.KeyInvalid {
+			limiter.KeyFailed(r)
+		}
 		switch {
 		case res.Status == identity.KeyValid:
 			keyOK, caller = true, res.Caller

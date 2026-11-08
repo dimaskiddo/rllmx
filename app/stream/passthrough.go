@@ -2,11 +2,9 @@ package stream
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
-	"fmt"
 	"io"
+	"strconv"
 	"time"
 
 	"github.com/tidwall/gjson"
@@ -103,16 +101,14 @@ type normalizer struct {
 // fix returns a repaired chunk and false when the line is not one worth
 // forwarding: not JSON, or an empty delta.
 func (n *normalizer) fix(data []byte) ([]byte, bool) {
-	if !gjson.ValidBytes(data) || !gjson.ParseBytes(data).IsObject() {
+	if !gjson.ValidBytes(data) || !translate.IsObject(data) {
 		return nil, false
 	}
 	out := data
 	if gjson.GetBytes(out, "choices").Exists() {
-		if id := gjson.GetBytes(out, "id").String(); id == "" || id == "chat" || id == "completion" || len(id) < 8 {
+		if translate.WeakStreamID(gjson.GetBytes(out, "id").String()) {
 			if n.id == "" {
-				var b [8]byte
-				_, _ = rand.Read(b[:])
-				n.id = "chatcmpl-" + hex.EncodeToString(b[:])
+				n.id = translate.StrictStreamID("")
 			}
 			out, _ = sjson.SetBytes(out, "id", n.id)
 		}
@@ -125,10 +121,11 @@ func (n *normalizer) fix(data []byte) ([]byte, bool) {
 	}
 	out, _ = sjson.DeleteBytes(out, "prompt_filter_results")
 	for i := range gjson.GetBytes(out, "choices").Array() {
-		out, _ = sjson.DeleteBytes(out, fmt.Sprintf("choices.%d.content_filter_results", i))
-		tc := gjson.GetBytes(out, fmt.Sprintf("choices.%d.delta.tool_calls", i))
+		out, _ = sjson.DeleteBytes(out, choicePath(i, "content_filter_results"))
+		tcPath := choicePath(i, "delta.tool_calls")
+		tc := gjson.GetBytes(out, tcPath)
 		if tc.IsArray() && len(tc.Array()) == 0 {
-			out, _ = sjson.DeleteBytes(out, fmt.Sprintf("choices.%d.delta.tool_calls", i))
+			out, _ = sjson.DeleteBytes(out, tcPath)
 		}
 		out = n.toolIDs(out, i)
 	}
@@ -144,7 +141,7 @@ func (n *normalizer) toolIDs(b []byte, choice int) []byte {
 	if n.ids == nil {
 		n.ids = map[int64]string{}
 	}
-	path := fmt.Sprintf("choices.%d.delta.tool_calls", choice)
+	path := choicePath(choice, "delta.tool_calls")
 	for i, tc := range gjson.GetBytes(b, path).Array() {
 		idx := tc.Get("index").Int()
 		if id := tc.Get("id").String(); id != "" {
@@ -152,25 +149,30 @@ func (n *normalizer) toolIDs(b []byte, choice int) []byte {
 			continue
 		}
 		if _, open := n.ids[idx]; !open {
-			id := fmt.Sprintf("call_stream_%d", idx)
+			id := "call_stream_" + strconv.FormatInt(idx, 10)
 			n.ids[idx] = id
-			b, _ = sjson.SetBytes(b, fmt.Sprintf("%s.%d.id", path, i), id)
+			b, _ = sjson.SetBytes(b, path+"."+strconv.Itoa(i)+".id", id)
 		}
 	}
 	return b
 }
 
+// choicePath names a field of one choice. Small indexes come from strconv's
+// static table, so the common case allocates only the joined string.
+func choicePath(choice int, rest string) string {
+	return "choices." + strconv.Itoa(choice) + "." + rest
+}
+
 // worthSending is false for a chunk that carries nothing: no role, content,
 // reasoning, tool call, finish reason or usage.
 func worthSending(b []byte) bool {
-	g := gjson.ParseBytes(b)
-	if !g.Get("choices").Exists() {
+	if !gjson.GetBytes(b, "choices").Exists() {
 		return true
 	}
-	if g.Get("usage").IsObject() || g.Get("error").Exists() {
+	if gjson.GetBytes(b, "usage").IsObject() || gjson.GetBytes(b, "error").Exists() {
 		return true
 	}
-	c := g.Get("choices.0")
+	c := gjson.GetBytes(b, "choices.0")
 	d := c.Get("delta")
 	return d.Get("content").String() != "" || d.Get("role").Exists() || c.Get("finish_reason").String() != "" ||
 		d.Get("tool_calls").Exists() || d.Get("reasoning_content").String() != "" || d.Get("reasoning").String() != "" ||
@@ -183,42 +185,43 @@ type textReader struct{ format string }
 
 func newTextReader(format string) *textReader { return &textReader{format: format} }
 
+// The readers below look each path up with GetBytes, which scans the event in
+// place; ParseBytes would copy the whole event for every call.
+
 func (t *textReader) count(tr *Tracker, data []byte) {
-	g := gjson.ParseBytes(data)
+	get := func(path string) gjson.Result { return gjson.GetBytes(data, path) }
 	switch t.format {
 	case translate.FormatOpenAI:
-		d := g.Get("choices.0.delta")
-		tr.AddText(len(d.Get("content").String()) + len(d.Get("reasoning_content").String()))
+		tr.AddText(len(get("choices.0.delta.content").String()) + len(get("choices.0.delta.reasoning_content").String()))
 	case translate.FormatClaude:
-		d := g.Get("delta")
-		tr.AddText(len(d.Get("text").String()) + len(d.Get("thinking").String()))
+		tr.AddText(len(get("delta.text").String()) + len(get("delta.thinking").String()))
 	case translate.FormatResponses:
-		if typ := g.Get("type").String(); typ == "response.output_text.delta" || typ == "response.reasoning_summary_text.delta" {
-			tr.AddText(len(g.Get("delta").String()))
+		if typ := get("type").String(); typ == "response.output_text.delta" || typ == "response.reasoning_summary_text.delta" {
+			tr.AddText(len(get("delta").String()))
 		}
 	case translate.FormatGemini:
-		for _, p := range g.Get("candidates.0.content.parts").Array() {
+		for _, p := range get("candidates.0.content.parts").Array() {
 			tr.AddText(len(p.Get("text").String()))
 		}
 	case translate.FormatOllama:
-		tr.AddText(len(g.Get("message.content").String()) + len(g.Get("message.thinking").String()))
+		tr.AddText(len(get("message.content").String()) + len(get("message.thinking").String()))
 	}
 }
 
 func (t *textReader) finish(data []byte) string {
-	g := gjson.ParseBytes(data)
+	get := func(path string) gjson.Result { return gjson.GetBytes(data, path) }
 	switch t.format {
 	case translate.FormatOpenAI:
-		return g.Get("choices.0.finish_reason").String()
+		return get("choices.0.finish_reason").String()
 	case translate.FormatClaude:
-		return translate.FinishFromClaude(g.Get("delta.stop_reason").String())
+		return translate.FinishFromClaude(get("delta.stop_reason").String())
 	case translate.FormatGemini:
-		if f := g.Get("candidates.0.finishReason").String(); f != "" {
+		if f := get("candidates.0.finishReason").String(); f != "" {
 			return translate.FinishFromGemini(f)
 		}
 	case translate.FormatOllama:
-		if g.Get("done").Bool() {
-			return g.Get("done_reason").String()
+		if get("done").Bool() {
+			return get("done_reason").String()
 		}
 	}
 	return ""
@@ -226,14 +229,14 @@ func (t *textReader) finish(data []byte) string {
 
 // failed reports an error event inside the stream.
 func (t *textReader) failed(data []byte) bool {
-	g := gjson.ParseBytes(data)
+	get := func(path string) gjson.Result { return gjson.GetBytes(data, path) }
 	switch t.format {
 	case translate.FormatClaude:
-		return g.Get("type").String() == "error"
+		return get("type").String() == "error"
 	case translate.FormatResponses:
-		return g.Get("type").String() == "response.failed"
+		return get("type").String() == "response.failed"
 	case translate.FormatOllama:
-		return g.Get("error").Exists() && !g.Get("message").Exists()
+		return get("error").Exists() && !get("message").Exists()
 	}
-	return g.Get("error").IsObject()
+	return get("error").IsObject()
 }

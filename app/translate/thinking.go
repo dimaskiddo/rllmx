@@ -41,49 +41,6 @@ func fromSuffix(v string) Thinking {
 	return Thinking{Mode: s.Mode, Level: s.Level, Budget: s.Budget}
 }
 
-// ClampLevel moves a requested level onto the nearest one the model declares,
-// so a level it does not know is not sent. none is only honored when declared.
-func ClampLevel(level string, declared []string, order []string) string {
-	if len(declared) == 0 {
-		return level
-	}
-	for _, d := range declared {
-		if d == level {
-			return level
-		}
-	}
-	rank := func(l string) int {
-		for i, o := range order {
-			if o == l {
-				return i
-			}
-		}
-		return -1
-	}
-	want := rank(level)
-	if want < 0 {
-		return declared[0]
-	}
-	best, bestDist := declared[0], 1<<30
-	for _, d := range declared {
-		r := rank(d)
-		if r < 0 {
-			continue
-		}
-		dist := r - want
-		if dist < 0 {
-			dist = -dist
-		}
-		if dist < bestDist {
-			best, bestDist = d, dist
-		}
-	}
-	return best
-}
-
-// LevelOrder is the order of thinking levels from least to most.
-var LevelOrder = []string{"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"}
-
 // DropThinkingForPrefill removes thinking from a request whose last message is
 // not the user's: a model asked to continue its own turn cannot also start a
 // thinking block.

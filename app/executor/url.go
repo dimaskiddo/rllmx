@@ -36,11 +36,19 @@ func NodeURL(nodeType, base, apiType string) string {
 // action and stream, never by the body.
 func RegistryURL(e upstream.Entry, format, model string, stream bool) string {
 	if format != upstream.FormatGemini {
-		return e.Transport.BaseURL
+		return withSuffix(e.Transport.BaseURL, e.Transport.URLSuffix)
 	}
 	base := strings.TrimRight(e.Transport.BaseURL, "/")
 	if stream {
 		return base + "/" + url.PathEscape(model) + ":streamGenerateContent?alt=sse"
 	}
 	return base + "/" + url.PathEscape(model) + ":generateContent"
+}
+
+// withSuffix adds a provider's query string to an address that has none.
+func withSuffix(addr, suffix string) string {
+	if suffix == "" || strings.Contains(addr, "?") {
+		return addr
+	}
+	return addr + suffix
 }

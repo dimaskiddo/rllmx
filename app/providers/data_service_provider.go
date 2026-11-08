@@ -27,9 +27,6 @@ import (
 // server and the maintenance schedule share.
 const BindingData = "rllmx.data"
 
-// nowFn is the clock the maintenance jobs use; tests replace it.
-var nowFn = time.Now
-
 // drainTimeout bounds the last usage flush at shutdown.
 const drainTimeout = 30 * time.Second
 
@@ -94,7 +91,7 @@ func (r *DataServiceProvider) Register(app foundation.Application) {
 		jobs := data.NewJobSet(append(
 			data.MainJobs(func() *repository.Store { return d.Runner.Store() }),
 			data.AnalyticsJobs(func() *analytics.Store { return d.Runner.Analytics() }, func() int { return s.RetentionDays })...,
-		), app.Context(), app.MakeLog(), nowFn)
+		), app.Context(), app.MakeLog(), time.Now)
 		d.Jobs = jobs
 		d.Runner = data.NewRunner(data.Options{
 			DataDir: s.DataDir, Gate: d.Gate, Log: app.MakeLog(), Context: app.Context(),
@@ -138,14 +135,14 @@ func openMain(app foundation.Application, s *settings.Store, version string) fun
 		if err != nil {
 			return nil, err
 		}
-		authWarnings, err := authStartup(app, store)
+		authWarnings, err := authStartup(ctx, app, store)
 		if err != nil {
 			return nil, err
 		}
 		warnings = append(warnings, authWarnings...)
 		onSettingsWrite(store, func() *cache.Cache { return cacheOrNil(app) })
 
-		usage, err := openAnalytics(app, s, version)
+		usage, err := openAnalytics(ctx, app, s, version)
 		if err != nil {
 			return nil, err
 		}
@@ -159,8 +156,8 @@ func openMain(app foundation.Application, s *settings.Store, version string) fun
 				ctx, cancel := context.WithTimeout(context.Background(), drainTimeout)
 				defer cancel()
 				werr := writer.Close(ctx)
-				aerr := usage.Close(context.Background())
-				cerr := store.Checkpoint(context.Background())
+				aerr := usage.Close(ctx)
+				cerr := store.Checkpoint(ctx)
 				return errors.Join(werr, aerr, cerr)
 			},
 		}, nil
@@ -169,9 +166,9 @@ func openMain(app foundation.Application, s *settings.Store, version string) fun
 
 // openAnalytics connects the usage store through the one open path the db
 // commands use, so a command sees the file the server sees.
-func openAnalytics(app foundation.Application, s *settings.Store, version string) (*analytics.Store, error) {
+func openAnalytics(ctx context.Context, app foundation.Application, s *settings.Store, version string) (*analytics.Store, error) {
 	cfg := app.MakeConfig()
-	return data.OpenAnalytics(context.Background(), s, data.AnalyticsDeps{
+	return data.OpenAnalytics(ctx, s, data.AnalyticsDeps{
 		Config: cfg,
 		Connect: func(name string) (contractsdb.DB, contractsschema.Schema) {
 			return app.MakeDB().Connection(name), app.MakeSchema().Connection(name)
@@ -184,7 +181,7 @@ func openAnalytics(app foundation.Application, s *settings.Store, version string
 // it creates the machine id a key is bound to, and refuses the start while the
 // dashboard password is still a public default when
 // AUTH_REFUSE_DEFAULT_PASSWORD is set. The warnings never repeat a value.
-func authStartup(app foundation.Application, store *repository.Store) ([]string, error) {
+func authStartup(ctx context.Context, app foundation.Application, store *repository.Store) ([]string, error) {
 	cfg := app.MakeConfig()
 	if cfg == nil {
 		return nil, nil
@@ -211,7 +208,7 @@ func authStartup(app foundation.Application, store *repository.Store) ([]string,
 		return warnings, nil
 	}
 	pass := auth.NewPasswords(app.MakeHash(), cfg.GetString("auth.initial_password"))
-	d, err := store.Settings().Effective(context.Background())
+	d, err := store.Settings().Effective(ctx)
 	if err != nil {
 		return nil, err
 	}

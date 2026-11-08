@@ -2,43 +2,157 @@
   "id": "codex",
   "alias": "cx",
   "category": "oauth",
-  "display": { "name": "OpenAI Codex" },
-  "transport": { "baseUrl": "https://chatgpt.com/backend-api/codex/responses", "format": "openai-responses" },
+  "display": {
+    "name": "OpenAI Codex"
+  },
+  "transport": {
+    "baseUrl": "https://chatgpt.com/backend-api/codex/responses",
+    "format": "openai-responses",
+    "quirks": {
+      "inlineImages": true
+    }
+  },
   "oauth": {
     "flow": "code-pkce",
     "authorizeUrl": "https://auth.openai.com/oauth/authorize",
     "tokenUrl": "https://auth.openai.com/oauth/token",
     "scope": "openid profile email offline_access",
     "params": [
-      { "name": "id_token_add_organizations", "value": "true" },
-      { "name": "codex_cli_simplified_flow", "value": "true" },
-      { "name": "originator", "value": "codex_cli_rs" }
+      {
+        "name": "id_token_add_organizations",
+        "value": "true"
+      },
+      {
+        "name": "codex_cli_simplified_flow",
+        "value": "true"
+      },
+      {
+        "name": "originator",
+        "value": "codex_cli_rs"
+      }
     ],
     "redirect": "fixed",
     "fixedPort": 1455,
     "callbackPath": "/auth/callback",
     "exchange": "form",
     "hook": "codex",
-    "refresh": { "encoding": "json", "leadSeconds": 600, "maxAgeSeconds": 691200 },
+    "refresh": {
+      "encoding": "json",
+      "leadSeconds": 600,
+      "maxAgeSeconds": 691200
+    },
     "identity": {
       "originator": "codex_cli_rs",
       "User-Agent": "codex_cli_rs/0.159.0",
       "version": "0.159.0"
     },
-    "session": { "name": "session_id", "keyed": true },
-    "account": { "name": "ChatGPT-Account-ID", "from": ["workspaceId", "chatgptAccountId", "accountId"] }
+    "session": {
+      "name": "session_id",
+      "keyed": true
+    },
+    "account": {
+      "name": "ChatGPT-Account-ID",
+      "from": [
+        "workspaceId",
+        "chatgptAccountId",
+        "accountId"
+      ]
+    }
   },
   "models": [
-    { "id": "gpt-6.1-sol", "name": "GPT 6.1 Sol" },
-    { "id": "gpt-6.1-terra", "name": "GPT 6.1 Terra" },
-    { "id": "gpt-6-astra", "name": "GPT 6.0 Astra" },
-    { "id": "gpt-6-sol", "name": "GPT 6.0 Sol" },
-    { "id": "gpt-6-luna", "name": "GPT 6.0 Luna" },
-    { "id": "gpt-5.6-sol", "name": "GPT 5.6 Sol" },
-    { "id": "gpt-5.6-terra", "name": "GPT 5.6 Terra" },
-    { "id": "gpt-5.6-luna", "name": "GPT 5.6 Luna" },
-    { "id": "gpt-daybreak-blue-latest", "name": "GPT Daybreak Blue" },
-    { "id": "gpt-reserve", "name": "GPT Reserve" },
-    { "id": "codex-auto-review", "name": "Codex Auto Review" }
-  ]
+    {
+      "id": "gpt-6.1-sol",
+      "name": "GPT 6.1 Sol",
+      "lite": true,
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
+    },
+    {
+      "id": "gpt-6.1-terra",
+      "name": "GPT 6.1 Terra",
+      "lite": true,
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
+    },
+    {
+      "id": "gpt-6-astra",
+      "name": "GPT 6.0 Astra"
+    },
+    {
+      "id": "gpt-6-sol",
+      "name": "GPT 6.0 Sol",
+      "lite": true,
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
+    },
+    {
+      "id": "gpt-6-luna",
+      "name": "GPT 6.0 Luna",
+      "lite": true,
+      "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
+    },
+    {
+      "id": "gpt-5.6-sol",
+      "name": "GPT 5.6 Sol"
+    },
+    {
+      "id": "gpt-5.6-terra",
+      "name": "GPT 5.6 Terra"
+    },
+    {
+      "id": "gpt-5.6-luna",
+      "name": "GPT 5.6 Luna"
+    },
+    {
+      "id": "gpt-daybreak-blue-latest",
+      "name": "GPT Daybreak Blue"
+    },
+    {
+      "id": "gpt-reserve",
+      "name": "GPT Reserve"
+    },
+    {
+      "id": "codex-auto-review",
+      "name": "Codex Auto Review",
+      "upstreamId": "codex-auto-review"
+    },
+    {
+      "id": "gpt-5.6-sol-review",
+      "name": "GPT 5.6 Sol Review",
+      "upstreamId": "gpt-5.6-sol"
+    },
+    {
+      "id": "gpt-5.6-terra-review",
+      "name": "GPT 5.6 Terra Review",
+      "upstreamId": "gpt-5.6-terra"
+    },
+    {
+      "id": "gpt-5.6-luna-review",
+      "name": "GPT 5.6 Luna Review",
+      "upstreamId": "gpt-5.6-luna"
+    }
+  ],
+  "executor": "codex",
+  "forceStream": true
 }

@@ -7,10 +7,13 @@ import (
 	"time"
 )
 
-// Pending limits, from PRD 2: ten thousand sign-ins in flight, ten minutes each.
+// Pending limits: ten thousand sign-ins in flight, ten minutes each.
 const (
 	maxPending  = 10000
 	pendingLife = 10 * time.Minute
+	// maxPerOwner bounds the flows one client address may hold open, so one
+	// caller cannot fill the store and lock everyone else out of sign-in.
+	maxPerOwner = 50
 	// stateBytes is how much randomness a flow state carries.
 	stateBytes = 32
 )
@@ -27,8 +30,15 @@ type State struct {
 	// settings change mid-flow cannot redirect it to another provider.
 	Issuer   string
 	ClientID string
+	// Owner is the client the flow belongs to, empty when the caller has none.
+	Owner string
 	// CreatedAt decides expiry.
 	CreatedAt time.Time
+}
+
+type queued struct {
+	key string
+	at  time.Time
 }
 
 // Pending is the single-use store a sign-in lives in. Take removes the entry, so
@@ -36,12 +46,16 @@ type State struct {
 type Pending struct {
 	mu      sync.Mutex
 	entries map[string]State
-	Now     func() time.Time
+	// queue holds keys in creation order, so expiry pops from the front. A key
+	// already taken stays here until it ages out or the queue is compacted.
+	queue  []queued
+	owners map[string]int
+	Now    func() time.Time
 }
 
 // NewPending builds an empty store.
 func NewPending() *Pending {
-	return &Pending{entries: map[string]State{}, Now: time.Now}
+	return &Pending{entries: map[string]State{}, owners: map[string]int{}, Now: time.Now}
 }
 
 // Put stores a sign-in under a fresh state and returns the state.
@@ -65,13 +79,24 @@ func (p *Pending) PutKeyed(state string, entry State) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.dropExpired()
-	if len(p.entries) >= maxPending {
-		// The store is full of live flows, which means either a burst or an
-		// attacker. Refusing the new flow is the safe answer, because dropping
-		// another would let its own sign-in fail unpredictably.
+	if len(p.entries) >= maxPending || (entry.Owner != "" && p.owners[entry.Owner] >= maxPerOwner) {
+		// The store is full of live flows, or this client holds its share:
+		// either a burst or an attacker. Refusing the new flow is the safe
+		// answer, because dropping another would let its own sign-in fail
+		// unpredictably.
 		return ErrUnreachable
 	}
+	if old, ok := p.entries[state]; ok {
+		p.release(old)
+	}
 	p.entries[state] = entry
+	if entry.Owner != "" {
+		p.owners[entry.Owner]++
+	}
+	p.queue = append(p.queue, queued{key: state, at: entry.CreatedAt})
+	if len(p.queue) > 2*maxPending {
+		p.compact()
+	}
 	return nil
 }
 
@@ -85,6 +110,7 @@ func (p *Pending) Take(state string) (State, bool) {
 		return State{}, false
 	}
 	delete(p.entries, state)
+	p.release(entry)
 	if p.Now().Sub(entry.CreatedAt) > pendingLife {
 		return State{}, false
 	}
@@ -98,14 +124,44 @@ func (p *Pending) Len() int {
 	return len(p.entries)
 }
 
-// dropExpired removes every entry past its life. Called under the lock.
+// release gives back the per-owner slot an entry held. Called under the lock.
+func (p *Pending) release(e State) {
+	if e.Owner == "" {
+		return
+	}
+	if p.owners[e.Owner] <= 1 {
+		delete(p.owners, e.Owner)
+		return
+	}
+	p.owners[e.Owner]--
+}
+
+// dropExpired removes the entries past their life from the front of the queue.
+// Called under the lock.
 func (p *Pending) dropExpired() {
 	now := p.Now()
-	for k, v := range p.entries {
-		if now.Sub(v.CreatedAt) > pendingLife {
-			delete(p.entries, k)
+	n := 0
+	for n < len(p.queue) && now.Sub(p.queue[n].at) > pendingLife {
+		q := p.queue[n]
+		if e, ok := p.entries[q.key]; ok && e.CreatedAt.Equal(q.at) {
+			delete(p.entries, q.key)
+			p.release(e)
+		}
+		n++
+	}
+	p.queue = p.queue[n:]
+}
+
+// compact drops queue slots whose entry was taken, so a client that starts and
+// finishes flows cannot grow the queue. Called under the lock.
+func (p *Pending) compact() {
+	live := p.queue[:0]
+	for _, q := range p.queue {
+		if e, ok := p.entries[q.key]; ok && e.CreatedAt.Equal(q.at) {
+			live = append(live, q)
 		}
 	}
+	p.queue = live
 }
 
 // randomState returns 32 random bytes in unpadded base64url.

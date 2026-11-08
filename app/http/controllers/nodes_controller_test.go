@@ -24,7 +24,7 @@ func TestNodeCreateBuildsTheIDAndStoresCleanFields(t *testing.T) {
 		body, idPrefix, wantBase string
 	}{
 		"openai chat":      {`{"name":"A","prefix":"aa","apiType":"chat","baseUrl":"https://llm.example.com/v1/"}`, upstream.NodeOpenAIPrefix + "chat-", "https://llm.example.com/v1"},
-		"openai responses": {`{"name":"B","prefix":"bb","apiType":"responses","baseUrl":"https://r.example.com/v1"}`, upstream.NodeOpenAIPrefix + "responses-", "https://r.example.com/v1"},
+		"openai responses": {`{"name":"B","prefix":"qq","apiType":"responses","baseUrl":"https://r.example.com/v1"}`, upstream.NodeOpenAIPrefix + "responses-", "https://r.example.com/v1"},
 		"anthropic":        {`{"name":"C","prefix":"cc1","type":"anthropic-compatible","baseUrl":"https://a.example.com/v1/messages"}`, upstream.NodeAnthropicPrefix, "https://a.example.com/v1"},
 		"embedding":        {`{"name":"D","prefix":"dd","type":"custom-embedding","baseUrl":"https://e.example.com/v1/embeddings/"}`, upstream.NodeEmbeddingPrefix, "https://e.example.com/v1"},
 		"default base url": {`{"name":"E","prefix":"ee","apiType":"chat"}`, upstream.NodeOpenAIPrefix + "chat-", "https://api.openai.com/v1"},

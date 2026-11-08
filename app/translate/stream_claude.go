@@ -29,13 +29,13 @@ func (ClaudeCodec) NewStreamReader(c *Ctx) StreamReader {
 
 func (r *claudeReader) Flush() []Chunk { return nil }
 
-func (r *claudeReader) Read(event string, data []byte) ([]Chunk, error) {
+func (r *claudeReader) Read(event string, data []byte) []Chunk {
 	if !gjson.ValidBytes(data) {
-		return nil, nil
+		return nil
 	}
 	g := gjson.ParseBytes(data)
 	if !g.IsObject() {
-		return nil, nil
+		return nil
 	}
 	typ := g.Get("type").String()
 	if typ == "" {
@@ -50,26 +50,26 @@ func (r *claudeReader) Read(event string, data []byte) ([]Chunk, error) {
 			us := readClaudeUsage(u)
 			ch.Usage = &us
 		}
-		return []Chunk{ch}, nil
+		return []Chunk{ch}
 	case "content_block_start":
 		b := g.Get("content_block")
 		switch b.Get("type").String() {
 		case "text":
 			r.kind[idx] = "text"
 			if t := b.Get("text").String(); t != "" {
-				return []Chunk{{Text: t}}, nil
+				return []Chunk{{Text: t}}
 			}
 		case "thinking":
 			r.kind[idx] = "thinking"
 			if t := b.Get("thinking").String(); t != "" {
-				return []Chunk{{Reasoning: t}}, nil
+				return []Chunk{{Reasoning: t}}
 			}
 		case "tool_use":
 			r.kind[idx] = "tool"
 			n := r.nTools
 			r.nTools++
 			r.tool[idx] = n
-			return []Chunk{{ToolCalls: []ToolCallDelta{{Index: n, ID: b.Get("id").String(), Name: r.c.RestoreTool(b.Get("name").String())}}}}, nil
+			return []Chunk{{ToolCalls: []ToolCallDelta{{Index: n, ID: b.Get("id").String(), Name: r.c.RestoreTool(b.Get("name").String())}}}}
 		default:
 			r.kind[idx] = "skip"
 		}
@@ -78,20 +78,20 @@ func (r *claudeReader) Read(event string, data []byte) ([]Chunk, error) {
 		switch d.Get("type").String() {
 		case "text_delta":
 			if r.kind[idx] != "skip" && d.Get("text").String() != "" {
-				return []Chunk{{Text: d.Get("text").String()}}, nil
+				return []Chunk{{Text: d.Get("text").String()}}
 			}
 		case "thinking_delta":
 			if d.Get("thinking").String() != "" {
-				return []Chunk{{Reasoning: d.Get("thinking").String()}}, nil
+				return []Chunk{{Reasoning: d.Get("thinking").String()}}
 			}
 		case "signature_delta":
 			if d.Get("signature").String() != "" {
-				return []Chunk{{Signature: d.Get("signature").String()}}, nil
+				return []Chunk{{Signature: d.Get("signature").String()}}
 			}
 		case "input_json_delta":
 			n, ok := r.tool[idx]
 			if ok && r.kind[idx] == "tool" && d.Get("partial_json").String() != "" {
-				return []Chunk{{ToolCalls: []ToolCallDelta{{Index: n, Arguments: d.Get("partial_json").String()}}}}, nil
+				return []Chunk{{ToolCalls: []ToolCallDelta{{Index: n, Arguments: d.Get("partial_json").String()}}}}
 			}
 		}
 	case "message_delta":
@@ -105,16 +105,16 @@ func (r *claudeReader) Read(event string, data []byte) ([]Chunk, error) {
 			ch.FinishReason = FinishWithCalls(FinishFromClaude(s), r.nTools)
 			ch.Text = g.Get("delta.stop_details.explanation").String()
 		}
-		return []Chunk{ch}, nil
+		return []Chunk{ch}
 	case "message_stop":
 		if !r.finish && r.started {
 			r.finish = true
-			return []Chunk{{FinishReason: FinishWithCalls(FinishStop, r.nTools)}}, nil
+			return []Chunk{{FinishReason: FinishWithCalls(FinishStop, r.nTools)}}
 		}
 	case "error":
-		return []Chunk{{Err: readErrorObject(g.Get("error"))}}, nil
+		return []Chunk{{Err: readErrorObject(g.Get("error"))}}
 	}
-	return nil, nil
+	return nil
 }
 
 // claudeWriter writes Messages API events.
@@ -144,8 +144,24 @@ func (w *claudeWriter) Held() bool { return w.g.held() }
 
 func claudeFrame(typ string, o obj) Frame {
 	o["type"] = typ
-	b, _ := json.Marshal(o)
-	return Frame{Event: typ, Data: b}
+	return Frame{Event: typ, Data: frameData(o)}
+}
+
+// claudeDeltaFrame is the content_block_delta that carries one text or thinking
+// fragment, written in the sorted key order claudeFrame would give it.
+// kind is the delta type ("text_delta") and field the key holding the text.
+func claudeDeltaFrame(index int, kind, field, text string) Frame {
+	b := make([]byte, 0, 96+len(text))
+	b = append(b, `{"delta":{"`...)
+	b = append(b, field...)
+	b = append(b, `":`...)
+	b = appendJSONString(b, text)
+	b = append(b, `,"type":"`...)
+	b = append(b, kind...)
+	b = append(b, `"},"index":`...)
+	b = strconv.AppendInt(b, int64(index), 10)
+	b = append(b, `,"type":"content_block_delta"}`...)
+	return Frame{Event: "content_block_delta", Data: b}
 }
 
 func (w *claudeWriter) begin(c Chunk, out []Frame) []Frame {
@@ -172,9 +188,9 @@ func (w *claudeWriter) stop(block *int, out []Frame) []Frame {
 	return out
 }
 
-func (w *claudeWriter) Write(c Chunk) ([]Frame, error) {
+func (w *claudeWriter) Write(c Chunk) []Frame {
 	if c.Err != nil {
-		return nil, nil
+		return nil
 	}
 	var out []Frame
 	hasOutput := c.Text != "" || c.Reasoning != "" || c.Signature != "" || len(c.ToolCalls) > 0
@@ -189,7 +205,7 @@ func (w *claudeWriter) Write(c Chunk) ([]Frame, error) {
 			out = append(out, claudeFrame("content_block_start", obj{"index": w.thinking, "content_block": obj{"type": "thinking", "thinking": ""}}))
 		}
 		if c.Reasoning != "" {
-			out = append(out, claudeFrame("content_block_delta", obj{"index": w.thinking, "delta": obj{"type": "thinking_delta", "thinking": c.Reasoning}}))
+			out = append(out, claudeDeltaFrame(w.thinking, "thinking_delta", "thinking", c.Reasoning))
 		}
 		if c.Signature != "" {
 			out = append(out, claudeFrame("content_block_delta", obj{"index": w.thinking, "delta": obj{"type": "signature_delta", "signature": c.Signature}}))
@@ -202,7 +218,7 @@ func (w *claudeWriter) Write(c Chunk) ([]Frame, error) {
 			w.next++
 			out = append(out, claudeFrame("content_block_start", obj{"index": w.text, "content_block": obj{"type": "text", "text": ""}}))
 		}
-		out = append(out, claudeFrame("content_block_delta", obj{"index": w.text, "delta": obj{"type": "text_delta", "text": c.Text}}))
+		out = append(out, claudeDeltaFrame(w.text, "text_delta", "text", c.Text))
 	}
 	for _, tc := range c.ToolCalls {
 		call, open := w.byIndex[tc.Index]
@@ -226,7 +242,7 @@ func (w *claudeWriter) Write(c Chunk) ([]Frame, error) {
 		out = w.begin(c, out)
 		out = append(out, w.release()...)
 	}
-	return out, nil
+	return out
 }
 
 // release closes every open block and sends the final events.

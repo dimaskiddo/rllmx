@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"rllmx/app/file"
 	"rllmx/app/network"
 	"rllmx/app/upstream"
 )
@@ -149,12 +150,12 @@ func (c *Checker) do(ctx context.Context, method, target string, header map[stri
 		return 0, nil, classifyError(err)
 	}
 	defer resp.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(resp.Body, c.cap+1))
+	data, err := file.ReadCapped(resp.Body, c.cap)
+	if errors.Is(err, file.ErrTooLarge) {
+		return resp.StatusCode, nil, OutcomeTooLarge
+	}
 	if err != nil {
 		return 0, nil, classifyError(err)
-	}
-	if int64(len(data)) > c.cap {
-		return resp.StatusCode, nil, OutcomeTooLarge
 	}
 	return resp.StatusCode, data, OutcomeValid
 }

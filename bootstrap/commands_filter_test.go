@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"path"
 	"slices"
+	"strings"
 	"testing"
 
 	"rllmx/app/providers"
@@ -31,11 +32,28 @@ func TestTheFrameworkCommandsThatRewriteTheNineRouterTablesAreDropped(t *testing
 	}
 }
 
+func TestTheOrmGeneratorsAndUnlistedGeneratorsAreDropped(t *testing.T) {
+	for _, sig := range []string{"make:model", "make:observer", "make:seeder", "make:factory", "make:somethingnew"} {
+		if kept(sig) {
+			t.Errorf("%s is kept: this program has no ORM, and a generator nobody listed is not wanted", sig)
+		}
+	}
+}
+
+func TestNoGeneratorIsKeptByAGlob(t *testing.T) {
+	for _, e := range CommandsAllowlist() {
+		if strings.HasPrefix(e, "make:") && strings.ContainsAny(e, "*?[") {
+			t.Errorf("%s keeps every generator, the ORM ones included", e)
+		}
+	}
+}
+
 func TestTheCommandsTheProjectUsesAreKept(t *testing.T) {
 	for _, sig := range []string{
 		"health", "version", "list", "about", "route:list", "schedule:list", "schedule:run", "key:generate",
 		"package:install", "package:uninstall", "build", "vendor:publish", "env:encrypt", "env:decrypt", "up", "down",
-		"make:command", "make:provider", "make:middleware", "make:controller", "make:test", "make:migration",
+		"make:command", "make:controller", "make:filter", "make:middleware", "make:migration", "make:package",
+		"make:provider", "make:request", "make:rule", "make:test", "make:view",
 		"db:backup", "db:check", "db:vacuum", "db:import-analytics", "db:import-config", "db:export-plain",
 		"keys:create", "keys:list", "keys:revoke {id}", "password:reset",
 	} {

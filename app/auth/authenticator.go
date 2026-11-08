@@ -48,7 +48,9 @@ type Authenticator struct {
 	// SSOAllow reports whether an address may sign in through a provider, and
 	// whether only an exact match counts.
 	SSOAllow func(email string, exactOnly bool) bool
-	Now      func() time.Time
+	// ClientAddr names the caller for the key limiter. Nil means the socket peer.
+	ClientAddr func(r *nethttp.Request) string
+	Now        func() time.Time
 }
 
 // NewAuthenticator builds the authenticator. hasher is the framework's bcrypt
@@ -105,6 +107,28 @@ func (a *Authenticator) APIKey(r *nethttp.Request) identity.KeyResult {
 		return identity.KeyResult{Status: identity.KeyNone}
 	}
 	return a.Keys.Lookup(r.Context(), key)
+}
+
+// KeyLocked reports how long the caller of r must wait before another key is
+// looked up. A caller that guessed wrong too often gets no answer, right or
+// wrong, so the lock cannot be used to test a guess.
+func (a *Authenticator) KeyLocked(r *nethttp.Request) time.Duration {
+	return a.Limiter.Locked(a.keyLimit(r), a.Now())
+}
+
+// KeyFailed records one refused key against the caller of r. A valid key never
+// clears the count: whoever holds one valid key could otherwise reset it while
+// guessing for another.
+func (a *Authenticator) KeyFailed(r *nethttp.Request) {
+	a.Limiter.Fail(a.keyLimit(r), a.Now())
+}
+
+func (a *Authenticator) keyLimit(r *nethttp.Request) string {
+	addr := r.RemoteAddr
+	if a.ClientAddr != nil {
+		addr = a.ClientAddr(r)
+	}
+	return "key:" + Key(addr)
 }
 
 // RequireLogin reports whether the dashboard demands a login.

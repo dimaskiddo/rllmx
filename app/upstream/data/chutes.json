@@ -1,0 +1,20 @@
+{
+  "id": "chutes",
+  "alias": "chutes",
+  "aliases": [
+    "ch"
+  ],
+  "category": "apikey",
+  "display": {
+    "name": "Chutes AI"
+  },
+  "transport": {
+    "baseUrl": "https://llm.chutes.ai/v1/chat/completions"
+  },
+  "auth": {
+    "scheme": "bearer",
+    "header": "Authorization",
+    "validateUrl": "https://llm.chutes.ai/v1/models"
+  },
+  "models": []
+}

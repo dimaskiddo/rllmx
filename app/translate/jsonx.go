@@ -60,6 +60,18 @@ func (o obj) MarshalJSON() ([]byte, error) {
 	return append(buf, '}'), nil
 }
 
+// frameData encodes the object a stream writer built. Its values are strings,
+// numbers, booleans and objects built here, which json.Marshal cannot refuse;
+// the one failure it has (an unsupported value) cannot be reached from a chunk,
+// so there is no error to return.
+func frameData(o obj) []byte {
+	b, err := json.Marshal(o)
+	if err != nil {
+		return []byte("{}")
+	}
+	return b
+}
+
 // withExtra merges unmodelled fields into o without overriding a modelled one.
 func withExtra(o obj, extra map[string]json.RawMessage) obj {
 	for k, v := range extra {

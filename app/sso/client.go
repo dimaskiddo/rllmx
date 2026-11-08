@@ -5,18 +5,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/url"
 	"strings"
 	"time"
 
 	nethttp "net/http"
 
+	"rllmx/app/file"
 	"rllmx/app/network"
 )
 
-// The identity-provider client's own knobs, from PRD 2: a short timeout, a few
-// redirects, a small answer cap.
+// The identity-provider client's own knobs: a short timeout, a few redirects, a
+// small answer cap. A provider that needs more is misconfigured.
 const (
 	clientTimeout  = 10 * time.Second
 	clientRedirect = 3
@@ -78,7 +78,7 @@ func (c *Client) do(req *nethttp.Request, out any) error {
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, clientBodyCap))
+	body, err := file.ReadCapped(resp.Body, clientBodyCap)
 	if err != nil {
 		return ErrAnswer
 	}

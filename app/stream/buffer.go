@@ -19,7 +19,7 @@ func AddClientBuffer(format string, payload []byte) []byte {
 	if !gjson.ValidBytes(payload) {
 		return payload
 	}
-	for _, p := range bufferPaths(format, gjson.ParseBytes(payload)) {
+	for _, p := range bufferPaths(format, payload) {
 		payload = bump(payload, p)
 	}
 	return payload
@@ -28,7 +28,7 @@ func AddClientBuffer(format string, payload []byte) []byte {
 type usagePath struct{ obj, prompt, total string }
 
 // bufferPaths lists the usage objects a payload of format may carry.
-func bufferPaths(format string, g gjson.Result) []usagePath {
+func bufferPaths(format string, payload []byte) []usagePath {
 	switch format {
 	case translate.FormatClaude:
 		return []usagePath{{"message.usage", "input_tokens", ""}, {"usage", "input_tokens", ""}}
@@ -37,7 +37,7 @@ func bufferPaths(format string, g gjson.Result) []usagePath {
 	case translate.FormatGemini:
 		return []usagePath{{"usageMetadata", "promptTokenCount", "totalTokenCount"}, {"response.usageMetadata", "promptTokenCount", "totalTokenCount"}}
 	case translate.FormatOllama:
-		if g.Get("done").Bool() {
+		if gjson.GetBytes(payload, "done").Bool() {
 			return []usagePath{{"", "prompt_eval_count", ""}}
 		}
 		return nil

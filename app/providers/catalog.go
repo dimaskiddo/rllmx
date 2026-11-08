@@ -18,7 +18,7 @@ type CatalogSource struct{ lazy[catalog.Catalog] }
 
 // NewCatalogSource returns a source that reads the bound pieces from app.
 func NewCatalogSource(app foundation.Application) *CatalogSource {
-	return &CatalogSource{lazy[catalog.Catalog]{build: func() (*catalog.Catalog, error) { return buildCatalog(app) }}}
+	return &CatalogSource{lazy[catalog.Catalog]{build: func(context.Context) (*catalog.Catalog, error) { return buildCatalog(app) }}}
 }
 
 // Get returns the catalog, building it if no earlier call did.

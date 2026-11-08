@@ -31,9 +31,6 @@ func (t *Tracker) AddText(n int) { t.content += n }
 // ContentLen is the number of characters streamed so far.
 func (t *Tracker) ContentLen() int { return t.content }
 
-// Reported says whether the upstream gave any count.
-func (t *Tracker) Reported() bool { return t.reported }
-
 // Final returns the usage to store. With no report from the upstream it is
 // estimated from the request size and the output length, at about four
 // characters a token, and marked as estimated. With no output either it stays

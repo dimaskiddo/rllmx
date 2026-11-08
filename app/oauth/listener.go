@@ -2,6 +2,7 @@ package oauth
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"strconv"
@@ -167,7 +168,12 @@ func (l *Listeners) handler(port int, path string) http.Handler {
 		in := Input{Code: q.Get("code"), State: state, Failed: q.Get("error") != ""}
 		ctx, cancel := context.WithTimeout(r.Context(), listenerHandle)
 		defer cancel()
-		_ = l.Handle(ctx, port, state, in)
+		if err := l.Handle(ctx, port, state, in); err != nil && l.Log != nil {
+			var f *Failure
+			if errors.As(err, &f) {
+				l.Log.Warningf("oauth: a login on port %d failed: %s", port, f.Code)
+			}
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write([]byte(donePage))
 	})

@@ -3,7 +3,6 @@ package stream
 import (
 	"errors"
 	"net/http"
-	"strings"
 
 	"rllmx/app/translate"
 )
@@ -27,17 +26,34 @@ func NewNDJSON(w http.ResponseWriter, opt Options) (*NDJSON, error) {
 	return &NDJSON{k}, k.start()
 }
 
-// Line writes one JSON value as a line. A value with a line break would split
-// into two lines and is refused.
-func (n *NDJSON) Line(data string) error {
-	if strings.ContainsAny(data, "\r\n") {
-		return ErrLineBreak
+func hasLineBreak[T string | []byte](data T) bool {
+	for i := 0; i < len(data); i++ {
+		if data[i] == '\n' || data[i] == '\r' {
+			return true
+		}
 	}
-	return n.write(data + "\n")
+	return false
 }
 
+func line[T string | []byte](s *sink, data T) error {
+	if hasLineBreak(data) {
+		return ErrLineBreak
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	b := append(s.buf[:0], data...)
+	b = append(b, '\n')
+	err := s.writeLocked(b)
+	s.keep(b)
+	return err
+}
+
+// Line writes one JSON value as a line. A value with a line break would split
+// into two lines and is refused.
+func (n *NDJSON) Line(data string) error { return line(n.sink, data) }
+
 // Raw writes a pre-built frame, such as an error line from the failure package.
-func (n *NDJSON) Raw(frame []byte) error { return n.write(string(frame)) }
+func (n *NDJSON) Raw(frame []byte) error { return n.write(frame) }
 
 // Frame writes one frame from a stream writer. A format that streams lines has
 // no event names and no end marker.
@@ -45,5 +61,5 @@ func (n *NDJSON) Frame(f translate.Frame) error {
 	if f.Done {
 		return nil
 	}
-	return n.Line(string(f.Data))
+	return line(n.sink, f.Data)
 }

@@ -301,7 +301,7 @@ func TestEveryErrorResponseIsMarkedNoSniff(t *testing.T) {
 	}
 }
 
-func TestWriteUnavailableCarriesRetryAfterInHeaderAndBody(t *testing.T) {
+func TestUnavailableCarriesRetryAfterInHeaderAndBody(t *testing.T) {
 	now := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
 	for _, c := range []struct {
 		name  string
@@ -312,12 +312,11 @@ func TestWriteUnavailableCarriesRetryAfterInHeaderAndBody(t *testing.T) {
 		{"at least one second", now.Add(10 * time.Millisecond), "1"},
 		{"already past", now.Add(-time.Minute), "1"},
 	} {
-		rec := httptest.NewRecorder()
-		WriteUnavailable(rec, OpenAI, "[openai/gpt] all locked (reset after 1m)", c.at, now, nil)
-		if rec.Code != 503 || rec.Header().Get("Retry-After") != c.wantS {
-			t.Errorf("%s: code=%d retry-after=%q", c.name, rec.Code, rec.Header().Get("Retry-After"))
+		body, h := Unavailable(OpenAI, "[openai/gpt] all locked (reset after 1m)", c.at, now, nil)
+		if h.Get("Retry-After") != c.wantS {
+			t.Errorf("%s: retry-after=%q", c.name, h.Get("Retry-After"))
 		}
-		m := decode(t, rec.Body.String())
+		m := decode(t, string(body))
 		e, _ := m["error"].(map[string]any)
 		if e["type"] != "server_error" || e["code"] != "service_unavailable" || e["message"] != "[openai/gpt] all locked (reset after 1m)" {
 			t.Errorf("%s: error object %v", c.name, e)
@@ -328,27 +327,24 @@ func TestWriteUnavailableCarriesRetryAfterInHeaderAndBody(t *testing.T) {
 	}
 }
 
-func TestWriteUnavailableOtherFormatsKeepTheirShape(t *testing.T) {
+func TestUnavailableOtherFormatsKeepTheirShape(t *testing.T) {
 	now := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
-	rec := httptest.NewRecorder()
-	WriteUnavailable(rec, Anthropic, "busy", now.Add(time.Minute), now, nil)
-	m := decode(t, rec.Body.String())
-	if m["type"] != "error" || m["retryAfter"] == nil || rec.Header().Get("Retry-After") != "60" {
-		t.Fatalf("got %s", rec.Body.String())
+	body, h := Unavailable(Anthropic, "busy", now.Add(time.Minute), now, nil)
+	m := decode(t, string(body))
+	if m["type"] != "error" || m["retryAfter"] == nil || h.Get("Retry-After") != "60" {
+		t.Fatalf("got %s", body)
 	}
-	rec = httptest.NewRecorder()
-	WriteUnavailable(rec, Flat, "busy", now.Add(time.Minute), now, nil)
-	if decode(t, rec.Body.String())["error"] != "busy" {
-		t.Fatalf("got %s", rec.Body.String())
+	body, _ = Unavailable(Flat, "busy", now.Add(time.Minute), now, nil)
+	if decode(t, string(body))["error"] != "busy" {
+		t.Fatalf("got %s", body)
 	}
 }
 
-func TestWriteUnavailableEscapesTheMessage(t *testing.T) {
+func TestUnavailableEscapesTheMessage(t *testing.T) {
 	now := time.Now()
-	rec := httptest.NewRecorder()
-	WriteUnavailable(rec, OpenAI, `<script>"x"</script>`, now.Add(time.Second), now, nil)
-	if strings.Contains(rec.Body.String(), "<script>") {
-		t.Fatalf("message not escaped: %s", rec.Body.String())
+	body, _ := Unavailable(OpenAI, `<script>"x"</script>`, now.Add(time.Second), now, nil)
+	if strings.Contains(string(body), "<script>") {
+		t.Fatalf("message not escaped: %s", body)
 	}
 }
 
@@ -390,16 +386,15 @@ func TestReadStatus(t *testing.T) {
 	}
 }
 
-func TestWriteUnavailableKeepsTheUpstreamHintsButNotItsRetryAfter(t *testing.T) {
+func TestUnavailableKeepsTheUpstreamHintsButNotItsRetryAfter(t *testing.T) {
 	now := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
-	rec := httptest.NewRecorder()
 	extra := http.Header{"Retry-After": {"999"}, "Anthropic-Ratelimit-Requests-Remaining": {"0"}}
-	WriteUnavailable(rec, OpenAI, "busy", now.Add(30*time.Second), now, extra)
-	if got := rec.Header().Values("Retry-After"); len(got) != 1 || got[0] != "30" {
+	_, h := Unavailable(OpenAI, "busy", now.Add(30*time.Second), now, extra)
+	if got := h.Values("Retry-After"); len(got) != 1 || got[0] != "30" {
 		t.Errorf("the router's own Retry-After wins and stands alone: %v", got)
 	}
-	if rec.Header().Get("Anthropic-Ratelimit-Requests-Remaining") != "0" {
-		t.Errorf("an upstream rate-limit hint is kept: %v", rec.Header())
+	if h.Get("Anthropic-Ratelimit-Requests-Remaining") != "0" {
+		t.Errorf("an upstream rate-limit hint is kept: %v", h)
 	}
 	if extra.Get("Retry-After") != "999" {
 		t.Error("the caller's headers must not be changed")

@@ -314,7 +314,7 @@ func TestAFailedSettingsReadIsAnErrorAndIsNotCached(t *testing.T) {
 func TestTheSettingsSnapshotRefreshesAtTheTTLAndOnInvalidate(t *testing.T) {
 	r := newRig(t, `{}`)
 	reads := 0
-	cache := &settingsCache{now: r.clock, src: settingsFn(func(context.Context) (document.Doc, error) { reads++; return document.From(`{}`), nil })}
+	cache := newSettingsCache(settingsFn(func(context.Context) (document.Doc, error) { reads++; return document.From(`{}`), nil }), r.clock)
 	ctx := context.Background()
 	for range 3 {
 		_, _ = cache.get(ctx)

@@ -1,6 +1,7 @@
 package translate
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -140,7 +141,7 @@ func (OllamaCodec) WriteRequest(r *Request, c *Ctx) ([]byte, error) {
 			if strings.TrimSpace(text) == "" {
 				continue
 			}
-			msgs = append(msgs, obj{"role": "tool", "tool_name": firstNonEmptyStr(names[m.ToolCallID], m.Name, "unknown_tool"), "content": text})
+			msgs = append(msgs, obj{"role": "tool", "tool_name": cmp.Or(names[m.ToolCallID], m.Name, "unknown_tool"), "content": text})
 			continue
 		case RoleAssistant:
 			w := obj{"role": role, "content": m.Text()}

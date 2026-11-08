@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	nethttp "net/http"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -542,15 +543,9 @@ func firstNonEmpty(vals ...string) string {
 	return ""
 }
 
-func quote(s string) string {
-	raw, _ := json.Marshal(s)
-	return string(raw)
-}
+func quote(s string) string { return document.Encode(s) }
 
-func jsonInt(n int64) string {
-	raw, _ := json.Marshal(n)
-	return string(raw)
-}
+func jsonInt(n int64) string { return strconv.FormatInt(n, 10) }
 
 // bindJSON decodes the request body into v, refusing one over 1 MiB.
 func bindJSON(ctx contractshttp.Context, v any) error {

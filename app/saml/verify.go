@@ -313,6 +313,8 @@ func etreeAssertions(raw []byte) [][]byte {
 		}
 		return nil
 	})
-	_ = err
+	if err != nil {
+		return nil
+	}
 	return out
 }

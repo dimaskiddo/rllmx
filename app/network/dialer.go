@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/netip"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -23,14 +22,24 @@ func NewDialer(timeout time.Duration, allow *Allow) *Guard {
 type Guard struct {
 	dialer *net.Dialer
 	allow  *Allow
+	// lookup replaces the system resolver in tests.
+	lookup func(ctx context.Context, host string) ([]netip.Addr, error)
+}
+
+func (g *Guard) resolve(ctx context.Context, host string) ([]netip.Addr, error) {
+	if g.lookup != nil {
+		return g.lookup(ctx, host)
+	}
+	return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
 }
 
 // Timeout is the dial timeout the guard was built with.
 func (g *Guard) Timeout() time.Duration { return g.dialer.Timeout }
 
 // targets resolves addr and returns the permitted IP literals to try, in the
-// resolver's order. A name on the list short-circuits classification for every
-// address it returns, which is what lets a listed private-network IdP work.
+// resolver's order. A name on the list skips the Internal check for every
+// address it returns, which is what lets a listed private-network IdP work. A
+// Never address is refused whatever the list says.
 func (g *Guard) targets(ctx context.Context, addr string) (string, []string, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -47,14 +56,14 @@ func (g *Guard) targets(ctx context.Context, addr string) (string, []string, err
 		return addr, []string{net.JoinHostPort(embedded(ip).String(), port)}, nil
 	}
 
-	ips, err := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+	ips, err := g.resolve(ctx, host)
 	if err != nil || len(ips) == 0 {
 		return "", nil, errors.New("network: the host name did not resolve")
 	}
 	listed := g.allow.Permits(host)
 	var out []string
 	for _, ip := range ips {
-		if listed || permitted(ip, g.allow) {
+		if Classify(ip) != Never && (listed || permitted(ip, g.allow)) {
 			out = append(out, net.JoinHostPort(embedded(ip).String(), port))
 		}
 	}
@@ -108,14 +117,4 @@ func (g *Guard) String() string {
 		return "network: internal addresses refused"
 	}
 	return "network: " + strconv.Itoa(g.allow.Len()) + " allowed private entries"
-}
-
-// HostPort splits a URL target for a caller that wants to pre-check it. It
-// returns false for anything a dial would refuse anyway.
-func HostPort(hostport string) (string, string, bool) {
-	host, port, err := net.SplitHostPort(hostport)
-	if err != nil {
-		return "", "", false
-	}
-	return strings.TrimSuffix(host, "."), port, true
 }

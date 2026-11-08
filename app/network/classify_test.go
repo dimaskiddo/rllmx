@@ -44,6 +44,10 @@ func TestClassify(t *testing.T) {
 		{"::ffff:8.8.8.8", Public},
 		{"64:ff9b::a00:1", Internal},
 		{"64:ff9b::808:808", Public},
+		{"::a9fe:a9fe", Never},
+		{"::10.0.0.1", Internal},
+		{"::8.8.8.8", Public},
+		{"64:ff9b:1::1", Internal},
 	}
 	for _, tc := range cases {
 		if got := Classify(addr(t, tc.ip)); got != tc.want {

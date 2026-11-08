@@ -7,7 +7,7 @@ import (
 )
 
 // Attribute spellings an identity provider uses for an email address, in the
-// order PRD 2 tries them. The configured attribute name is tried first.
+// order they are tried. The configured attribute name is tried first.
 var emailAttributes = []string{
 	"email", "mail", "emailAddress", "EmailAddress", "urn:oid:0.9.2342.19200300.100.1.3",
 	"http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress",

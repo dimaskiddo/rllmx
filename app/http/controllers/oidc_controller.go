@@ -59,6 +59,9 @@ func (c *OIDCController) Start(ctx contractshttp.Context) contractshttp.Response
 	if wait := c.Auth.Limiter.Locked(key, c.Auth.Now()); wait > 0 {
 		return c.fail(ctx, base, sso.CodeBusy)
 	}
+	if len(c.Auth.Secret()) == 0 {
+		return c.fail(ctx, base, sso.CodeIdPError)
+	}
 
 	doc, err := oidc.Discover(r.Context(), c.Client, c.Cache, set.Issuer)
 	if err != nil {
@@ -76,7 +79,7 @@ func (c *OIDCController) Start(ctx contractshttp.Context) contractshttp.Response
 	}
 
 	state, err := c.Pending.Put(sso.State{
-		Nonce: nonce, Verifier: verifier, Issuer: doc.Issuer, ClientID: set.ClientID,
+		Nonce: nonce, Verifier: verifier, Issuer: doc.Issuer, ClientID: set.ClientID, Owner: key,
 	})
 	if err != nil {
 		return c.fail(ctx, base, sso.CodeBusy)

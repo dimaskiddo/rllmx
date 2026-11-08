@@ -1,0 +1,43 @@
+{
+  "id": "minimax",
+  "alias": "minimax",
+  "category": "apikey",
+  "display": {
+    "name": "Minimax Coding"
+  },
+  "transport": {
+    "baseUrl": "https://api.minimax.io/anthropic/v1/messages",
+    "format": "claude",
+    "headers": {
+      "anthropic-version": "2023-06-01",
+      "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14"
+    },
+    "urlSuffix": "?beta=true",
+    "quirks": {
+      "requireClaudeToolType": true
+    },
+    "reasoningInject": "all"
+  },
+  "auth": {
+    "scheme": "raw",
+    "header": "x-api-key"
+  },
+  "models": [
+    {
+      "id": "MiniMax-M3",
+      "name": "MiniMax M3"
+    },
+    {
+      "id": "MiniMax-M2.7",
+      "name": "MiniMax M2.7"
+    },
+    {
+      "id": "MiniMax-M2.5",
+      "name": "MiniMax M2.5"
+    },
+    {
+      "id": "MiniMax-M2.1",
+      "name": "MiniMax M2.1"
+    }
+  ]
+}

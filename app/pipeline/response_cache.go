@@ -180,20 +180,22 @@ func (c *call) cached(ctx context.Context) (Output, bool) {
 // so a setting that changes it can never share an entry with one that does not.
 func (c *call) requestKey(body []byte) string {
 	t := c.tctx.Thinking
-	return cacheKey(
+	return cacheKeyBody([]string{
 		c.in.Caller.ID, c.format, c.dest.provider, c.dest.model, c.client,
-		t.Mode, t.Level, strconv.Itoa(t.Budget), t.Display, string(body),
-	)
+		t.Mode, t.Level, strconv.Itoa(t.Budget), t.Display,
+	}, body)
 }
 
 // cachedAnswer is what an entry holds: the client-format body and the counts
 // the first call reported. It holds no request text and no credential.
 type cachedAnswer struct {
-	Body       []byte `json:"b"`
-	Prompt     int64  `json:"p"`
-	Completion int64  `json:"c"`
-	Cached     int64  `json:"k"`
-	Reasoning  int64  `json:"r"`
+	// Body is stored as the JSON it is: a byte slice would be base64 text,
+	// a third larger in the budget.
+	Body       json.RawMessage `json:"b"`
+	Prompt     int64           `json:"p"`
+	Completion int64           `json:"c"`
+	Cached     int64           `json:"k"`
+	Reasoning  int64           `json:"r"`
 }
 
 // storable is true for an answer the cache may keep: no tool call, in either

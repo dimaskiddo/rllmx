@@ -2,13 +2,14 @@ package oauth
 
 import (
 	"context"
-	"encoding/json"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/goravel/framework/contracts/log"
 
 	"rllmx/app/dialect"
+	"rllmx/app/document"
 	"rllmx/app/oidc"
 	"rllmx/app/repository"
 	"rllmx/app/upstream"
@@ -56,12 +57,7 @@ type Started struct {
 }
 
 func (s *Service) flow(provider string) (Flow, error) {
-	id, ok := s.Registry.Resolve(provider)
-	if !ok {
-		return Flow{}, ErrUnsupported
-	}
-	e, _ := s.Registry.ByID(id)
-	return NewFlow(e, s.ClientID(id))
+	return FlowFor(s.Registry, s.ClientID, provider)
 }
 
 // Start opens a login. local says whether the browser runs on this machine;
@@ -192,15 +188,9 @@ func (s *Service) store(ctx context.Context, f Flow, t Tokens) (string, error) {
 	return conn.ID, nil
 }
 
-func quote(s string) string {
-	b, _ := json.Marshal(s)
-	return string(b)
-}
+func quote(s string) string { return document.Encode(s) }
 
-func jsonInt(n int64) string {
-	b, _ := json.Marshal(n)
-	return string(b)
-}
+func jsonInt(n int64) string { return strconv.FormatInt(n, 10) }
 
 // jsonObject renders a string map as a JSON object with sorted keys, or "".
 func jsonObject(m map[string]string) string {

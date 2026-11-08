@@ -2,6 +2,7 @@ package sso
 
 import (
 	"context"
+	"errors"
 	nethttp "net/http"
 	"net/http/httptest"
 	"strings"
@@ -95,6 +96,16 @@ func TestBindTiesTheStateToTheBrowser(t *testing.T) {
 	}
 }
 
+func TestNoSecretBindsNothingAndMatchesNothing(t *testing.T) {
+	if got := Bind(nil, "state"); got != "" {
+		t.Fatalf("a bind under no secret is %q: anybody could compute it", got)
+	}
+	forged := BindFor([]byte("x"), BindCookie, "state")
+	if BindMatches(nil, "state", forged) || BindMatches([]byte{}, "state", "") {
+		t.Fatal("a callback matched with no secret")
+	}
+}
+
 func TestWritePrivateStateIsSingleUse(t *testing.T) {
 	p := NewPending()
 	state, err := p.Put(State{Nonce: "n", Verifier: "v", Issuer: "i", ClientID: "c"})
@@ -168,6 +179,66 @@ func TestPendingDropsExpiredEntriesOnPut(t *testing.T) {
 	}
 }
 
+func TestOneOwnerCannotFillTheStore(t *testing.T) {
+	p := NewPending()
+	var first string
+	for i := range maxPerOwner {
+		state, err := p.Put(State{Nonce: "n", Owner: "attacker"})
+		if err != nil {
+			t.Fatalf("start %d refused: %v", i, err)
+		}
+		if i == 0 {
+			first = state
+		}
+	}
+	if _, err := p.Put(State{Nonce: "n", Owner: "attacker"}); err == nil {
+		t.Fatal("one owner opened more flows than its share")
+	}
+	if _, err := p.Put(State{Nonce: "n", Owner: "someone-else"}); err != nil {
+		t.Fatalf("another owner was refused while the first held its share: %v", err)
+	}
+	if _, ok := p.Take(first); !ok {
+		t.Fatal("a held flow was lost")
+	}
+	if _, err := p.Put(State{Nonce: "n", Owner: "attacker"}); err != nil {
+		t.Fatalf("finishing a flow did not give its slot back: %v", err)
+	}
+}
+
+func TestOwnerSlotsReturnWhenFlowsExpire(t *testing.T) {
+	p := NewPending()
+	now := time.Now()
+	p.Now = func() time.Time { return now }
+	for range maxPerOwner {
+		if _, err := p.Put(State{Nonce: "n", Owner: "a"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now = now.Add(pendingLife + time.Second)
+	if _, err := p.Put(State{Nonce: "n", Owner: "a"}); err != nil {
+		t.Fatalf("expired flows still hold the owner's slots: %v", err)
+	}
+	if p.Len() != 1 || len(p.owners) != 1 || p.owners["a"] != 1 {
+		t.Fatalf("entries %d owners %v", p.Len(), p.owners)
+	}
+}
+
+func TestStartingAndFinishingFlowsDoesNotGrowTheQueue(t *testing.T) {
+	p := NewPending()
+	for range 5 * maxPending {
+		state, err := p.Put(State{Nonce: "n", Owner: "a"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := p.Take(state); !ok {
+			t.Fatal("a fresh flow was not found")
+		}
+	}
+	if len(p.queue) > 2*maxPending+1 {
+		t.Fatalf("queue grew to %d", len(p.queue))
+	}
+}
+
 func TestParseAllow(t *testing.T) {
 	open := ParseAllow("")
 	if !open.Empty() || !open.Allows("anyone@anywhere.test", false) {
@@ -230,6 +301,29 @@ func TestTheClientReportsNoProviderText(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "internal-detail") {
 		t.Fatalf("the error repeats provider text: %v", err)
+	}
+}
+
+func TestAnAnswerOverTheCapIsAnErrorAndOneAtTheCapIsRead(t *testing.T) {
+	pad := func(n int) string { return `{"k":"` + strings.Repeat("x", n-8) + `"}` }
+	srv := newTestServer(t, nethttp.HandlerFunc(func(w nethttp.ResponseWriter, r *nethttp.Request) {
+		if r.URL.Path == "/at" {
+			_, _ = w.Write([]byte(pad(clientBodyCap)))
+			return
+		}
+		_, _ = w.Write([]byte(pad(clientBodyCap + 1)))
+	}))
+	allow, err := network.ParseAllow("127.0.0.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := NewClient(allow)
+	var out map[string]any
+	if err := c.GetJSON(context.Background(), srv+"/at", &out); err != nil {
+		t.Fatalf("an answer exactly at the cap was refused: %v", err)
+	}
+	if err := c.GetJSON(context.Background(), srv+"/over", &out); !errors.Is(err, ErrAnswer) {
+		t.Fatalf("an answer one byte over the cap gave %v, want ErrAnswer", err)
 	}
 }
 

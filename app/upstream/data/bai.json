@@ -1,0 +1,20 @@
+{
+  "id": "bai",
+  "alias": "bai",
+  "aliases": [
+    "b-ai"
+  ],
+  "category": "apikey",
+  "display": {
+    "name": "B.AI"
+  },
+  "transport": {
+    "baseUrl": "https://api.b.ai/v1/chat/completions"
+  },
+  "auth": {
+    "scheme": "bearer",
+    "header": "Authorization",
+    "validateUrl": "https://api.b.ai/v1/models"
+  },
+  "models": []
+}

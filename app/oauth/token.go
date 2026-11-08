@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/tidwall/gjson"
 
+	"rllmx/app/file"
 	"rllmx/app/network"
 	"rllmx/app/upstream"
 )
@@ -106,12 +106,12 @@ func (c *TokenClient) call(ctx context.Context, tokenURL, encoding string, field
 		return Tokens{}, &Error{ClassTransport}
 	}
 	defer resp.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxTokenBody+1))
+	raw, err := file.ReadCapped(resp.Body, maxTokenBody)
+	if errors.Is(err, file.ErrTooLarge) {
+		return Tokens{}, &Error{ClassMalformed}
+	}
 	if err != nil {
 		return Tokens{}, &Error{ClassTransport}
-	}
-	if len(raw) > maxTokenBody {
-		return Tokens{}, &Error{ClassMalformed}
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return Tokens{}, &Error{classify(raw)}

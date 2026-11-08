@@ -76,12 +76,14 @@ func loopbackHost(hostport string) bool {
 // loopbackOrigin reports whether an Origin header is a loopback web origin.
 // "null" (sandboxed pages, file:// and redirects) is never local.
 func loopbackOrigin(origin string) bool {
-	rest, ok := originHost(origin)
+	rest, ok := OriginHost(origin)
 	return ok && loopbackHost(rest)
 }
 
-func originHost(origin string) (string, bool) {
-	l := strings.ToLower(origin)
+// OriginHost strips the scheme from an Origin value. The scheme is ignored
+// because a reverse proxy may terminate TLS before the request arrives.
+func OriginHost(origin string) (string, bool) {
+	l := strings.ToLower(strings.TrimSpace(origin))
 	switch {
 	case strings.HasPrefix(l, "http://"):
 		return l[len("http://"):], true

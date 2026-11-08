@@ -110,6 +110,34 @@ func TestTranslateOpenAIToClaude(t *testing.T) {
 	}
 }
 
+func TestATranslatedStreamPastItsCapEndsWithAnErrorFrame(t *testing.T) {
+	var in strings.Builder
+	for range 10 {
+		in.WriteString("data: {\"id\":\"chatcmpl-abc12345\",\"choices\":[{\"delta\":{\"content\":\"0123456789\"}}]}\n\n")
+	}
+	for _, client := range []string{"claude", "openai-responses"} {
+		c := &fakeClient{}
+		j := job(sseBody(in.String()), "openai", client, c)
+		j.MaxBytes = 35
+		res := Run(context.Background(), j)
+		if !errors.Is(res.Err, ErrCollectedTooLarge) || res.Status != 502 {
+			t.Fatalf("%s: err %v status %d", client, res.Err, res.Status)
+		}
+		if len(c.raw) != 1 || !strings.Contains(string(c.raw[0]), "too large") {
+			t.Fatalf("%s: raw frames %q", client, c.raw)
+		}
+	}
+}
+
+func TestATranslatedStreamAtItsCapFinishesNormally(t *testing.T) {
+	body := sseBody("data: {\"id\":\"chatcmpl-abc12345\",\"choices\":[{\"delta\":{\"content\":\"0123456789\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")
+	j := job(body, "openai", "claude", &fakeClient{})
+	j.MaxBytes = 10
+	if res := Run(context.Background(), j); res.Err != nil {
+		t.Fatalf("an answer exactly at the cap failed: %v", res.Err)
+	}
+}
+
 func TestTranslateEndsWithExactlyOneDone(t *testing.T) {
 	c := &fakeClient{}
 	Run(context.Background(), job(sseBody(strings.ReplaceAll(openAIStream, "data: [DONE]\n\n", "")), "openai", "openai", c))
@@ -395,6 +423,49 @@ func TestCollectAddsAStreamUpIntoOneAnswer(t *testing.T) {
 	enc, err := (translate.ClaudeCodec{}).WriteResponse(&got.Response, translate.NewCtx("claude", "openai"))
 	if err != nil || !strings.Contains(string(enc), `"tool_use"`) {
 		t.Fatalf("%s %v", enc, err)
+	}
+}
+
+func TestCollectStopsPastItsCap(t *testing.T) {
+	frame := func(delta string) string {
+		return "data: {\"id\":\"chatcmpl-abc12345\",\"choices\":[{\"delta\":" + delta + "}]}\n\n"
+	}
+	cases := map[string]string{
+		"text": frame(`{"content":"0123456789"}`) + frame(`{"content":"0123456789"}`),
+		"args": frame(`{"tool_calls":[{"index":0,"id":"c","function":{"name":"f","arguments":"0123456789"}}]}`) +
+			frame(`{"tool_calls":[{"index":0,"function":{"arguments":"0123456789"}}]}`),
+	}
+	for name, in := range cases {
+		body := sseBody(in)
+		_, err := collectUpTo(context.Background(), body, NewReader(body), "openai", translate.NewCtx("", "openai"), Timers{}, 0, 15)
+		if !errors.Is(err, ErrCollectedTooLarge) {
+			t.Errorf("%s: err %v, want ErrCollectedTooLarge", name, err)
+		}
+		if got := ReasonText(err); got != "The upstream answer is too large" {
+			t.Errorf("%s: reason %q", name, got)
+		}
+	}
+	body := sseBody(cases["text"])
+	if _, err := collectUpTo(context.Background(), body, NewReader(body), "openai", translate.NewCtx("", "openai"), Timers{}, 0, 20); err != nil {
+		t.Fatalf("an answer exactly at the cap failed: %v", err)
+	}
+}
+
+func TestCollectJoinsManySmallArgumentFragments(t *testing.T) {
+	var in strings.Builder
+	in.WriteString("data: {\"id\":\"chatcmpl-abc12345\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c\",\"function\":{\"name\":\"f\",\"arguments\":\"[\"}}]}}]}\n\n")
+	for range 500 {
+		in.WriteString("data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"1,\"}}]}}]}\n\n")
+	}
+	in.WriteString("data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"2]\"}}]}}]}\n\n")
+	body := sseBody(in.String())
+	got, err := Collect(context.Background(), body, NewReader(body), "openai", translate.NewCtx("", "openai"), Timers{}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "[" + strings.Repeat("1,", 500) + "2]"
+	if a := got.Response.Message.ToolCalls[0].Arguments; a != want {
+		t.Fatalf("arguments %d bytes, want %d", len(a), len(want))
 	}
 }
 

@@ -1,0 +1,34 @@
+{
+  "id": "together",
+  "alias": "together",
+  "category": "apikey",
+  "display": {
+    "name": "Together AI"
+  },
+  "transport": {
+    "baseUrl": "https://api.together.xyz/v1/chat/completions"
+  },
+  "auth": {
+    "scheme": "bearer",
+    "header": "Authorization",
+    "validateUrl": "https://api.together.xyz/v1/models"
+  },
+  "models": [
+    {
+      "id": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+      "name": "Llama 3.3 70B Turbo"
+    },
+    {
+      "id": "deepseek-ai/DeepSeek-R1",
+      "name": "DeepSeek R1"
+    },
+    {
+      "id": "Qwen/Qwen3-235B-A22B",
+      "name": "Qwen3 235B"
+    },
+    {
+      "id": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+      "name": "Llama 4 Maverick"
+    }
+  ]
+}

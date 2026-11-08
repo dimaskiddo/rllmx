@@ -23,14 +23,27 @@ type Collected struct {
 	ContentLen int
 }
 
+// MaxCollected bounds what Collect adds up from one stream, so an upstream that
+// trickles forever cannot grow the buffer without end. It matches the cap on a
+// non-stream answer.
+const MaxCollected = 64 << 20
+
+// ErrCollectedTooLarge means a stream added up to more than MaxCollected.
+var ErrCollectedTooLarge = errors.New("stream: the upstream answer is too large")
+
 type callBuf struct {
 	translate.ToolCall
+	args strings.Builder
 }
 
 // Collect reads an upstream stream to its end and returns the one answer it
 // adds up to. It serves a client that asked for JSON from a provider that only
 // streams. Only the hub is touched, so it works for every upstream format.
 func Collect(ctx context.Context, body io.ReadCloser, src Source, format string, c *translate.Ctx, t Timers, requestBytes int) (Collected, error) {
+	return collectUpTo(ctx, body, src, format, c, t, requestBytes, MaxCollected)
+}
+
+func collectUpTo(ctx context.Context, body io.ReadCloser, src Source, format string, c *translate.Ctx, t Timers, requestBytes, limit int) (Collected, error) {
 	codec, ok := translate.Lookup(format)
 	if !ok {
 		_ = body.Close()
@@ -42,11 +55,19 @@ func Collect(ctx context.Context, body io.ReadCloser, src Source, format string,
 	track := NewTracker(format)
 
 	var out Collected
-	var text, reasoning strings.Builder
+	var text, reasoning, signature strings.Builder
 	calls := map[int]*callBuf{}
+	total := 0
 	absorb := func(ch translate.Chunk) error {
 		if ch.Err != nil {
 			return ErrStreamFailed
+		}
+		total += len(ch.Text) + len(ch.Reasoning) + len(ch.Signature)
+		for _, d := range ch.ToolCalls {
+			total += len(d.Arguments)
+		}
+		if total > limit {
+			return ErrCollectedTooLarge
 		}
 		if ch.ID != "" && out.Response.ID == "" {
 			out.Response.ID = ch.ID
@@ -60,7 +81,7 @@ func Collect(ctx context.Context, body io.ReadCloser, src Source, format string,
 		text.WriteString(ch.Text)
 		reasoning.WriteString(ch.Reasoning)
 		track.AddText(len(ch.Text) + len(ch.Reasoning))
-		out.Response.Message.ReasoningSignature += ch.Signature
+		signature.WriteString(ch.Signature)
 		out.Response.Message.Content = append(out.Response.Message.Content, ch.Images...)
 		for _, d := range ch.ToolCalls {
 			cb := calls[d.Index]
@@ -78,7 +99,7 @@ func Collect(ctx context.Context, body io.ReadCloser, src Source, format string,
 				cb.Signature = d.Signature
 			}
 			cb.Custom = cb.Custom || d.Custom
-			cb.Arguments += d.Arguments
+			cb.args.WriteString(d.Arguments)
 		}
 		if ch.FinishReason != "" {
 			out.Finish = ch.FinishReason
@@ -99,8 +120,7 @@ func Collect(ctx context.Context, body io.ReadCloser, src Source, format string,
 			return Collected{}, err
 		}
 		track.Feed(ev.Data)
-		chunks, _ := reader.Read(ev.Name, ev.Data)
-		for _, ch := range chunks {
+		for _, ch := range reader.Read(ev.Name, ev.Data) {
 			if err := absorb(ch); err != nil {
 				return Collected{}, err
 			}
@@ -110,6 +130,7 @@ func Collect(ctx context.Context, body io.ReadCloser, src Source, format string,
 	msg := &out.Response.Message
 	msg.Role = translate.RoleAssistant
 	msg.Reasoning = reasoning.String()
+	msg.ReasoningSignature = signature.String()
 	if text.Len() > 0 {
 		msg.Content = append(translate.TextPart(text.String()), msg.Content...)
 	}
@@ -120,6 +141,7 @@ func Collect(ctx context.Context, body io.ReadCloser, src Source, format string,
 	sort.Ints(idx)
 	for _, i := range idx {
 		call := calls[i].ToolCall
+		call.Arguments = calls[i].args.String()
 		if call.Arguments == "" {
 			call.Arguments = "{}"
 		}

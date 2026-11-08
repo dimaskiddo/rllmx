@@ -3,7 +3,10 @@
 // target, so a new format needs one codec and no pair.
 package translate
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // Role is who a message is from.
 type Role string
@@ -35,6 +38,9 @@ type Part struct {
 	Data      string
 	Detail    string
 	Name      string
+	// Cache is the prompt-cache marker a Claude client put on a text block, kept
+	// only for an upstream whose data asks for it.
+	Cache json.RawMessage
 }
 
 // ToolCall is a function the model asked to run. Arguments is the JSON text of
@@ -199,13 +205,31 @@ type Chunk struct {
 
 // Text joins the text parts of a message.
 func (m Message) Text() string {
-	var out string
+	first, n, size := -1, 0, 0
+	for i, p := range m.Content {
+		if p.Type != PartText {
+			continue
+		}
+		if first < 0 {
+			first = i
+		}
+		n++
+		size += len(p.Text)
+	}
+	switch n {
+	case 0:
+		return ""
+	case 1:
+		return m.Content[first].Text
+	}
+	var b strings.Builder
+	b.Grow(size)
 	for _, p := range m.Content {
 		if p.Type == PartText {
-			out += p.Text
+			b.WriteString(p.Text)
 		}
 	}
-	return out
+	return b.String()
 }
 
 // TextPart is a message body of plain text.

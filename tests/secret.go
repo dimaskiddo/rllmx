@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"encoding/hex"
 	"testing"
 
 	"rllmx/app/sealer"
@@ -16,7 +17,7 @@ const (
 // Box is the sealing box for a 64-hex secret.
 func Box(t testing.TB, secret string) *sealer.Box {
 	t.Helper()
-	raw, err := sealer.ParseSecret(secret)
+	raw, err := hex.DecodeString(secret)
 	if err != nil {
 		t.Fatal(err)
 	}

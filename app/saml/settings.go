@@ -10,7 +10,7 @@ import (
 	"errors"
 	"net/url"
 	"strings"
-	"sync"
+	"sync/atomic"
 
 	"rllmx/app/document"
 	"rllmx/app/network"
@@ -122,13 +122,16 @@ func validEntityID(id string) bool {
 	return err == nil && u.Scheme == "https" && u.Hostname() != "" && u.User == nil
 }
 
-// certCache keeps one parsed certificate per stored value, because the ACS
-// parses it on every sign-in and the value only changes when the row does.
-var certCache struct {
-	mu   sync.Mutex
+// parsedCert is a certificate with the stored text it came from.
+type parsedCert struct {
 	raw  string
 	cert *x509.Certificate
 }
+
+// lastCert keeps the latest parsed certificate, because the ACS parses it on
+// every sign-in and the value only changes when the row does. The pair is
+// never edited once stored, so a reader needs no lock.
+var lastCert atomic.Pointer[parsedCert]
 
 // ParseCertificate reads the IdP signing certificate. It accepts a PEM block or
 // bare base64, which is what a provider's metadata page hands out.
@@ -137,13 +140,9 @@ func ParseCertificate(raw string) (*x509.Certificate, error) {
 	if raw == "" {
 		return nil, ErrConfig
 	}
-	certCache.mu.Lock()
-	if certCache.raw == raw && certCache.cert != nil {
-		cert := certCache.cert
-		certCache.mu.Unlock()
-		return cert, nil
+	if p := lastCert.Load(); p != nil && p.raw == raw {
+		return p.cert, nil
 	}
-	certCache.mu.Unlock()
 
 	der, err := certificateDER(raw)
 	if err != nil {
@@ -153,9 +152,7 @@ func ParseCertificate(raw string) (*x509.Certificate, error) {
 	if err != nil {
 		return nil, ErrConfig
 	}
-	certCache.mu.Lock()
-	certCache.raw, certCache.cert = raw, cert
-	certCache.mu.Unlock()
+	lastCert.Store(&parsedCert{raw: raw, cert: cert})
 	return cert, nil
 }
 

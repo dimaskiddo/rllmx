@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"rllmx/app/translate"
 	"rllmx/tests"
 )
 
@@ -33,6 +34,79 @@ func TestHeadersAndFirstFlush(t *testing.T) {
 	}
 	if h.Get("Content-Length") != "" {
 		t.Fatal("a stream must not declare a length")
+	}
+}
+
+// referenceDataLines is the string-based splitter the byte version replaced.
+func referenceDataLines(data string) string {
+	data = strings.ReplaceAll(data, "\r\n", "\n")
+	data = strings.ReplaceAll(data, "\r", "\n")
+	var b strings.Builder
+	for line := range strings.SplitSeq(data, "\n") {
+		b.WriteString("data: ")
+		b.WriteString(line)
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+func TestDataLinesMatchTheStringSplitter(t *testing.T) {
+	for _, in := range []string{
+		"", "a", "a\nb", "a\r\nb", "a\rb", "\n", "\r", "\r\n", "\n\n", "\r\r\n\n", "a\n", "a\r", "a\r\n", "\r\na", "x\r\r\ry",
+	} {
+		want := referenceDataLines(in)
+		if got := string(appendDataLines(nil, in)); got != want {
+			t.Errorf("string %q: got %q want %q", in, got, want)
+		}
+		if got := string(appendDataLines(nil, []byte(in))); got != want {
+			t.Errorf("bytes %q: got %q want %q", in, got, want)
+		}
+	}
+}
+
+func FuzzDataLinesMatchTheStringSplitter(f *testing.F) {
+	for _, s := range []string{"", "a\nb", "a\r\nb", "\r", "x\r\r\ny"} {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, in string) {
+		want := referenceDataLines(in)
+		if got := string(appendDataLines(nil, in)); got != want {
+			t.Fatalf("%q: got %q want %q", in, got, want)
+		}
+		if strings.Contains(want, "\r") {
+			t.Fatalf("the reference left a CR in %q", in)
+		}
+	})
+}
+
+func TestTheScratchBufferIsReusedAndNotKeptWhenHuge(t *testing.T) {
+	rec := httptest.NewRecorder()
+	s, err := NewSSE(rec, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Data("small"); err != nil {
+		t.Fatal(err)
+	}
+	if cap(s.buf) == 0 {
+		t.Fatal("the buffer was not kept for the next frame")
+	}
+	if err := s.Data(strings.Repeat("x", maxScratch+1)); err != nil {
+		t.Fatal(err)
+	}
+	if s.buf != nil {
+		t.Fatalf("an oversized buffer (%d) was kept", cap(s.buf))
+	}
+	rec2 := httptest.NewRecorder()
+	n, _ := NewNDJSON(rec2, Options{})
+	if err := n.Line(`{"a":1}`); err != nil || rec2.Body.String() != "{\"a\":1}\n" {
+		t.Fatalf("ndjson line: %v %q", err, rec2.Body.String())
+	}
+	if err := n.Frame(translate.Frame{Data: []byte("{\"a\":\r1}")}); !errors.Is(err, ErrLineBreak) {
+		t.Fatalf("a frame with a CR was not refused: %v", err)
+	}
+	if err := n.Frame(translate.Frame{Data: []byte(`{"b":2}`)}); err != nil || !strings.HasSuffix(rec2.Body.String(), "{\"b\":2}\n") {
+		t.Fatalf("ndjson frame: %v %q", err, rec2.Body.String())
 	}
 }
 

@@ -92,6 +92,41 @@ func TestAReadErrorEndsTheReader(t *testing.T) {
 	}
 }
 
+func TestAnEventKeepsItsBytesWhenTheNextOneIsRead(t *testing.T) {
+	in := "event: one\ndata: first-payload-aaaa\n\nevent: two\ndata: second-payload-bbbb\n\ndata: x\ndata: y\n\n"
+	r := NewReader(strings.NewReader(in))
+	var held []Event
+	for {
+		ev, err := r.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		held = append(held, ev)
+	}
+	want := []Event{{Name: "one", Data: []byte("first-payload-aaaa")}, {Name: "two", Data: []byte("second-payload-bbbb")}, {Data: []byte("x\ny")}}
+	for i, w := range want {
+		if held[i].Name != w.Name || string(held[i].Data) != string(w.Data) {
+			t.Fatalf("event %d changed after later reads: %+v", i, held[i])
+		}
+	}
+	ln := NewLines(strings.NewReader("{\"a\":1}\n{\"b\":2}\n"))
+	a, _ := ln.Next()
+	b, _ := ln.Next()
+	if string(a.Data) != `{"a":1}` || string(b.Data) != `{"b":2}` {
+		t.Fatalf("lines aliased: %q %q", a.Data, b.Data)
+	}
+}
+
+func TestAnEmptyDataLineIsStillAnEvent(t *testing.T) {
+	got := collect(t, NewReader(strings.NewReader("data:\n\ndata: \ndata: z\n\n")))
+	if len(got) != 2 || len(got[0].Data) != 0 || string(got[1].Data) != "\nz" {
+		t.Fatalf("%q", got)
+	}
+}
+
 func TestLinesReadObjectsOnly(t *testing.T) {
 	in := bom + "{\"a\":1}\n\n  {\"b\":2}  \r\nnot json\n[1]\n{\"c\":3}"
 	got := collect(t, NewLines(strings.NewReader(in)))

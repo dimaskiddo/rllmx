@@ -29,11 +29,7 @@ func emit(t *testing.T, format string, chunks []Chunk) []Frame {
 	w := c.NewStreamWriter(NewCtx(format, format))
 	var out []Frame
 	for _, ch := range chunks {
-		f, err := w.Write(ch)
-		if err != nil {
-			t.Fatal(err)
-		}
-		out = append(out, f...)
+		out = append(out, w.Write(ch)...)
 	}
 	return append(out, w.Close()...)
 }
@@ -48,11 +44,7 @@ func back(t *testing.T, format string, frames []Frame) []Chunk {
 		if f.Done {
 			continue
 		}
-		chunks, err := r.Read(f.Event, f.Data)
-		if err != nil {
-			t.Fatal(err)
-		}
-		out = append(out, chunks...)
+		out = append(out, r.Read(f.Event, f.Data)...)
 	}
 	return append(out, r.Flush()...)
 }
@@ -153,8 +145,8 @@ func TestAFinishWaitsForItsUsageAndCloseReleasesIt(t *testing.T) {
 	for _, format := range Formats() {
 		c, _ := Lookup(format)
 		w := c.NewStreamWriter(NewCtx(format, format))
-		_, _ = w.Write(Chunk{ID: "chatcmpl-abcdef12", Model: "m", Role: RoleAssistant, Text: "hi"})
-		f, _ := w.Write(Chunk{FinishReason: FinishStop})
+		_ = w.Write(Chunk{ID: "chatcmpl-abcdef12", Model: "m", Role: RoleAssistant, Text: "hi"})
+		f := w.Write(Chunk{FinishReason: FinishStop})
 		if !w.Held() {
 			t.Errorf("%s: finish not held", format)
 		}
@@ -215,7 +207,7 @@ func TestUsageMergesByMaximumAcrossEvents(t *testing.T) {
 		`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}`,
 		`{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":9}}`,
 	} {
-		ch, _ := r.Read("", []byte(ev))
+		ch := r.Read("", []byte(ev))
 		all = append(all, ch...)
 	}
 	u := fold(all).usage
@@ -234,7 +226,7 @@ func TestEveryUpstreamErrorBecomesAnErrorChunk(t *testing.T) {
 	}
 	for format, ev := range cases {
 		c, _ := Lookup(format)
-		ch, _ := c.NewStreamReader(NewCtx("", format)).Read("", []byte(ev))
+		ch := c.NewStreamReader(NewCtx("", format)).Read("", []byte(ev))
 		if len(ch) != 1 || ch[0].Err == nil || ch[0].Err.Message != "boom" {
 			t.Errorf("%s: %+v", format, ch)
 		}
@@ -244,15 +236,15 @@ func TestEveryUpstreamErrorBecomesAnErrorChunk(t *testing.T) {
 func TestAToolFragmentOpeningAnIndexWithoutAnIDGetsOne(t *testing.T) {
 	c, _ := Lookup(FormatOpenAI)
 	r := c.NewStreamReader(NewCtx("", FormatOpenAI))
-	ch, _ := r.Read("", []byte(`{"id":"x","choices":[{"delta":{"tool_calls":[{"index":1,"function":{"name":"f","arguments":"{"}}]}}]}`))
+	ch := r.Read("", []byte(`{"id":"x","choices":[{"delta":{"tool_calls":[{"index":1,"function":{"name":"f","arguments":"{"}}]}}]}`))
 	if len(ch) != 1 || ch[0].ToolCalls[0].ID == "" {
 		t.Fatalf("%+v", ch)
 	}
-	again, _ := r.Read("", []byte(`{"id":"x","choices":[{"delta":{"tool_calls":[{"index":1,"function":{"arguments":"}"}}]}}]}`))
+	again := r.Read("", []byte(`{"id":"x","choices":[{"delta":{"tool_calls":[{"index":1,"function":{"arguments":"}"}}]}}]}`))
 	if again[0].ToolCalls[0].ID != "" {
 		t.Fatal("a later fragment repeated the id")
 	}
-	empty, _ := r.Read("", []byte(`{"id":"x","choices":[{"delta":{"content":"","tool_calls":[]}}]}`))
+	empty := r.Read("", []byte(`{"id":"x","choices":[{"delta":{"content":"","tool_calls":[]}}]}`))
 	if len(empty) != 0 {
 		t.Fatalf("an empty delta passed: %+v", empty)
 	}
@@ -261,8 +253,8 @@ func TestAToolFragmentOpeningAnIndexWithoutAnIDGetsOne(t *testing.T) {
 func TestARepeatedToolIDOpensNoSecondCall(t *testing.T) {
 	c, _ := Lookup(FormatOpenAI)
 	r := c.NewStreamReader(NewCtx("", FormatOpenAI))
-	first, _ := r.Read("", []byte(`{"id":"x","choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"f","arguments":"{"}}]}}]}`))
-	again, _ := r.Read("", []byte(`{"id":"x","choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"arguments":"}"}}]}}]}`))
+	first := r.Read("", []byte(`{"id":"x","choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"f","arguments":"{"}}]}}]}`))
+	again := r.Read("", []byte(`{"id":"x","choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"arguments":"}"}}]}}]}`))
 	if first[0].ToolCalls[0].ID != "c1" || again[0].ToolCalls[0].ID != "" {
 		t.Fatalf("%+v %+v", first, again)
 	}
@@ -273,7 +265,7 @@ func TestARepeatedToolIDOpensNoSecondCall(t *testing.T) {
 		{ToolCalls: []ToolCallDelta{{Index: 0, ID: "c1", Arguments: "}"}}},
 		{FinishReason: FinishToolCalls, Usage: &Usage{Prompt: 1, Completion: 1}},
 	} {
-		f, _ := w.Write(ch)
+		f := w.Write(ch)
 		out = append(out, f...)
 	}
 	starts := 0
@@ -294,7 +286,7 @@ func TestTheOpenAIWriterOpensACallOnceWithItsIDAndName(t *testing.T) {
 		{ID: "chatcmpl-abcdef12", Model: "m", Role: RoleAssistant, ToolCalls: []ToolCallDelta{{Index: 0, ID: "c1", Name: "f", Arguments: "{"}}},
 		{ToolCalls: []ToolCallDelta{{Index: 0, ID: "c1", Name: "f", Arguments: "}"}}},
 	} {
-		f, _ := w.Write(ch)
+		f := w.Write(ch)
 		out = append(out, f...)
 	}
 	if len(out) != 2 || strings.Count(string(out[0].Data), `"id":"c1"`) != 1 || strings.Contains(string(out[1].Data), `"id":"c1"`) || strings.Contains(string(out[1].Data), `"name"`) {
@@ -324,9 +316,9 @@ func TestTheOpenAIWriterReplacesAShortID(t *testing.T) {
 func TestResponsesAcceptsDoneAndCompletedOnce(t *testing.T) {
 	c, _ := Lookup(FormatResponses)
 	r := c.NewStreamReader(NewCtx("", FormatResponses))
-	_, _ = r.Read("", []byte(`{"type":"response.created","response":{"id":"r"}}`))
-	a, _ := r.Read("", []byte(`{"type":"response.done","response":{"usage":{"input_tokens":3,"output_tokens":4}}}`))
-	b, _ := r.Read("", []byte(`{"type":"response.completed","response":{}}`))
+	_ = r.Read("", []byte(`{"type":"response.created","response":{"id":"r"}}`))
+	a := r.Read("", []byte(`{"type":"response.done","response":{"usage":{"input_tokens":3,"output_tokens":4}}}`))
+	b := r.Read("", []byte(`{"type":"response.completed","response":{}}`))
 	if len(a) != 1 || a[0].FinishReason == "" || a[0].Usage.Prompt != 3 || len(b) != 0 {
 		t.Fatalf("%+v %+v", a, b)
 	}
@@ -341,7 +333,7 @@ func TestTheResponsesWriterNamesCustomToolCalls(t *testing.T) {
 		{ID: "r1", Model: "m", Role: RoleAssistant, ToolCalls: []ToolCallDelta{{Index: 0, ID: "c1", Name: "patch", Arguments: `{"input":"diff"}`}}},
 		{FinishReason: FinishToolCalls, Usage: &Usage{Prompt: 1, Completion: 1}},
 	} {
-		f, _ := w.Write(ch)
+		f := w.Write(ch)
 		out = append(out, f...)
 	}
 	joined := ""
@@ -359,12 +351,12 @@ func TestTheResponsesWriterNamesCustomToolCalls(t *testing.T) {
 
 func TestTheGeminiWriterHoldsACallUntilTheTurnEnds(t *testing.T) {
 	w := (GeminiCodec{}).NewStreamWriter(NewCtx("", FormatGemini))
-	f1, _ := w.Write(Chunk{ID: "r", Model: "m", Role: RoleAssistant, ToolCalls: []ToolCallDelta{{Index: 0, ID: "c", Name: "f", Arguments: `{"a":`}}})
-	f2, _ := w.Write(Chunk{ToolCalls: []ToolCallDelta{{Index: 0, Arguments: `1}`}}})
+	f1 := w.Write(Chunk{ID: "r", Model: "m", Role: RoleAssistant, ToolCalls: []ToolCallDelta{{Index: 0, ID: "c", Name: "f", Arguments: `{"a":`}}})
+	f2 := w.Write(Chunk{ToolCalls: []ToolCallDelta{{Index: 0, Arguments: `1}`}}})
 	if len(f1)+len(f2) != 0 {
 		t.Fatal("a call left before the turn ended")
 	}
-	f3, _ := w.Write(Chunk{FinishReason: FinishToolCalls, Usage: &Usage{Prompt: 2, Completion: 3}})
+	f3 := w.Write(Chunk{FinishReason: FinishToolCalls, Usage: &Usage{Prompt: 2, Completion: 3}})
 	if len(f3) != 2 || !bytes.Contains(f3[0].Data, []byte(`"args":{"a":1}`)) {
 		t.Fatalf("%d frames: %s", len(f3), f3[0].Data)
 	}
@@ -448,13 +440,13 @@ func FuzzStreamReaders(f *testing.F) {
 		for _, from := range Formats() {
 			fc, _ := Lookup(from)
 			r := fc.NewStreamReader(NewCtx("", from))
-			chunks, _ := r.Read("", []byte(in))
+			chunks := r.Read("", []byte(in))
 			chunks = append(chunks, r.Flush()...)
 			for _, to := range Formats() {
 				tc, _ := Lookup(to)
 				w := tc.NewStreamWriter(NewCtx(to, from))
 				for _, ch := range chunks {
-					_, _ = w.Write(ch)
+					_ = w.Write(ch)
 				}
 				_ = w.Close()
 			}

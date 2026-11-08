@@ -212,3 +212,19 @@ func TestDuplicatedFetchSiteOrOriginIsNeverTrusted(t *testing.T) {
 		}
 	}
 }
+
+func TestOriginHostStripsTheSchemeAndTheSpacesAroundIt(t *testing.T) {
+	for in, want := range map[string]string{
+		"http://localhost:3000": "localhost:3000", "HTTPS://Example.COM": "example.com",
+		"  http://a.test  ": "a.test", "\thttps://b.test\n": "b.test",
+	} {
+		if got, ok := OriginHost(in); !ok || got != want {
+			t.Errorf("%q: %q %v, want %q", in, got, ok, want)
+		}
+	}
+	for _, in := range []string{"", "null", "ftp://x", "localhost", "  null  "} {
+		if got, ok := OriginHost(in); ok {
+			t.Errorf("%q gave %q", in, got)
+		}
+	}
+}

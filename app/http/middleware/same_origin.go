@@ -83,19 +83,6 @@ func sameOrigin(r *nethttp.Request) bool {
 	if len(origins) > 1 {
 		return false
 	}
-	host, ok := originHost(origins[0])
+	host, ok := apphttp.OriginHost(origins[0])
 	return ok && host != "" && host == strings.ToLower(r.Host)
-}
-
-// originHost strips the scheme from an Origin value. The scheme is ignored
-// because a reverse proxy may terminate TLS before the request arrives.
-func originHost(origin string) (string, bool) {
-	l := strings.ToLower(strings.TrimSpace(origin))
-	switch {
-	case strings.HasPrefix(l, "http://"):
-		return l[len("http://"):], true
-	case strings.HasPrefix(l, "https://"):
-		return l[len("https://"):], true
-	}
-	return "", false
 }

@@ -113,13 +113,22 @@ func writeValue(dec *json.Decoder, out *bytes.Buffer) bool {
 
 // cacheKey hashes the parts of a request that decide its answer. Each part is
 // length-prefixed, so moving bytes from one part to the next changes the hash.
-func cacheKey(parts ...string) string {
+func cacheKey(parts ...string) string { return cacheKeyBody(parts, nil) }
+
+// cacheKeyBody is cacheKey with one more part given as bytes, hashed without a
+// copy. The bytes count as the last part.
+func cacheKeyBody(parts []string, last []byte) string {
 	h := sha256.New()
 	var n [8]byte
 	for _, p := range parts {
 		binary.BigEndian.PutUint64(n[:], uint64(len(p)))
 		h.Write(n[:])
-		h.Write([]byte(p))
+		_, _ = io.WriteString(h, p)
+	}
+	if last != nil {
+		binary.BigEndian.PutUint64(n[:], uint64(len(last)))
+		h.Write(n[:])
+		h.Write(last)
 	}
 	return hex.EncodeToString(h.Sum(nil))
 }

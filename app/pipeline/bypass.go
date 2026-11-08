@@ -117,11 +117,7 @@ func (c *call) bypassStream(ctx context.Context, codec translate.Codec, resp *tr
 		{ID: resp.ID, Model: resp.Model, Created: resp.Created, FinishReason: resp.FinishReason, Usage: &usage},
 	}
 	for _, ch := range chunks {
-		frames, err := w.Write(ch)
-		if err != nil {
-			return c.internal(ctx, err)
-		}
-		if !sendAll(client, frames) {
+		if !sendAll(client, w.Write(ch)) {
 			return c.closed()
 		}
 	}

@@ -47,10 +47,17 @@ var internalPrefixes = []netip.Prefix{
 	netip.MustParsePrefix("ff00::/8"),
 	netip.MustParsePrefix("224.0.0.0/4"),
 	netip.MustParsePrefix("240.0.0.0/4"),
+	// Local-use NAT64: where the IPv4 address sits depends on the prefix length,
+	// so the whole range needs a list entry instead of being decoded.
+	netip.MustParsePrefix("64:ff9b:1::/48"),
 }
 
 // nat64 is the IPv6 range that carries an IPv4 address in its low 32 bits.
 var nat64 = netip.MustParsePrefix("64:ff9b::/96")
+
+// compatible is the deprecated IPv4-compatible range, which also carries an
+// IPv4 address in its low 32 bits.
+var compatible = netip.MustParsePrefix("::/96")
 
 // Classify judges an address. The order is invalid, then Never, then
 // Internal against Public: Never must beat a list entry, which is the rule a
@@ -87,7 +94,7 @@ func embedded(a netip.Addr) netip.Addr {
 	if !a.Is6() {
 		return a
 	}
-	if nat64.Contains(a) {
+	if nat64.Contains(a) || compatible.Contains(a) {
 		b := a.As16()
 		if v4, ok := netip.AddrFromSlice(b[12:16]); ok {
 			return v4

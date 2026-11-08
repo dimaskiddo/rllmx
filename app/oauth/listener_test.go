@@ -6,9 +6,12 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"rllmx/tests"
 )
 
 func freePort(t *testing.T) int {
@@ -185,5 +188,35 @@ func TestAFullCodexLoginOverTheListener(t *testing.T) {
 	}
 	if st := svc.Sessions.Status(started.State, "bind"); st.State != "done" {
 		t.Fatalf("%+v", st)
+	}
+}
+
+func TestAFailedLoginIsLoggedByItsCodeAndNothingElse(t *testing.T) {
+	lg := &tests.Log{}
+	sessions := NewSessions()
+	l := &Listeners{
+		Host: "127.0.0.1", Sessions: sessions, Log: lg,
+		Handle: func(context.Context, int, string, Input) error { return &Failure{Code: CodeDenied} },
+	}
+	t.Cleanup(l.Close)
+	port := freePort(t)
+	if !l.Acquire(port, "/auth/callback") {
+		t.Fatal("the port was not bound")
+	}
+	state, _ := sessions.Put(Session{Port: port, Bind: "b"})
+	if code, _ := get(t, port, "localhost:"+strconv.Itoa(port), "/auth/callback?code=SECRETCODE&state="+state); code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	var seen bool
+	for _, line := range lg.Lines() {
+		if strings.Contains(line, "SECRETCODE") || strings.Contains(line, state) {
+			t.Fatalf("the log line carries login data: %q", line)
+		}
+		if strings.Contains(line, CodeDenied) {
+			seen = true
+		}
+	}
+	if !seen {
+		t.Fatalf("a failed login was not logged: %v", lg.Lines())
 	}
 }

@@ -1,8 +1,8 @@
 package translate
 
 import (
-	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -40,13 +40,13 @@ func (r *responsesReader) Flush() []Chunk {
 	return []Chunk{{FinishReason: FinishWithCalls(FinishStop, r.calls)}}
 }
 
-func (r *responsesReader) Read(event string, data []byte) ([]Chunk, error) {
+func (r *responsesReader) Read(event string, data []byte) []Chunk {
 	if !gjson.ValidBytes(data) {
-		return nil, nil
+		return nil
 	}
 	g := gjson.ParseBytes(data)
 	if !g.IsObject() {
-		return nil, nil
+		return nil
 	}
 	typ := g.Get("type").String()
 	if typ == "" {
@@ -56,24 +56,24 @@ func (r *responsesReader) Read(event string, data []byte) ([]Chunk, error) {
 	case "response.created":
 		ch := Chunk{ID: g.Get("response.id").String(), Model: g.Get("response.model").String(), Created: g.Get("response.created_at").Int()}
 		r.role(&ch)
-		return []Chunk{ch}, nil
+		return []Chunk{ch}
 	case "response.output_text.delta":
 		if d := g.Get("delta").String(); d != "" {
 			ch := Chunk{Text: d}
 			r.role(&ch)
-			return []Chunk{ch}, nil
+			return []Chunk{ch}
 		}
 	case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
 		if d := g.Get("delta").String(); d != "" {
 			ch := Chunk{Reasoning: d}
 			r.role(&ch)
-			return []Chunk{ch}, nil
+			return []Chunk{ch}
 		}
 	case "response.output_item.added":
 		it := g.Get("item")
 		kind := it.Get("type").String()
 		if kind != "function_call" && kind != "custom_tool_call" {
-			return nil, nil
+			return nil
 		}
 		id := it.Get("id").String()
 		idx, seen := r.byItem[id]
@@ -88,39 +88,39 @@ func (r *responsesReader) Read(event string, data []byte) ([]Chunk, error) {
 		callID := firstRaw(it.Get("call_id").String(), id, fmt.Sprintf("call_stream_%d", idx))
 		ch := Chunk{ToolCalls: []ToolCallDelta{{Index: idx, ID: callID, Name: it.Get("name").String(), Custom: kind == "custom_tool_call"}}}
 		r.role(&ch)
-		return []Chunk{ch}, nil
+		return []Chunk{ch}
 	case "response.function_call_arguments.delta", "response.custom_tool_call_input.delta":
 		idx, ok := r.byItem[g.Get("item_id").String()]
 		if !ok {
 			idx = r.last
 		}
 		if idx < 0 || g.Get("delta").String() == "" {
-			return nil, nil
+			return nil
 		}
 		r.hadArgs[idx] = true
-		return []Chunk{{ToolCalls: []ToolCallDelta{{Index: idx, Arguments: g.Get("delta").String()}}}}, nil
+		return []Chunk{{ToolCalls: []ToolCallDelta{{Index: idx, Arguments: g.Get("delta").String()}}}}
 	case "response.output_item.done":
 		it := g.Get("item")
 		kind := it.Get("type").String()
 		if kind != "function_call" && kind != "custom_tool_call" {
-			return nil, nil
+			return nil
 		}
 		idx, ok := r.byItem[it.Get("id").String()]
 		if !ok || r.hadArgs[idx] {
-			return nil, nil
+			return nil
 		}
 		args := it.Get("arguments").String()
 		if kind == "custom_tool_call" {
 			args = mustJSON(map[string]string{"input": it.Get("input").String()})
 		}
 		if args == "" {
-			return nil, nil
+			return nil
 		}
 		r.hadArgs[idx] = true
-		return []Chunk{{ToolCalls: []ToolCallDelta{{Index: idx, Arguments: args}}}}, nil
+		return []Chunk{{ToolCalls: []ToolCallDelta{{Index: idx, Arguments: args}}}}
 	case "response.completed", "response.done":
 		if r.done {
-			return nil, nil
+			return nil
 		}
 		r.done = true
 		ch := Chunk{FinishReason: FinishWithCalls(FinishStop, r.calls)}
@@ -135,7 +135,7 @@ func (r *responsesReader) Read(event string, data []byte) ([]Chunk, error) {
 			ch.Usage = &us
 		}
 		r.role(&ch)
-		return []Chunk{ch}, nil
+		return []Chunk{ch}
 	case "error", "response.failed":
 		e := g.Get("error")
 		if !e.Exists() {
@@ -145,9 +145,9 @@ func (r *responsesReader) Read(event string, data []byte) ([]Chunk, error) {
 			e = g
 		}
 		r.done = true
-		return []Chunk{{Err: &ChunkError{Type: e.Get("type").String(), Message: e.Get("message").String()}}}, nil
+		return []Chunk{{Err: &ChunkError{Type: e.Get("type").String(), Message: e.Get("message").String()}}}
 	}
-	return nil, nil
+	return nil
 }
 
 // responsesWriter writes Responses API events.
@@ -187,7 +187,34 @@ func (w *responsesWriter) ev(name string, o obj) Frame {
 	w.seq++
 	o["type"] = name
 	o["sequence_number"] = w.seq
-	b, _ := json.Marshal(o)
+	return Frame{Event: name, Data: frameData(o)}
+}
+
+// textDeltaEvent is ev for the delta events that carry one text fragment
+// (output_text and reasoning_summary_text), in the sorted key order ev gives.
+// partKey is "content_index" or "summary_index", whichever the event names; the
+// first sorts before "delta" and the second after "sequence_number".
+func (w *responsesWriter) textDeltaEvent(name, partKey, itemID string, outputIndex int, delta string) Frame {
+	w.seq++
+	b := make([]byte, 0, 160+len(delta)+len(itemID))
+	b = append(b, '{')
+	if partKey == "content_index" {
+		b = append(b, `"content_index":0,`...)
+	}
+	b = append(b, `"delta":`...)
+	b = appendJSONString(b, delta)
+	b = append(b, `,"item_id":`...)
+	b = appendJSONString(b, itemID)
+	b = append(b, `,"output_index":`...)
+	b = strconv.AppendInt(b, int64(outputIndex), 10)
+	b = append(b, `,"sequence_number":`...)
+	b = strconv.AppendInt(b, int64(w.seq), 10)
+	if partKey == "summary_index" {
+		b = append(b, `,"summary_index":0`...)
+	}
+	b = append(b, `,"type":"`...)
+	b = append(b, name...)
+	b = append(b, `"}`...)
 	return Frame{Event: name, Data: b}
 }
 
@@ -254,7 +281,7 @@ func (w *responsesWriter) reasoningDelta(s string, out []Frame) []Frame {
 			w.ev("response.reasoning_summary_part.added", obj{"item_id": it.id, "output_index": it.index, "summary_index": 0, "part": obj{"type": "summary_text", "text": ""}}))
 	}
 	w.reason.buf.WriteString(s)
-	return append(out, w.ev("response.reasoning_summary_text.delta", obj{"item_id": w.reason.id, "output_index": w.reason.index, "summary_index": 0, "delta": s}))
+	return append(out, w.textDeltaEvent("response.reasoning_summary_text.delta", "summary_index", w.reason.id, w.reason.index, s))
 }
 
 func (w *responsesWriter) textDelta(s string, out []Frame) []Frame {
@@ -271,7 +298,7 @@ func (w *responsesWriter) textDelta(s string, out []Frame) []Frame {
 			w.ev("response.content_part.added", obj{"item_id": it.id, "output_index": it.index, "content_index": 0, "part": obj{"type": "output_text", "text": "", "annotations": []any{}}}))
 	}
 	w.message.buf.WriteString(s)
-	return append(out, w.ev("response.output_text.delta", obj{"item_id": w.message.id, "output_index": w.message.index, "content_index": 0, "delta": s}))
+	return append(out, w.textDeltaEvent("response.output_text.delta", "content_index", w.message.id, w.message.index, s))
 }
 
 func (w *responsesWriter) content(s string, out []Frame) []Frame {
@@ -348,9 +375,9 @@ func (w *responsesWriter) closeTools(out []Frame) []Frame {
 	return out
 }
 
-func (w *responsesWriter) Write(c Chunk) ([]Frame, error) {
+func (w *responsesWriter) Write(c Chunk) []Frame {
 	if c.Err != nil {
-		return nil, nil
+		return nil
 	}
 	var out []Frame
 	if c.Text != "" || c.Reasoning != "" || len(c.ToolCalls) > 0 {
@@ -365,7 +392,7 @@ func (w *responsesWriter) Write(c Chunk) ([]Frame, error) {
 		out = w.begin(c, out)
 		out = append(out, w.release()...)
 	}
-	return out, nil
+	return out
 }
 
 func (w *responsesWriter) release() []Frame {

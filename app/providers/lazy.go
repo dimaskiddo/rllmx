@@ -1,27 +1,43 @@
 package providers
 
-import "sync"
+import (
+	"context"
+	"sync"
+	"sync/atomic"
+	"time"
+)
+
+// buildTimeout bounds one build, which reads the stores and belongs to no
+// request.
+const buildTimeout = 30 * time.Second
 
 // lazy builds a value on first use. The stores open in a runner after every
 // provider registered, so what needs them cannot be built when the routes are
-// declared. A failed build is not kept; the next call retries.
+// declared. A failed build is not kept; the next call retries. Once built, a
+// call is one atomic load.
 type lazy[T any] struct {
-	build func() (*T, error)
+	// build receives a context that ends after buildTimeout.
+	build func(ctx context.Context) (*T, error)
 
+	v  atomic.Pointer[T]
 	mu sync.Mutex
-	v  *T
 }
 
 func (l *lazy[T]) get() (*T, error) {
+	if v := l.v.Load(); v != nil {
+		return v, nil
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.v != nil {
-		return l.v, nil
+	if v := l.v.Load(); v != nil {
+		return v, nil
 	}
-	v, err := l.build()
+	ctx, cancel := context.WithTimeout(context.Background(), buildTimeout)
+	defer cancel()
+	v, err := l.build(ctx)
 	if err != nil {
 		return nil, err
 	}
-	l.v = v
+	l.v.Store(v)
 	return v, nil
 }

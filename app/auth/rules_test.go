@@ -1,6 +1,8 @@
 package auth
 
 import (
+	nethttp "net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +30,49 @@ func TestKeyNormalisesIPv6ToItsPrefix(t *testing.T) {
 		if got := Key(tc.in); got != tc.want {
 			t.Errorf("%q = %q, want %q", tc.in, got, tc.want)
 		}
+	}
+}
+
+func TestRefusedKeysLockTheirCallerAndNoOneElse(t *testing.T) {
+	now := time.Now()
+	a := &Authenticator{Limiter: NewLimiter(), Now: func() time.Time { return now }}
+	guesser := httptest.NewRequest("POST", "/v1/messages", nil)
+	guesser.RemoteAddr = "203.0.113.9:4000"
+	other := httptest.NewRequest("POST", "/v1/messages", nil)
+	other.RemoteAddr = "203.0.113.10:4000"
+
+	for range FreeAttempts {
+		if a.KeyLocked(guesser) != 0 {
+			t.Fatal("locked before the free attempts were used")
+		}
+		a.KeyFailed(guesser)
+	}
+	if a.KeyLocked(guesser) == 0 {
+		t.Fatal("the guesser is not locked after its free attempts")
+	}
+	if a.KeyLocked(other) != 0 {
+		t.Fatal("another address shares the guesser's lock")
+	}
+	login := a.Limiter.Locked(Key(guesser.RemoteAddr), now)
+	if login != 0 {
+		t.Fatal("a refused key counted against the dashboard login budget")
+	}
+}
+
+func TestTheKeyLimiterUsesTheConfiguredClientAddress(t *testing.T) {
+	now := time.Now()
+	a := &Authenticator{Limiter: NewLimiter(), Now: func() time.Time { return now },
+		ClientAddr: func(*nethttp.Request) string { return "198.51.100.7" }}
+	r := httptest.NewRequest("POST", "/v1/messages", nil)
+	r.RemoteAddr = "10.0.0.1:1"
+	for range FreeAttempts {
+		a.KeyFailed(r)
+	}
+	if a.Limiter.Locked("key:198.51.100.7", now) == 0 {
+		t.Fatal("the lock was not recorded under the client address")
+	}
+	if a.Limiter.Locked("key:10.0.0.1", now) != 0 {
+		t.Fatal("the proxy's address was used")
 	}
 }
 

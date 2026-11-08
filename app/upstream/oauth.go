@@ -5,6 +5,8 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+
+	"rllmx/app/text"
 )
 
 // Login flows and redirect policies a data file may name.
@@ -141,7 +143,7 @@ func (o *OAuth) validate() error {
 			return err
 		}
 	}
-	if strings.TrimSpace(o.Scope) == "" || strings.ContainsFunc(o.Scope, isControl) {
+	if strings.TrimSpace(o.Scope) == "" || text.HasASCIIControl(o.Scope) {
 		return errors.New("oauth.scope is empty or holds a control character")
 	}
 	if !redirects[o.Redirect] {
@@ -152,7 +154,7 @@ func (o *OAuth) validate() error {
 		if o.FixedPort < minFixedPort || o.FixedPort > 65535 {
 			return errors.New("oauth.fixedPort must be 1024 to 65535")
 		}
-		if !strings.HasPrefix(o.CallbackPath, "/") || strings.ContainsAny(o.CallbackPath, "?#\\ ") || strings.ContainsFunc(o.CallbackPath, isControl) {
+		if !strings.HasPrefix(o.CallbackPath, "/") || strings.ContainsAny(o.CallbackPath, "?#\\ ") || text.HasASCIIControl(o.CallbackPath) {
 			return errors.New("oauth.callbackPath must be an absolute path")
 		}
 	case RedirectLocal:
@@ -211,13 +213,17 @@ func (o *OAuth) validate() error {
 		if !paramName.MatchString(p.Name) || ownParams[p.Name] || seen[p.Name] {
 			return errors.New("an oauth parameter name is not allowed")
 		}
-		if len(p.Value) > maxParamValue || strings.ContainsFunc(p.Value, isControl) {
+		if len(p.Value) > maxParamValue || text.HasASCIIControl(p.Value) {
 			return errors.New("an oauth parameter value is too long or holds a control character")
 		}
 		seen[p.Name] = true
 	}
 	return nil
 }
+
+// BetaFlag reports whether s is a plain beta-flag token: a client may send it,
+// and it may be written into a header without changing the header's meaning.
+func BetaFlag(s string) bool { return betaFlag.MatchString(s) }
 
 var (
 	betaFlag  = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
@@ -235,7 +241,7 @@ func loginHeader(n string) bool {
 
 func validHeaders(m map[string]string) error {
 	for k, v := range m {
-		if !loginHeader(k) || len(v) > maxHeaderBytes || strings.ContainsFunc(v, isControl) {
+		if !loginHeader(k) || len(v) > maxHeaderBytes || text.HasASCIIControl(v) {
 			return errors.New("an oauth header is not allowed")
 		}
 	}
@@ -273,5 +279,3 @@ func httpsURL(raw string) error {
 	}
 	return nil
 }
-
-func isControl(r rune) bool { return r < 0x20 || r == 0x7f }

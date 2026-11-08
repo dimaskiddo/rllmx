@@ -1,10 +1,7 @@
 package executor
 
 import (
-	"html"
 	"io"
-	"regexp"
-	"strings"
 	"time"
 
 	"github.com/tidwall/gjson"
@@ -25,11 +22,6 @@ type UpstreamError struct {
 	Message string
 	ResetAt time.Time
 }
-
-var (
-	tagPattern   = regexp.MustCompile(`<[^>]*>`)
-	spacePattern = regexp.MustCompile(`\s+`)
-)
 
 // ReadError reads an error body under the cap and parses it.
 func ReadError(status int, body io.Reader) UpstreamError {
@@ -62,17 +54,8 @@ func ParseError(status int, body []byte) UpstreamError {
 	if msg == "" {
 		msg = string(body)
 	}
-	e.Message = cleanMessage(msg)
+	e.Message = text.StripMarkup(msg, maxMessage)
 	return e
-}
-
-func cleanMessage(s string) string {
-	s = tagPattern.ReplaceAllString(s, " ")
-	s = html.UnescapeString(s)
-	s = tagPattern.ReplaceAllString(s, " ")
-	s = text.StripControl(s)
-	s = spacePattern.ReplaceAllString(s, " ")
-	return strings.ToValidUTF8(text.CutBytes(strings.TrimSpace(s), maxMessage), "")
 }
 
 // resetAt reads a provider-reported reset: a Unix time or a number of seconds,

@@ -13,6 +13,9 @@ import (
 	"slices"
 	"strings"
 	"sync"
+
+	appfile "rllmx/app/file"
+	"rllmx/app/text"
 )
 
 //go:embed data/*.json
@@ -86,12 +89,12 @@ func readEntry(fsys fs.FS, name string) (Entry, error) {
 		return Entry{}, fmt.Errorf("upstream: open %s: %w", path.Base(name), err)
 	}
 	defer f.Close()
-	raw, err := io.ReadAll(io.LimitReader(f, maxFileBytes+1))
+	raw, err := appfile.ReadCapped(f, maxFileBytes)
+	if errors.Is(err, appfile.ErrTooLarge) {
+		return Entry{}, fmt.Errorf("upstream: %s: file is over %d bytes", path.Base(name), maxFileBytes)
+	}
 	if err != nil {
 		return Entry{}, fmt.Errorf("upstream: read %s: %w", path.Base(name), err)
-	}
-	if len(raw) > maxFileBytes {
-		return Entry{}, fmt.Errorf("upstream: %s: file is over %d bytes", path.Base(name), maxFileBytes)
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
@@ -127,16 +130,18 @@ func (r *Registry) add(e Entry) error {
 	if !executors[e.Executor] {
 		return errors.New("unknown executor")
 	}
-	if e.Transport.BaseURL == "" {
-		return errors.New("transport.baseUrl is required")
-	}
 	if e.Display.Name == "" {
 		e.Display.Name = e.ID
 	}
+	authHeader := ""
 	if e.Auth != nil {
+		authHeader = e.Auth.Header
 		if err := e.Auth.validate(e.Transport.BaseURL); err != nil {
 			return err
 		}
+	}
+	if err := e.Transport.validate(e.Executor, authHeader); err != nil {
+		return err
 	}
 	if e.OAuth != nil {
 		if err := e.OAuth.validate(); err != nil {
@@ -153,6 +158,17 @@ func (r *Registry) add(e Entry) error {
 		}
 		if m.TargetFormat != "" && !formats[m.TargetFormat] {
 			return errors.New("a model has an unknown target format")
+		}
+		if len(m.UpstreamID) > maxNameBytes || text.HasASCIIControl(m.UpstreamID) {
+			return errors.New("a model has a bad upstream id")
+		}
+		if len(m.Levels) > len(effortLevels) {
+			return errors.New("a model has too many levels")
+		}
+		for _, l := range m.Levels {
+			if !effortLevels[l] {
+				return errors.New("a model has an unknown level")
+			}
 		}
 		seen[m.ID] = true
 	}
@@ -201,14 +217,25 @@ func (r *Registry) Models(id string) []Model {
 	return slices.Clone(e.Models)
 }
 
-// HasModel reports whether the provider lists the model.
-func (r *Registry) HasModel(id, model string) bool {
+// Model returns the registry row of a model, if the provider lists it.
+func (r *Registry) Model(id, model string) (Model, bool) {
 	for _, m := range r.entries[id].Models {
 		if m.ID == model {
-			return true
+			return m, true
 		}
 	}
-	return false
+	return Model{}, false
+}
+
+// WireModel is the id to send to the provider for a model: the listed upstream
+// id when there is one, else the model as it came.
+func (r *Registry) WireModel(id, model string) string {
+	for _, m := range r.entries[id].Models {
+		if m.ID == model && m.UpstreamID != "" {
+			return m.UpstreamID
+		}
+	}
+	return model
 }
 
 // All returns every provider ordered by id.

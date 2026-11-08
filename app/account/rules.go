@@ -24,8 +24,8 @@ type Rule struct {
 	Cooldown time.Duration
 }
 
-// DefaultRules is checked top to bottom: text rules first, then status rules.
-var DefaultRules = []Rule{
+// defaultRules is checked top to bottom: text rules first, then status rules.
+var defaultRules = []Rule{
 	{Provider: "codex", Text: "model is not supported when using codex with a chatgpt account", Cooldown: maxReported},
 	{Provider: "codebuddy-intl", Text: "request illegal", Backoff: true},
 	{Provider: "codebuddy-intl", Text: "conversation id missing", Backoff: true},
@@ -74,8 +74,8 @@ type Decision struct {
 	NextLevel int
 }
 
-// Classify judges a failure with DefaultRules.
-func Classify(in Input) Decision { return classify(DefaultRules, in) }
+// Classify judges a failure with defaultRules.
+func Classify(in Input) Decision { return classify(defaultRules, in) }
 
 func classify(rules []Rule, in Input) Decision {
 	now := in.Now

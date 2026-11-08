@@ -1,0 +1,29 @@
+{
+  "id": "perplexity",
+  "alias": "perplexity",
+  "aliases": [
+    "pplx"
+  ],
+  "category": "apikey",
+  "display": {
+    "name": "Perplexity"
+  },
+  "transport": {
+    "baseUrl": "https://api.perplexity.ai/chat/completions"
+  },
+  "auth": {
+    "scheme": "bearer",
+    "header": "Authorization",
+    "validateUrl": "https://api.perplexity.ai/models"
+  },
+  "models": [
+    {
+      "id": "sonar-pro",
+      "name": "Sonar Pro"
+    },
+    {
+      "id": "sonar",
+      "name": "Sonar"
+    }
+  ]
+}

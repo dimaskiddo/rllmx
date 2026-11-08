@@ -131,21 +131,6 @@ func TestNewRejectsWrongLength(t *testing.T) {
 	}
 }
 
-func TestParseSecret(t *testing.T) {
-	good := strings.Repeat("0f", 32)
-	raw, err := ParseSecret(good)
-	if err != nil || len(raw) != 32 || raw[0] != 0x0f {
-		t.Fatalf("ParseSecret = %x, %v", raw, err)
-	}
-	for _, bad := range []string{"", good[:62], good + "00", strings.Repeat("zz", 32)} {
-		if _, err := ParseSecret(bad); err == nil {
-			t.Errorf("%q accepted", bad)
-		} else if bad != "" && strings.Contains(err.Error(), bad) {
-			t.Errorf("the error echoes the secret")
-		}
-	}
-}
-
 func TestTheErrorsNeverContainAValue(t *testing.T) {
 	box := vectorBox(t)
 	sealed := box.Seal("aad", "the-plain-secret")

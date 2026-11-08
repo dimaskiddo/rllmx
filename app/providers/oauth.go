@@ -33,12 +33,7 @@ func newLogin(app foundation.Application, reg *upstream.Registry, cfg *settings.
 	listeners.Handle = svc.Listened
 	refresher := &oauth.Refresher{
 		Flow: func(provider string) (oauth.Flow, bool) {
-			id, ok := reg.Resolve(provider)
-			if !ok {
-				return oauth.Flow{}, false
-			}
-			e, _ := reg.ByID(id)
-			f, err := oauth.NewFlow(e, cfg.ClientID(id))
+			f, err := oauth.FlowFor(reg, cfg.ClientID, provider)
 			return f, err == nil
 		},
 		Tokens: tokens, Cache: cacheOrNil(app), Log: app.MakeLog(), Now: time.Now,

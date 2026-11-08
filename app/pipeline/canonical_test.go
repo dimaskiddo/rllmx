@@ -70,6 +70,19 @@ func TestCacheKeyPartsDoNotRunTogether(t *testing.T) {
 	}
 }
 
+func TestABodyHashedAsBytesGivesTheKeyOfTheSameString(t *testing.T) {
+	for _, body := range []string{"", "x", `{"a":1}`, strings.Repeat("é", 5000)} {
+		want := cacheKey("who", "fmt", "p", "m", "cli", "t", "l", "0", "d", body)
+		got := cacheKeyBody([]string{"who", "fmt", "p", "m", "cli", "t", "l", "0", "d"}, []byte(body))
+		if got != want {
+			t.Errorf("body %.20q: %s != %s", body, got, want)
+		}
+	}
+	if cacheKeyBody([]string{"a"}, []byte{}) == cacheKeyBody([]string{"a"}, nil) {
+		t.Error("an empty body and no body share a key")
+	}
+}
+
 func FuzzCanonicalBody(f *testing.F) {
 	for _, s := range []string{`{"a":1}`, `{"b":{"c":[1,{"d":2}]},"stream":true}`, `{"a":1,"a":2}`, `[]`, `{"x":"\u0000"}`, ``} {
 		f.Add([]byte(s))

@@ -133,7 +133,7 @@ func (s *Store) fromAssistant(in Input) string {
 		return id
 	}
 	id := s.madeUpID()
-	s.store(s.derived, maxDerived, key, id)
+	s.store(s.derived, key, id)
 	return id
 }
 
@@ -144,7 +144,7 @@ func (s *Store) perConnection(connectionID string) string {
 		return id
 	}
 	id := s.madeUpID()
-	s.store(s.madeUp, maxMadeUp, connectionID, id)
+	s.store(s.madeUp, connectionID, id)
 	return id
 }
 

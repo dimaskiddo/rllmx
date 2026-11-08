@@ -43,6 +43,8 @@ type sink struct {
 	mu     sync.Mutex
 	err    error
 	warned bool
+	// buf is the scratch space one frame is built in, reused for the next.
+	buf []byte
 }
 
 // SSE writes server-sent events. Every method returns an error when the client
@@ -120,9 +122,25 @@ func (s *sink) fail(err error) error {
 	return s.err
 }
 
-func (s *sink) write(frame string) error {
+// maxScratch is the largest frame buffer a sink keeps between frames.
+const maxScratch = 256 << 10
+
+func (s *sink) write(frame []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.writeLocked(frame)
+}
+
+// keep stores the scratch buffer for the next frame unless one frame made it
+// large. Called under the lock.
+func (s *sink) keep(b []byte) {
+	if cap(b) > maxScratch {
+		b = nil
+	}
+	s.buf = b
+}
+
+func (s *sink) writeLocked(frame []byte) error {
 	if s.err != nil {
 		return s.err
 	}
@@ -134,7 +152,7 @@ func (s *sink) write(frame string) error {
 			}
 		}
 	}
-	if _, err := s.w.Write([]byte(frame)); err != nil {
+	if _, err := s.w.Write(frame); err != nil {
 		return s.fail(err)
 	}
 	if err := s.rc.Flush(); err != nil {
@@ -143,42 +161,65 @@ func (s *sink) write(frame string) error {
 	return nil
 }
 
-// dataLines turns a payload into data fields, one per line. A bare CR, a CRLF
-// and an LF all end a line, so a payload can never add a field of its own.
-func dataLines(data string) string {
-	data = strings.ReplaceAll(data, "\r\n", "\n")
-	data = strings.ReplaceAll(data, "\r", "\n")
-	var b strings.Builder
-	for line := range strings.SplitSeq(data, "\n") {
-		b.WriteString("data: ")
-		b.WriteString(line)
-		b.WriteByte('\n')
+// appendDataLines appends a payload as data fields, one per line. A bare CR, a
+// CRLF and an LF all end a line, so a payload can never add a field of its own.
+func appendDataLines[T string | []byte](b []byte, data T) []byte {
+	start := 0
+	for i := 0; i < len(data); i++ {
+		c := data[i]
+		if c != '\n' && c != '\r' {
+			continue
+		}
+		b = append(b, "data: "...)
+		b = append(b, data[start:i]...)
+		b = append(b, '\n')
+		if c == '\r' && i+1 < len(data) && data[i+1] == '\n' {
+			i++
+		}
+		start = i + 1
 	}
-	return b.String()
+	b = append(b, "data: "...)
+	b = append(b, data[start:]...)
+	return append(b, '\n')
+}
+
+// emit builds one event in the sink's scratch buffer and writes it.
+func emit[T string | []byte](s *sink, named bool, name string, data T) error {
+	if named && strings.ContainsAny(name, "\r\n") {
+		return ErrInvalidEventName
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	b := s.buf[:0]
+	if named {
+		b = append(b, "event: "...)
+		b = append(b, name...)
+		b = append(b, '\n')
+	}
+	b = appendDataLines(b, data)
+	b = append(b, '\n')
+	err := s.writeLocked(b)
+	s.keep(b)
+	return err
 }
 
 // Data writes an unnamed event.
-func (s *SSE) Data(data string) error { return s.write(dataLines(data) + "\n") }
+func (s *SSE) Data(data string) error { return emit(s.sink, false, "", data) }
 
 // Event writes a named event.
-func (s *SSE) Event(name, data string) error {
-	if strings.ContainsAny(name, "\r\n") {
-		return ErrInvalidEventName
-	}
-	return s.write("event: " + name + "\n" + dataLines(data) + "\n")
-}
+func (s *SSE) Event(name, data string) error { return emit(s.sink, true, name, data) }
 
 // Raw writes a pre-built frame, such as an error frame from the failure package.
-func (s *SSE) Raw(frame []byte) error { return s.write(string(frame)) }
+func (s *SSE) Raw(frame []byte) error { return s.write(frame) }
 
 // Frame writes one frame from a stream writer: a named event, a plain data
 // event, or the [DONE] marker.
 func (s *SSE) Frame(f translate.Frame) error {
 	switch {
 	case f.Done:
-		return s.Data("[DONE]")
+		return emit(s.sink, false, "", "[DONE]")
 	case f.Event != "":
-		return s.Event(f.Event, string(f.Data))
+		return emit(s.sink, true, f.Event, f.Data)
 	}
-	return s.Data(string(f.Data))
+	return emit(s.sink, false, "", f.Data)
 }

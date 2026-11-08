@@ -19,8 +19,9 @@ const (
 	pvLen           = 16
 )
 
-// ErrPasswordTooShort and the rest are the new-password rules PRD 2 states. Each
-// error names the rule, never the value.
+// ErrPasswordShort and the rest are the new-password rules: bcrypt reads at most
+// 72 bytes, and fewer than 8 is too easy to guess. Each error names the rule,
+// never the value.
 var (
 	ErrPasswordShort   = errors.New("auth: the new password must be at least 8 bytes")
 	ErrPasswordLong    = errors.New("auth: the new password must be at most 72 bytes")

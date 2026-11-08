@@ -168,12 +168,6 @@ func createIndexSQL(t Table, ix Index) string {
 	return "CREATE INDEX IF NOT EXISTS " + quote(ix.Name) + " ON " + quote(t.Name) + " (" + strings.Join(cols, ", ") + ")"
 }
 
-func init() {
-	if err := validateTables(tables); err != nil {
-		panic(err)
-	}
-}
-
 func addColumnSQL(t Table, c Column, d dialect.Dialect) string {
 	stmt := "ALTER TABLE " + quote(t.Name) + " ADD COLUMN "
 	if d == dialect.Postgres {

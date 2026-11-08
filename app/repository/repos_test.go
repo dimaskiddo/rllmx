@@ -519,24 +519,6 @@ func TestNULBytesAreStrippedFromEveryRepoWrite(t *testing.T) {
 	}
 }
 
-func TestReplacePasswordHashIsACompareAndSet(t *testing.T) {
-	s := newMigrated(t)
-	ctx := context.Background()
-	if ok, err := s.Settings().ReplacePasswordHash(ctx, "", "first"); err != nil || !ok {
-		t.Fatalf("an unset password is replaced by the empty current value: %v %v", ok, err)
-	}
-	if ok, err := s.Settings().ReplacePasswordHash(ctx, "stale", "second"); err != nil || ok {
-		t.Fatalf("a stale current value must not write: %v %v", ok, err)
-	}
-	doc, _ := s.Settings().Get(ctx)
-	if v, _ := doc.GetString("password"); v != "first" {
-		t.Fatalf("password = %q", v)
-	}
-	if ok, err := s.Settings().ReplacePasswordHash(ctx, "first", "second"); err != nil || !ok {
-		t.Fatalf("%v %v", ok, err)
-	}
-}
-
 func TestSettingsChangeHookRunsOncePerCommittedWrite(t *testing.T) {
 	s := newMigrated(t)
 	ctx := context.Background()
@@ -552,8 +534,8 @@ func TestSettingsChangeHookRunsOncePerCommittedWrite(t *testing.T) {
 	if err := s.Settings().SetPasswordHash(ctx, "$2a$10$abc"); err != nil {
 		t.Fatal(err)
 	}
-	if swapped, err := s.Settings().ReplacePasswordHash(ctx, "$2a$10$abc", "$2a$10$def"); err != nil || !swapped {
-		t.Fatalf("replace = %v, %v", swapped, err)
+	if err := s.Settings().SetPasswordHash(ctx, "$2a$10$def"); err != nil {
+		t.Fatal(err)
 	}
 	if calls != 4 {
 		t.Fatalf("hook ran %d times for 4 writes", calls)
@@ -574,9 +556,6 @@ func TestSettingsChangeHookStaysQuietWhenNothingIsWritten(t *testing.T) {
 	}
 	if err := s.Settings().Patch(ctx, map[string]string{"alpha": `not json`}); err == nil {
 		t.Fatal("invalid JSON was accepted")
-	}
-	if swapped, _ := s.Settings().ReplacePasswordHash(ctx, "$2a$10$stale", "$2a$10$new"); swapped {
-		t.Fatal("a stale hash was replaced")
 	}
 	if calls != 0 {
 		t.Fatalf("hook ran %d times with no committed write", calls)

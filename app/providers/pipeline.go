@@ -29,13 +29,13 @@ type PipelineSource struct{ lazy[pipeline.Pipeline] }
 
 // NewPipelineSource returns a source that reads the bound pieces from app.
 func NewPipelineSource(app foundation.Application) *PipelineSource {
-	return &PipelineSource{lazy[pipeline.Pipeline]{build: func() (*pipeline.Pipeline, error) { return buildPipeline(app) }}}
+	return &PipelineSource{lazy[pipeline.Pipeline]{build: func(ctx context.Context) (*pipeline.Pipeline, error) { return buildPipeline(ctx, app) }}}
 }
 
 // Get returns the pipeline, building it if no earlier call did.
 func (s *PipelineSource) Get() (*pipeline.Pipeline, error) { return s.get() }
 
-func buildPipeline(app foundation.Application) (*pipeline.Pipeline, error) {
+func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.Pipeline, error) {
 	h := HTTPOf(app)
 	runner := DataOf(app).Runner
 	store, writer := runner.Store(), runner.Writer()
@@ -43,7 +43,6 @@ func buildPipeline(app foundation.Application) (*pipeline.Pipeline, error) {
 		return nil, ErrStoreNotOpen
 	}
 	log := app.MakeLog()
-	ctx := context.Background()
 
 	table, err := upstream.DefaultTable(h.Registry)
 	if err != nil {
@@ -55,6 +54,8 @@ func buildPipeline(app foundation.Application) (*pipeline.Pipeline, error) {
 		table = table.WithOverrides(upstream.ParseOverrides(raw, func(format string, args ...any) { log.Warningf(format, args...) }))
 	}
 
+	settingsRead := settingsFor(store)
+
 	client := network.NewClient(network.Options{
 		ConnectTimeout: h.Upstream.ConnectTimeout, MaxRedirects: -1, Allow: h.Upstream.Allow, BodyCap: -1,
 	})
@@ -62,16 +63,17 @@ func buildPipeline(app foundation.Application) (*pipeline.Pipeline, error) {
 		Resolver:      &routing.Resolver{Registry: h.Registry, Snapshot: routing.NewSnapshot(routing.NewRepositorySource(store), nil)},
 		Selector:      account.NewSelector(account.SelectorOptions{Conns: store.Connections(), Settings: store.Settings(), Log: log}),
 		Reporter:      account.NewReporter(store.Connections(), log, nil),
-		Executor:      &executor.Default{Client: client},
+		Executor:      executor.NewMux(&executor.Default{Client: client}, executor.Options{PeekIdle: h.Stream.Stall}),
 		Nodes:         store.Nodes(),
 		Registry:      h.Registry,
 		Caps:          h.Capabilities,
 		Prices:        table,
 		Usage:         writer,
-		Overrides:     headerOverrides{settings: store.Settings()},
-		Settings:      store.Settings(),
+		Overrides:     headerOverrides{settings: settingsRead},
+		Settings:      settingsRead,
 		Prefetch:      prefetch.New(),
 		ResponseCache: responseCache(app, store),
+		Signatures:    signatureCache(app),
 		Refresher:     h.Refresher,
 		Timers:        stream.Timers{FirstChunk: h.Stream.FirstChunk, Stall: h.Stream.Stall, UsageWait: h.Stream.UsageWait},
 		Log:           log,
@@ -80,7 +82,7 @@ func buildPipeline(app foundation.Application) (*pipeline.Pipeline, error) {
 
 // headerOverrides gives the operator's extra headers for a provider, read from
 // the settings on each call so a dashboard change applies to the next request.
-type headerOverrides struct{ settings *repository.SettingsRepo }
+type headerOverrides struct{ settings settingsReader }
 
 func (o headerOverrides) Headers(ctx context.Context, provider string) map[string]string {
 	doc, err := o.settings.Effective(ctx)
@@ -94,6 +96,15 @@ func (o headerOverrides) Headers(ctx context.Context, provider string) map[strin
 	return upstream.HeaderOverrides(raw, provider)
 }
 
+// signatureCache is the cache the Gemini signature store reads and writes. A
+// cache that was never bound gives nil, and signatures are not restored.
+func signatureCache(app foundation.Application) pipeline.Loader {
+	if c := cacheOrNil(app); c != nil {
+		return c
+	}
+	return nil
+}
+
 // responseCache wires the opt-in answer cache. The in-process store is bounded
 // by the configured limits; with a shared store the server's own limit applies,
 // so no budget is set. A cache that was never bound leaves the feature off.
@@ -105,6 +116,8 @@ func responseCache(app foundation.Application, store *repository.Store) *pipelin
 	rc := &pipeline.ResponseCache{Cache: c, Flags: store.KV()}
 	if lim, err := settings.LoadCache(app.MakeConfig()); err == nil && !lim.Shared {
 		rc.Budget = &cache.Budget{MaxEntries: lim.ResponseMaxEntries, MaxBytes: lim.ResponseMaxBytes}
+		// A settings write purges the answers; the budget must forget them too.
+		store.OnSettingsChange(rc.Budget.Reset)
 	}
 	return rc
 }

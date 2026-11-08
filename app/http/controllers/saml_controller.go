@@ -56,6 +56,10 @@ func (c *SAMLController) Start(ctx contractshttp.Context) contractshttp.Response
 	if wait := c.Auth.Limiter.Locked(key, c.Auth.Now()); wait > 0 {
 		return c.fail(ctx, base, sso.CodeBusy)
 	}
+	secret := c.Auth.Secret()
+	if len(secret) == 0 {
+		return c.fail(ctx, base, sso.CodeIdPError)
+	}
 
 	entityID := set.EntityIDFor(base)
 	acsURL := sso.CleanURL(base, samlACS)
@@ -73,11 +77,10 @@ func (c *SAMLController) Start(ctx contractshttp.Context) contractshttp.Response
 	}
 	// The flow state records what was in force when it started, so a settings
 	// change mid-flow cannot redirect it to another provider.
-	if err := c.Pending.PutKeyed(id, sso.State{Issuer: set.IdPEntityID, ClientID: entityID, Verifier: id}); err != nil {
+	if err := c.Pending.PutKeyed(id, sso.State{Issuer: set.IdPEntityID, ClientID: entityID, Verifier: id, Owner: key}); err != nil {
 		return c.fail(ctx, base, sso.CodeBusy)
 	}
 
-	secret := c.Auth.Secret()
 	ctx.Response().Cookie(contractshttp.Cookie{
 		Name: SAMLBindCookie, Value: sso.BindFor(secret, SAMLBindCookie, id),
 		Path: "/api/auth/saml", MaxAge: sso.BindTTL, HttpOnly: true,

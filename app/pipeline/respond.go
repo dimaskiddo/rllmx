@@ -5,13 +5,16 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 
 	"rllmx/app/executor"
+	"rllmx/app/file"
 	"rllmx/app/stream"
 	"rllmx/app/translate"
+	"rllmx/app/upstream"
 )
 
 // errNotOpen is what an error frame gets before the client's stream exists, so
@@ -27,6 +30,9 @@ const maxAnswer = 64 << 20
 // answered 502 and nothing is locked or cleared.
 func (c *call) respond(ctx context.Context, resp executor.Response) (Output, *accountFail) {
 	kind := stream.KindOf(resp.Header.Get("Content-Type"))
+	if c.compactJSON(kind) {
+		return c.forwardCompact(ctx, resp)
+	}
 	if c.upStream && (kind == stream.KindSSE || kind == stream.KindNDJSON) {
 		var src stream.Source = stream.NewReader(resp.Body)
 		if kind == stream.KindNDJSON {
@@ -65,12 +71,12 @@ func (c *call) accept(ctx context.Context) {
 }
 
 func (c *call) buffered(ctx context.Context, resp executor.Response) (Output, *accountFail) {
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxAnswer+1))
+	raw, err := file.ReadCapped(resp.Body, c.p.d.MaxAnswer)
 	_ = resp.Body.Close()
-	if err != nil {
+	if err != nil && !errors.Is(err, file.ErrTooLarge) {
 		return c.readFailed(ctx)
 	}
-	if len(raw) == 0 || len(raw) > maxAnswer {
+	if len(raw) == 0 || err != nil {
 		return c.fail(http.StatusBadGateway, "upstream_5xx", "The upstream sent no usable answer"), nil
 	}
 	up, ok := translate.Lookup(c.dest.format)
@@ -237,4 +243,36 @@ func (c *call) restoreEvent() func(event string, data []byte) []byte {
 		}
 		return out
 	}
+}
+
+// compactJSON is true for a context-compaction call to Codex that was answered
+// with JSON. The call is sent as a stream, but the compaction route may answer
+// with the compacted conversation in one piece.
+func (c *call) compactJSON(kind stream.Kind) bool {
+	return kind == stream.KindJSON && c.dest.entry.Executor == upstream.ExecutorCodex &&
+		c.format == translate.FormatResponses && strings.HasSuffix(c.in.Path, "/compact")
+}
+
+// forwardCompact passes a compaction answer to the client as it came. Rebuilding
+// it through the hub would drop the compaction items, which only the upstream
+// knows how to read back. The usage is read for the row; the body is not kept.
+func (c *call) forwardCompact(ctx context.Context, resp executor.Response) (Output, *accountFail) {
+	raw, err := file.ReadCapped(resp.Body, c.p.d.MaxAnswer)
+	_ = resp.Body.Close()
+	if err != nil && !errors.Is(err, file.ErrTooLarge) {
+		return c.readFailed(ctx)
+	}
+	if len(raw) == 0 || err != nil || !gjson.ValidBytes(raw) {
+		return c.fail(http.StatusBadGateway, "upstream_5xx", "The upstream sent no usable answer"), nil
+	}
+	up, _ := translate.Lookup(c.dest.format)
+	usage := stream.Estimate(len(c.body), len(raw))
+	if ans, err := up.ReadResponse(raw, c.tctx); err == nil && (ans.Usage.Prompt > 0 || ans.Usage.Completion > 0) {
+		usage = ans.Usage
+	}
+	c.setUsage(usage)
+	c.accept(ctx)
+	h := http.Header{}
+	h.Set("Content-Type", "application/json")
+	return Output{Status: http.StatusOK, Header: h, Body: raw}, nil
 }

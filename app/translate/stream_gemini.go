@@ -1,7 +1,6 @@
 package translate
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -24,16 +23,16 @@ func (GeminiCodec) NewStreamReader(c *Ctx) StreamReader {
 
 func (r *geminiReader) Flush() []Chunk { return nil }
 
-func (r *geminiReader) Read(_ string, data []byte) ([]Chunk, error) {
+func (r *geminiReader) Read(_ string, data []byte) []Chunk {
 	if !gjson.ValidBytes(data) {
-		return nil, nil
+		return nil
 	}
 	g := gjson.ParseBytes(data)
 	if !g.IsObject() {
-		return nil, nil
+		return nil
 	}
 	if e := g.Get("error"); e.IsObject() {
-		return []Chunk{{Err: &ChunkError{Type: e.Get("status").String(), Message: e.Get("message").String()}}}, nil
+		return []Chunk{{Err: &ChunkError{Type: e.Get("status").String(), Message: e.Get("message").String()}}}
 	}
 	if w := g.Get("response"); w.IsObject() && !g.Get("candidates").Exists() {
 		g = w
@@ -85,9 +84,9 @@ func (r *geminiReader) Read(_ string, data []byte) ([]Chunk, error) {
 		ch.Role = RoleAssistant
 	}
 	if ch.Text == "" && ch.Reasoning == "" && len(ch.ToolCalls) == 0 && len(ch.Images) == 0 && ch.FinishReason == "" && ch.Usage == nil && ch.Role == "" {
-		return nil, nil
+		return nil
 	}
-	return []Chunk{ch}, nil
+	return []Chunk{ch}
 }
 
 // geminiWriter writes generateContent stream chunks.
@@ -126,13 +125,12 @@ func (w *geminiWriter) frame(parts []any, finish string, usage *Usage) Frame {
 		}
 		o["usageMetadata"] = u
 	}
-	b, _ := json.Marshal(o)
-	return Frame{Data: b}
+	return Frame{Data: frameData(o)}
 }
 
-func (w *geminiWriter) Write(c Chunk) ([]Frame, error) {
+func (w *geminiWriter) Write(c Chunk) []Frame {
 	if c.Err != nil {
-		return nil, nil
+		return nil
 	}
 	if !w.started {
 		w.started = true
@@ -158,7 +156,7 @@ func (w *geminiWriter) Write(c Chunk) ([]Frame, error) {
 	if w.g.see(c) {
 		out = append(out, w.release()...)
 	}
-	return out, nil
+	return out
 }
 
 // hold collects the pieces of a call; Gemini wants it whole.

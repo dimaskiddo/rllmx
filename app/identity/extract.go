@@ -5,10 +5,11 @@ import (
 	"strings"
 )
 
-// ExtractKey returns the client key a request presents, or "". The order is the
-// one PRD 2 fixes: `Authorization: Bearer`, then `x-api-key` on every client
-// route, and `x-goog-api-key` then `?key=` only under /v1beta. The first present
-// value wins, so a client cannot mix two and have the second read.
+// ExtractKey returns the client key a request presents, or "". The order is
+// `Authorization: Bearer`, then `x-api-key` on every client route, and
+// `x-goog-api-key` then `?key=` only under /v1beta, as the clients send them.
+// The first present value wins, so a client cannot mix two and have the second
+// read.
 func ExtractKey(r *nethttp.Request) string {
 	if h := r.Header.Get("Authorization"); h != "" {
 		if rest, ok := strings.CutPrefix(h, "Bearer "); ok {

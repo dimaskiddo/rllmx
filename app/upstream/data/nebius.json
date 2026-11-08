@@ -1,0 +1,22 @@
+{
+  "id": "nebius",
+  "alias": "nebius",
+  "category": "apikey",
+  "display": {
+    "name": "Nebius AI"
+  },
+  "transport": {
+    "baseUrl": "https://api.studio.nebius.ai/v1/chat/completions"
+  },
+  "auth": {
+    "scheme": "bearer",
+    "header": "Authorization",
+    "validateUrl": "https://api.studio.nebius.ai/v1/models"
+  },
+  "models": [
+    {
+      "id": "meta-llama/Llama-3.3-70B-Instruct",
+      "name": "Llama 3.3 70B Instruct"
+    }
+  ]
+}

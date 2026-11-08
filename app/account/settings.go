@@ -4,12 +4,12 @@ import (
 	"context"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/tidwall/gjson"
 
 	"rllmx/app/document"
+	"rllmx/app/ttl"
 )
 
 const (
@@ -25,37 +25,23 @@ type SettingsReader interface {
 	Effective(ctx context.Context) (document.Doc, error)
 }
 
-// settingsCache reuses the settings read for SettingsTTL. A failed read is
-// returned and not cached.
-type settingsCache struct {
-	src SettingsReader
-	now func() time.Time
+// settingsLoadTimeout bounds one read of the settings row, which no caller's
+// context owns.
+const settingsLoadTimeout = 10 * time.Second
 
-	mu  sync.Mutex
-	at  time.Time
-	doc document.Doc
-	ok  bool
+// newSettingsCache reuses the settings read for SettingsTTL. A failed read is
+// returned and not cached.
+func newSettingsCache(src SettingsReader, now func() time.Time) *settingsCache {
+	return &settingsCache{v: ttl.New(SettingsTTL, now, src.Effective)}
 }
+
+type settingsCache struct{ v *ttl.Value[document.Doc] }
 
 func (c *settingsCache) get(ctx context.Context) (document.Doc, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.ok && c.now().Sub(c.at) < SettingsTTL {
-		return c.doc, nil
-	}
-	d, err := c.src.Effective(ctx)
-	if err != nil {
-		return document.Doc{}, err
-	}
-	c.doc, c.at, c.ok = d, c.now(), true
-	return d, nil
+	return c.v.Get(ctx, settingsLoadTimeout)
 }
 
-func (c *settingsCache) drop() {
-	c.mu.Lock()
-	c.ok = false
-	c.mu.Unlock()
-}
+func (c *settingsCache) drop() { c.v.Drop() }
 
 // strategyFor is the provider's own strategy, else the global one, else fill-first.
 // A name this version does not know behaves as fill-first.

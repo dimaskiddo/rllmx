@@ -71,8 +71,12 @@ const BindTTL = 10 * 60
 func Bind(secret []byte, state string) string { return BindFor(secret, BindCookie, state) }
 
 // BindFor is Bind for a named binding, so the two sign-in types cannot be made
-// to accept each other's cookie.
+// to accept each other's cookie. With no secret it returns "", which no cookie
+// can match: a MAC under an empty key is one anybody can compute.
 func BindFor(secret []byte, name, state string) string {
+	if len(secret) == 0 {
+		return ""
+	}
 	mac := hmac.New(sha256.New, secret)
 	mac.Write([]byte(name))
 	mac.Write([]byte("|"))
@@ -87,7 +91,7 @@ func BindMatches(secret []byte, state, cookie string) bool {
 
 // BindMatchesFor is BindMatches for a named binding.
 func BindMatchesFor(secret []byte, name, state, cookie string) bool {
-	if state == "" || cookie == "" {
+	if len(secret) == 0 || state == "" || cookie == "" {
 		return false
 	}
 	return subtle.ConstantTimeCompare([]byte(BindFor(secret, name, state)), []byte(cookie)) == 1

@@ -65,6 +65,9 @@ func (ClaudeCodec) WriteRequest(r *Request, c *Ctx) ([]byte, error) {
 		}
 		tools = append(tools, claudeTool{Name: t.Name, Description: t.Description, InputSchema: schema})
 	}
+	if c.Entry.Transport.Quirks.RequireClaudeToolType {
+		tools = typeTools(tools)
+	}
 	// Outside Anthropic, only the tool types the provider lists are sent.
 	if len(c.Caps.ClaudeToolTypes) > 0 {
 		tools = filterToolTypes(tools, c.Caps.ClaudeToolTypes)
@@ -131,6 +134,7 @@ func defaultClaudeMaxTokens(c *Ctx) int {
 }
 
 type claudeTool struct {
+	Type         string          `json:"type,omitempty"`
 	Name         string          `json:"name,omitempty"`
 	Description  string          `json:"description,omitempty"`
 	InputSchema  json.RawMessage `json:"input_schema,omitempty"`
@@ -194,6 +198,17 @@ func filterToolTypes(tools []claudeTool, allowed []string) []claudeTool {
 		}
 	}
 	return out
+}
+
+// typeTools gives every tool that has no type the type "custom", for gateways
+// that refuse a typeless tool.
+func typeTools(tools []claudeTool) []claudeTool {
+	for i, t := range tools {
+		if len(t.raw) == 0 {
+			tools[i].Type = "custom"
+		}
+	}
+	return tools
 }
 
 func splitSystem(msgs []Message) (system []string, rest []Message) {
@@ -487,11 +502,8 @@ func repairClaudeHistory(msgs []claudeMessage) []claudeMessage {
 		}
 		out = append(out, m)
 	}
-	if n := len(out); n > 0 && out[n-1].Role == "assistant" {
-		// A trailing assistant turn is a prefill; keep it. A conversation must not
-		// open on one though.
-		_ = n
-	}
+	// A trailing assistant turn is a prefill and stays. A conversation must not
+	// open on an assistant turn though.
 	if len(out) > 0 && out[0].Role != "user" {
 		out = append([]claudeMessage{{Role: "user", Content: []claudeBlock{{Type: "text", Text: "..."}}}}, out...)
 	}

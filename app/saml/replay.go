@@ -5,7 +5,8 @@ import (
 	"time"
 )
 
-// The replay set's limits, from PRD 2.
+// The replay set's limits: it holds assertion ids until they could no longer be
+// valid, and never more than a flood could fill.
 const (
 	maxReplay     = 100000
 	maxReplayLife = 24 * time.Hour

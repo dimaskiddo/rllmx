@@ -109,3 +109,29 @@ func TestErrorsNameNoValue(t *testing.T) {
 		t.Fatalf("err %v", err)
 	}
 }
+
+func TestAChangedCertificateTextIsParsedAgainAndAnUnchangedOneIsReused(t *testing.T) {
+	a, b := newTestIDP(t), newTestIDP(t)
+	textA := base64.StdEncoding.EncodeToString(a.cert.Raw)
+	textB := base64.StdEncoding.EncodeToString(b.cert.Raw)
+
+	first, err := ParseCertificate(textA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := ParseCertificate("  " + textA + "\n")
+	if err != nil || again != first {
+		t.Fatalf("an unchanged value was parsed again: same=%v err=%v", again == first, err)
+	}
+	other, err := ParseCertificate(textB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if other == first || !other.Equal(b.cert) {
+		t.Fatal("a changed value kept the old certificate")
+	}
+	back, err := ParseCertificate(textA)
+	if err != nil || !back.Equal(a.cert) {
+		t.Fatalf("going back to the first value gave the wrong certificate: %v", err)
+	}
+}

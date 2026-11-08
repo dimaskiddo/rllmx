@@ -274,6 +274,8 @@ func joinRegexp(name string, parts []string) (*regexp.Regexp, error) {
 	}
 	re, err := regexp.Compile("(?i)" + strings.Join(parts, "|"))
 	if err != nil {
+		// A regexp error quotes the pattern, which is data-file text; it is
+		// reported by kind only.
 		return nil, fmt.Errorf("upstream: %s: a pattern does not compile", name)
 	}
 	return re, nil

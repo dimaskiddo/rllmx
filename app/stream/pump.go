@@ -40,6 +40,8 @@ type Job struct {
 	Rewrite func(event string, data []byte) []byte
 	// Now is the clock for the first-byte time; nil uses time.Now.
 	Now func() time.Time
+	// MaxBytes caps what a translated stream may add up to; zero is MaxCollected.
+	MaxBytes int
 }
 
 // Result is how a stream ended. Wrote tells whether any byte reached the
@@ -81,6 +83,16 @@ type runner struct {
 	finish string
 	err    error
 	status int
+	// streamed counts the text, reasoning and tool-call bytes the codecs were
+	// given, which is what their writers keep until the stream ends.
+	streamed int
+}
+
+func (r *runner) limit() int {
+	if r.j.MaxBytes > 0 {
+		return r.j.MaxBytes
+	}
+	return MaxCollected
 }
 
 func (r *runner) result() Result {
@@ -141,6 +153,8 @@ func ReasonText(cause error) string {
 		return "The upstream did not start answering in time"
 	case errors.Is(cause, ErrEventTooLarge):
 		return "The upstream sent an event that is too large"
+	case errors.Is(cause, ErrCollectedTooLarge):
+		return "The upstream answer is too large"
 	}
 	return "The upstream stream ended with an error"
 }
@@ -182,8 +196,7 @@ func (r *runner) translate(ctx context.Context) {
 		}
 		r.sawEvent()
 		r.track.Feed(ev.Data)
-		chunks, _ := reader.Read(ev.Name, ev.Data)
-		for _, ch := range chunks {
+		for _, ch := range reader.Read(ev.Name, ev.Data) {
 			if ch.Err != nil {
 				r.fail(ErrUpstream, "The upstream stream ended with an error")
 				return
@@ -201,10 +214,17 @@ func (r *runner) translate(ctx context.Context) {
 
 // chunk counts one hub chunk and writes what the writer makes of it.
 func (r *runner) chunk(w translate.StreamWriter, ch translate.Chunk) bool {
+	r.streamed += len(ch.Text) + len(ch.Reasoning) + len(ch.Signature)
+	for _, d := range ch.ToolCalls {
+		r.streamed += len(d.Arguments)
+	}
+	if r.streamed > r.limit() {
+		r.fail(ErrCollectedTooLarge, ReasonText(ErrCollectedTooLarge))
+		return false
+	}
 	r.track.AddText(len(ch.Text) + len(ch.Reasoning))
 	if ch.FinishReason != "" {
 		r.finish = ch.FinishReason
 	}
-	frames, _ := w.Write(ch)
-	return r.send(frames)
+	return r.send(w.Write(ch))
 }

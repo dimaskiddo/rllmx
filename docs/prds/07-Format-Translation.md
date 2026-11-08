@@ -65,6 +65,18 @@ A request is disguised when all of these hold: the upstream format is Claude, th
 | Other nodes | A node whose base URL is not Anthropic's also gets the key as a bearer token and loses `x-app`, the browser-access header and `claude-code-20250219` **(not built: no node serves Claude through this path yet, 1.10)** |
 | Client headers | Never copied. `Input.Header` holds only the headers the pipeline reads (`pipeline.PickHeaders`) |
 
+### Provider Quirks (1.10a)
+
+A provider's `transport` names the few body edits it needs, as data. The codecs read them from `Ctx.Entry`; nothing else in the pipeline knows a provider by name.
+
+| Name | Effect |
+|---|---|
+| `quirks.preserveCacheControl` | A Claude client's cache marker on a text block is kept when the upstream is OpenAI format and reads it (the alicode family). Without it the marker never leaves, and a plain text message stays a string |
+| `quirks.requireClaudeToolType` | A Claude-format tool with no `type` is sent as `custom` (MiniMax). A typed tool is never touched |
+| `reasoningInject` (`all`, `toolCalls`) | An assistant turn with no reasoning text gets a single space as `reasoning_content`, for upstreams that refuse a thinking conversation without it. `toolCalls` limits it to turns that called a tool. With no provider setting the model decides: `kimi-*` gets `toolCalls`, a name holding `deepseek` gets `all`. The provider's scope beats the model's |
+| model `upstreamId` | The id sent on the wire when it differs from the id clients use (blackbox). The usage row keeps the client's id |
+| Capability `dropOutputConfig` | MiniMax drops `output_config` (a `capabilities.json` pattern row, as before) |
+
 ### Claude Preparation (`prepareClaude`)
 
 Every body bound for a Claude upstream, translated or not, ends here.
@@ -83,7 +95,7 @@ Every body bound for a Claude upstream, translated or not, ends here.
 |---|---|
 | Request reader | `instructions` becomes the system turn; an empty `input` becomes a `...` user turn; `reasoning` items become `reasoning_content` and `encrypted_content` on the next assistant turn; `function_call` and `custom_tool_call` items become tool calls (a call with no name is skipped); hosted tools without a name are dropped |
 | Custom tools | Declared to a chat upstream as a function with one string parameter `input`. The name is kept on `Ctx.CustomTools` (the one field a request reader writes), so the answer and the stream name it as a `custom_tool_call` again |
-| Request writer | Sends `store:false`, clamps call ids to 64 characters, flattens tool declarations |
+| Request writer | Sends `store:false`, clamps call ids to 64 characters, flattens tool declarations. A Codex or Grok CLI call is then reshaped by its executor (PRD 8): the codec's body is the input, the backend's allowlist the output |
 | Stream writer | Holds `response.completed` until the usage trailer arrives (Close sends it otherwise), numbers every event, ends with it. An error chunk is answered by the transport with `response.failed` (`failure.Frame`) |
 
 ### Gemini Codec

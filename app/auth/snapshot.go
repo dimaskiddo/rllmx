@@ -2,12 +2,13 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"strconv"
-	"sync"
 	"time"
 
 	"rllmx/app/document"
 	"rllmx/app/repository"
+	"rllmx/app/ttl"
 )
 
 const snapshotTTL = 5 * time.Second
@@ -50,56 +51,50 @@ func DefaultSettings() Settings {
 }
 
 // Store reads the settings row and the session epoch, cached briefly so a
-// request path does not query the database per request.
+// request path does not query the database per request. A request takes no lock
+// to read the cached value.
 type Store struct {
 	// DB returns the open store, nil before the data runner opened it.
 	DB func() *repository.Store
 	// Now is the clock; tests replace it.
 	Now func() time.Time
 
-	mu       sync.Mutex
-	cached   Settings
-	readAt   time.Time
-	hasCache bool
-	// generation drops the cache when this process writes a setting.
-	generation uint64
-	loaded     uint64
+	cached *ttl.Value[Settings]
 }
+
+// settingsLoadTimeout bounds one read of the settings row and the epoch, which
+// no caller's context owns.
+const settingsLoadTimeout = 10 * time.Second
+
+// errUnreadable stands for a read that failed or found no open store. The
+// cache never keeps it, so the next request tries again.
+var errUnreadable = errors.New("auth: settings unavailable")
 
 // NewStore builds the settings reader.
 func NewStore(db func() *repository.Store) *Store {
-	return &Store{DB: db, Now: time.Now}
+	s := &Store{DB: db, Now: time.Now}
+	s.cached = ttl.New(snapshotTTL, func() time.Time { return s.Now() }, func(ctx context.Context) (Settings, error) {
+		v, ok := s.read(ctx)
+		if !ok {
+			return Settings{}, errUnreadable
+		}
+		return v, nil
+	})
+	return s
 }
 
-// Get returns the current settings, from the cache while it is fresh.
+// Get returns the current settings, from the cache while it is fresh. A store
+// that is not open, or a failed read, gives the strict defaults.
 func (s *Store) Get(ctx context.Context) Settings {
-	s.mu.Lock()
-	if s.hasCache && s.Now().Sub(s.readAt) < snapshotTTL && s.loaded == s.generation {
-		v := s.cached
-		s.mu.Unlock()
-		return v
-	}
-	gen := s.generation
-	s.mu.Unlock()
-
-	v, ok := s.read(ctx)
-	if !ok {
+	v, err := s.cached.Get(ctx, settingsLoadTimeout)
+	if err != nil {
 		return DefaultSettings()
 	}
-
-	s.mu.Lock()
-	s.cached, s.readAt, s.hasCache, s.loaded = v, s.Now(), true, gen
-	s.mu.Unlock()
 	return v
 }
 
 // Changed drops the cache, for a write this process just made.
-func (s *Store) Changed() {
-	s.mu.Lock()
-	s.hasCache = false
-	s.generation++
-	s.mu.Unlock()
-}
+func (s *Store) Changed() { s.cached.Drop() }
 
 // read queries the settings row and the epoch. A store that is not open yet, or
 // a read that fails, reports ok=false so the caller falls back to the strict

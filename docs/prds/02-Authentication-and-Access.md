@@ -207,6 +207,8 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | # | What we do differently | Why it is better |
 |---|---|---|
 | 94 | Any control character refused (write, send) | The rest are as harmful |
+| 231 | A remote caller whose API keys are refused five times in a row is locked out by the same progressive limiter as the dashboard login (key `key:<address>`, so its budget is its own); while locked, any call that presents a key gets `429` with `Retry-After`, a valid key included. A call with no key, and a local caller, are never counted | The reference lets a client try keys without limit; the key id is six characters from 36, so an unthrottled caller can walk it (improvement) |
+| 232 | One client address may hold at most 50 single sign-in flows open, and the pending store drops expired flows from the old end instead of scanning all of them. The cap is per address, so the store cannot be filled from one place | `oidc/start` and `saml/start` are public; without a per-address cap, ten thousand calls made every real sign-in fail for ten minutes (improvement) |
 | 51 | Only `/v1beta`, first source wins | Query keys out of proxies and logs |
 | 42, 43, 44, 58 | Local = loopback peer, no proxy header, `Host` naming this machine, loopback `Origin`, `Sec-Fetch-Site` same-origin/none; session also on local-only routes; cross-site `/api` writes refused **(built, `middleware.SameOrigin`, 1.5)**; `requireApiKey` in guard; no local-only route yet, logic tested | Admin routes unreachable from web app, DNS rebinding or same-machine tunnel; one decision point |
 | 52 | `pv` claim (HMAC of password hash + session epoch); password change, "logout everywhere", `password reset` end all sessions | Stolen cookie dies with the password |

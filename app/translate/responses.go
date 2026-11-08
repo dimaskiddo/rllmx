@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/tidwall/gjson"
+
+	"rllmx/app/text"
 )
 
 // ResponsesCodec joins the OpenAI Responses API to the hub.
@@ -322,10 +324,7 @@ func (ResponsesCodec) WriteRequest(r *Request, c *Ctx) ([]byte, error) {
 }
 
 func clampID(id string) string {
-	if len(id) > maxCallID {
-		return id[:maxCallID]
-	}
-	return id
+	return text.CutBytes(id, maxCallID)
 }
 
 func reasoningItem(m Message) obj {

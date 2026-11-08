@@ -1,0 +1,33 @@
+{
+  "id": "dahl",
+  "alias": "dahl",
+  "aliases": [
+    "dahl-inference"
+  ],
+  "category": "apikey",
+  "display": {
+    "name": "Dahl Inference"
+  },
+  "transport": {
+    "baseUrl": "https://inference.dahl.global/v1/chat/completions"
+  },
+  "auth": {
+    "scheme": "bearer",
+    "header": "Authorization",
+    "validateUrl": "https://inference.dahl.global/v1/models"
+  },
+  "models": [
+    {
+      "id": "zai-org/GLM-5.3-Flash",
+      "name": "GLM-5.3 Flash"
+    },
+    {
+      "id": "deepseek-ai/DeepSeek-V4-Flash-0731",
+      "name": "DeepSeek V4 Flash 0731"
+    },
+    {
+      "id": "MiniMaxAI/MiniMax-M2.7",
+      "name": "MiniMax M2.7"
+    }
+  ]
+}

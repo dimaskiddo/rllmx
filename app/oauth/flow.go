@@ -30,6 +30,17 @@ type Flow struct {
 	upstream.OAuth
 }
 
+// FlowFor finds the login of a provider by its name or alias and joins it with
+// its client id. ErrUnsupported means no such provider.
+func FlowFor(reg *upstream.Registry, clientID func(string) string, provider string) (Flow, error) {
+	id, ok := reg.Resolve(provider)
+	if !ok {
+		return Flow{}, ErrUnsupported
+	}
+	e, _ := reg.ByID(id)
+	return NewFlow(e, clientID(id))
+}
+
 // NewFlow joins a registry entry with its client id. An entry without a login
 // block is unsupported; an empty client id means the deployer switched it off.
 func NewFlow(e upstream.Entry, clientID string) (Flow, error) {

@@ -1,7 +1,6 @@
 package settings
 
 import (
-	"slices"
 	"strings"
 	"testing"
 )
@@ -9,7 +8,7 @@ import (
 func TestKnownNamesFollowTheNamingRules(t *testing.T) {
 	seen := map[string]bool{}
 	folded := map[string]string{}
-	for _, name := range Known() {
+	for _, name := range known {
 		if !namePattern.MatchString(name) {
 			t.Errorf("%q does not match the naming pattern", name)
 		}
@@ -29,14 +28,6 @@ func TestOwnedGroupsAreUpperCaseAndEndWithAnUnderscore(t *testing.T) {
 		if g != strings.ToUpper(g) || !strings.HasSuffix(g, "_") {
 			t.Errorf("group %q", g)
 		}
-	}
-}
-
-func TestKnownReturnsACopy(t *testing.T) {
-	a := Known()
-	a[0] = "CHANGED"
-	if slices.Contains(Known(), "CHANGED") {
-		t.Fatal("Known exposes the internal list")
 	}
 }
 

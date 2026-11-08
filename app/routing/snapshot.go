@@ -2,11 +2,11 @@ package routing
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	"rllmx/app/document"
 	"rllmx/app/repository"
+	"rllmx/app/ttl"
 )
 
 // SnapshotTTL is how long a read of stored data is reused. A second instance
@@ -31,67 +31,41 @@ type Source interface {
 // Snapshot reads aliases, nodes and combo names through a Source, each at most
 // once per SnapshotTTL. A failed read is returned and not cached.
 type Snapshot struct {
-	aliases cache[map[string]string]
-	nodes   cache[[]Node]
-	combos  cache[[]string]
+	aliases *ttl.Value[map[string]string]
+	nodes   *ttl.Value[[]Node]
+	combos  *ttl.Value[[]string]
 }
+
+// loadTimeout bounds one read of stored data, which no caller's context owns.
+const loadTimeout = 10 * time.Second
 
 // NewSnapshot wraps a source. now may be nil for the wall clock.
 func NewSnapshot(src Source, now func() time.Time) *Snapshot {
-	if now == nil {
-		now = time.Now
-	}
 	return &Snapshot{
-		aliases: cache[map[string]string]{load: src.Aliases, now: now},
-		nodes:   cache[[]Node]{load: src.Nodes, now: now},
-		combos:  cache[[]string]{load: src.ComboNames, now: now},
+		aliases: ttl.New(SnapshotTTL, now, src.Aliases),
+		nodes:   ttl.New(SnapshotTTL, now, src.Nodes),
+		combos:  ttl.New(SnapshotTTL, now, src.ComboNames),
 	}
 }
 
 // Invalidate drops every cached read at once.
 func (s *Snapshot) Invalidate() {
-	s.aliases.drop()
-	s.nodes.drop()
-	s.combos.drop()
+	s.aliases.Drop()
+	s.nodes.Drop()
+	s.combos.Drop()
 }
 
 // Aliases returns the user's model aliases as stored JSON text per name.
-func (s *Snapshot) Aliases(ctx context.Context) (map[string]string, error) { return s.aliases.get(ctx) }
+func (s *Snapshot) Aliases(ctx context.Context) (map[string]string, error) {
+	return s.aliases.Get(ctx, loadTimeout)
+}
 
 // Nodes returns the provider nodes.
-func (s *Snapshot) Nodes(ctx context.Context) ([]Node, error) { return s.nodes.get(ctx) }
+func (s *Snapshot) Nodes(ctx context.Context) ([]Node, error) { return s.nodes.Get(ctx, loadTimeout) }
 
 // ComboNames returns the names of every combo.
-func (s *Snapshot) ComboNames(ctx context.Context) ([]string, error) { return s.combos.get(ctx) }
-
-type cache[T any] struct {
-	mu   sync.Mutex
-	at   time.Time
-	ok   bool
-	val  T
-	load func(context.Context) (T, error)
-	now  func() time.Time
-}
-
-func (c *cache[T]) get(ctx context.Context) (T, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.ok && c.now().Sub(c.at) < SnapshotTTL {
-		return c.val, nil
-	}
-	v, err := c.load(ctx)
-	if err != nil {
-		var zero T
-		return zero, err
-	}
-	c.val, c.at, c.ok = v, c.now(), true
-	return v, nil
-}
-
-func (c *cache[T]) drop() {
-	c.mu.Lock()
-	c.ok = false
-	c.mu.Unlock()
+func (s *Snapshot) ComboNames(ctx context.Context) ([]string, error) {
+	return s.combos.Get(ctx, loadTimeout)
 }
 
 type repositorySource struct{ store *repository.Store }

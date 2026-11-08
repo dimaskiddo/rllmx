@@ -1,6 +1,6 @@
 # PRD 08 — Executors (`app/executor/`)
 
-**Status:** partial · **Steps:** 1.8c, 1.10
+**Status:** partial · **Steps:** 1.8c, 1.10a, 1.10b to 1.10h
 
 Built in 1.8c: `app/executor` with the `Executor` interface (`Execute(ctx, Request) (Response, error)`), the default executor, the URL builders, the retry table and the upstream error parser. It returns the response unread; the pipeline decides stream or buffer. The credential is read from the connection at the last moment and is never stored, logged or put in an error. Not built: a per-provider executor, token refresh on 401/403 (1.9), the `baseUrls` fallback. Everything below the interface is the design step 1.10 completes.
 
@@ -30,7 +30,7 @@ Registered by provider id; aliases in parentheses.
 |---|---|
 | antigravity | `v1internal:streamGenerateContent`, function-name sanitizing, thought-signature handling, reset-time parsing |
 | gemini-cli | Cloud Code envelope `{project, model, request}`, client headers |
-| codex | Body shaped to the Codex backend (allowlisted fields, `system` to `developer`, stored item ids removed, tools flattened and Unicode-property patterns stripped, effort among the model's levels, Lite prefix); workspace and session headers; `/compact` chosen by the route (`Endpoint.Compact` to `Request.Compact`, never executor state); remote images inlined (16 images, 20 MB per request); the first 256 KiB of the stream are read for `server_is_overloaded` and `service_unavailable_error` (same account, the 503 rule), `model_at_capacity` (503 at once so another account serves), and replayed byte for byte when clean. An error after real output is never retried |
+| codex | Body shaped to the Codex backend (allowlisted fields, `system` to `developer`, stored item ids removed, tools flattened and Unicode-property patterns stripped, effort among the model's levels, Lite prefix); workspace and session headers; `/compact` chosen by the route (`Request.Compact` from the path, never executor state), answered with JSON and forwarded to a Responses client as sent; remote images inlined through the `inlineImages` quirk (16 images, 20 MB per request); the first 256 KiB of the stream are read for `server_is_overloaded` and `service_unavailable_error` (same account, the 503 rule), `model_at_capacity` (503 at once so another account serves), and replayed byte for byte when clean. The look ends at the first output delta, at 256 KiB, or when no byte arrives for `STREAM_STALL_TIMEOUT` (D228). An error after real output is never retried. Built in 1.10b; `prompt_cache_key` is always the keyed session (D227), instructions are our own text (D192), the effort comes from the model's `levels` and has no hyphen suffix (D229) |
 | github | The pipeline picks the wire format from the model data (`targetFormat` for Claude and Codex models) and the executor picks the address of that format; the GitHub token is exchanged for a Copilot token (one mint per account for any number of requests, kept in the memory-only `connections` cache group and sealed with the account, replaced 5 minutes before expiry, replaced once on a 401, a refused token never sent again); a chat body is fitted to Copilot (text and image parts, `max_completion_tokens`, no `reasoning_effort: none`) |
 | grok-cli | Responses body shaped to the proxy's allowlist, native item ids only, tool outputs without a call dropped; identity and session headers from the account and the derived session; `prompt_cache_key` is always the derived session, never the client's; a bounded per-account turn counter; the agent id is the stored one or derived from the connection, never from the machine |
 | kiro | AWS headers, endpoint ordering, event-stream to SSE |
@@ -103,8 +103,10 @@ sequenceDiagram
 
 | Executor | Status | Step |
 |---|---|---|
-| default (registry-driven) | todo | 1.8 |
-| codex (peek, Lite, `/compact`, reset time, images), github (Copilot token, chat, messages and Responses addresses), grok-cli, azure, codebuddy-cn and codebuddy-intl, minimax-code | todo | 1.10 |
+| default (registry-driven) | done | 1.8, 1.10a |
+| azure | done | 1.10a |
+| codex (peek, Lite, `/compact`, reset time, images), grok-cli | done | 1.10b |
+| github (Copilot token, chat, messages and Responses addresses), codebuddy-cn and codebuddy-intl, minimax-code | todo | 1.10c |
 | iflow, antigravity, commandcode, gemini-cli, qoder and qoder-cn, kiro, zed, cursor | todo | 1.10 |
 | windsurf, trae (reference loads neither, D158) | out | - |
 | bedrock and bedrock-xai, opencode (opencode-go, opencode-zen), vertex and vertex-partner | todo | 1.10 |
@@ -117,7 +119,7 @@ sequenceDiagram
 
 ## Parity: Provider Registry
 
-Every provider the references ship, with executor kind, status and delivering step. **Target state:** step 1.7a built the loader and the data files for `anthropic`, `openai`, `codex`, `claude`, `gemini`, `deepseek`, `openrouter`, `github` and `grok-cli` (identity, transport address and format, model list; no executor, auth, retry or OAuth block). Every row below stays `todo` until step 1.10 adds the rest and the executors. A test in `app/upstream` will read this table: a `done` or `partial` id needs a data file, and no id appears twice.
+Every provider the references ship, with executor kind, status and delivering step. **State:** step 1.7a built the loader and nine seed files; **1.10a** added the executor framework and 45 more data files (44 providers and `azure`) (the rows marked `done (1.10a)`). Every other row stays `todo` until its sub-step (1.10b to 1.10h). A test in `app/upstream` reads this table: a `done` or `partial` id needs a data file, and no id appears twice.
 
 | Marker | Meaning |
 |---|---|
@@ -132,10 +134,12 @@ Every provider the references ship, with executor kind, status and delivering st
 
 | Executor | Status | Providers |
 |---|---|---|
-| default | todo 1.10 | alicode, alicode-intl, alims-intl, alitp-intl, atria, bai, baidu, blackbox, bluesminds, cerebras, chutes, cohere, dahl, featherless, fireworks, glm-cn, hyperbolic, llm7, minimax, minimax-cn, mistral, morph, nebius, perplexity, perplexity-agent, runcrate, sambanova, sensenova, siliconflow, tencent, together, tokenharbor, tokenrouter, venice, vercel-ai-gateway, volcengine-ark |
-| default | todo 1.10 | anthropic, deepseek, groq, openai |
+| default | done (1.10a) | alicode, alicode-intl, alims-intl, alitp-intl, atria, bai, baidu, blackbox, bluesminds, cerebras, chutes, cohere, dahl, featherless, fireworks, glm-cn, hyperbolic, llm7, minimax, minimax-cn, mistral, morph, nebius, perplexity, perplexity-agent, runcrate, sambanova, sensenova, siliconflow, tencent, together, tokenharbor, venice, vercel-ai-gateway, volcengine-ark |
+| default | todo 1.10 | tokenrouter (its thinking format needs a writer of its own) |
+| default | done | anthropic, deepseek, groq, openai |
 | default | todo 1.11 | assemblyai, aws-polly, black-forest-labs, brave-search, cartesia, comfyui, deepgram, elevenlabs, exa, fal-ai, firecrawl, fish-audio, google-pse, huggingface, inworld, jina-ai, jina-reader, linkup, nace, nanobanana, ollama-search, playht, recraft, runwayml, sdwebui, searchapi, selfhosted-embedding, selfhosted-stt, selfhosted-tts, serper, stability-ai, tavily, tinyfish, topaz, v1m, voyage-ai, xquik, youcom |
-| specialized | todo 1.10 | azure, xiaomi-tokenplan |
+| specialized | done (1.10a) | azure |
+| specialized | todo 1.10 | xiaomi-tokenplan |
 | specialized | todo 1.10 | bedrock, ollama-local |
 | specialized | todo 1.10 | bedrock-xai, commandcode, mmf, opencode-go, opencode-zen, vertex-partner |
 | specialized | todo 1.11 | veoaifree-web |
@@ -151,8 +155,9 @@ Every provider the references ship, with executor kind, status and delivering st
 
 | Executor | Status | Providers |
 |---|---|---|
-| default | todo 1.10 | agnes, api-airforce, bazaarlink, byteplus, cloudflare-ai, kilo-gateway, nous, nvidia, ollama, poolside |
-| default | todo 1.10 | gemini, openrouter |
+| default | done (1.10a) | agnes, api-airforce, bazaarlink, byteplus, cloudflare-ai, kilo-gateway, nvidia, poolside |
+| default | todo 1.10 | nous (login hook), ollama (its own wire format) |
+| default | done | gemini, openrouter |
 | default | todo 1.11 | coqui, edge-tts, google-tts, local-device, searxng, tortoise |
 | specialized | todo 1.10 | kimchi, vertex |
 
@@ -162,7 +167,8 @@ Every provider the references ship, with executor kind, status and delivering st
 |---|---|---|
 | default | todo 1.10 | cline, clinepass, gitlab, glm, kilocode, kimi, muse, xai |
 | default | partial (1.9c: a login's headers and address suffix, the computed beta list and the disguise are data and `pipeline`, no executor code) | claude |
-| specialized | todo 1.10 | codebuddy-cn, codebuddy-intl, codex, github, grok-cli, minimax-code, minimax-code-global |
+| specialized | done (1.10b) | codex, grok-cli |
+| specialized | todo 1.10 | codebuddy-cn, codebuddy-intl, github, minimax-code, minimax-code-global |
 | specialized | todo 1.10 | antigravity, cursor, iflow, qoder, qoder-cn, xiaomi-mimo, zed |
 | specialized | out | trae, windsurf |
 
@@ -193,7 +199,10 @@ Auth: pasted cookie over a plain HTTP client. Browser or TLS-fingerprint clients
 **Steps 1.8 (base) and 1.10 (per provider).**
 
 - [x] Executor base: URL, auth block, header order with the overrides last, per-status retry, error parsing (1.8c). The `baseUrls` fallback stays unbuilt (D102)
-- [ ] A data file and executor for every registry id in the parity table below
+- [x] 1.10a: `executor.Mux` (an unregistered name fails the call, a node uses `Default`), per-provider `transport` fields (`headers`, `urlSuffix`, `retry`, `quirks`, `reasoningInject`), `{accountId}` in the address (checked against `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`, a bad one sends nothing), a model's `upstreamId` on the wire, `azure`, and 45 data files. Param rules for cerebras, mistral, groq, cloudflare-ai and the volcengine kimi cap are in `params.json`; the MiniMax pair drop `output_config`
+- [x] 1.10b: the `codex` and `grok-cli` executors on `Default`, shared Responses shaping (`responses_body.go`: field allowlist rebuilt not edited, flat tools, `\p{` patterns stripped), the SSE peek with an idle bound, `/compact`, `Model.lite` and `levels`, the `inlineImages` quirk. Not built: the `web_search` auto-injection, the live-catalog guard (1.10h)
+- [ ] 1.10c to 1.10h: the rest of the parity table (github and the small login providers; the Google family; AWS; signed and session protocols; cookie providers; live-catalog guards and probes)
+- [ ] Still missing from the base: `regions` and `defaultRegion`, `baseUrls` fallback (D102), `stallTimeoutMs`/`timeoutMs` per provider, `responsesUrl`/`messagesUrl`, the JSON-schema to `json_object` fallback for compatible nodes. No 1.10a provider needs them; each lands with the first provider that does
 - [ ] Live-catalog guards for kiro, codex, cursor, kimchi, qoder: account model list (5-minute cache) before dispatch; unknown model 400; a fetch failure lets the request through
 - **Done when:** every provider in the parity table has an executor; each passes its fake-upstream tests; live checks are in Open items.
 
@@ -215,6 +224,9 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 181 | Refused mint: fixed text (401 or 403) to client, nothing GitHub said in logs; server error on mint retryable | Provider text out of answers and logs |
 | 98, 99 | "Test not supported yet", nothing written; node's own base URL | Working connection stays green |
 | 102 | 429 not retried on same URL; account loop moves on; fallback URLs return with executors **(planned 1.10)** | No pointless repeat |
+| 227 | The cache key sent to Codex and to the Grok CLI proxy is always the keyed session (a hash bound to the account), never a `prompt_cache_key` the client chose; with no session the field is removed | One client cannot pick the cache another client's conversation reads |
+| 228 | The Codex peek has an idle bound: when no byte arrives for the stall timeout it hands over what it read and the normal stream timers act. The reference waits for output or 256 KiB with no timer | A stalled upstream is not hidden behind the peek |
+| 229 | A Codex model id carries no hyphen effort suffix (`gpt-5.3-codex-high`); the level comes from the request (`reasoning`, `(high)`) and the model's `levels`. The reference removes the first match of `-high` anywhere in the name | An id is an exact registry row; no match in the middle of a name |
 | 164 | Device name fixed word `router`; model is build OS and architecture; stable device id from account's stored data, else generated | Host name identifies operator's machine to third party; upstream does not need it |
 | 166 | Only provider whose data sets `clineEnvelope`, only when `success` true, `data` an object; any other body passes unchanged | Unrelated envelope-shaped body not rewritten |
 | 175 | Data-named headers on login calls pass same filter as upstream headers; content type, accept, framing, credential headers cannot be set | Data file cannot forge framing or replace credential on a token call |

@@ -2,6 +2,7 @@ package settings
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,13 +21,13 @@ func ResolveDataDir(p string) (string, error) {
 		}
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return "", errors.New("settings: DATA_DIR: cannot resolve the home directory")
+			return "", fmt.Errorf("settings: DATA_DIR: cannot resolve the home directory: %w", err)
 		}
 		p = filepath.Join(home, rest)
 	}
 	abs, err := filepath.Abs(p)
 	if err != nil {
-		return "", errors.New("settings: DATA_DIR: cannot resolve the path")
+		return "", fmt.Errorf("settings: DATA_DIR: cannot resolve the path: %w", err)
 	}
 	return abs, nil
 }

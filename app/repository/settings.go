@@ -198,33 +198,6 @@ func (r *SettingsRepo) SetPasswordHash(ctx context.Context, hash string) error {
 	return r.patch(ctx, map[string]string{"password": document.Encode(dialect.StripNUL(hash))})
 }
 
-// ReplacePasswordHash stores next only if the stored hash is still current. It
-// reports false, and writes nothing, when another writer changed it first.
-func (r *SettingsRepo) ReplacePasswordHash(ctx context.Context, current, next string) (bool, error) {
-	swapped := false
-	err := r.s.Tx(ctx, func(tx contractsdb.Tx) error {
-		d, stored, err := r.s.readStored(tx)
-		if err != nil {
-			return fmt.Errorf("settings: %w", err)
-		}
-		if have, _ := d.GetString("password"); have != current {
-			return nil
-		}
-		if err := d.SetRaw("password", document.Encode(dialect.StripNUL(next))); err != nil {
-			return err
-		}
-		if err := r.writeSettings(tx, d, stored); err != nil {
-			return err
-		}
-		swapped = true
-		return nil
-	})
-	if err == nil && swapped {
-		r.s.settingsChanged()
-	}
-	return swapped, err
-}
-
 func (r *SettingsRepo) patch(ctx context.Context, patch map[string]string) error {
 	for _, k := range sortedKeys(patch) {
 		if k == "" || !gjson.Valid(patch[k]) {

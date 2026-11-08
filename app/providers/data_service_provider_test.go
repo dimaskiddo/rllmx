@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/goravel/framework/contracts/binding"
 	"github.com/goravel/framework/contracts/config"
@@ -134,7 +135,7 @@ func TestDataOfPanicsWhenTheProviderIsNotRegistered(t *testing.T) {
 }
 
 func TestTheScheduleEventsComeFromTheJobSet(t *testing.T) {
-	d := &Data{Jobs: data.NewJobSet([]data.Job{{Name: "a", Cron: "* * * * *", Run: func(context.Context) error { return nil }}}, context.Background(), &tests.Log{}, nowFn)}
+	d := &Data{Jobs: data.NewJobSet([]data.Job{{Name: "a", Cron: "* * * * *", Run: func(context.Context) error { return nil }}}, context.Background(), &tests.Log{}, time.Now)}
 	events := ScheduleOf(&fakeApp{values: map[any]any{BindingData: d}})
 	if len(events) != 1 || events[0].GetName() != "a" {
 		t.Fatalf("events = %v", events)

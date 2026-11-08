@@ -286,6 +286,15 @@ func TestShutdownGivesUpWaitingForAHandlerThatNeverReturns(t *testing.T) {
 	<-done
 }
 
+func TestShutdownTwiceIsHarmless(t *testing.T) {
+	s, _, _ := newServer(t, nethttp.NotFoundHandler(), nil)
+	for range 2 {
+		if err := s.Shutdown(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestShutdownBeforeRunPreventsTheStart(t *testing.T) {
 	s, _, _ := newServer(t, nethttp.NotFoundHandler(), nil)
 	if err := s.Shutdown(); err != nil {

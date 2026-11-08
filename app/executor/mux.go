@@ -1,0 +1,59 @@
+package executor
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"rllmx/app/upstream"
+)
+
+// ErrUnknownExecutor means a provider names an executor nobody registered. The
+// call fails: falling back to the default would send a body shaped for another
+// protocol.
+var ErrUnknownExecutor = errors.New("executor: no such executor is registered")
+
+// Mux sends a request to the executor its provider names. A request with no
+// registry entry, a user node, goes to the default one.
+type Mux struct {
+	byName map[string]Executor
+}
+
+// Options are the settings the specialized executors need.
+type Options struct {
+	// PeekIdle bounds the silence tolerated while an answer's start is checked.
+	PeekIdle time.Duration
+}
+
+// NewMux builds a Mux around the default executor, with the specialized ones
+// beside it. The names must be the ones a data file may use.
+func NewMux(d *Default, o Options) *Mux {
+	return &Mux{byName: map[string]Executor{
+		upstream.ExecutorDefault: d,
+		upstream.ExecutorAzure:   &Azure{Default: d},
+		upstream.ExecutorCodex:   &Codex{Default: d, PeekIdle: o.PeekIdle},
+		upstream.ExecutorGrokCLI: &Grok{Default: d},
+	}}
+}
+
+// Names lists the registered executors.
+func (m *Mux) Names() []string {
+	out := make([]string, 0, len(m.byName))
+	for n := range m.byName {
+		out = append(out, n)
+	}
+	return out
+}
+
+// Execute sends req through the executor named by its entry.
+func (m *Mux) Execute(ctx context.Context, req Request) (Response, error) {
+	name := req.Entry.Executor
+	if name == "" {
+		name = upstream.ExecutorDefault
+	}
+	e, ok := m.byName[name]
+	if !ok {
+		return Response{}, ErrUnknownExecutor
+	}
+	return e.Execute(ctx, req)
+}

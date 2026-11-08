@@ -1,0 +1,45 @@
+{
+  "id": "morph",
+  "alias": "morph",
+  "aliases": [
+    "morphllm"
+  ],
+  "category": "apikey",
+  "display": {
+    "name": "Morph"
+  },
+  "transport": {
+    "baseUrl": "https://api.morphllm.com/v1/chat/completions"
+  },
+  "auth": {
+    "scheme": "bearer",
+    "header": "Authorization",
+    "validateUrl": "https://api.morphllm.com/v1/models"
+  },
+  "models": [
+    {
+      "id": "morph-v3-large",
+      "name": "Morph v3 Large"
+    },
+    {
+      "id": "morph-v3-fast",
+      "name": "Morph v3 Fast"
+    },
+    {
+      "id": "morph-qwen35-397b",
+      "name": "Qwen 3.5 397B (Morph)"
+    },
+    {
+      "id": "morph-minimax27-230b",
+      "name": "MiniMax M2.7 (Morph)"
+    },
+    {
+      "id": "morph-qwen36-27b",
+      "name": "Qwen 3.6 27B (Morph)"
+    },
+    {
+      "id": "morph-dsv4flash",
+      "name": "DeepSeek V4 Flash (Morph)"
+    }
+  ]
+}

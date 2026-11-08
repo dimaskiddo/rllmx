@@ -80,6 +80,9 @@ type Deps struct {
 	Prefetch  Prefetch
 	// ResponseCache is the opt-in answer cache; nil is off.
 	ResponseCache *ResponseCache
+	// Signatures keeps provider thought signatures between turns; nil means a
+	// signature the client drops is not restored.
+	Signatures Loader
 	// Refresher renews OAuth tokens; nil leaves them as stored.
 	Refresher Refresher
 	// Sessions names the conversation a request belongs to; nil makes one.
@@ -87,6 +90,8 @@ type Deps struct {
 	Timers   stream.Timers
 	// BodyTimeout bounds reading a whole non-stream answer; zero means ten minutes.
 	BodyTimeout time.Duration
-	Log         log.Log
-	Now         func() time.Time
+	// MaxAnswer bounds a buffered upstream answer in bytes; zero means 64 MiB.
+	MaxAnswer int64
+	Log       log.Log
+	Now       func() time.Time
 }

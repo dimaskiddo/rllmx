@@ -65,13 +65,20 @@ func (c *ChatController) Serve(ctx contractshttp.Context) contractshttp.Response
 	if out.Streamed || out.Status == 499 {
 		return nil
 	}
+	writeAnswer(stream.WriterOf(ctx), out)
+	return nil
+}
+
+// writeAnswer sends a buffered answer through the writer behind the driver's
+// body copy, which would otherwise keep a second copy of up to 64 MiB for the
+// life of the request.
+func writeAnswer(w nethttp.ResponseWriter, out pipeline.Output) {
 	h := w.Header()
 	for k, v := range out.Header {
 		h[k] = v
 	}
 	w.WriteHeader(out.Status)
 	_, _ = w.Write(out.Body)
-	return nil
 }
 
 // cacheMode reads the client's X-Rllm-Cache wish. Only "use" and "bypass" mean

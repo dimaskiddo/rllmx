@@ -6,6 +6,7 @@ import (
 	"net"
 	nethttp "net/http"
 	"net/http/httptest"
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
@@ -85,6 +86,39 @@ func TestAListedNameMayResolveToAPrivateAddress(t *testing.T) {
 		t.Fatalf("a listed name was refused: %v", err)
 	}
 	_ = conn.Close()
+}
+
+func TestAListedNameThatResolvesToTheMetadataAddressIsRefused(t *testing.T) {
+	allow, err := ParseAllow("idp.internal.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, answer := range []string{"169.254.169.254", "fe80::1", "::ffff:169.254.169.254", "64:ff9b::a9fe:a9fe"} {
+		g := NewDialer(time.Second, allow)
+		ip := netip.MustParseAddr(answer)
+		g.lookup = func(context.Context, string) ([]netip.Addr, error) { return []netip.Addr{ip}, nil }
+		if _, _, err := g.targets(context.Background(), "idp.internal.example:443"); !errors.Is(err, ErrBlocked) {
+			t.Errorf("%s: err %v, want ErrBlocked", answer, err)
+		}
+	}
+}
+
+func TestAListedNameKeepsItsInternalAnswerAndDropsTheNeverOne(t *testing.T) {
+	allow, err := ParseAllow("idp.internal.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := NewDialer(time.Second, allow)
+	g.lookup = func(context.Context, string) ([]netip.Addr, error) {
+		return []netip.Addr{netip.MustParseAddr("169.254.169.254"), netip.MustParseAddr("10.1.2.3")}, nil
+	}
+	_, out, err := g.targets(context.Background(), "idp.internal.example:443")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 1 || out[0] != "10.1.2.3:443" {
+		t.Fatalf("targets %v, want only 10.1.2.3:443", out)
+	}
 }
 
 func TestTheGuardRefusesAMalformedTarget(t *testing.T) {

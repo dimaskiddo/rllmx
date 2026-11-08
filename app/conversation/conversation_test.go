@@ -187,8 +187,8 @@ func TestTheTablesAreBounded(t *testing.T) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if len(s.madeUp) > maxMadeUp || len(s.derived) > maxDerived {
-		t.Fatalf("tables grew to %d and %d", len(s.madeUp), len(s.derived))
+	if s.madeUp.len() > maxMadeUp || s.derived.len() > maxDerived {
+		t.Fatalf("tables grew to %d and %d", s.madeUp.len(), s.derived.len())
 	}
 }
 

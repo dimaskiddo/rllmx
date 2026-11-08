@@ -1,6 +1,7 @@
 package translate
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -70,7 +71,7 @@ func (GeminiCodec) ReadRequest(body []byte, c *Ctx) (*Request, error) {
 				if !d.Exists() {
 					d = p.Get("inline_data")
 				}
-				mt := firstNonEmptyStr(d.Get("mimeType").String(), d.Get("mime_type").String())
+				mt := cmp.Or(d.Get("mimeType").String(), d.Get("mime_type").String())
 				data := d.Get("data").String()
 				switch {
 				case strings.HasPrefix(mt, "image/"):
@@ -90,7 +91,7 @@ func (GeminiCodec) ReadRequest(body []byte, c *Ctx) (*Request, error) {
 				if args == "" {
 					args = "{}"
 				}
-				tc := ToolCall{ID: id, Name: fc.Get("name").String(), Arguments: args, Signature: firstNonEmptyStr(p.Get("thoughtSignature").String(), p.Get("thought_signature").String())}
+				tc := ToolCall{ID: id, Name: fc.Get("name").String(), Arguments: args, Signature: cmp.Or(p.Get("thoughtSignature").String(), p.Get("thought_signature").String())}
 				msg.ToolCalls = append(msg.ToolCalls, tc)
 				unanswered = append(unanswered, open{id: id, name: tc.Name})
 			case p.Get("functionResponse").Exists():
@@ -273,7 +274,7 @@ func (GeminiCodec) WriteRequest(r *Request, c *Ctx) ([]byte, error) {
 			if q := queues[id]; len(q) > 0 {
 				id, queues[id] = q[0], q[1:]
 			}
-			name := firstNonEmptyStr(m.Name, names[m.ToolCallID], "tool")
+			name := cmp.Or(m.Name, names[m.ToolCallID], "tool")
 			add("user", []any{obj{"functionResponse": obj{"id": id, "name": sanitizeGeminiName(name), "response": obj{"result": m.Text()}}}})
 		case RoleAssistant:
 			var parts []any

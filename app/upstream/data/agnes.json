@@ -1,0 +1,37 @@
+{
+  "id": "agnes",
+  "alias": "agnes",
+  "aliases": [
+    "agnes-ai"
+  ],
+  "category": "freeTier",
+  "display": {
+    "name": "Agnes AI"
+  },
+  "transport": {
+    "baseUrl": "https://apihub.agnes-ai.com/v1/chat/completions"
+  },
+  "auth": {
+    "scheme": "bearer",
+    "header": "Authorization",
+    "validateUrl": "https://apihub.agnes-ai.com/v1/models"
+  },
+  "models": [
+    {
+      "id": "agnes-2.5-flash",
+      "name": "Agnes 2.5 Flash"
+    },
+    {
+      "id": "agnes-2.5-pro",
+      "name": "Agnes 2.5 Pro"
+    },
+    {
+      "id": "agnes-2.5-pro-beta",
+      "name": "Agnes 2.5 Pro Beta"
+    },
+    {
+      "id": "agnes-3.0-flash",
+      "name": "Agnes 3.0 Flash"
+    }
+  ]
+}

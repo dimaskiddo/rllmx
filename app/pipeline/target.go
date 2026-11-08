@@ -46,6 +46,9 @@ func (c *call) resolve(ctx context.Context) (Output, bool) {
 	tc := c.tctx
 	tc.TargetFormat, tc.Provider, tc.Model, tc.Caps, tc.Entry = dest.format, dest.provider, dest.model, caps, dest.entry
 	tc.BudgetOf = c.p.d.Caps.Budget
+	if store := newSignatureStore(c.p.d.Signatures, c.in.Caller.ID, dest.model); store != nil {
+		tc.Calls = store
+	}
 	tc.Thinking = translate.ResolveThinking(t.Thinking, c.req.Thinking, translate.ModelThinking{}, caps)
 
 	c.upStream = c.clientStream || dest.entry.ForceStream
@@ -108,9 +111,9 @@ func (c *call) build(ctx context.Context, d destination) (Output, bool) {
 	if !ok {
 		return c.internal(ctx, errors.New("no codec for "+d.format)), false
 	}
-	c.req.Model, c.req.Stream = d.model, c.upStream
+	c.req.Model, c.req.Stream = c.p.d.Registry.WireModel(d.provider, d.model), c.upStream
 	translate.Prepare(c.req, c.tctx)
-	if c.p.d.Prefetch != nil && needsInlineImages(d.format) {
+	if c.p.d.Prefetch != nil && (needsInlineImages(d.format) || d.entry.Transport.Quirks.InlineImages) {
 		c.p.d.Prefetch.Inline(ctx, c.req)
 	}
 	body, err := codec.WriteRequest(c.req, c.tctx)

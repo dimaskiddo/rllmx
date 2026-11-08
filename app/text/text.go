@@ -4,6 +4,8 @@
 package text
 
 import (
+	"html"
+	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -36,4 +38,29 @@ func CutBytes(s string, n int) string {
 		n--
 	}
 	return s[:n]
+}
+
+var (
+	markup = regexp.MustCompile(`<[^>]*>`)
+	spaces = regexp.MustCompile(`\s+`)
+)
+
+// StripMarkup turns text that may be an HTML page into one short plain line: tags
+// removed (a second time after entities are decoded, so an escaped tag goes
+// too), control characters dropped, white space collapsed to single spaces, and
+// the result cut to at most max bytes on a character boundary.
+func StripMarkup(s string, max int) string {
+	s = markup.ReplaceAllString(s, " ")
+	s = html.UnescapeString(s)
+	s = markup.ReplaceAllString(s, " ")
+	s = StripControl(s)
+	s = spaces.ReplaceAllString(s, " ")
+	return strings.ToValidUTF8(CutBytes(strings.TrimSpace(s), max), "")
+}
+
+// HasASCIIControl reports a byte below U+0020 or DEL. Header values and data
+// file strings use this narrower rule: a line break or a NUL changes what a
+// header means, and C1 characters in a name are the file author's business.
+func HasASCIIControl(s string) bool {
+	return strings.ContainsFunc(s, func(r rune) bool { return r < 0x20 || r == 0x7f })
 }

@@ -125,8 +125,9 @@ func (k Keys) crc(machineID, keyID string) string {
 	return hex.EncodeToString(mac.Sum(nil))[:crcLen]
 }
 
-// wellFormed applies the shape rules PRD 2 refuses before any lookup: the
-// prefix, the alphabet, and the length bounds.
+// wellFormed applies the shape rules a key must meet before any lookup, so a
+// malformed key never costs a query: the prefix, the alphabet, and the length
+// bounds.
 func wellFormed(key string) bool {
 	if len(key) < minKeyBytes || len(key) > maxKeyBytes || !strings.HasPrefix(key, keyPrefix) {
 		return false

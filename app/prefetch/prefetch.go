@@ -6,11 +6,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"io"
 	"net/http"
 	"strings"
 	"time"
 
+	"rllmx/app/file"
 	"rllmx/app/network"
 	"rllmx/app/translate"
 )
@@ -105,8 +105,8 @@ func (f *Fetcher) fetch(ctx context.Context, url string, room int) *fetched {
 	if resp.StatusCode != http.StatusOK || resp.ContentLength > int64(limit) {
 		return nil
 	}
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, int64(limit)+1))
-	if err != nil || len(raw) > limit {
+	raw, err := file.ReadCapped(resp.Body, int64(limit))
+	if err != nil {
 		return nil
 	}
 	media := sniff(raw)

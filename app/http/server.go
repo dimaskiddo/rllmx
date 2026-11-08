@@ -56,6 +56,8 @@ type Server struct {
 	mu       sync.Mutex
 	srv      *nethttp.Server
 	stopped  bool
+	// stop is closed by Shutdown, so a wait for the data ends at once.
+	stop chan struct{}
 }
 
 // NewServer builds the runner. handler is what serves requests, normally
@@ -68,6 +70,7 @@ func NewServer(cfg *settings.Server, handler nethttp.Handler, guard *Guard, rout
 		listen:  func(addr string) (net.Listener, error) { return net.Listen("tcp", addr) },
 		signals: notifySignals,
 		exit:    os.Exit,
+		stop:    make(chan struct{}),
 	}
 }
 
@@ -171,14 +174,11 @@ func (s *Server) awaitData(ln net.Listener) bool {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() {
-		for !s.isStopped() {
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(10 * time.Millisecond):
-			}
+		select {
+		case <-s.stop:
+			cancel()
+		case <-ctx.Done():
 		}
-		cancel()
 	}()
 	if s.ready.Wait(ctx) && !s.isStopped() {
 		return true
@@ -214,6 +214,9 @@ func (s *Server) Shutdown() error {
 	}()
 
 	s.mu.Lock()
+	if !s.stopped {
+		close(s.stop)
+	}
 	s.stopped = true
 	srv := s.srv
 	s.mu.Unlock()

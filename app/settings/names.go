@@ -40,9 +40,6 @@ var known = []string{
 	"UPSTREAM_ALLOW_PRIVATE", "UPSTREAM_CONNECT_TIMEOUT",
 }
 
-// Known returns the variable names the code reads, sorted.
-func Known() []string { return slices.Sorted(slices.Values(known)) }
-
 // CheckNames refuses a name in an owned group that the code does not read, and
 // a lower-case or mixed-case spelling of a name it does. Other names pass: the
 // file may be shared with other programs. The error names the variable only.

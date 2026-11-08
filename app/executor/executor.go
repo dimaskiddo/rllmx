@@ -32,6 +32,20 @@ type Request struct {
 	Overrides map[string]string
 	// Auth, when set, overrides Entry.Auth: user nodes carry no registry entry.
 	Auth *upstream.Auth
+	// Model is the upstream model id.
+	Model string
+	// Spec is the model's registry row; zero when the provider does not list it.
+	Spec upstream.Model
+	// Session is the conversation id sent upstream: the keyed hash bound to the
+	// account, never a value a client chose.
+	Session string
+	// Compact marks a call to the context-compaction route.
+	Compact bool
+	// Levels are the reasoning efforts the model accepts; empty means any.
+	Levels []string
+	// Account reads a text field of the account's provider specific data; nil
+	// reads nothing.
+	Account func(name string) string
 }
 
 // Response is the upstream's answer, not yet read. The caller closes Body.
