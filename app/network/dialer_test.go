@@ -1,0 +1,194 @@
+package network
+
+import (
+	"context"
+	"errors"
+	"net"
+	nethttp "net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+)
+
+// listenerOn starts a server on an address the test chose, so a private address
+// can be exercised.
+func listenerOn(t *testing.T, addr string, h nethttp.Handler) *httptest.Server {
+	t.Helper()
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		t.Skipf("cannot listen on %s: %v", addr, err)
+	}
+	srv := httptest.NewUnstartedServer(h)
+	srv.Listener.Close()
+	srv.Listener = ln
+	srv.Start()
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestTheGuardRefusesAPrivateAddressWithoutAListEntry(t *testing.T) {
+	srv := listenerOn(t, "127.0.0.1:0", nethttp.HandlerFunc(func(w nethttp.ResponseWriter, _ *nethttp.Request) {
+		_, _ = w.Write([]byte("reached"))
+	}))
+	g := NewDialer(time.Second, nil)
+	if _, err := g.DialContext(context.Background(), "tcp", srv.Listener.Addr().String()); !errors.Is(err, ErrBlocked) {
+		t.Fatalf("err %v, want ErrBlocked", err)
+	}
+}
+
+func TestTheGuardDialsAListedAddress(t *testing.T) {
+	srv := listenerOn(t, "127.0.0.1:0", nethttp.HandlerFunc(func(w nethttp.ResponseWriter, _ *nethttp.Request) {
+		_, _ = w.Write([]byte("reached"))
+	}))
+	allow, err := ParseAllow("127.0.0.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := NewDialer(time.Second, allow).DialContext(context.Background(), "tcp", srv.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = conn.Close()
+}
+
+func TestTheGuardRefusesAMetadataAddressEvenWhenListed(t *testing.T) {
+	allow, err := ParseAllow("169.254.169.254,169.254.0.0/16")
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := NewDialer(time.Second, allow)
+	if _, err := g.DialContext(context.Background(), "tcp", "169.254.169.254:80"); !errors.Is(err, ErrBlocked) {
+		t.Fatalf("err %v: the metadata address must be refused", err)
+	}
+}
+
+func TestAListedNameMayResolveToAPrivateAddress(t *testing.T) {
+	// "localhost" resolves to a loopback address, which is Internal. Listing the
+	// name is what permits it, and the dial then goes to 127.0.0.1.
+	srv := listenerOn(t, "127.0.0.1:0", nethttp.HandlerFunc(func(w nethttp.ResponseWriter, _ *nethttp.Request) {
+		_, _ = w.Write([]byte("reached"))
+	}))
+	_, port, _ := net.SplitHostPort(srv.Listener.Addr().String())
+
+	unlisted := NewDialer(time.Second, nil)
+	if _, err := unlisted.DialContext(context.Background(), "tcp", "localhost:"+port); !errors.Is(err, ErrBlocked) {
+		t.Fatalf("an unlisted name reached a loopback address: %v", err)
+	}
+
+	allow, err := ParseAllow("localhost")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := NewDialer(time.Second, allow).DialContext(context.Background(), "tcp", "localhost:"+port)
+	if err != nil {
+		t.Fatalf("a listed name was refused: %v", err)
+	}
+	_ = conn.Close()
+}
+
+func TestTheGuardRefusesAMalformedTarget(t *testing.T) {
+	g := NewDialer(time.Second, nil)
+	for _, target := range []string{"no-port", "127.0.0.1:http", ":80"} {
+		if _, err := g.DialContext(context.Background(), "tcp", target); err == nil {
+			t.Errorf("%q dialled", target)
+		}
+	}
+}
+
+func TestTheClientFollowsTheRedirectLimit(t *testing.T) {
+	var hits int
+	srv := listenerOn(t, "127.0.0.1:0", nethttp.HandlerFunc(func(w nethttp.ResponseWriter, r *nethttp.Request) {
+		hits++
+		if r.URL.Path == "/" {
+			w.Header().Set("Location", "/one")
+			w.WriteHeader(nethttp.StatusFound)
+			return
+		}
+		_, _ = w.Write([]byte("done"))
+	}))
+	allow, err := ParseAllow("127.0.0.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := NewClient(Options{ConnectTimeout: time.Second, MaxRedirects: 3, Allow: allow})
+	resp, err := c.Get(srv.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != nethttp.StatusOK || hits != 2 {
+		t.Fatalf("%d after %d hits", resp.StatusCode, hits)
+	}
+}
+
+func TestTheClientStopsAtTheLimit(t *testing.T) {
+	srv := listenerOn(t, "127.0.0.1:0", nethttp.HandlerFunc(func(w nethttp.ResponseWriter, r *nethttp.Request) {
+		// Every request redirects one hop further, so the limit is what stops it.
+		w.Header().Set("Location", r.URL.Path+"x")
+		w.WriteHeader(nethttp.StatusFound)
+	}))
+	allow, _ := ParseAllow("127.0.0.1")
+	c := NewClient(Options{ConnectTimeout: time.Second, MaxRedirects: -1, Allow: allow})
+	resp, err := c.Get(srv.URL + "/a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != nethttp.StatusFound {
+		t.Fatalf("%d: a negative limit followed a redirect", resp.StatusCode)
+	}
+}
+
+func TestTheClientFollowsNoRedirectToPlainHTTP(t *testing.T) {
+	// A TLS server redirecting to http must not be followed, because the next hop
+	// would carry the request in clear text.
+	target := listenerOn(t, "127.0.0.1:0", nethttp.HandlerFunc(func(w nethttp.ResponseWriter, _ *nethttp.Request) {
+		_, _ = w.Write([]byte("plain"))
+	}))
+	_, plainPort, _ := net.SplitHostPort(target.Listener.Addr().String())
+
+	tlsSrv := httptest.NewTLSServer(nethttp.HandlerFunc(func(w nethttp.ResponseWriter, _ *nethttp.Request) {
+		w.Header().Set("Location", "http://127.0.0.1:"+plainPort+"/")
+		w.WriteHeader(nethttp.StatusFound)
+	}))
+	defer tlsSrv.Close()
+
+	allow, _ := ParseAllow("127.0.0.1")
+	c := NewClient(Options{ConnectTimeout: time.Second, MaxRedirects: 3, Allow: allow, TLS: tlsSrv.Client().Transport.(*nethttp.Transport).TLSClientConfig})
+	resp, err := c.Get(tlsSrv.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != nethttp.StatusFound {
+		t.Fatalf("%d: an https-to-http redirect was followed", resp.StatusCode)
+	}
+}
+
+func TestTheTransportReadsNoProxy(t *testing.T) {
+	for _, v := range []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"} {
+		t.Setenv(v, "http://127.0.0.1:1")
+	}
+	tr := NewTransport(Options{})
+	if tr.Proxy != nil {
+		t.Fatal("the transport reads a proxy variable")
+	}
+	if tr.TLSClientConfig == nil || tr.TLSClientConfig.InsecureSkipVerify {
+		t.Fatal("the transport does not verify TLS")
+	}
+	if tr.TLSClientConfig.MinVersion < 0x0303 {
+		t.Fatalf("min version %x, want TLS 1.2 or newer", tr.TLSClientConfig.MinVersion)
+	}
+}
+
+func TestTheGuardDescriptionNamesNoTarget(t *testing.T) {
+	allow, _ := ParseAllow("idp.internal.example")
+	g := NewDialer(time.Second, allow)
+	if got := g.String(); strings.Contains(got, "idp.internal") {
+		t.Fatalf("the description names an entry: %q", got)
+	}
+	if got := NewDialer(time.Second, nil).String(); !strings.Contains(got, "refused") {
+		t.Fatalf("description %q", got)
+	}
+}

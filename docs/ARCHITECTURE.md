@@ -1,0 +1,120 @@
+# Router-LLM - Architecture
+
+LLM gateway in Go on Goravel Lite v1.18.0. Clients talk to one endpoint in the OpenAI, Anthropic, Gemini or Responses format; Router-LLM picks an account for the requested model, translates the request to the provider's format, streams the answer back in the client's format and records usage. Single static binary; when it lands, the only process it starts is `git`, for the skill update. **Config defaults:** see `.env.example`, never guess values.
+
+This file holds what cuts across every area: the module map, the decisions behind the whole design, the approved modules, and the terminal commands. **Per-area design and status live in `docs/prds/`** — read only the PRD your task touches. `AGENTS.md` holds scope, build and security constraints and the compatibility contract; `TASKS.md` says what is built.
+
+---
+
+```mermaid
+graph LR
+    subgraph cmd["app/console/commands/"]
+        Main["db:*, health, version"]
+    end
+
+    subgraph internal["app/"]
+        App["providers"]
+        Config["settings, redactor"]
+        API["http, routes/"]
+        Auth["identity (auth, sso, oidc, saml planned)"]
+        Pipe["pipeline (planned)"]
+        Model["routing, upstream, account"]
+        Trans["translate"]
+        Exec["executor, network"]
+        Stream["stream"]
+        Usage["analytics"]
+        Cache["cache"]
+        Sched["Schedule facade jobs (app/data)"]
+        Store["repository, data, dialect, document"]
+    end
+
+    Main --> App
+    App --> Config
+    App --> API
+    App --> Sched
+    API --> Auth
+    API --> Pipe
+    Auth --> Cache
+    Auth --> Store
+    Pipe --> Model
+    Pipe --> Trans
+    Pipe --> Exec
+    Pipe --> Stream
+    Pipe --> Cache
+    Model --> Store
+    Stream --> Usage
+    Sched --> Store
+    Sched --> Usage
+```
+
+Applied today: `providers` boots the framework, `http` serves the guarded routes, `data` owns the stores and the maintenance jobs, `cache` sits over the `Cache` facade, `analytics` holds the usage store, `stream` holds the SSE and NDJSON writers, the upstream readers, the pump with its timers, the usage tracker and the client buffer, and `failure` the error shapes; `translate` holds the typed hub, the five codecs (request, answer and stream) and the concerns around them. `executor` sends one request to one account and returns the answer unread, `conversation` names the session a request belongs to, and `pipeline` walks a request through parse, resolve, translate, the account loop and the usage row. Nothing reaches `pipeline` until the 1.8d route. The `Auth`, `Pipe`, `Model`, `Trans` and `Exec` nodes are the target wiring; each arrives with its step.
+
+Packages not drawn in the graph: `failure` (error bodies per client format), `sealer` (sealed values), `file` (atomic writes), `text` (control characters, rune-safe cuts), `lock` (the data-directory lock), `identity` (caller and key status), `importer` (legacy seeding), `settings` (typed config), `redactor` (log scrubbing), `upstream` (provider registry and price table), `routing` (model name to provider, model or combo) `account` (account selection, error rules, backoff, locks) and `translate` (the typed hub and the format codecs), all three called by `pipeline` since 1.8c; `prefetch` (remote image URLs to inline data for Gemini and Ollama targets, on a guarded client, called by `pipeline` since 1.8d); the chat controller serves `POST /v1/chat/completions` and gets the pipeline from `providers.PipelineSource`, which builds it on the first request because the stores open after the routes are declared; the registry and the capability tables are loaded at start. The `response` cache group holds non-stream answers for the opt-in response cache; `pipeline` looks it up after the model is resolved and `cache.Budget` bounds it in process. Shared test helpers live in `tests/`: the root package (connections, the fake upstream, route, config, log and cache doubles, `Settings`, `TimeoutError`, `Box`, `Engine`) may import only packages whose own tests do not import it back, and `tests/imports_test.go` fails when it does; a helper that needs `repository` or `analytics` lives in a sub-package (`tests/store` builds a `repository.Store`, `tests/usage` collects usage rows).
+
+`catalog` (the models a caller can call, for `GET /v1/models` and its relatives; it reads the stores, asks a user node for its own list through the checker's guarded client, and never writes) is called by the models controller, which gets it from `providers.CatalogSource` on the first request, like the pipeline.
+
+`combo`, `health`, `access`, `oauth`, `media`, `saver`, `skill`, `plan` and `probe` do not exist yet; each arrives with its step (`TASKS.md`).
+
+---
+
+## Key Design Decisions
+
+1. **Pure Go, no CGO.** Static binary, simple cross-compile, Windows included.
+2. **Behavioral parity, independent code.** The references define behavior; the code is written fresh and tracked in `docs/PARITY.md`.
+3. **Drop-in database.** Same schema and stored formats for the configuration tables; additive changes only; unknown JSON fields preserved.
+4. **OpenAI hub translation.** One shape to translate through; every codec goes to or from the hub only, never direct.
+5. **Registry-driven providers.** A provider is a data file; code exists only for real protocol differences.
+6. **Classification is data.** Error rules are a table that locks, backoff and combo advancement all read.
+7. **Locks are JSON fields in the shared row**, as in the reference, so a migrated database keeps its cooldowns.
+8. **Single-flight token refresh.** One in-flight refresh per provider and token protects rotating tokens.
+9. **Fail open for enhancements, fail closed for access.** Savers, skills and plan injection never fail a request; key checks, SSRF guards and local-only routes always do.
+10. **Declarative skill logic.** Rules instead of scripts: no code execution, bounded regex, header denylist, access re-checked.
+11. **The socket peer decides, and the dialer proves the address.** Forwarding headers count only from a trusted proxy peer and never grant access; `app/http/trust.go` is the one reader of `SERVER_TRUSTED_PROXIES`, deciding HSTS, the login limiter's key and the dashboard cookie's `Secure` flag. Outbound, `network.NewGuard` resolves a name itself, classifies the addresses and dials the one it checked, so a check and a dial cannot disagree. Link-local and the cloud metadata addresses are refused even when listed.
+12. **Read only what was verified.** The SAML verifier returns the assertion it proved, and every claim is read from that value rather than from the document it arrived in. The same rule guards the signature-wrapping attack that XML-DSig is famous for.
+13. **Plain-web dashboard.** Embedded static files and the reference's API contract.
+14. **Env-only configuration.** Process environment and `.env`; runtime behavior in the settings row.
+15. **SQLite and PostgreSQL** through the Goravel `DB` and `Schema` facades (`goravel/sqlite` and `goravel/postgres`), one test suite on both. No `database/sql` handle, pool, `sqlx` wrapper or migration runner of ours; `dialect.Rebind` is the only gap filler.
+16. **`os/exec` behind one filter gate.** `app/git` does not exist yet; when it lands it is deny-by-default and the only code that builds an `exec.Cmd`. It starts `git` and nothing else, only as `clone`, with a fixed flag set, a validated ref, an `https` URL from the admin's list that passes the SSRF guard, a clone directory inside the data area, a minimal environment, a 60 s timeout and size caps. A test fails if any other non-test file imports `os/exec`. Anything else that needs a spawned process is out.
+17. **Usage is metadata only.** One structured row per request in a separate store; no prompt, body or header is ever persisted.
+18. **The cache never breaks a request.** Every cache failure is a miss; credentials stay in process memory.
+19. **The server decides OAuth redirects.** The browser never supplies a `redirect_uri`, and every login has a single-use server-side session.
+20. **The circuit breaker is used** (planned, step 2.5). Health data will affect routing instead of only appearing in the UI.
+
+---
+
+## Approved Modules
+
+Every module here is CGO-free, on the `TASKS.md` Dependency gates table, and named at the site that uses it. Anything not listed is either the framework's own dependency or not approved.
+
+| Module | Why it exists, and why not our code |
+|---|---|
+| `tidwall/gjson`, `tidwall/sjson` | Edit a JSON `data` column in place. A map round trip reorders keys, reformats numbers and drops unknown fields, which breaks the byte-for-byte round trip the compatibility contract requires. `PRD 15` |
+| `gofrs/flock` | The data-directory lock. It is released when the process dies and works on Windows, which an advisory `flock` syscall does not. `PRD 15` |
+| `subosito/gotenv` | Read key names, the size cap and the BOM check the framework's loader does not expose, so a misspelled variable is refused rather than ignored. `PRD 17` |
+| `go-jose/go-jose/v4` | Parse an OIDC ID token and select its key from the provider's JWKS by `kid`, algorithm and use. JWS verification itself is unambiguous — the signed bytes are the raw string — but key selection is where a lenient check accepts a token signed by the provider's **encryption** key, and that is the piece worth a reviewed implementation. Every claim rule stays ours. `PRD 2` |
+| `russellhaering/goxmldsig` | Verify a SAML signature. Canonical XML 1.0 has namespace-propagation and attribute-ordering rules that a hand-written implementation gets wrong in the *accepting* direction, which is a signature bypass rather than a rejection. The parsing, the claim checks and the reuse defence stay ours. `PRD 2` |
+| `golang.org/x/sync`, `golang.org/x/term` | Framework requirements used directly: `singleflight` for one cache load, and the hidden terminal prompt. |
+
+`google/uuid` is a direct requirement that is **not** approved: `app/dialect.NewID` uses it, and replacing it with 16 bytes from `crypto/rand` is a `TASKS.md` open item. The session cookie's HS256 is our own `crypto/hmac`, not a JWT module.
+
+---
+
+## Terminal Commands
+
+Artisan commands in `app/console/commands`, run against the local store. Built today: `db:backup`, `db:check`, `db:vacuum`, `db:import-config`, `db:import-analytics`, `db:export-plain`, `keys:create`, `keys:list`, `keys:revoke`, `password:reset`, `health`, `version`. `PRD 23` tracks the surface.
+
+| Rule | Detail |
+|---|---|
+| Store | The read-only connection (`sqlite_ro`, `mode=ro`; `sqlite_backup` for `db:backup`) for the command, or the writer connection for the two that change data (`db:vacuum`, `db:import-config`). A command never creates a table and never runs a migration. `db:import-analytics` is the one that refuses up front: `Store.Verify` fails with `ErrNeedsMigration` when the plan is not empty or plain secrets are still unsealed, so the import never runs against a database the server has not opened yet. `db:check` reports the same plan problems instead of refusing. `db:backup` and `db:vacuum` look at no schema at all. A command can still leave an empty `data.sqlite` under `DATA_DIR` behind, because Goravel's boot ping opens the default connection read-write (`PRD 1`, Framework Choices) |
+| Terminal | Refuse without one. Passwords come from the console context's `Secret` prompt only, never flags or environment, never echoed or logged |
+| Verification | Dashboard password against the bcrypt hash, or `AUTH_INITIAL_PASSWORD` while no hash exists. Three attempts per run, 2 s pause after a wrong one, an empty answer never passes |
+| `keys:create [--name]` | Prints the key once (name up to 64 characters, no control characters). Needs the `machine-id` file the server wrote |
+| `keys:list` | Id, name, masked key, checksum class (`ok`, `mismatch`, `legacy`), `active` or `revoked` |
+| `keys:revoke <id>` | Deactivates; a running server stops accepting it within 10 s |
+| `password:reset` | Current password, then the new one twice, same rules as the dashboard. Stores the hash and bumps the epoch |
+| `db:backup\|check\|vacuum\|import-analytics\|import-config` | Ask no password (they never reveal or change credentials). Confirmations: `docs/WORKFLOWS.md` |
+| `db:export-plain` | Asks the dashboard password, then y/N unless `--yes`, then writes the copy under the backups folder. SQLite only |
+
+The dashboard limiter lives in server memory and is not shared with the terminal; anyone who can run the command can already read the files.
+
+---

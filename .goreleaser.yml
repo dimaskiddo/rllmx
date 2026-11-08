@@ -1,0 +1,45 @@
+version: 2
+project_name: rllmx
+before:
+  hooks:
+    - make deps
+builds:
+  - main: .
+    binary: rllmx
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s
+      - -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.ShortCommit}}
+    flags:
+      - -trimpath
+      - -tags=nomsgpack
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+archives:
+  - formats:
+      - zip
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_
+      {{- if eq .Os "darwin" }}macos{{ else }}{{ .Os }}{{ end }}_
+      {{- if eq .Arch "amd64" }}64-bit{{ else if eq .Arch "arm64" }}arm-64-bit{{ else }}{{ .Arch }}{{ end }}
+    files:
+      - LICENSE
+      - README.md
+      - .env.example
+checksum:
+  name_template: "checksums.txt"
+snapshot:
+  version_template: "{{ .Version }}"
+changelog:
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"

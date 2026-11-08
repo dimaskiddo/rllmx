@@ -1,0 +1,18 @@
+{
+  "id": "openrouter",
+  "alias": "openrouter",
+  "category": "freeTier",
+  "authType": "apikey",
+  "display": {
+    "name": "OpenRouter"
+  },
+  "transport": {
+    "baseUrl": "https://openrouter.ai/api/v1/chat/completions",
+    "format": "openai"
+  },
+  "auth": {
+    "scheme": "bearer",
+    "header": "Authorization"
+  },
+  "models": []
+}

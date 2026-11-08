@@ -1,0 +1,33 @@
+{
+  "id": "anthropic",
+  "alias": "anthropic",
+  "category": "apikey",
+  "display": {
+    "name": "Anthropic"
+  },
+  "transport": {
+    "baseUrl": "https://api.anthropic.com/v1/messages",
+    "format": "claude"
+  },
+  "auth": {
+    "scheme": "raw",
+    "header": "x-api-key",
+    "headers": {
+      "anthropic-version": "2023-06-01"
+    }
+  },
+  "models": [
+    {
+      "id": "claude-sonnet-4-20250514",
+      "name": "Claude Sonnet 4"
+    },
+    {
+      "id": "claude-opus-4-20250514",
+      "name": "Claude Opus 4"
+    },
+    {
+      "id": "claude-3-5-sonnet-20241022",
+      "name": "Claude 3.5 Sonnet"
+    }
+  ]
+}

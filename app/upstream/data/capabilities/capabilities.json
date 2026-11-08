@@ -1,0 +1,40 @@
+{
+  "providers": {
+    "github": {
+      "claude-opus-4.8": { "vision": true, "pdf": true, "reasoning": true, "thinkingFormat": "claude-adaptive", "maxOutput": 32000 }
+    }
+  },
+  "models": {
+    "gemini-2.5-flash-image": { "vision": true, "imageOutput": true },
+    "gemini-2.5-pro": { "vision": true, "pdf": true, "audioInput": true, "videoInput": true, "search": true, "reasoning": true, "thinkingFormat": "gemini-budget", "thinkingCanDisable": false, "thinkingMin": 128, "thinkingMax": 32768, "contextWindow": 1048576, "maxOutput": 65536 },
+    "deepseek-chat": { "contextWindow": 131072, "maxOutput": 8192 },
+    "deepseek-reasoner": { "reasoning": true, "thinkingFormat": "deepseek", "tools": true, "contextWindow": 131072, "maxOutput": 65536 },
+    "o3": { "vision": true, "reasoning": true, "thinkingFormat": "openai", "thinkingCanDisable": false, "contextWindow": 200000, "maxOutput": 100000 },
+    "o4-mini": { "vision": true, "reasoning": true, "thinkingFormat": "openai", "thinkingCanDisable": false, "contextWindow": 200000, "maxOutput": 100000 },
+    "gpt-4o": { "vision": true, "search": true, "contextWindow": 128000, "maxOutput": 16384 },
+    "gpt-4o-mini": { "vision": true, "contextWindow": 128000, "maxOutput": 16384 }
+  },
+  "patterns": [
+    { "pattern": "claude-fable-*", "set": { "vision": true, "pdf": true, "search": true, "reasoning": true, "thinkingFormat": "claude-adaptive", "contextWindow": 1000000, "maxOutput": 64000 } },
+    { "pattern": "claude-opus-5*", "set": { "vision": true, "pdf": true, "search": true, "reasoning": true, "thinkingFormat": "claude-adaptive", "contextWindow": 1000000, "maxOutput": 64000 } },
+    { "pattern": "claude-sonnet-5*", "set": { "vision": true, "pdf": true, "search": true, "reasoning": true, "thinkingFormat": "claude-adaptive", "contextWindow": 1000000, "maxOutput": 64000 } },
+    { "pattern": "claude-haiku-*", "set": { "vision": true, "pdf": true, "reasoning": true, "thinkingFormat": "claude-budget", "maxOutput": 64000 } },
+    { "pattern": "claude-*", "set": { "vision": true, "pdf": true, "search": true, "reasoning": true, "thinkingFormat": "claude-budget", "maxOutput": 64000 } },
+
+    { "pattern": "gpt-6*", "set": { "vision": true, "pdf": true, "reasoning": true, "thinkingFormat": "openai", "contextWindow": 400000, "maxOutput": 128000 } },
+    { "pattern": "gpt-5*", "set": { "vision": true, "pdf": true, "search": true, "reasoning": true, "thinkingFormat": "openai", "contextWindow": 400000, "maxOutput": 128000 } },
+    { "pattern": "gpt-4.1*", "set": { "vision": true, "contextWindow": 1047576, "maxOutput": 32768 } },
+    { "pattern": "o1*", "set": { "vision": true, "reasoning": true, "thinkingFormat": "openai", "thinkingCanDisable": false } },
+    { "pattern": "o3*", "set": { "vision": true, "reasoning": true, "thinkingFormat": "openai", "thinkingCanDisable": false } },
+
+    { "pattern": "gemini-4*", "set": { "vision": true, "pdf": true, "audioInput": true, "videoInput": true, "search": true, "reasoning": true, "thinkingFormat": "gemini-level", "thinkingCanDisable": false, "contextWindow": 1048576, "maxOutput": 65536 } },
+    { "pattern": "gemini-3*", "set": { "vision": true, "pdf": true, "audioInput": true, "videoInput": true, "search": true, "reasoning": true, "thinkingFormat": "gemini-level", "thinkingCanDisable": false, "contextWindow": 1048576, "maxOutput": 65536 } },
+    { "pattern": "gemini-2.5*", "set": { "vision": true, "pdf": true, "audioInput": true, "videoInput": true, "search": true, "reasoning": true, "thinkingFormat": "gemini-budget", "contextWindow": 1048576, "maxOutput": 65536 } },
+    { "pattern": "gemini-*", "set": { "vision": true, "pdf": true, "audioInput": true, "contextWindow": 1048576, "maxOutput": 8192 } },
+    { "pattern": "gemma-*", "set": { "vision": true, "contextWindow": 131072, "maxOutput": 8192 } },
+
+    { "pattern": "deepseek-v4*", "set": { "reasoning": true, "thinkingFormat": "deepseek", "contextWindow": 1000000, "maxOutput": 384000 } },
+    { "pattern": "deepseek-*", "set": { "contextWindow": 131072, "maxOutput": 8192 } },
+    { "pattern": "grok-*", "set": { "vision": true, "search": true, "reasoning": true, "thinkingFormat": "openai", "contextWindow": 256000, "maxOutput": 64000 } }
+  ]
+}

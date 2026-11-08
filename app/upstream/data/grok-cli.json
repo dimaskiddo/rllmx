@@ -1,0 +1,13 @@
+{
+  "id": "grok-cli",
+  "alias": "gcli",
+  "aliases": ["grok-build", "gb"],
+  "category": "oauth",
+  "display": { "name": "Grok CLI (Grok Build)" },
+  "transport": { "baseUrl": "https://cli-chat-proxy.grok.com/v1/responses", "format": "openai-responses" },
+  "models": [
+    { "id": "grok-build", "name": "Grok Build" },
+    { "id": "grok-4.7", "name": "Grok 4.7" },
+    { "id": "grok-4.5", "name": "Grok 4.5" }
+  ]
+}

@@ -1,0 +1,248 @@
+package providers
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+
+	"github.com/goravel/framework/contracts/binding"
+	"github.com/goravel/framework/contracts/config"
+	"github.com/goravel/framework/contracts/foundation"
+
+	"rllmx/app/auth"
+	"rllmx/app/cache"
+	"rllmx/app/file"
+	apphttp "rllmx/app/http"
+	"rllmx/app/http/controllers"
+	"rllmx/app/identity"
+	"rllmx/app/oidc"
+	"rllmx/app/repository"
+	"rllmx/app/saml"
+	"rllmx/app/settings"
+	"rllmx/app/sso"
+	"rllmx/app/upstream"
+)
+
+// jwtFile holds the generated session secret when JWT_SECRET is unset.
+const jwtFile = "jwt-secret"
+
+// BindingHTTP is the container key of the HTTP pieces the server, the global
+// middleware and the route tables share.
+const BindingHTTP = "rllmx.http"
+
+// HTTP is what the binding holds: the checked settings, the one guard whose
+// table every route is declared through, which peers are believed as proxies,
+// and the authenticator the guard asks who is calling.
+type HTTP struct {
+	Settings *settings.Server
+	Guard    *apphttp.Guard
+	Trust    apphttp.Trust
+	Auth     *auth.Authenticator
+	// SSO is the guarded identity-provider client and the sign-in store.
+	SSO *sso.Client
+	// Registry is the provider registry, validated at the bind: a bad data file
+	// stops the start.
+	Registry *upstream.Registry
+	// Checker asks a provider whether a key works. It dials through the guard.
+	Checker *controllers.Checker
+	// Capabilities resolves what a model can do, validated at the bind.
+	Capabilities *upstream.Capabilities
+	// Stream holds the timers every streamed answer runs under.
+	Stream *settings.Stream
+	// Upstream is the outbound network setting: connect timeout and allow list.
+	Upstream *settings.Upstream
+}
+
+// HTTPOf returns the bound HTTP pieces. A missing binding means the provider is
+// not registered, which is a bug in the program, so it panics.
+func HTTPOf(app foundation.Application) *HTTP {
+	v, err := app.Make(BindingHTTP)
+	h, ok := v.(*HTTP)
+	if err != nil || !ok || h == nil {
+		panic(fmt.Sprintf("providers: %s is not bound: %v", BindingHTTP, err))
+	}
+	return h
+}
+
+// ServerServiceProvider owns the HTTP server. Register binds, Boot does
+// nothing, and the work (checking the route table, opening the socket, serving,
+// stopping) is in the runner, so an Artisan command that boots this provider
+// takes no port.
+type ServerServiceProvider struct{}
+
+// Relationship names what the provider binds and what it reads.
+func (r *ServerServiceProvider) Relationship() binding.Relationship {
+	return binding.Relationship{
+		Bindings:     []string{BindingHTTP},
+		Dependencies: []string{binding.Config, binding.Log, binding.Route, binding.Cache, binding.Hash, BindingData},
+		ProvideFor:   []string{},
+	}
+}
+
+// Register binds the settings, the guard and the authenticator.
+func (r *ServerServiceProvider) Register(app foundation.Application) {
+	app.Singleton(BindingHTTP, func(app foundation.Application) (any, error) {
+		cfg := app.MakeConfig()
+		if cfg == nil {
+			return nil, errors.New("providers: the config facade is not set")
+		}
+		s, err := settings.LoadServer(cfg)
+		if err != nil {
+			return nil, err
+		}
+		secret, err := sessionSecretSource(cfg)
+		if err != nil {
+			return nil, err
+		}
+		// The store opens in the data runner, after every provider registered, so
+		// the authenticator reads it through a closure rather than a value.
+		db := func() *repository.Store { return DataOf(app).Runner.Store() }
+		keys := auth.Keys{DB: db, Cache: cacheOrNil(app), Codec: identity.NewKeys(cfg.GetString("auth.api_key_secret"))}
+		upstreamCfg, err := settings.LoadUpstream(cfg)
+		if err != nil {
+			return nil, err
+		}
+		registry, err := upstream.Default()
+		if err != nil {
+			return nil, err
+		}
+		capabilities, err := upstream.LoadCapabilities(registry)
+		if err != nil {
+			return nil, err
+		}
+		streamCfg, err := settings.LoadStream(cfg)
+		if err != nil {
+			return nil, err
+		}
+		allowSSO := sso.ParseAllow(cfg.GetString("auth.sso_allow"))
+		a := auth.NewAuthenticator(
+			auth.NewStore(db),
+			&keys,
+			app.MakeHash(),
+			cfg.GetString("auth.initial_password"),
+			secret,
+			s.TrustLoopback,
+			cfg.GetBool("auth.cookie_secure"),
+		)
+		a.OIDCUsable = func(issuer, clientID, secret string) bool {
+			return oidc.Settings{Issuer: issuer, ClientID: clientID, ClientSecret: secret}.Configured()
+		}
+		a.SAMLUsable = func(entryPoint, cert, idpEntity string) bool {
+			s := saml.Settings{EntryPoint: entryPoint, Cert: cert, IdPEntityID: idpEntity}
+			if !s.Configured() || idpEntity == "" {
+				return false
+			}
+			_, err := s.Validate()
+			return err == nil
+		}
+		a.SSOAllow = allowSSO.Allows
+		return &HTTP{
+			Settings:     s,
+			Guard:        apphttp.NewGuard(a, s.TrustLoopback),
+			Trust:        apphttp.NewTrust(s.TrustedProxies),
+			Auth:         a,
+			SSO:          sso.NewClient(upstreamCfg.Allow),
+			Registry:     registry,
+			Checker:      controllers.NewChecker(upstreamCfg.Allow),
+			Capabilities: capabilities,
+			Stream:       streamCfg,
+			Upstream:     upstreamCfg,
+		}, nil
+	})
+}
+
+// sessionSecretSource returns a getter for the session secret. JWT_SECRET wins;
+// with none set, DATA_DIR/jwt-secret is read on first use, because the data
+// runner creates it after every provider has registered.
+func sessionSecretSource(cfg config.Config) (func() []byte, error) {
+	if raw := cfg.GetString("jwt.secret"); raw != "" {
+		if len(raw) < 32 {
+			return nil, errors.New("providers: JWT_SECRET: must be at least 32 characters")
+		}
+		return func() []byte { return []byte(raw) }, nil
+	}
+	dir, err := settings.ResolveDataDir(cfg.GetString("app.data_dir"))
+	if err != nil {
+		return nil, err
+	}
+	var once sync.Once
+	var secret []byte
+	return func() []byte {
+		once.Do(func() {
+			secret, _ = readJWTFile(dir)
+		})
+		return secret
+	}, nil
+}
+
+// EnsureSessionSecret creates DATA_DIR/jwt-secret when JWT_SECRET is unset and
+// the file is missing. The data runner calls it once the store is open, so no
+// provider bind and no command writes it.
+func EnsureSessionSecret(cfg config.Config) error {
+	if cfg.GetString("jwt.secret") != "" {
+		return nil
+	}
+	dir, err := settings.ResolveDataDir(cfg.GetString("app.data_dir"))
+	if err != nil {
+		return err
+	}
+	_, err = readJWTFile(dir)
+	return err
+}
+
+// readJWTFile reads DATA_DIR/jwt-secret, creating it once with 32 random bytes in
+// hex. A short existing file is an error: silently replacing it would end every
+// session without a reason.
+func readJWTFile(dataDir string) ([]byte, error) {
+	path := filepath.Join(dataDir, jwtFile)
+	b, err := os.ReadFile(path)
+	if err == nil {
+		raw := strings.TrimSpace(string(b))
+		if len(raw) < 32 {
+			return nil, errors.New("providers: DATA_DIR/jwt-secret is shorter than 32 characters; set JWT_SECRET or remove the file")
+		}
+		return []byte(raw), nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("providers: read %s: %w", jwtFile, err)
+	}
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return nil, errors.New("providers: the system random source failed")
+	}
+	secret := hex.EncodeToString(raw)
+	if err := file.WritePrivate(dataDir, jwtFile, []byte(secret)); err != nil {
+		return nil, err
+	}
+	return []byte(secret), nil
+}
+
+// Boot has nothing to start; see the type comment.
+func (r *ServerServiceProvider) Boot(app foundation.Application) {}
+
+// Runners returns the HTTP server. The stock goravel:http runner is switched
+// off in config/app.go, because it builds a server without our timeouts.
+func (r *ServerServiceProvider) Runners(app foundation.Application) []foundation.Runner {
+	h := HTTPOf(app)
+	route := app.MakeRoute()
+	server := apphttp.NewServer(h.Settings, apphttp.Rewrite(route), h.Guard, route.GetRoutes, app.MakeLog())
+	server.WaitFor(DataOf(app).Gate)
+	return []foundation.Runner{server}
+}
+
+// cacheOrNil returns the grouped cache, or nil when the cache provider is not
+// registered: a key lookup then always reaches the store, which is correct and
+// only slower.
+func cacheOrNil(app foundation.Application) *cache.Cache {
+	v, err := app.Make(BindingCache)
+	c, ok := v.(*cache.Cache)
+	if err != nil || !ok {
+		return nil
+	}
+	return c
+}

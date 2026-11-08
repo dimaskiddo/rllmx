@@ -1,0 +1,181 @@
+# PRD 07 — Format Translation (`app/translate/`)
+
+**Status:** partial · **Steps:** 1.8, 1.10
+
+OpenAI Chat is the hub. Built in 1.8a: `app/translate`, whose hub is a typed Go value (`Request`, `Message`, `Part`, `Response`, `Chunk`), not a map. A codec per format reads a body into the hub and writes the hub back (`Codec`: `ReadRequest`, `WriteRequest`, `ReadResponse`, `WriteResponse`), registered by name; every conversion goes `source -> hub -> target`, direct pairs are not built, and a new format needs one codec. Each codec also has a stream half (1.8b): `NewStreamReader` turns the format's events into hub `Chunk`s and `NewStreamWriter` turns chunks into its frames (`StreamReader`, `StreamWriter`, `Frame`; `stream_<format>.go`). The transport that runs them is `app/stream` (PRD 9). The 1.8c pipeline is the caller; no route reaches it until 1.8d.
+
+Formats: `openai`, `openai-responses`, `claude`, `gemini`, `gemini-cli`, `vertex`, `codex`, `antigravity`, `kiro`, `cursor`, `ollama`, `commandcode`.
+
+| Direction | Codecs |
+|---|---|
+| Request, to hub | claude, gemini, gemini-cli, antigravity, openai-responses to openai |
+| Request, from hub | openai to claude, gemini, gemini-cli, antigravity, vertex, kiro, cursor, ollama, commandcode, openai-responses |
+| Response, to hub | claude, gemini family, vertex, kiro, cursor, ollama, commandcode, openai-responses to openai |
+| Response, from hub | openai to claude, antigravity (Gemini SSE), openai-responses |
+
+**Around every translation:** strip unsupported content types, normalize thinking intent, give every tool call an id, add missing tool results, filter to the target's accepted fields, prepare Claude messages (cache control, trailing user turn), cloak tool names for Claude OAuth tokens (and restore them on the way back).
+
+**Detection:** by endpoint first (`/v1/responses` is Responses, `/v1/messages` is Claude), then by body: `input` without `messages` is Responses; `request.contents` with an Antigravity marker is Antigravity; `contents` is Gemini; OpenAI-only fields are OpenAI; Claude content blocks are Claude.
+
+### Audit 2 Alignment
+
+The reference translators were compared with base 9router 0.5.112 and the improvements recorded as divergences 183 to 189. These are the rules step 1.8 must implement: a history that ends on a function call is answered with a `functionResponse`; a system-only Gemini request becomes a user turn; Responses streams send a finish chunk on close and accept `response.done`; `thinking` is dropped when the last message is not the user's; the Claude system prefix is data (`thinking.claudeSystemPrefix`); OpenAI-shaped bodies lose the `developer` role, blocks of other APIs and blank messages; an empty Ollama answer has `content: ""`; `metadata.user_id` follows the reference key order; an all-zero `usage` object does not block the estimate.
+
+### Semantics to Preserve
+
+| Item | Rule |
+|---|---|
+| Thinking | Carried as `reasoning_content` in the hub. Claude thinking deltas and Gemini `thought` parts map to it; OpenAI to Claude opens a thinking block before text |
+| Tool-call arguments | Buffered per index when the target needs a complete JSON string; the content block is opened once per index |
+| Finish reasons | `end_turn`/`stop_sequence` and `stop`, `max_tokens` and `length`, `tool_use` and `tool_calls`, safety reasons and `content_filter`. A final `stop` becomes `tool_calls` when tool calls were emitted |
+| Usage | Normalized per provider into prompt, completion, cached, cache-creation and reasoning tokens |
+| Stream state | Each stream holds a state value (message id, tool calls by index, finish reason, usage, content block indices; Responses adds sequence numbers and text/argument buffers). A `nil` chunk means flush: translators close open blocks |
+
+### Capabilities (`app/upstream/capabilities.go`, planned)
+
+Nothing exists yet. The target shape is four embedded files under `data/capabilities/`: `capabilities.json`, `thinking.json`, `vision.json`, `params.json`, decoded strictly, size capped and validated at start.
+
+| Call | Resolution |
+|---|---|
+| `For(provider, model)` | The provider's own row (full name, then the name after the last slash; provider aliases share a table), the exact model row, the first matching ordered glob (case-insensitive, `*` only), the defaults. Only a provider row is returned as is; the other steps turn vision on when the name says so, and a name on the not-vision list never does |
+| `Levels(provider, model, declared)` | nil for a model that does not reason. Otherwise the registry's declared levels, then the first matching override (provider-qualified rows only for that provider), then the compatible-node rule, then the format's set, then the base set. `none` is removed when the model cannot disable thinking |
+| `Budget(level)` | The token budget of a level |
+| `ParamRules(provider, model)` | The `params.json` rules (drop or rename a parameter, drop or rename an assistant message field, flatten content, cap output tokens) in file order. The translator applies them last, to the final upstream body, on every pair |
+
+The Claude and Gemini placeholder thinking signatures are data in `thinking.json`.
+
+### Claude Disguise
+
+**Moved to 1.9 (divergence 216).** The disguise needs an OAuth account to exist and to test against, so it lands with the Claude provider's login. Claude *preparation* below is built in 1.8a, because an Anthropic API key needs it today.
+
+**Follow the reference exactly.** Add no validation, cap, gate or opt-out: how a deployer uses the router with a provider is their concern. A real reference defect (wrong derivation, a crash) is still fixed and recorded as a divergence. Client headers never reach the upstream raw; the pipeline passes derived values.
+
+The reference's behavior, with no switch. After an account is chosen, a request for the `claude` provider with an OAuth token (`sk-ant-oat`) from a client that is not Claude Code gets:
+- every client tool without a `type` renamed with the suffix `_ide` (in the tool list, in every `tool_use` of the history and in a forced `tool_choice`);
+- twenty decoy tools;
+- a billing block as the first system block;
+- `metadata.user_id` when the client sent none (the session in it comes from `app/conversation`).
+
+A node that fronts Anthropic gets the billing block and user id only.
+
+| Item | Behavior |
+|---|---|
+| Name map | Lives on the request context, replaced on every attempt |
+| Answers | Every Claude answer, body or stream, loses a trailing `_ide` from a tool name, by the map or, when the map is gone, by the suffix. The decoy names end in no suffix |
+| `anthropic-beta` | The client's header is merged as sent into the list picked for the model (`claude`, and nodes serving a `claude-*` model) or into the registry list (`anthropic`) |
+| Session header | `x-claude-code-session-id` is sent for an OAuth token on `claude` |
+| Other nodes | A node whose base URL is not Anthropic's also gets the key as a bearer token and loses `x-app`, the browser-access header and `claude-code-20250219` |
+| Client headers | Never copied. The pipeline passes these derived values |
+
+### Claude Preparation (`prepareClaude`)
+
+Every body bound for a Claude upstream, translated or not, ends here.
+- `output_config` goes when the provider quirk `dropOutputConfig` says so; `context_management` goes unless the provider is Anthropic or an `anthropic-compatible-*` node.
+- A rejected `disabled` thinking type becomes the model's `thinkingOffType`; forced tool choice is relaxed where the model refuses it; `max_tokens` is cut to the model's `maxOutput` and kept above the thinking budget.
+- Cache markers: the last system block and the last cacheable tool (not `defer_loading`) get 1h, the last assistant block 5m, and the final tool results of an agent loop 5m while fewer than four markers are set; a conversation with no assistant turn yet marks its last message instead. Client markers are dropped, so at most four are ever sent. A tool-call conversation keeps its tools, system and earlier messages byte-identical from turn to turn (tested), which is what lets the upstream read its cache. Cache writes of the one hour lifetime are priced at `cache_creation_1h`, else twice the input rate (`PARITY.md` §4).
+- History repair: blank messages go, text after a `tool_use` goes, neighbouring turns of one role merge with tool results first, a user turn is restored when the client did not end on the assistant.
+- Thinking blocks are kept, re-signed or dropped by provider. The signature check accepts the single and double base64 forms with the 0x12 marker; the placeholder is the `claudeSignature` field of `thinking.json`; a blank block never survives.
+- Outside Anthropic, tools are limited to the provider's `claudeSupportedToolTypes` and tool-result images move into the user turn.
+
+### Responses Codec
+
+`ResponsesCodec` joins the Responses API to the hub.
+
+| Direction | Behavior |
+|---|---|
+| Request reader | `instructions` becomes the system turn; an empty `input` becomes a `...` user turn; `reasoning` items become `reasoning_content` and `encrypted_content` on the next assistant turn; `function_call` and `custom_tool_call` items become tool calls (a call with no name is skipped); hosted tools without a name are dropped |
+| Custom tools | Declared to a chat upstream as a function with one string parameter `input`. The name is kept on `Ctx.CustomTools` (the one field a request reader writes), so the answer and the stream name it as a `custom_tool_call` again |
+| Request writer | Sends `store:false`, clamps call ids to 64 characters, flattens tool declarations |
+| Stream writer | Holds `response.completed` until the usage trailer arrives (Close sends it otherwise), numbers every event, ends with it. An error chunk is answered by the transport with `response.failed` (`failure.Frame`) |
+
+### Gemini Codec
+
+`GeminiCodec` joins `generateContent` to the hub.
+
+| Direction | Behavior |
+|---|---|
+| Request reader | Takes `systemInstruction`, text, `thought` parts (reasoning on the assistant turn), `inlineData` as image, audio or PDF blocks, `functionCall` and `functionResponse` (a call without an id gets one; a result without an id answers the oldest unanswered call of its name), `toolConfig` and the JSON response settings. Upper-case schema types are lowered |
+| Request writer | Cleans every tool schema to the subset Gemini accepts (`cleanGeminiSchema`), sanitizes function names, makes every call id unique over the whole history, pairs each result with its call, merges neighbouring turns of one role, starts and ends on a user turn, drops sampling fields for Gemini 4 |
+| Signatures | A thought signature rides on the tool call as `extra_content.google.thought_signature` and is sent back when present. When a client returns the call without it, `Ctx.Calls` (the `toolcalls` cache group, scoped per API key; `PRD 20`) restores it; a signature the client kept wins. The capability table's placeholder is used only for a first call no Gemini model issued |
+| Stream writer | Holds tool calls until the turn ends (a Gemini call carries whole arguments) and the closing chunk until the usage trailer arrives |
+| Usage | Completion tokens include thought tokens in both directions |
+
+---
+
+## Parity: Translators
+
+All go through the OpenAI hub; no direct pairs (PRD 7). References under `translator/`.
+
+| Translator | Reference | Status | Step |
+|---|---|---|---|
+| claude to/from openai | `request/claude-to-openai.js`, `request/openai-to-claude.js` | todo (D115) | 1.8 |
+| gemini to/from openai | `request/gemini-to-openai.js`, `request/openai-to-gemini.js` | todo | 1.8 |
+| openai to/from openai-responses | `request/openai-responses.js`, `response/openai-responses.js`, `formats/responsesApi.js` | todo (request, body, stream, both ways; D119-120) | 1.8 |
+| openai to/from ollama | `*/*ollama*.js` | todo (all four directions; D136) | 1.8 |
+| Concerns: thinking, tool calls, usage, finish reasons, images, modality, params | `concerns/*` | todo (also same-format, D138; param rules in `params.json`: claude temperature, groq, openai, GitHub; OpenAI-shaped bodies drop `developer`, foreign blocks, blank messages as `filterToOpenAIFormat`; audit 2 fixes D183-D188) | 1.8 |
+| Capability, thinking-level and vision tables | `providers/{capabilities,thinkingLevels,visionPatterns}.js` | todo (`app/upstream`, `data/capabilities/*.json`; catalog overlay 2.6, commandcode and kiro rules 1.10) | 1.8 |
+| gemini-cli, antigravity (to and from openai) | `request/gemini-to-openai.js`, `openai-to-gemini.js`, `antigravity-to-openai.js` | todo | 1.10 |
+| openai to vertex | `request/openai-to-vertex.js` | todo | 1.10 |
+| kiro, cursor, commandcode (to and from openai) | `*/*kiro*.js`, `*cursor*.js`, `*commandcode*.js` | todo | 1.10 |
+| Webtools translators for web providers | `*webTools*` | deferred | - |
+
+---
+
+## Remaining work
+**Steps 1.8a and 1.8b are built.**
+
+- [x] The OpenAI hub and the OpenAI, Claude, Responses, Gemini and Ollama codecs for request and non-stream answer (1.8a)
+- [x] Claude preparation: cache markers (at most four, tool-call prefixes byte-stable), history repair, thinking-block signatures, `max_tokens` cap, tool-choice relaxing (1.8a)
+- [x] The concerns: tool-call ids and results, finish reasons, usage invariants, modality, thinking, parameter rules applied last (1.8a)
+- [x] The capability tables in `app/upstream` (1.8a)
+- [x] The stream direction of every codec: readers and writers for OpenAI, Claude, Responses, Gemini and Ollama; hold-for-usage; the `<think>` tag split for Responses; Claude `Read` tool argument repair (1.8b)
+- [x] Image prefetch (`app/prefetch`, 1.8d): Gemini and Ollama targets only, magic bytes decide the type
+- [ ] Claude cloak: tool suffix, decoys, billing block, user id, restore on body and stream — **1.9**
+- [ ] Step 1.10: gemini-cli, antigravity, vertex, kiro, cursor and commandcode translators
+
+---
+
+## Divergences
+
+Deliberate differences from the references in this area. Numbers are stable and cited from other docs.
+
+| # | What we do differently | Why it is better |
+|---|---|---|
+| 169 | Caller system, developer turns dropped; fixed prompt the only system turn; user content keeps typed blocks | Gateway accepts one fixed shape; data file and test state it, so the loss is deliberate and visible |
+| 80 | Both removed first, any order, in resolver. **(partial)** nothing sends `[1m]` beta header yet | Name with both resolves |
+| 115 | Each kept or carried; one id rule | No silent loss |
+| 112, 113, 114, 118 | Strict JSON (unknown fields, inverted ranges, repeated patterns, secret-shaped names stop start); level tables, signature, `dropOutputConfig` as data; commandcode, kiro special cases leave lookup **(planned 1.10)**; catalog overlay **(planned 2.6)** | Bad data stops the start |
+| 121, 122, 123, 124 | Full Gemini codec both ways. Model id `^[A-Za-z0-9_.-]+$`; unknown action Gemini 404; list honors key access. Real signatures carried; placeholder only on first unsigned call of a model turn, never over real one. Every call id unique; results paired with oldest unanswered call | Gemini clients keep tools, attachments; bad id cannot change the path |
+| 131, 132 | Explicit `stream` wins; original names restored; collisions get numeric suffix | Clients get the mode they asked for |
+| 136 | Real Ollama codec, four directions; exactly one `done` line with `done_reason`, counts; `"stream": false` returns one JSON body; Ollama error shape; Ollama upstreams spoken natively | Tools, images, counts work |
+| 138 | Same-format non-OpenAI bodies: thinking normalization, provider param rules only; OpenAI bodies: all concerns **(trade-off)** | OpenAI to OpenAI repaired. Cost: native bodies keep missing tool ids or results; hub round trip would lose native fields |
+| 163 | Model entry may carry `defaultThinking` (used only when name, request, client fields ask nothing) and `thinking` (fixed by model id, beating request); both use name-suffix grammar. DeepSeek V4 Pro defaults to high, declares low to max, passes level asked; `-low`, `-medium`, `-high`, `-xhigh`, `-max`, `-none` pinned variants. Model declaring no levels keeps two-level wire | Coding client gets reasoning without naming it; every level reachable; default is operator-editable data |
+| 168 | Per-format transport naming no headers inherits base ones; own URL suffix never inherited | Data stays short; header cannot be forgotten on one format |
+| 183 | Codec also maps seed, stop, both penalties, `think`, `response_format` both ways; `developer` becomes `system`; tool calls numbered by running counter; content on final line kept; each answer opens with role chunk; `content: ""` for empty reply. Options with no hub equivalent (`top_k`, `repeat_penalty`, `min_p`, `num_ctx`, `keep_alive`) and `tool_choice` not forwarded | Endpoint has no tool choice field; rest keeps what a client asked for |
+| 184 | Kept: native `reasoning{effort,summary}` for Responses upstreams, `output_config` keys, every Gemini system turn joined, Gemini `tool_choice`, `stop`, `seed`, `response_format`, Claude `top_p`, `user`, `stop`, Responses `incomplete` mapping, `reasoning_text.delta`, Gemini thought tokens counted apart from candidates, cache tokens kept on `message_stop` fallback, tool block reopened when its id changes, id-less tool result taking id at its position | Client settings reach upstream instead of vanishing in the hop |
+| 185 | `metadata.user_id` built in reference order (`device_id`, `account_uuid`, `session_id`); billing block, decoys, renamed tools re-encoded with sorted keys; `cch` hashes our encoded bytes, so the five characters differ from reference for the same request | Go maps have no order; only a byte fingerprint changes; hand-ordered encoder for the whole body costs more than it gains |
+| 186 | Rules for every upstream format (so `temperature` also dropped from native Claude body); strip after injection; exclusion one glob; image fetch up to 3 redirects, 20 s limit, through SSRF guard; rules validated on load (no empty rule, no negative cap, no credential-shaped pattern, no exclude without match) | One rule table for every route; bad table stops the start instead of misrouting traffic |
+| 190 | Endpoint alone decides: `/v1/chat/completions` OpenAI, `/v1/messages` Claude, `/v1/responses` Responses, `/v1beta/models/*` Gemini, `/v1/api/chat` Ollama. Body of another shape gets that format's error | One rule per route; wrong-shape body fails loudly instead of being served as a format the client did not choose |
+| 142 | Every Claude-format body bound for Anthropic or a node fronting it | Removes only what Anthropic rejects; no dependence on a header |
+| 193 | Removed on every route returning Claude answers, with or without cloak, so genuine tool named `x_ide` from uncloaked upstream loses its suffix | Name map gone after retry or reconnect, so suffix is the fallback. Narrow to cloaked requests if it shows up in real use (trade-off) |
+| 216 | The Claude disguise (tool suffix, decoys, billing block, user id) is built with the Claude OAuth provider in step 1.9 instead of 1.8 **(planned 1.9)** | It needs an OAuth account to exist and to test against; Claude preparation, which an API key needs, is built in 1.8a (planned) |
+| 217 | Every writer holds its closing event until the usage report or `STREAM_USAGE_WAIT` | A usage trailer sent after the finish chunk reaches Claude and Gemini clients too |
+| 218 | An upstream error event (Claude `error`, Responses `response.failed`, Gemini or Ollama error body, an OpenAI `error` object) fails the stream with the client's own error frame | The reference dropped it and the stream ended with no finish and no error |
+
+---
+
+## Findings
+
+**The hub is typed so a conversion cannot silently invent or lose a field.** Unknown top-level fields of a body ride in `Extra` and are written back to the same format, which is what keeps a same-format request from losing what the hub does not model. A map hub would have made every codec a copy of the same guesswork.
+
+**Encoding is deterministic.** A Go map has no order, so every object is written through an ordered encoder. Two encodings of one request are byte-identical, which is what lets an upstream read its prompt cache from one turn of a tool-call conversation to the next; a test pins that the system, tools and earlier messages do not change when a turn is appended.
+
+**The cache-marker budget is reached by one case.** A conversation that ends with many parallel tool results was the only input that could exceed four markers, and the first draft's tests never produced it. A dedicated test now does, and it is why the final-results step is bounded.
+
+**A schema cleaner must not depend on map order.** An enum whose declared type was `integer` came out `integer` or `string` depending on which key was walked first. The rule (an enum is always strings with an explicit `string` type) now runs after the walk.
+
+**A decoder error can carry the input.** Go's JSON decoder names an unknown key in its message, and a key can be a secret pasted in the wrong place. Loader errors give a fixed reason only (this is true of the registry and the capability tables alike).
+
+**Streams meet at the hub chunk, and the writer owns the hold.** Every reader emits `Chunk`s whose first one carries the role, with at most one finish and usage as a separate report merged by maximum; every writer holds its closing event until usage arrives (`Held`, `Close`). That is what let one usage timer in `app/stream` serve five formats, and what makes the all-pair test (25 reader/writer pairs over one scripted turn) a real check rather than five unrelated ones.
+
+**A whole-call format cannot be fed fragments.** Gemini and Ollama carry a tool call in one part or line, so their writers collect fragments and send the call with the turn. The first version wrote each fragment and produced two calls for one.

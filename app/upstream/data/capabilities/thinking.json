@@ -1,0 +1,30 @@
+{
+  "base": ["none", "low", "medium", "high"],
+  "formats": {
+    "openai": ["none", "minimal", "low", "medium", "high", "xhigh"],
+    "claude-adaptive": ["none", "low", "medium", "high", "xhigh", "max"],
+    "claude-budget": ["none", "low", "medium", "high", "xhigh", "max"],
+    "gemini-level": ["minimal", "low", "medium", "high"],
+    "gemini-budget": ["none", "low", "medium", "high"],
+    "deepseek": ["none", "high", "max"]
+  },
+  "rules": [
+    { "pattern": "*gemini-4*", "levels": ["low", "medium", "high"] },
+    { "pattern": "*claude*4.6*", "levels": ["none", "low", "medium", "high", "max"] },
+    { "pattern": "*claude*4-6*", "levels": ["none", "low", "medium", "high", "max"] },
+    { "provider": "codex", "pattern": "*gpt-6*", "levels": ["none", "minimal", "low", "medium", "high", "xhigh", "max"] },
+    { "provider": "codex", "pattern": "*gpt-5.6*", "levels": ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"] },
+    { "pattern": "*codex*", "levels": ["low", "medium", "high", "xhigh"] }
+  ],
+  "budgets": {
+    "minimal": 1024,
+    "low": 2048,
+    "medium": 8192,
+    "high": 24576,
+    "xhigh": 32768,
+    "max": 65536,
+    "ultra": 131072
+  },
+  "claudeSignature": "rllmx-placeholder-claude-signature",
+  "geminiSignature": "rllmx-placeholder-gemini-signature"
+}
