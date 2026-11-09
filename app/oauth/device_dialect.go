@@ -17,13 +17,28 @@ import (
 // hook, the storage) is the same engine.
 type deviceDialect struct {
 	start func(ctx context.Context, c *TokenClient, f Flow, h map[string]string) (DeviceGrant, error)
-	poll  func(ctx context.Context, c *TokenClient, f Flow, code string, h map[string]string) (Tokens, pollState, error)
+	poll  func(ctx context.Context, c *TokenClient, f Flow, s deviceState, h map[string]string) (Tokens, pollState, error)
+	// refresh replaces the standard renewal when the provider has its own.
+	refresh func(ctx context.Context, c *TokenClient, f Flow, refreshToken string, h map[string]string) (Tokens, error)
+}
+
+// deviceState is what a poll needs from the server-side login: the device code
+// and what the dialect's start kept for it. None of it reaches the browser.
+type deviceState struct {
+	Code     string
+	Verifier string
+	Extra    string
 }
 
 // deviceDialects are the names a data file may use for it. A test keeps the table
 // equal to upstream.DialectNames.
 var deviceDialects = map[string]deviceDialect{
-	"kilocode": {start: kiloStart, poll: kiloPoll},
+	"kilocode": {start: kiloStart, poll: func(ctx context.Context, c *TokenClient, f Flow, s deviceState, h map[string]string) (Tokens, pollState, error) {
+		return kiloPoll(ctx, c, f, s.Code, h)
+	}},
+	"codebuddy": {start: codebuddyStart, poll: codebuddyPoll, refresh: codebuddyRefresh},
+	"minimax":   {start: minimaxStart, poll: minimaxPoll},
+	"zcode":     {start: zcodeStart, poll: zcodePoll},
 }
 
 // kiloCode is the shape of a code that goes into a request path.

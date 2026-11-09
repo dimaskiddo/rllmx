@@ -34,6 +34,10 @@ func NewMux(d *Default, o Options) *Mux {
 		upstream.ExecutorCodex:   &Codex{Default: d, PeekIdle: o.PeekIdle},
 		upstream.ExecutorGrokCLI: &Grok{Default: d},
 		upstream.ExecutorGitHub:  &GitHub{Default: d},
+
+		upstream.ExecutorCodeBuddyCN:   &CodeBuddy{Default: d},
+		upstream.ExecutorCodeBuddyIntl: &CodeBuddy{Default: d, Intl: true},
+		upstream.ExecutorMinimaxCode:   &MinimaxCode{Default: d},
 	}}
 }
 

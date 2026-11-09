@@ -17,14 +17,14 @@ func TestTheSeedLoginsDeclareTheirFlow(t *testing.T) {
 	}
 	claude, _ := reg.ByID("claude")
 	if o := claude.OAuth; o == nil || o.Redirect != RedirectLocal || o.Exchange != EncodingJSON || !o.EchoState || o.FixedPort != 0 ||
-		o.Refresh != (Refresh{Encoding: EncodingJSON, LeadSeconds: 14400}) || len(o.Headers) != 0 ||
+		(o.Refresh.Encoding != EncodingJSON || o.Refresh.LeadSeconds != 14400) || len(o.Headers) != 0 ||
 		o.URLSuffix != "?beta=true" || !o.Disguise || o.Beta == nil || len(o.Beta.Base) != 9 || len(o.Beta.Heavy) != 2 ||
 		o.Session == nil || o.Session.Name != "x-claude-code-session-id" || o.Session.Keyed || o.Identity["User-Agent"] == "" {
 		t.Fatalf("claude: %+v", claude.OAuth)
 	}
 	codex, _ := reg.ByID("codex")
 	if o := codex.OAuth; o == nil || o.Redirect != RedirectFixed || o.FixedPort != 1455 || o.CallbackPath != "/auth/callback" || o.Exchange != EncodingForm || o.EchoState || o.Hook != "codex" ||
-		o.Refresh != (Refresh{Encoding: EncodingJSON, LeadSeconds: 600, MaxAgeSeconds: 691200}) ||
+		(o.Refresh.Encoding != EncodingJSON || o.Refresh.LeadSeconds != 600 || o.Refresh.MaxAgeSeconds != 691200) ||
 		o.Disguise || o.Session == nil || !o.Session.Keyed || o.Account == nil || o.Account.Name != "ChatGPT-Account-ID" || len(o.Account.From) != 3 {
 		t.Fatalf("codex: %+v", codex.OAuth)
 	}
@@ -149,7 +149,7 @@ func TestTheGitHubLoginDeclaresItsDeviceFlow(t *testing.T) {
 	o := gh.OAuth
 	if o == nil || o.Flow != FlowDevice || o.DeviceURL != "https://github.com/login/device/code" || o.TokenURL != "https://github.com/login/oauth/access_token" ||
 		o.Scope != "read:user" || o.Hook != "github" || o.Mint != MintCopilot || o.Endpoints[EndpointCopilotToken] == "" || o.Endpoints[EndpointUser] == "" ||
-		o.Refresh != (Refresh{}) || gh.Executor != ExecutorGitHub {
+		!o.Refresh.empty() || gh.Executor != ExecutorGitHub {
 		t.Fatalf("%+v executor %s", o, gh.Executor)
 	}
 	if gh.Transport.ResponsesURL == "" || gh.Transport.MessagesURL == "" {

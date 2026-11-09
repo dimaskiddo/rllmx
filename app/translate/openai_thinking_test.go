@@ -1,10 +1,13 @@
 package translate
 
 import (
+	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 
 	"rllmx/app/upstream"
 )
@@ -150,5 +153,43 @@ func TestTheKimiAndNousLevelsAreInTheCapabilityData(t *testing.T) {
 	}
 	if c := caps.For("nous", "stepfun/step-5-preview:free"); c.ThinkingFormat != "nous" || !c.Reasoning {
 		t.Errorf("nous row: %+v", c)
+	}
+}
+
+func TestZaiTurnsThinkingOnWithItsOwnObjectAndOffWithItsOwnSwitch(t *testing.T) {
+	can := upstream.Capability{Reasoning: true, ThinkingCanOff: true, ThinkingFormat: "zai"}
+	cannot := upstream.Capability{Reasoning: true, ThinkingFormat: "zai"}
+	effort := upstream.Capability{Reasoning: true, ThinkingCanOff: true, ThinkingFormat: "zai", ThinkingEffortSupported: true}
+	for name, tc := range map[string]struct {
+		th   Thinking
+		caps upstream.Capability
+		want string
+	}{
+		"on, no effort read":   {Thinking{Mode: "level", Level: "high"}, can, `{"thinking":{"type":"enabled"}}`},
+		"off":                  {Thinking{Mode: "none"}, can, `{"enable_thinking":false}`},
+		"off on a fixed model": {Thinking{Mode: "none"}, cannot, `{"thinking":{"type":"enabled"}}`},
+		"low":                  {Thinking{Mode: "level", Level: "low"}, effort, `{"reasoning_effort":"low","thinking":{"type":"enabled"}}`},
+		"minimal":              {Thinking{Mode: "level", Level: "minimal"}, effort, `{"reasoning_effort":"low","thinking":{"type":"enabled"}}`},
+		"medium":               {Thinking{Mode: "level", Level: "medium"}, effort, `{"reasoning_effort":"high","thinking":{"type":"enabled"}}`},
+		"high":                 {Thinking{Mode: "level", Level: "high"}, effort, `{"reasoning_effort":"high","thinking":{"type":"enabled"}}`},
+		"xhigh":                {Thinking{Mode: "level", Level: "xhigh"}, effort, `{"reasoning_effort":"max","thinking":{"type":"enabled"}}`},
+		"max":                  {Thinking{Mode: "level", Level: "max"}, effort, `{"reasoning_effort":"max","thinking":{"type":"enabled"}}`},
+		"a budget of 100000":   {Thinking{Mode: "budget", Budget: 100000}, effort, `{"reasoning_effort":"max","thinking":{"type":"enabled"}}`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			out := writeWith(t, tc.th, tc.caps)
+			got := `{}`
+			for _, k := range []string{"enable_thinking", "reasoning_effort", "thinking"} {
+				if v := gjson.GetBytes(out, k); v.Exists() {
+					got, _ = sjson.SetRaw(got, k, v.Raw)
+				}
+			}
+			var a, b any
+			_ = json.Unmarshal([]byte(got), &a)
+			_ = json.Unmarshal([]byte(tc.want), &b)
+			if !reflect.DeepEqual(a, b) {
+				t.Fatalf("%s, want %s", got, tc.want)
+			}
+		})
 	}
 }

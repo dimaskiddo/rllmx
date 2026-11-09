@@ -22,8 +22,8 @@ import (
 
 // hit is one call the fake provider received.
 type hit struct {
-	Method, Path, Body string
-	Header             http.Header
+	Method, Path, Body, Query string
+	Header                    http.Header
 }
 
 // fake is a TLS provider whose answers a test scripts per path. A path with
@@ -48,7 +48,7 @@ func newFake(t *testing.T) *fake {
 		raw := make([]byte, 4096)
 		n, _ := r.Body.Read(raw)
 		f.mu.Lock()
-		f.hits = append(f.hits, hit{r.Method, r.URL.Path, string(raw[:n]), r.Header.Clone()})
+		f.hits = append(f.hits, hit{Method: r.Method, Path: r.URL.Path, Body: string(raw[:n]), Query: r.URL.RawQuery, Header: r.Header.Clone()})
 		seq := f.reply[r.URL.Path]
 		c := f.calls[r.URL.Path]
 		if c == nil {
@@ -125,7 +125,7 @@ func newLoginRig(t *testing.T, id, oauthBlock string) *loginRig {
 	sessions.Now = clock
 	r.svc = &Service{
 		Registry: reg, ClientID: func(string) string { return "client-" + id }, Sessions: sessions, Now: clock,
-		Tokens: &TokenClient{HTTP: f.Client(), Sleep: func(_ context.Context, d time.Duration) error {
+		Tokens: &TokenClient{HTTP: f.Client(), Now: clock, Sleep: func(_ context.Context, d time.Duration) error {
 			r.mu.Lock()
 			r.waits = append(r.waits, d)
 			r.mu.Unlock()

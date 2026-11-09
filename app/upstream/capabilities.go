@@ -37,17 +37,20 @@ type Capability struct {
 	Reasoning   bool `json:"reasoning"`
 	// ThinkingFormat is how a thinking request is written on the wire, or empty
 	// to follow the transport format.
-	ThinkingFormat   string   `json:"thinkingFormat,omitempty"`
-	ThinkingCanOff   bool     `json:"thinkingCanDisable"`
-	ThinkingMin      int      `json:"thinkingMin,omitempty"`
-	ThinkingMax      int      `json:"thinkingMax,omitempty"`
-	ContextWindow    int      `json:"contextWindow"`
-	MaxOutput        int      `json:"maxOutput"`
-	ThinkingOffType  string   `json:"thinkingOffType,omitempty"`
-	RelaxToolChoice  bool     `json:"relaxToolChoice,omitempty"`
-	DropOutputConfig bool     `json:"dropOutputConfig,omitempty"`
-	KeepContextMgmt  bool     `json:"keepContextManagement,omitempty"`
-	ClaudeToolTypes  []string `json:"claudeSupportedToolTypes,omitempty"`
+	ThinkingFormat string `json:"thinkingFormat,omitempty"`
+	ThinkingCanOff bool   `json:"thinkingCanDisable"`
+	// ThinkingEffortSupported is set for a zai-format model that reads a
+	// reasoning_effort level beside its thinking switch.
+	ThinkingEffortSupported bool     `json:"thinkingEffortSupported,omitempty"`
+	ThinkingMin             int      `json:"thinkingMin,omitempty"`
+	ThinkingMax             int      `json:"thinkingMax,omitempty"`
+	ContextWindow           int      `json:"contextWindow"`
+	MaxOutput               int      `json:"maxOutput"`
+	ThinkingOffType         string   `json:"thinkingOffType,omitempty"`
+	RelaxToolChoice         bool     `json:"relaxToolChoice,omitempty"`
+	DropOutputConfig        bool     `json:"dropOutputConfig,omitempty"`
+	KeepContextMgmt         bool     `json:"keepContextManagement,omitempty"`
+	ClaudeToolTypes         []string `json:"claudeSupportedToolTypes,omitempty"`
 }
 
 // defaultCapability is the floor every lookup is merged over.
@@ -311,6 +314,18 @@ func modelNames(model string) []string {
 // returned as written; the other steps turn vision on when the name says so, and
 // a name on the not-vision list never gets it.
 func (c *Capabilities) For(provider, model string) Capability {
+	out := c.forModel(provider, model)
+	if c.registry != nil {
+		if id, ok := c.registry.Resolve(provider); ok {
+			if e, ok := c.registry.ByID(id); ok && e.Transport.ThinkingFormat != "" {
+				out.ThinkingFormat = e.Transport.ThinkingFormat
+			}
+		}
+	}
+	return out
+}
+
+func (c *Capabilities) forModel(provider, model string) Capability {
 	out := defaultCapability()
 	apply := func(raw json.RawMessage) { _ = json.Unmarshal(raw, &out) }
 	names := modelNames(model)

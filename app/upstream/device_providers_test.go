@@ -25,7 +25,7 @@ func TestTheDeviceLoginsOf110dDeclareWhatTheyNeed(t *testing.T) {
 		t.Errorf("kimi: %+v", kimi)
 	}
 	muse := get("muse")
-	if muse.Hook != "muse" || muse.Endpoints[EndpointKey] == "" || muse.Refresh != (Refresh{}) || muse.CallHeaders["x-api-version"] == "" {
+	if muse.Hook != "muse" || muse.Endpoints[EndpointKey] == "" || !muse.Refresh.empty() || muse.CallHeaders["x-api-version"] == "" {
 		t.Errorf("muse: %+v", muse)
 	}
 	nous := get("nous")
@@ -33,7 +33,7 @@ func TestTheDeviceLoginsOf110dDeclareWhatTheyNeed(t *testing.T) {
 		t.Errorf("nous: %+v", nous)
 	}
 	kilo := get("kilocode")
-	if kilo.Dialect != "kilocode" || !kilo.NoClient || kilo.Hook != "kilocode" || kilo.Account == nil || kilo.Account.Name != "X-Kilocode-OrganizationID" || kilo.Refresh != (Refresh{}) {
+	if kilo.Dialect != "kilocode" || !kilo.NoClient || kilo.Hook != "kilocode" || kilo.Account == nil || kilo.Account.Name != "X-Kilocode-OrganizationID" || !kilo.Refresh.empty() {
 		t.Errorf("kilocode: %+v", kilo)
 	}
 	grok := get("grok-cli")
@@ -192,5 +192,60 @@ func TestLanesAreValidatedAtLoad(t *testing.T) {
 		case tc.reason != "" && (err == nil || !strings.Contains(err.Error(), tc.reason)):
 			t.Errorf("%s: error %v, want %q", tc.name, err, tc.reason)
 		}
+	}
+}
+
+func TestTheCodeBuddyMiniMaxAndGLMFilesDeclareWhatTheyNeed(t *testing.T) {
+	reg, err := Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, tc := range map[string]struct {
+		dialect, executor string
+		noClient, stream  bool
+		models            int
+		format            string
+	}{
+		"codebuddy-cn":        {"codebuddy", ExecutorCodeBuddyCN, true, true, 11, "openai"},
+		"codebuddy-intl":      {"codebuddy", ExecutorCodeBuddyIntl, true, true, 15, "openai"},
+		"minimax-code":        {"minimax", ExecutorMinimaxCode, false, false, 4, "claude"},
+		"minimax-code-global": {"minimax", ExecutorMinimaxCode, false, false, 4, "claude"},
+		"glm":                 {"zcode", ExecutorDefault, true, false, 8, "claude"},
+	} {
+		e, ok := reg.ByID(id)
+		if !ok || e.OAuth == nil || e.OAuth.Flow != FlowDevice {
+			t.Errorf("%s: no device login", id)
+			continue
+		}
+		o := e.OAuth
+		if o.Dialect != tc.dialect || e.Executor != tc.executor || o.NoClient != tc.noClient || e.ForceStream != tc.stream ||
+			len(e.Models) != tc.models || e.Transport.Format != tc.format {
+			t.Errorf("%s: dialect %q executor %q noClient %v stream %v models %d format %q", id, o.Dialect, e.Executor, o.NoClient, e.ForceStream, len(e.Models), e.Transport.Format)
+		}
+	}
+	for alias, id := range map[string]string{"cbcn": "codebuddy-cn", "cbai": "codebuddy-intl", "mm": "minimax-code", "mmg": "minimax-code-global"} {
+		if got, ok := reg.Resolve(alias); !ok || got != id {
+			t.Errorf("%s resolves to %q %v", alias, got, ok)
+		}
+	}
+	mm, _ := reg.ByID("minimax-code")
+	if mm.OAuth.Refresh.LeadSeconds != 600 || mm.OAuth.Refresh.Fields["audience"] != "agent-backend" || mm.Transport.ThinkingFormat != "claude-adaptive" {
+		t.Errorf("minimax-code: %+v", mm.OAuth.Refresh)
+	}
+	glm, _ := reg.ByID("glm")
+	if _, lane := glm.Transport.Lanes[FormatOpenAI]; !lane || glm.Auth == nil || glm.Auth.Scheme != SchemeRaw || glm.OAuth.Endpoints["api"] == "" {
+		t.Errorf("glm: %+v", glm.Transport)
+	}
+}
+
+func TestAProviderCanFixItsThinkingFormatOnlyToAKnownOne(t *testing.T) {
+	file := func(f string) fstest.MapFS {
+		return fstest.MapFS{"data/x.json": {Data: []byte(`{"id":"x","category":"apikey","transport":{"baseUrl":"https://x.example/v1/chat/completions","thinkingFormat":"` + f + `"},"models":[]}`)}}
+	}
+	if _, err := Load(file("openai"), "data"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(file("made-up"), "data"); err == nil {
+		t.Fatal("an unknown thinking format loaded")
 	}
 }

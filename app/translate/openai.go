@@ -276,6 +276,17 @@ func writeOpenAIThinking(o obj, th Thinking, c *Ctx) {
 		}
 		o["reasoning"] = out
 		return
+	case "zai":
+		// Z.ai ignores a disabled thinking object; turning it off is its own switch.
+		if none {
+			o["enable_thinking"] = false
+			return
+		}
+		o["thinking"] = obj{"type": "enabled"}
+		if caps.ThinkingEffortSupported {
+			o["reasoning_effort"] = zaiLevel(level)
+		}
+		return
 	case "kimi":
 		if none {
 			o["thinking"] = obj{"type": "disabled"}
@@ -292,6 +303,17 @@ func writeOpenAIThinking(o obj, th Thinking, c *Ctx) {
 	case "level":
 		o["reasoning_effort"] = th.Level
 	}
+}
+
+// zaiLevel maps a level to the three Z.ai reads: low, high and max.
+func zaiLevel(l string) string {
+	switch l {
+	case "low", "minimal":
+		return "low"
+	case "medium", "high":
+		return "high"
+	}
+	return "max"
 }
 
 // kimiLevel maps a level to one Kimi reads, or "" for one it does not.

@@ -80,8 +80,14 @@ func (t *Transport) validate(executor, authHeader string) error {
 	default:
 		return errors.New("transport.reasoningInject is unknown")
 	}
+	if t.ThinkingFormat != "" && !thinkingFormats[t.ThinkingFormat] {
+		return errors.New("transport.thinkingFormat is unknown")
+	}
 	return nil
 }
+
+// thinkingFormats are the shapes a provider may fix for all its models.
+var thinkingFormats = map[string]bool{"openai": true, "claude-adaptive": true, "claude-budget": true, "zai": true, "kimi": true, "nous": true, "deepseek": true}
 
 // maxLanes bounds the endpoints one provider may name: one per wire format.
 const maxLanes = 4

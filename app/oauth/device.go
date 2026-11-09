@@ -33,6 +33,10 @@ type DeviceGrant struct {
 	VerificationURI string
 	ExpiresIn       time.Duration
 	Interval        time.Duration
+	// Verifier and Extra are kept with the login for the poll: a PKCE verifier,
+	// and whatever else the dialect needs to remember.
+	Verifier string
+	Extra    string
 }
 
 // pollState says what an answer that carries no tokens means.
@@ -123,25 +127,25 @@ func clampLife(seconds int64) time.Duration {
 	if seconds <= 0 {
 		return defaultLife
 	}
-	return min(time.Duration(seconds)*time.Second, maxLife)
+	return time.Duration(min(seconds, int64(maxLife/time.Second))) * time.Second
 }
 
 func clampInterval(seconds int64) time.Duration {
 	if seconds <= 0 {
 		return defaultInterval
 	}
-	return max(minInterval, min(time.Duration(seconds)*time.Second, maxInterval))
+	return max(minInterval, time.Duration(min(seconds, int64(maxInterval/time.Second)))*time.Second)
 }
 
 // DevicePoll asks once whether the user has approved the code. A provider that
 // has not heard from the user yet answers with an error name in a 200 body, as
 // the specification allows, so the body decides before the status does.
-func (c *TokenClient) DevicePoll(ctx context.Context, f Flow, deviceCode, deviceID string) (Tokens, pollState, error) {
+func (c *TokenClient) DevicePoll(ctx context.Context, f Flow, st deviceState, deviceID string) (Tokens, pollState, error) {
 	h := callHeaders(f, deviceID)
 	if d, ok := deviceDialects[f.Dialect]; ok {
-		return d.poll(ctx, c, f, deviceCode, h)
+		return d.poll(ctx, c, f, st, h)
 	}
-	fields := map[string]string{"device_code": deviceCode, "grant_type": "urn:ietf:params:oauth:grant-type:device_code"}
+	fields := map[string]string{"device_code": st.Code, "grant_type": "urn:ietf:params:oauth:grant-type:device_code"}
 	if !f.NoClient {
 		fields["client_id"] = f.ClientID
 	}

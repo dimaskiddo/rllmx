@@ -109,7 +109,7 @@ sequenceDiagram
 | grok-cli login and renewal (device flow on the xAI client, profile hook) | done | 1.10d |
 | kimi, muse, nous, kilocode (logins, headers, renewal where the provider has one) | done | 1.10d |
 | github (Copilot token, chat, messages and Responses addresses) | done | 1.10c |
-| codebuddy-cn and codebuddy-intl, minimax-code and minimax-code-global | todo | 1.10f |
+| codebuddy-cn and codebuddy-intl (stream forced, system prompt scrub or rebuild, request ids, rate-limit remap), minimax-code and minimax-code-global (zone and session headers, balance remap) | done | 1.10f |
 | iflow, antigravity, commandcode, gemini-cli, qoder and qoder-cn, kiro, zed, cursor | todo | 1.10 |
 | windsurf, trae (reference loads neither, D158) | out | - |
 | bedrock and bedrock-xai, opencode (opencode-go, opencode-zen), vertex and vertex-partner | todo | 1.10 |
@@ -171,11 +171,11 @@ Every provider the references ship, with executor kind, status and delivering st
 |---|---|---|
 | default | done (1.10d) | kilocode, kimi, muse |
 | default | done (1.10e) | cline, clinepass, gitlab, xai |
-| default | todo 1.10f | glm |
+| default | done (1.10f) | glm |
 | default | partial (1.9c: a login's headers and address suffix, the computed beta list and the disguise are data and `pipeline`, no executor code) | claude |
 | specialized | done (1.10b) | codex, grok-cli |
 | specialized | done (1.10c) | github |
-| specialized | todo 1.10f | codebuddy-cn, codebuddy-intl, minimax-code, minimax-code-global |
+| specialized | done (1.10f) | codebuddy-cn, codebuddy-intl, minimax-code, minimax-code-global |
 | specialized | todo 1.10 | antigravity, cursor, iflow, qoder, qoder-cn, xiaomi-mimo, zed |
 | specialized | out | trae, windsurf |
 
@@ -211,7 +211,8 @@ Auth: pasted cookie over a plain HTTP client. Browser or TLS-fingerprint clients
 - [x] 1.10c: the `github` executor on `Default`, the Copilot token mint, `responsesUrl` and `messagesUrl` beside `baseUrl` (a model's `targetFormat` now picks the address as well as the codec), the GitHub device login, the `github` param rules
 - [x] 1.10d: five data files (kimi, muse, nous, kilocode and an `oauth` block in `grok-cli.json`), all on the default executor; the Nous and Kimi thinking writers and capability rows; four client-id variables (`OAUTH_KIMI_`, `_MUSE_`, `_NOUS_`, `_XAI_CLIENT_ID`; Grok CLI uses the xAI one). Models are the reference's today
 - [x] 1.10e: four data files (xai, gitlab, cline, clinepass) on the default executor; the `workos` auth scheme, the `{baseUrl}` address placeholder, the `clineEnvelope` quirk, the Cline identity headers (divergences 165, 166, 247, 248)
-- [ ] 1.10f to 1.10k: the rest of the parity table (codebuddy, minimax and glm; the Google family; AWS; signed and session protocols; cookie providers; live-catalog guards and probes)
+- [x] 1.10f: `executor.CodeBuddy` (both gateways), `executor.MinimaxCode`, five data files, the transport `thinkingFormat`, the `zai` thinking writer and the capability and level rows of the reference (divergences 249, 250)
+- [ ] 1.10g to 1.10k: the rest of the parity table (the Google family; AWS; signed and session protocols; cookie providers; live-catalog guards and probes)
 - [ ] Still missing from the base: `regions` and `defaultRegion`, `baseUrls` fallback (D102), `stallTimeoutMs`/`timeoutMs` per provider, the JSON-schema to `json_object` fallback for compatible nodes. No 1.10a provider needs them; each lands with the first provider that does
 - [ ] Live-catalog guards for kiro, codex, cursor, kimchi, qoder: account model list (5-minute cache) before dispatch; unknown model 400; a fetch failure lets the request through
 - **Done when:** every provider in the parity table has an executor; each passes its fake-upstream tests; live checks are in `TASKS.md` Open items.
@@ -225,6 +226,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | # | What we do differently | Why it is better |
 |---|---|---|
 | 84, 95 | First 4096 bytes scanned, never logged; fixed message per test outcome | Error bodies carry keys, addresses, prompt fragments |
+| 251 | A CodeBuddy rate-limit refusal (code 6004 or its words) becomes a 429 whose body carries the reset moment, parsed from the message in the zone it names or China time and kept only when it lies in the next 400 days. Any other body keeps its status | The reference parses the same date but trusts any parsed date; a bad one would pin an account for ever (improvement) |
 | 165 | Header functions can never write credential header. `workos` auth scheme adds `workos:` marker to WorkOS JWT, leaves other tokens (ClinePass key) as they are. **Built in 1.10e** (`upstream.WorkOSToken`): the marker goes on every request, not only after a renewal | One place sets credential; data, hooks cannot replace it. The reference computes the marked header and then overwrites it with the stored token, so the marker reaches the provider only on a renewed token |
 | 171 | Token dropped after key minted | Nothing uses it again; failing account signs in again; one less long-lived secret on disk |
 | 173 | POST body carries them; address must be bare https origin; id, secret bounded, free of control characters; secret sealed with account | Secret in URL lands in logs and history; address with path or credentials cannot redirect exchange |

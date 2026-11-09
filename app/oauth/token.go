@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"strings"
@@ -63,6 +64,8 @@ type Tokens struct {
 	// Email is what a poll that carries the account's address hands over; the
 	// RFC 8628 answer has none.
 	Email string
+	// PSD is provider data a poll hands over, as a JSON object of short text.
+	PSD string
 }
 
 // TokenClient calls token endpoints. It follows no redirect, because a moved
@@ -237,13 +240,17 @@ func (c *TokenClient) Refresh(ctx context.Context, f Flow, refreshToken string, 
 	}
 	var t Tokens
 	var err error
-	if d, ok := codeDialects[f.Dialect]; ok {
+	switch d, dev := deviceDialects[f.Dialect]; {
+	case codeDialects[f.Dialect].refresh != nil:
+		t, err = codeDialects[f.Dialect].refresh(ctx, c, f, refreshToken, headers)
+	case dev && d.refresh != nil:
 		t, err = d.refresh(ctx, c, f, refreshToken, headers)
-	} else {
+	default:
 		fields := map[string]string{"grant_type": "refresh_token", "refresh_token": refreshToken, "client_id": f.ClientID}
 		if f.ClientSecret != "" {
 			fields["client_secret"] = f.ClientSecret
 		}
+		maps.Copy(fields, f.Refresh.Fields)
 		t, err = c.call(ctx, c.refreshURL(f), f.Refresh.Encoding, fields, headers)
 	}
 	if err != nil {

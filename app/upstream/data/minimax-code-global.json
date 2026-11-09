@@ -1,0 +1,59 @@
+{
+  "id": "minimax-code-global",
+  "alias": "mmg",
+  "category": "oauth",
+  "executor": "minimax-code",
+  "display": {
+    "name": "MiniMax Code (Global)"
+  },
+  "transport": {
+    "baseUrl": "https://agent.minimax.io/mavis/api/v1/llm/v1/messages",
+    "format": "claude",
+    "thinkingFormat": "claude-adaptive",
+    "headers": {
+      "User-Agent": "MiniMaxAgent",
+      "X-Mavis-Agent-Id": "main",
+      "x-api-key": "sk-xxx",
+      "anthropic-version": "2023-06-01"
+    }
+  },
+  "oauth": {
+    "flow": "device",
+    "dialect": "minimax",
+    "deviceUrl": "https://account.minimax.io/oauth2/device/code",
+    "tokenUrl": "https://account.minimax.io/oauth2/token",
+    "scope": "agent.default",
+    "params": [
+      {
+        "name": "audience",
+        "value": "agent-backend"
+      }
+    ],
+    "refresh": {
+      "encoding": "form",
+      "leadSeconds": 600,
+      "fields": {
+        "scope": "agent.default",
+        "audience": "agent-backend"
+      }
+    }
+  },
+  "models": [
+    {
+      "id": "MiniMax-M3.1-Flash-Preview",
+      "name": "MiniMax M3.1 Flash Preview"
+    },
+    {
+      "id": "MiniMax-M3",
+      "name": "MiniMax M3"
+    },
+    {
+      "id": "MiniMax-M2.7",
+      "name": "MiniMax M2.7"
+    },
+    {
+      "id": "MiniMax-M2.7-highspeed",
+      "name": "MiniMax M2.7 Highspeed"
+    }
+  ]
+}

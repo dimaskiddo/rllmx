@@ -234,6 +234,9 @@ func (s *Service) save(ctx context.Context, f Flow, t Tokens, acc Account, devic
 	fields["testStatus"] = quote(repository.StatusActive)
 	fields["lastRefreshAt"] = quote(dialect.FormatTimestamp(now))
 	psd := acc.PSD
+	if psd == "" {
+		psd = t.PSD
+	}
 	if len(deviceID) > 0 && deviceID[0] != "" {
 		psd = withPSD(psd, deviceIDKey, deviceID[0])
 	}

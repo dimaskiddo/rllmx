@@ -31,12 +31,20 @@ const (
 	ExecutorCodex   = "codex"
 	ExecutorGrokCLI = "grok-cli"
 	ExecutorGitHub  = "github"
+	// ExecutorCodeBuddyCN and ExecutorCodeBuddyIntl shape a body for the two
+	// CodeBuddy gateways; ExecutorMinimaxCode adds MiniMax Code's per-request headers.
+	ExecutorCodeBuddyCN   = "codebuddy-cn"
+	ExecutorCodeBuddyIntl = "codebuddy-intl"
+	ExecutorMinimaxCode   = "minimax-code"
 )
 
 var (
 	categories = map[string]bool{CategoryAPIKey: true, CategoryOAuth: true, CategoryFree: true, CategoryFreeTier: true, CategoryCookie: true}
 	formats    = map[string]bool{FormatOpenAI: true, FormatResponses: true, FormatClaude: true, FormatGemini: true}
-	executors  = map[string]bool{ExecutorDefault: true, ExecutorAzure: true, ExecutorCodex: true, ExecutorGrokCLI: true, ExecutorGitHub: true}
+	executors  = map[string]bool{
+		ExecutorDefault: true, ExecutorAzure: true, ExecutorCodex: true, ExecutorGrokCLI: true, ExecutorGitHub: true,
+		ExecutorCodeBuddyCN: true, ExecutorCodeBuddyIntl: true, ExecutorMinimaxCode: true,
+	}
 )
 
 // Entry is one provider as its data file describes it. The files are decoded
@@ -94,6 +102,10 @@ type Transport struct {
 	// turn without reasoning text gets a placeholder, for upstreams that refuse
 	// a thinking conversation without it.
 	ReasoningInject string `json:"reasoningInject,omitempty"`
+	// ThinkingFormat is how every model of this provider is asked to think. It wins
+	// over a model's own format, for a gateway that reads one shape whatever the
+	// model behind it.
+	ThinkingFormat string `json:"thinkingFormat,omitempty"`
 }
 
 // Lane is one endpoint of a provider that serves several wire formats: its

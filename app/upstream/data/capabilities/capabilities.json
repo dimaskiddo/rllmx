@@ -10,26 +10,424 @@
       }
     },
     "nous": {
-      "meituan/longcat-2.0:free": { "reasoning": true, "thinkingFormat": "nous" },
-      "meituan/longcat-2.5-preview:free": { "reasoning": true, "thinkingFormat": "nous" },
-      "stepfun/step-5-preview:free": { "reasoning": true, "thinkingFormat": "nous" },
-      "upstage/solar-mini4:free": { "reasoning": true, "thinkingFormat": "nous" },
-      "stepfun/step-3.7-flash:free": { "reasoning": true, "thinkingFormat": "nous" },
-      "poolside/laguna-s-2.1:free": { "reasoning": true, "thinkingFormat": "nous" },
-      "poolside/laguna-xs-2.1:free": { "reasoning": true, "thinkingFormat": "nous" },
-      "stealth/missingno": { "reasoning": true, "thinkingFormat": "nous" }
+      "meituan/longcat-2.0:free": {
+        "reasoning": true,
+        "thinkingFormat": "nous"
+      },
+      "meituan/longcat-2.5-preview:free": {
+        "reasoning": true,
+        "thinkingFormat": "nous"
+      },
+      "stepfun/step-5-preview:free": {
+        "reasoning": true,
+        "thinkingFormat": "nous"
+      },
+      "upstage/solar-mini4:free": {
+        "reasoning": true,
+        "thinkingFormat": "nous"
+      },
+      "stepfun/step-3.7-flash:free": {
+        "reasoning": true,
+        "thinkingFormat": "nous"
+      },
+      "poolside/laguna-s-2.1:free": {
+        "reasoning": true,
+        "thinkingFormat": "nous"
+      },
+      "poolside/laguna-xs-2.1:free": {
+        "reasoning": true,
+        "thinkingFormat": "nous"
+      },
+      "stealth/missingno": {
+        "reasoning": true,
+        "thinkingFormat": "nous"
+      }
     },
     "kimi": {
-      "kimi-k3": { "reasoning": true, "thinkingFormat": "kimi", "thinkingCanDisable": false },
-      "k3": { "reasoning": true, "thinkingFormat": "kimi", "thinkingCanDisable": false },
-      "kimi-for-coding": { "reasoning": true, "thinkingFormat": "kimi", "thinkingCanDisable": false },
-      "kimi-for-coding-highspeed": { "reasoning": true, "thinkingFormat": "kimi", "thinkingCanDisable": false },
-      "kimi-k2.7-code": { "reasoning": true, "thinkingFormat": "kimi", "thinkingCanDisable": false },
-      "kimi-k2.7-code-highspeed": { "reasoning": true, "thinkingFormat": "kimi", "thinkingCanDisable": false },
-      "kimi-k2.6": { "reasoning": true, "thinkingFormat": "kimi", "thinkingCanDisable": true },
-      "kimi-k2.5": { "reasoning": true, "thinkingFormat": "kimi", "thinkingCanDisable": true },
-      "kimi-k2.5-thinking": { "reasoning": true, "thinkingFormat": "kimi", "thinkingCanDisable": true },
-      "kimi-latest": { "reasoning": true, "thinkingFormat": "kimi", "thinkingCanDisable": true }
+      "kimi-k3": {
+        "reasoning": true,
+        "thinkingFormat": "kimi",
+        "thinkingCanDisable": false
+      },
+      "k3": {
+        "reasoning": true,
+        "thinkingFormat": "kimi",
+        "thinkingCanDisable": false
+      },
+      "kimi-for-coding": {
+        "reasoning": true,
+        "thinkingFormat": "kimi",
+        "thinkingCanDisable": false
+      },
+      "kimi-for-coding-highspeed": {
+        "reasoning": true,
+        "thinkingFormat": "kimi",
+        "thinkingCanDisable": false
+      },
+      "kimi-k2.7-code": {
+        "reasoning": true,
+        "thinkingFormat": "kimi",
+        "thinkingCanDisable": false
+      },
+      "kimi-k2.7-code-highspeed": {
+        "reasoning": true,
+        "thinkingFormat": "kimi",
+        "thinkingCanDisable": false
+      },
+      "kimi-k2.6": {
+        "reasoning": true,
+        "thinkingFormat": "kimi",
+        "thinkingCanDisable": true
+      },
+      "kimi-k2.5": {
+        "reasoning": true,
+        "thinkingFormat": "kimi",
+        "thinkingCanDisable": true
+      },
+      "kimi-k2.5-thinking": {
+        "reasoning": true,
+        "thinkingFormat": "kimi",
+        "thinkingCanDisable": true
+      },
+      "kimi-latest": {
+        "reasoning": true,
+        "thinkingFormat": "kimi",
+        "thinkingCanDisable": true
+      }
+    },
+    "codebuddy-cn": {
+      "glm-5.2": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": true,
+        "contextWindow": 1000000,
+        "maxOutput": 131072
+      },
+      "glm-5.1": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": false,
+        "contextWindow": 200000,
+        "maxOutput": 48000
+      },
+      "glm-5.0": {
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "contextWindow": 200000,
+        "maxOutput": 48000
+      },
+      "glm-4.7": {
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "contextWindow": 200000,
+        "maxOutput": 48000
+      },
+      "minimax-m3": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": false,
+        "contextWindow": 512000,
+        "maxOutput": 524288
+      },
+      "kimi-k2.5": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": false,
+        "contextWindow": 164000,
+        "maxOutput": 32000
+      },
+      "hy3-preview": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": false,
+        "contextWindow": 192000,
+        "maxOutput": 64000
+      },
+      "deepseek-v4-flash": {
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": false,
+        "contextWindow": 1000000,
+        "maxOutput": 50000
+      },
+      "deepseek-v3-2-volc": {
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": false,
+        "contextWindow": 96000,
+        "maxOutput": 32000
+      },
+      "hy3": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": false,
+        "contextWindow": 192000,
+        "maxOutput": 64000
+      },
+      "hy4-preview": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": false,
+        "contextWindow": 1000000,
+        "maxOutput": 64000
+      },
+      "glm-5.3": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": true,
+        "contextWindow": 1000000,
+        "maxOutput": 131072
+      },
+      "glm-5.3-flash": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": true,
+        "contextWindow": 1000000,
+        "maxOutput": 131072
+      },
+      "kimi-k3-1": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": false,
+        "contextWindow": 1000000,
+        "maxOutput": 1048576
+      },
+      "kimi-k2.8-preview": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": true,
+        "contextWindow": 300000,
+        "maxOutput": 131072
+      },
+      "deepseek-v4-pro": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": true,
+        "contextWindow": 1000000,
+        "maxOutput": 393216
+      },
+      "deepseek-v4.1-flash": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": true,
+        "contextWindow": 1000000,
+        "maxOutput": 393216
+      }
+    },
+    "codebuddy-intl": {
+      "glm-5.2": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": true,
+        "contextWindow": 1000000,
+        "maxOutput": 131072
+      },
+      "glm-5.1": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": false,
+        "contextWindow": 200000,
+        "maxOutput": 48000
+      },
+      "glm-5.0": {
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "contextWindow": 200000,
+        "maxOutput": 48000
+      },
+      "glm-4.7": {
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "contextWindow": 200000,
+        "maxOutput": 48000
+      },
+      "minimax-m3": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": false,
+        "contextWindow": 512000,
+        "maxOutput": 524288
+      },
+      "kimi-k2.5": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": false,
+        "contextWindow": 164000,
+        "maxOutput": 32000
+      },
+      "hy3-preview": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": false,
+        "contextWindow": 192000,
+        "maxOutput": 64000
+      },
+      "deepseek-v4-flash": {
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": false,
+        "contextWindow": 1000000,
+        "maxOutput": 50000
+      },
+      "deepseek-v3-2-volc": {
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": false,
+        "contextWindow": 96000,
+        "maxOutput": 32000
+      },
+      "hy3": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": false,
+        "contextWindow": 192000,
+        "maxOutput": 64000
+      },
+      "hy4-preview": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": false,
+        "contextWindow": 1000000,
+        "maxOutput": 64000
+      },
+      "glm-5.3": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": true,
+        "contextWindow": 1000000,
+        "maxOutput": 131072
+      },
+      "glm-5.3-flash": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": true,
+        "contextWindow": 1000000,
+        "maxOutput": 131072
+      },
+      "kimi-k3-1": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": false,
+        "contextWindow": 1000000,
+        "maxOutput": 1048576
+      },
+      "kimi-k2.8-preview": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": true,
+        "contextWindow": 300000,
+        "maxOutput": 131072
+      },
+      "deepseek-v4-pro": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": true,
+        "contextWindow": 1000000,
+        "maxOutput": 393216
+      },
+      "deepseek-v4.1-flash": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": true,
+        "contextWindow": 1000000,
+        "maxOutput": 393216
+      }
+    },
+    "minimax-code": {
+      "MiniMax-M3.1-Flash-Preview": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "claude-adaptive",
+        "thinkingCanDisable": false,
+        "contextWindow": 512000,
+        "maxOutput": 128000
+      },
+      "MiniMax-M3": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "claude-adaptive",
+        "contextWindow": 512000,
+        "maxOutput": 128000
+      },
+      "MiniMax-M2.7": {
+        "reasoning": true,
+        "thinkingFormat": "claude-adaptive",
+        "thinkingCanDisable": false,
+        "contextWindow": 200000,
+        "maxOutput": 128000
+      },
+      "MiniMax-M2.7-highspeed": {
+        "reasoning": true,
+        "thinkingFormat": "claude-adaptive",
+        "thinkingCanDisable": false,
+        "contextWindow": 200000,
+        "maxOutput": 128000
+      }
+    },
+    "minimax-code-global": {
+      "MiniMax-M3.1-Flash-Preview": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "claude-adaptive",
+        "thinkingCanDisable": false,
+        "contextWindow": 512000,
+        "maxOutput": 128000
+      },
+      "MiniMax-M3": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "claude-adaptive",
+        "contextWindow": 512000,
+        "maxOutput": 128000
+      },
+      "MiniMax-M2.7": {
+        "reasoning": true,
+        "thinkingFormat": "claude-adaptive",
+        "thinkingCanDisable": false,
+        "contextWindow": 200000,
+        "maxOutput": 128000
+      },
+      "MiniMax-M2.7-highspeed": {
+        "reasoning": true,
+        "thinkingFormat": "claude-adaptive",
+        "thinkingCanDisable": false,
+        "contextWindow": 200000,
+        "maxOutput": 128000
+      }
+    },
+    "nvidia": {
+      "z-ai/glm-5.2": {
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "contextWindow": 200000,
+        "maxOutput": 128000
+      }
     }
   },
   "models": {
@@ -88,6 +486,50 @@
       "vision": true,
       "contextWindow": 128000,
       "maxOutput": 16384
+    },
+    "glm-5.3-flash": {
+      "vision": true,
+      "videoInput": true,
+      "pdf": true,
+      "reasoning": true,
+      "thinkingFormat": "zai",
+      "thinkingCanDisable": false,
+      "contextWindow": 1000000,
+      "maxOutput": 131072
+    },
+    "glm-4.6v": {
+      "vision": true,
+      "videoInput": true,
+      "reasoning": true,
+      "thinkingFormat": "zai",
+      "contextWindow": 128000,
+      "maxOutput": 32768
+    },
+    "glm-4.5v": {
+      "vision": true,
+      "videoInput": true,
+      "reasoning": true,
+      "thinkingFormat": "zai",
+      "contextWindow": 64000,
+      "maxOutput": 16384
+    },
+    "glm-5.2": {
+      "reasoning": true,
+      "thinkingFormat": "zai",
+      "thinkingEffortSupported": true,
+      "thinkingCanDisable": false,
+      "contextWindow": 1000000,
+      "maxOutput": 131072
+    },
+    "glm-5.3-flash-free": {
+      "vision": true,
+      "videoInput": true,
+      "pdf": true,
+      "reasoning": true,
+      "thinkingFormat": "openai",
+      "thinkingCanDisable": false,
+      "contextWindow": 1000000,
+      "maxOutput": 128000
     }
   },
   "patterns": [
@@ -284,6 +726,45 @@
         "thinkingFormat": "openai",
         "contextWindow": 256000,
         "maxOutput": 64000
+      }
+    },
+    {
+      "pattern": "*glm-5.3*",
+      "set": {
+        "reasoning": true,
+        "thinkingFormat": "zai",
+        "thinkingEffortSupported": true,
+        "thinkingCanDisable": false,
+        "contextWindow": 1000000,
+        "maxOutput": 128000
+      }
+    },
+    {
+      "pattern": "*glm-5.2*",
+      "set": {
+        "reasoning": true,
+        "thinkingFormat": "zai",
+        "thinkingEffortSupported": true,
+        "contextWindow": 1000000,
+        "maxOutput": 128000
+      }
+    },
+    {
+      "pattern": "*glm-5*",
+      "set": {
+        "reasoning": true,
+        "thinkingFormat": "zai",
+        "contextWindow": 200000,
+        "maxOutput": 128000
+      }
+    },
+    {
+      "pattern": "*glm-4.7*",
+      "set": {
+        "reasoning": true,
+        "thinkingFormat": "zai",
+        "contextWindow": 200000,
+        "maxOutput": 128000
       }
     },
     {

@@ -52,7 +52,7 @@ func (s *Service) StartDevice(ctx context.Context, provider, bind string) (Devic
 	}
 	state, err := s.Sessions.Put(Session{
 		Provider: f.Provider, Bind: bind, DeviceCode: grant.DeviceCode, Interval: grant.Interval, Life: grant.ExpiresIn,
-		DeviceID: deviceID,
+		DeviceID: deviceID, Verifier: grant.Verifier, DeviceExtra: grant.Extra,
 	})
 	if err != nil {
 		return DeviceStarted{}, err
@@ -79,7 +79,7 @@ func (s *Service) PollDevice(ctx context.Context, state, bind string) DevicePoll
 	if err != nil {
 		return s.endDevice(state, CodeInput)
 	}
-	tokens, pending, err := s.Tokens.DevicePoll(ctx, f, sess.DeviceCode, sess.DeviceID)
+	tokens, pending, err := s.Tokens.DevicePoll(ctx, f, deviceState{Code: sess.DeviceCode, Verifier: sess.Verifier, Extra: sess.DeviceExtra}, sess.DeviceID)
 	switch {
 	case err != nil:
 		return s.endDevice(state, deviceCode(err))

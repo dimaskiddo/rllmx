@@ -59,7 +59,7 @@ var (
 	// refreshHooks run after a token renewal; dialects replace the start and the
 	// poll of a device login that does not follow RFC 8628.
 	refreshHooks   = map[string]bool{"": true, "nous": true}
-	deviceDialects = map[string]bool{"kilocode": true}
+	deviceDialects = map[string]bool{"kilocode": true, "codebuddy": true, "minimax": true, "zcode": true}
 	codeDialects   = map[string]bool{"cline": true}
 
 	paramName = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
@@ -71,9 +71,10 @@ var (
 )
 
 const (
-	maxOAuthParams = 8
-	maxParamValue  = 256
-	minFixedPort   = 1024
+	maxOAuthParams   = 8
+	maxRefreshFields = 4
+	maxParamValue    = 256
+	minFixedPort     = 1024
 
 	maxIdentityHeaders = 24
 	maxBetaFlags       = 32
@@ -194,6 +195,8 @@ type Refresh struct {
 	TokenHeader string `json:"tokenHeader,omitempty"`
 	// Hook names a step run on a renewal's answer, from a table of its own.
 	Hook string `json:"hook,omitempty"`
+	// Fields are extra fields of the renewal call, after the standard ones.
+	Fields map[string]string `json:"fields,omitempty"`
 }
 
 // Param is one extra authorize parameter.
@@ -239,7 +242,7 @@ func (o *OAuth) validate() error {
 // renews has none.
 func (o *OAuth) validateRefresh() error {
 	r := o.Refresh
-	if o.Flow == FlowDevice && r == (Refresh{}) {
+	if o.Flow == FlowDevice && r.empty() {
 		return nil
 	}
 	if !encodings[r.Encoding] {
@@ -258,6 +261,28 @@ func (o *OAuth) validateRefresh() error {
 	}
 	if !refreshHooks[r.Hook] {
 		return errors.New("oauth.refresh.hook is unknown")
+	}
+	return r.validateFields()
+}
+
+// empty reports a renewal block with nothing in it.
+func (r Refresh) empty() bool {
+	return r.Encoding == "" && r.LeadSeconds == 0 && r.MaxAgeSeconds == 0 && r.URL == "" &&
+		r.TokenHeader == "" && r.Hook == "" && len(r.Fields) == 0
+}
+
+// refreshOwn are the fields a renewal call sets itself.
+var refreshOwn = map[string]bool{"grant_type": true, "refresh_token": true, "client_id": true, "client_secret": true}
+
+// validateFields holds the extra renewal fields to plain names and values.
+func (r Refresh) validateFields() error {
+	if len(r.Fields) > maxRefreshFields {
+		return errors.New("oauth.refresh.fields has too many entries")
+	}
+	for k, v := range r.Fields {
+		if !paramName.MatchString(k) || refreshOwn[k] || len(v) > maxParamValue || text.HasASCIIControl(v) {
+			return errors.New("an oauth.refresh.fields entry is not allowed")
+		}
 	}
 	return nil
 }

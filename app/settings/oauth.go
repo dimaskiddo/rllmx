@@ -25,11 +25,13 @@ var oauthClients = map[string]struct{ key, env string }{
 	"muse":   {"oauth.muse_client_id", "OAUTH_CLIENT_ID_MUSE"},
 	"nous":   {"oauth.nous_client_id", "OAUTH_CLIENT_ID_NOUS"},
 	"xai":    {"oauth.xai_client_id", "OAUTH_CLIENT_ID_XAI"},
+	// Both MiniMax Code sites log in with this one id.
+	"minimax-code": {"oauth.minimax_code_client_id", "OAUTH_CLIENT_ID_MINIMAX_CODE"},
 }
 
 // sharedClients lists the providers that log in with another provider's client
-// id: Grok CLI is the xAI client.
-var sharedClients = map[string]string{"grok-cli": "xai"}
+// id: Grok CLI is the xAI client, the global MiniMax Code site the China one.
+var sharedClients = map[string]string{"grok-cli": "xai", "minimax-code-global": "minimax-code"}
 
 // OAuth is the validated view of the OAUTH_* settings.
 type OAuth struct {

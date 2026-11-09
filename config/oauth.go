@@ -14,7 +14,9 @@ func init() {
 		"github_client_id": config.Env("OAUTH_CLIENT_ID_GITHUB", ""),
 		"kimi_client_id":   config.Env("OAUTH_CLIENT_ID_KIMI", ""),
 		"muse_client_id":   config.Env("OAUTH_CLIENT_ID_MUSE", ""),
-		"nous_client_id":   config.Env("OAUTH_CLIENT_ID_NOUS", ""),
+		// Both MiniMax Code sites (China and global) log in with this id.
+		"minimax_code_client_id": config.Env("OAUTH_CLIENT_ID_MINIMAX_CODE", ""),
+		"nous_client_id":         config.Env("OAUTH_CLIENT_ID_NOUS", ""),
 		// Grok CLI logs in with this id too.
 		"xai_client_id": config.Env("OAUTH_CLIENT_ID_XAI", ""),
 		// Address the fixed-port login listener binds to.
