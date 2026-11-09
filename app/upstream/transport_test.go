@@ -29,6 +29,10 @@ func TestTheLoaderChecksTheTransport(t *testing.T) {
 		"unknown holder":     {strings.Replace(withTransport(""), "/v1/chat", "/{region}/chat", 1), "placeholder"},
 		"credentials in url": {strings.Replace(withTransport(""), "https://x", "https://u:p@x", 1), "plain http"},
 		"account id holder":  {strings.Replace(withTransport(""), "/v1/chat", "/accounts/{accountId}/chat", 1), ""},
+		"base url holder":    {strings.Replace(withTransport(""), "https://x.example/v1", "{baseUrl}/api/v4", 1), ""},
+		"base url mid-path":  {strings.Replace(withTransport(""), "/v1/chat", "/{baseUrl}/chat", 1), "at its start"},
+		"base url twice":     {strings.Replace(withTransport(""), "https://x.example/v1", "{baseUrl}{baseUrl}", 1), "at its start"},
+		"clineEnvelope":      {withTransport(`,"quirks":{"clineEnvelope":true}`), ""},
 		"header over auth":   {`{"id":"a","category":"apikey","transport":{"baseUrl":"https://x.example/v1","headers":{"X-Api-Key":"k"}},"auth":{"scheme":"raw","header":"x-api-key"},"models":[]}`, "credential or framing"},
 	}
 	for name, c := range cases {
@@ -241,5 +245,95 @@ func TestNoneIsNotARequestableLevelButEveryOtherNameIs(t *testing.T) {
 		if IsEffortLevel(l) {
 			t.Errorf("%q is accepted", l)
 		}
+	}
+}
+
+func TestBareOriginAcceptsOnlyAHostAndAPort(t *testing.T) {
+	for addr, want := range map[string]bool{
+		"https://git.example":        true,
+		"https://git.example:8443":   true,
+		"https://[2001:db8::1]:8443": true,
+		"http://git.example":         false,
+		"https://git.example/":       false,
+		"https://git.example/sub":    false,
+		"https://git.example?a=b":    false,
+		"https://git.example#f":      false,
+		"https://u:p@git.example":    false,
+		"https://":                   false,
+		"git.example":                false,
+		"":                           false,
+		"https://git.example\n":      false,
+		"https://git .example":       false,
+		"https://" + strings.Repeat("a", 250) + ".example": false,
+	} {
+		if got := BareOrigin(addr); got != want {
+			t.Errorf("BareOrigin(%q) = %v, want %v", addr, got, want)
+		}
+	}
+}
+
+func TestTheWorkOSSchemeMarksOnlyAWorkOSToken(t *testing.T) {
+	const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig"
+	for key, want := range map[string]string{
+		jwt:                 "workos:" + jwt,
+		"workos:" + jwt:     "workos:" + jwt,
+		"WorkOS:" + jwt:     "WorkOS:" + jwt,
+		"  " + jwt + " ":    "workos:" + jwt,
+		"clp_abc123":        "clp_abc123",
+		"eyJabc":            "eyJabc",
+		"":                  "",
+		"sk-eyJhbGciOi.x.y": "sk-eyJhbGciOi.x.y",
+	} {
+		if got := WorkOSToken(key); got != want {
+			t.Errorf("WorkOSToken(%q) = %q, want %q", key, got, want)
+		}
+	}
+	a := &Auth{Scheme: SchemeWorkOS, Header: "Authorization"}
+	if got := a.RequestHeaders(jwt)["Authorization"]; got != "Bearer workos:"+jwt {
+		t.Fatalf("%s", got)
+	}
+	if got := a.RequestHeaders("clp_abc123")["Authorization"]; got != "Bearer clp_abc123" {
+		t.Fatalf("an API key was marked: %s", got)
+	}
+}
+
+func TestAWorkOSAuthBlockMustNameTheAuthorizationHeaderOrAnotherOne(t *testing.T) {
+	good := `{"id":"a","category":"apikey","transport":{"baseUrl":"https://x.example/v1"},"auth":{"scheme":"workos","header":"Authorization"},"models":[]}`
+	if _, err := Load(fstest.MapFS{"data/a.json": file(good)}, "data"); err != nil {
+		t.Fatal(err)
+	}
+	bad := strings.Replace(good, `"header":"Authorization"`, `"header":"Cookie"`, 1)
+	if _, err := Load(fstest.MapFS{"data/a.json": file(bad)}, "data"); err == nil {
+		t.Fatal("a workos block on the cookie header was accepted")
+	}
+}
+
+func TestTheShippedClineAndGitLabFilesDeclareWhatTheirLoginsNeed(t *testing.T) {
+	reg, err := Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"cline", "clinepass"} {
+		e, ok := reg.ByID(id)
+		if !ok || e.OAuth == nil || e.OAuth.Flow != FlowCode || e.OAuth.Dialect != "cline" || !e.OAuth.NoClient || e.OAuth.Redirect != RedirectPublic ||
+			e.OAuth.Refresh.URL == "" || e.Auth == nil || e.Auth.Scheme != SchemeWorkOS || !e.Transport.Quirks.ClineEnvelope {
+			t.Errorf("%s: %+v", id, e)
+		}
+		if e.Transport.Headers["HTTP-Referer"] == "" || e.Transport.Headers["X-Title"] == "" {
+			t.Errorf("%s lacks the reference's static headers", id)
+		}
+		for name, v := range e.Transport.Headers {
+			if strings.Contains(strings.ToLower(v), "9router") || strings.Contains(strings.ToLower(v), "node") {
+				t.Errorf("%s header %s names a host runtime or product: %s", id, name, v)
+			}
+		}
+	}
+	g, _ := reg.ByID("gitlab")
+	if g.OAuth == nil || !g.OAuth.AppFromAccount || !g.OAuth.PAT || g.OAuth.Redirect != RedirectPublic || !strings.HasPrefix(g.Transport.BaseURL, BaseURLToken+"/") {
+		t.Fatalf("gitlab: %+v", g)
+	}
+	x, _ := reg.ByID("xai")
+	if x.OAuth == nil || x.OAuth.RedirectHost != "127.0.0.1" || x.OAuth.FixedPort != 56121 || x.OAuth.CallbackPath != "/callback" || x.OAuth.Hook != "xai" {
+		t.Fatalf("xai: %+v", x.OAuth)
 	}
 }

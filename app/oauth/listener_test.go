@@ -176,7 +176,7 @@ func TestAFullCodexLoginOverTheListener(t *testing.T) {
 	svc.Listeners = &Listeners{Host: "127.0.0.1", Sessions: svc.Sessions, Handle: svc.Listened}
 	t.Cleanup(svc.Listeners.Close)
 
-	started, err := svc.Start("codex", "bind", true, 20128)
+	started, err := startLogin(svc, "codex", true)
 	if err != nil || started.Paste {
 		t.Fatalf("%+v %v", started, err)
 	}

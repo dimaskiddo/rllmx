@@ -16,19 +16,31 @@ var ErrBadAccount = errors.New("executor: the account's data is missing or inval
 // nothing that could change the shape of an address or a header.
 var accountToken = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 
-// fillAccount puts the account id into an address that asks for it.
+// fillAccount puts the account's own values into an address that asks for them:
+// the account id, and the server address a login was made against.
 func fillAccount(req Request) (string, error) {
-	if !strings.Contains(req.URL, upstream.AccountIDToken) {
-		return req.URL, nil
+	target := req.URL
+	if strings.Contains(target, upstream.AccountIDToken) {
+		id := ""
+		if req.Account != nil {
+			id = req.Account("accountId")
+		}
+		if !accountToken.MatchString(id) {
+			return "", ErrBadAccount
+		}
+		target = strings.ReplaceAll(target, upstream.AccountIDToken, id)
 	}
-	id := ""
-	if req.Account != nil {
-		id = req.Account("accountId")
+	if strings.Contains(target, upstream.BaseURLToken) {
+		base := ""
+		if req.Account != nil {
+			base = req.Account("baseUrl")
+		}
+		if !upstream.BareOrigin(base) {
+			return "", ErrBadAccount
+		}
+		target = strings.ReplaceAll(target, upstream.BaseURLToken, base)
 	}
-	if !accountToken.MatchString(id) {
-		return "", ErrBadAccount
-	}
-	return strings.ReplaceAll(req.URL, upstream.AccountIDToken, id), nil
+	return target, nil
 }
 
 // retryTable is the provider's retry rules laid over the table in force.

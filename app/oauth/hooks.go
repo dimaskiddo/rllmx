@@ -31,6 +31,8 @@ var hooks = map[string]hook{
 	"nous":     nousAccount,
 	"kilocode": kiloAccount,
 	"grokCli":  grokAccount,
+	"xai":      xaiAccount,
+	"gitlab":   gitlabAccount,
 }
 
 const (
@@ -216,6 +218,47 @@ func grokAccount(ctx context.Context, c *TokenClient, f Flow, t Tokens, h map[st
 		}
 	}
 	return acc, nil
+}
+
+// xaiAccount names the xAI account from its id token, then its access token.
+// A subject id is never taken for an address, because it can reach a header. It
+// makes no call: the claims are all the login needs.
+func xaiAccount(_ context.Context, _ *TokenClient, _ Flow, t Tokens, _ map[string]string) (Account, error) {
+	var acc Account
+	for _, jwt := range []string{t.ID, t.Access} {
+		if cl, ok := claims(jwt); ok && acc.Email == "" {
+			acc.Email = cleanEmail(firstString(cl.Get("email"), cl.Get("preferred_username")))
+		}
+	}
+	return acc, nil
+}
+
+// gitlabAccount reads who the login belongs to from the user endpoint of the
+// account's own server. It is best effort: a login whose call fails still
+// connects, without a name.
+func gitlabAccount(ctx context.Context, c *TokenClient, f Flow, t Tokens, _ map[string]string) (Account, error) {
+	u := f.Endpoints[upstream.EndpointUser]
+	if u == "" {
+		return Account{}, nil
+	}
+	status, raw, err := c.get(ctx, u, map[string]string{"Authorization": "Bearer " + t.Access})
+	if err != nil || status < 200 || status > 299 || !gjson.ValidBytes(raw) {
+		return Account{}, nil
+	}
+	return gitlabProfile(raw), nil
+}
+
+// gitlabProfile reads the profile fields a GitLab account stores: the login
+// name, the display name and the address (the public one when the main one is
+// hidden).
+func gitlabProfile(raw []byte) Account {
+	acc := Account{Email: cleanEmail(firstString(gjson.GetBytes(raw, "email"), gjson.GetBytes(raw, "public_email")))}
+	psd := map[string]string{}
+	setText(psd, "username", profileText(raw, "username"))
+	setText(psd, "name", profileText(raw, "name"))
+	setText(psd, "email", acc.Email)
+	acc.PSD = jsonObject(psd)
+	return acc
 }
 
 // cleanEmail returns an address that is short and free of control characters,

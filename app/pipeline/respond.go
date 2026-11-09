@@ -83,6 +83,9 @@ func (c *call) buffered(ctx context.Context, resp executor.Response) (Output, *a
 	if !ok {
 		return c.internal(ctx, errors.New("no codec for "+c.dest.format)), nil
 	}
+	if c.dest.entry.Transport.Quirks.ClineEnvelope {
+		raw = unwrapEnvelope(raw)
+	}
 	ans, err := up.ReadResponse(raw, c.tctx)
 	if err != nil || !hasContent(ans) {
 		return c.fail(http.StatusBadGateway, "upstream_5xx", "The upstream sent no usable answer"), nil
@@ -275,4 +278,19 @@ func (c *call) forwardCompact(ctx context.Context, resp executor.Response) (Outp
 	h := http.Header{}
 	h.Set("Content-Type", "application/json")
 	return Output{Status: http.StatusOK, Header: h, Body: raw}, nil
+}
+
+// unwrapEnvelope returns the data of a {"success":true,"data":{...}} body, and
+// any other body as it came. An error envelope never matches.
+func unwrapEnvelope(raw []byte) []byte {
+	if !gjson.ValidBytes(raw) {
+		return raw
+	}
+	if ok := gjson.GetBytes(raw, "success"); ok.Type != gjson.True {
+		return raw
+	}
+	if data := gjson.GetBytes(raw, "data"); data.IsObject() {
+		return []byte(data.Raw)
+	}
+	return raw
 }

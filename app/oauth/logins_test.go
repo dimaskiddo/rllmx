@@ -817,4 +817,12 @@ func TestEveryRefreshAndDialectNameIsInItsTable(t *testing.T) {
 	if len(deviceDialects) != len(upstream.DialectNames()) {
 		t.Errorf("%d dialects in code, %d in the schema", len(deviceDialects), len(upstream.DialectNames()))
 	}
+	for _, n := range upstream.CodeDialectNames() {
+		if _, ok := codeDialects[n]; !ok {
+			t.Errorf("code dialect %q has no code", n)
+		}
+	}
+	if len(codeDialects) != len(upstream.CodeDialectNames()) {
+		t.Errorf("%d code dialects in code, %d in the schema", len(codeDialects), len(upstream.CodeDialectNames()))
+	}
 }

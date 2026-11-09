@@ -70,7 +70,7 @@ func TestTheNewProvidersListTheirModelsAndFormats(t *testing.T) {
 
 func TestEveryLoginDataNameIsInItsTable(t *testing.T) {
 	reg, _ := Default()
-	hooks, refresh, dialects := HookNames(), RefreshHookNames(), DialectNames()
+	hooks, refresh, dialects := HookNames(), RefreshHookNames(), append(DialectNames(), CodeDialectNames()...)
 	for _, e := range reg.All() {
 		o := e.OAuth
 		if o == nil {
@@ -121,9 +121,13 @@ func TestCallHeadersAreValidatedAtLoad(t *testing.T) {
 
 func TestCallHeadersBelongToTheDeviceFlowOnly(t *testing.T) {
 	const local = `"redirect":"local","exchange":"json","refresh":{"encoding":"json","leadSeconds":300}`
-	for _, extra := range []string{`,"callHeaders":{"X-Id":"1"}`, `,"dialect":"kilocode"`, `,"noClient":true`} {
+	for extra, reason := range map[string]string{
+		`,"callHeaders":{"X-Id":"1"}`: "device flow",
+		`,"dialect":"kilocode"`:       "oauth.dialect",
+		`,"noClient":true`:            "noClient",
+	} {
 		_, err := Load(fstest.MapFS{"data/p.json": file(loginFile(local + extra))}, "data")
-		if err == nil || !strings.Contains(err.Error(), "device flow") {
+		if err == nil || !strings.Contains(err.Error(), reason) {
 			t.Errorf("%s: %v", extra, err)
 		}
 	}

@@ -13,9 +13,33 @@ const (
 	maxRetryDelay = 60_000
 )
 
-// AccountIDToken is the one placeholder a provider's address may hold; the
-// executor fills it from the account's data.
-const AccountIDToken = "{accountId}"
+// Placeholders a provider's address may hold; the executor fills them from the
+// account's data.
+const (
+	AccountIDToken = "{accountId}"
+	// BaseURLToken is the server address the account was connected to, for a
+	// provider that runs on the user's own instance.
+	BaseURLToken = "{baseUrl}"
+)
+
+// probeAddress is an address with its placeholders replaced by a host that
+// parses, so the address can be checked before any account exists.
+func probeAddress(addr string) string {
+	addr = strings.ReplaceAll(addr, BaseURLToken, "https://x")
+	return strings.ReplaceAll(addr, AccountIDToken, "x")
+}
+
+// BareOrigin reports an address that is a bare https origin: a host and an
+// optional port, nothing after it. A server address that comes from a request or
+// an account is held to this before anything is sent to it.
+func BareOrigin(raw string) bool {
+	if len(raw) > 256 || strings.ContainsFunc(raw, func(r rune) bool { return r <= ' ' || r == 0x7f }) {
+		return false
+	}
+	u, err := url.Parse(raw)
+	return err == nil && u.Scheme == "https" && u.Hostname() != "" && u.User == nil &&
+		(u.Path == "" || u.Path == "/") && u.RawQuery == "" && u.Fragment == "" && !strings.HasSuffix(raw, "/")
+}
 
 // validate checks the transport of one provider. authHeader is the credential
 // header of its auth block, which a static header must not shadow.
@@ -68,7 +92,7 @@ func (t *Transport) validateLanes() error {
 	if len(t.Lanes) > maxLanes {
 		return errors.New("transport.lanes has too many entries")
 	}
-	base, err := url.Parse(strings.ReplaceAll(t.BaseURL, AccountIDToken, "x"))
+	base, err := url.Parse(probeAddress(t.BaseURL))
 	if err != nil {
 		return errors.New("transport.baseUrl is not a plain http or https address")
 	}
@@ -104,8 +128,9 @@ func (t *Transport) validateLanes() error {
 	return nil
 }
 
-// checkAddress holds the base address to a plain URL. The one placeholder it
-// may hold is {accountId}; an executor that builds its own address has none.
+// checkAddress holds the base address to a plain URL. The placeholders it may
+// hold are {accountId} and, at the start, {baseUrl}; an executor that builds its
+// own address has none.
 func (t *Transport) checkAddress(executor string) error {
 	if t.BaseURL == "" {
 		if executor == ExecutorDefault {
@@ -113,7 +138,10 @@ func (t *Transport) checkAddress(executor string) error {
 		}
 		return nil
 	}
-	probe := strings.ReplaceAll(t.BaseURL, AccountIDToken, "x")
+	if strings.Count(t.BaseURL, BaseURLToken) > 1 || (strings.Contains(t.BaseURL, BaseURLToken) && !strings.HasPrefix(t.BaseURL, BaseURLToken)) {
+		return errors.New("transport.baseUrl may hold {baseUrl} once, at its start")
+	}
+	probe := probeAddress(t.BaseURL)
 	if strings.ContainsAny(probe, "{}") {
 		return errors.New("transport.baseUrl holds an unknown placeholder")
 	}

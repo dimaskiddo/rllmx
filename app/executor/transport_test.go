@@ -102,6 +102,30 @@ func TestTheAccountIDFillsTheAddressOrNothingIsSent(t *testing.T) {
 	}
 }
 
+func TestTheBaseURLFillsTheAddressFromTheAccountOrNothingIsSent(t *testing.T) {
+	up := tests.NewUpstream(t, tests.Reply{Body: `{}`})
+	addr := upstream.BaseURLToken + "/api/v4/chat/completions"
+	// the test server is plain http, so a bare https origin can only be checked
+	// by the refusal cases here and by the fill rule below
+	for name, base := range map[string]string{
+		"missing": "", "plain http": up.URL, "a path": "https://git.example/sub", "userinfo": "https://u:p@git.example",
+		"a query": "https://git.example?x=1", "a trailing slash": "https://git.example/", "a space": "https://git .example",
+	} {
+		before := len(up.Calls())
+		_, err := run(t, &Default{}, Request{URL: addr, Key: secret, Auth: bearerAuth(), Account: account(map[string]string{"baseUrl": base})})
+		if !errors.Is(err, ErrBadAccount) || len(up.Calls()) != before {
+			t.Errorf("%s: err %v, %d calls sent", name, err, len(up.Calls())-before)
+		}
+	}
+	if _, err := run(t, &Default{}, Request{URL: addr, Key: secret, Auth: bearerAuth()}); !errors.Is(err, ErrBadAccount) {
+		t.Fatalf("no account reader: %v", err)
+	}
+	got, err := fillAccount(Request{URL: addr, Account: account(map[string]string{"baseUrl": "https://git.example:8443"})})
+	if err != nil || got != "https://git.example:8443/api/v4/chat/completions" {
+		t.Fatalf("%q %v", got, err)
+	}
+}
+
 type capture struct{ got *http.Request }
 
 func (c *capture) RoundTrip(r *http.Request) (*http.Response, error) {

@@ -12,7 +12,10 @@ import (
 // Login flows and redirect policies a data file may name.
 const (
 	FlowCodePKCE = "code-pkce"
-	FlowDevice   = "device"
+	// FlowCode is an authorization-code login with no PKCE and no client id of
+	// its own, the shape the provider's own extension uses.
+	FlowCode   = "code"
+	FlowDevice = "device"
 
 	// MintCopilot names the second credential a GitHub login is exchanged for.
 	MintCopilot = "copilot"
@@ -30,8 +33,14 @@ const (
 	// the account when its device login starts.
 	DeviceIDToken = "{deviceId}"
 
-	RedirectFixed = "fixed"
-	RedirectLocal = "local"
+	RedirectFixed  = "fixed"
+	RedirectLocal  = "local"
+	RedirectPublic = "public"
+
+	// Placeholders an authorize parameter value may hold.
+	RedirectToken = "{redirect}"
+	StateToken    = "{state}"
+	NonceToken    = "{nonce}"
 
 	EncodingJSON = "json"
 	EncodingForm = "form"
@@ -41,14 +50,17 @@ const (
 )
 
 var (
-	redirects = map[string]bool{RedirectFixed: true, RedirectLocal: true}
-	encodings = map[string]bool{EncodingJSON: true, EncodingForm: true}
-	hooks     = map[string]bool{"": true, "codex": true, "github": true, "muse": true, "nous": true, "kilocode": true, "grokCli": true}
-	mints     = map[string]bool{"": true, MintCopilot: true}
+	redirects = map[string]bool{RedirectFixed: true, RedirectLocal: true, RedirectPublic: true}
+	// redirectHosts are the names a fixed redirect may use for this machine.
+	redirectHosts = map[string]bool{"": true, "localhost": true, "127.0.0.1": true}
+	encodings     = map[string]bool{EncodingJSON: true, EncodingForm: true}
+	hooks         = map[string]bool{"": true, "codex": true, "github": true, "muse": true, "nous": true, "kilocode": true, "grokCli": true, "gitlab": true, "xai": true}
+	mints         = map[string]bool{"": true, MintCopilot: true}
 	// refreshHooks run after a token renewal; dialects replace the start and the
 	// poll of a device login that does not follow RFC 8628.
-	refreshHooks = map[string]bool{"": true, "nous": true}
-	dialects     = map[string]bool{"": true, "kilocode": true}
+	refreshHooks   = map[string]bool{"": true, "nous": true}
+	deviceDialects = map[string]bool{"kilocode": true}
+	codeDialects   = map[string]bool{"cline": true}
 
 	paramName = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 	// ownParams are set by the login itself, so a data file cannot name them.
@@ -91,6 +103,15 @@ type OAuth struct {
 	Redirect     string `json:"redirect,omitempty"`
 	FixedPort    int    `json:"fixedPort,omitempty"`
 	CallbackPath string `json:"callbackPath,omitempty"`
+	// RedirectHost names this machine in a fixed redirect: localhost (default) or
+	// 127.0.0.1, for a client registered that way.
+	RedirectHost string `json:"redirectHost,omitempty"`
+	// AppFromAccount marks a login whose OAuth application and server address come
+	// with the request that starts it, not from configuration.
+	AppFromAccount bool `json:"appFromAccount,omitempty"`
+	// PAT lets an account be connected by a personal access token checked against
+	// the user endpoint of its server.
+	PAT bool `json:"pat,omitempty"`
 	// Exchange is the encoding of the code exchange body: json or form.
 	Exchange string `json:"exchange,omitempty"`
 	// EchoState sends the login state in the exchange body.
@@ -102,7 +123,8 @@ type OAuth struct {
 	// Mint names a second credential made from the login's token, which is then
 	// the one a request carries.
 	Mint string `json:"mint,omitempty"`
-	// Dialect names a device login that does not follow RFC 8628.
+	// Dialect names a device login that does not follow RFC 8628, or a code login
+	// whose exchange and renewal are not plain token calls.
 	Dialect string `json:"dialect,omitempty"`
 	// NoClient marks a login the provider runs without a client id.
 	NoClient bool `json:"noClient,omitempty"`
@@ -166,6 +188,8 @@ type Refresh struct {
 	// MaxAgeSeconds renews a token whose last refresh is older than this, even
 	// when its expiry is far off. Zero means no such rule.
 	MaxAgeSeconds int `json:"maxAgeSeconds,omitempty"`
+	// URL is the renewal address when it is not the token address.
+	URL string `json:"url,omitempty"`
 	// TokenHeader names a header that also carries the refresh token.
 	TokenHeader string `json:"tokenHeader,omitempty"`
 	// Hook names a step run on a renewal's answer, from a table of its own.
@@ -181,7 +205,7 @@ type Param struct {
 func (o *OAuth) validate() error {
 	first := o.AuthorizeURL
 	switch o.Flow {
-	case FlowCodePKCE:
+	case FlowCodePKCE, FlowCode:
 	case FlowDevice:
 		first = o.DeviceURL
 	default:
@@ -224,6 +248,11 @@ func (o *OAuth) validateRefresh() error {
 	if r.LeadSeconds < 0 || r.LeadSeconds > maxLeadSeconds || r.MaxAgeSeconds < 0 || r.MaxAgeSeconds > maxAgeSeconds {
 		return errors.New("oauth.refresh timing is out of range")
 	}
+	if r.URL != "" {
+		if err := httpsURL(r.URL); err != nil {
+			return err
+		}
+	}
 	if r.TokenHeader != "" && !loginHeader(r.TokenHeader) {
 		return errors.New("oauth.refresh.tokenHeader is not allowed")
 	}
@@ -242,11 +271,17 @@ func (o *OAuth) validateFlow() error {
 		}
 		return nil
 	}
-	if o.DeviceURL != "" || o.Dialect != "" || o.NoClient || len(o.CallHeaders) > 0 {
-		return errors.New("oauth.deviceUrl, dialect, noClient and callHeaders belong to the device flow")
+	if o.DeviceURL != "" || len(o.CallHeaders) > 0 {
+		return errors.New("oauth.deviceUrl and callHeaders belong to the device flow")
+	}
+	if o.NoClient && o.Flow != FlowCode {
+		return errors.New("oauth.noClient belongs to the device and code flows")
 	}
 	if !redirects[o.Redirect] {
 		return errors.New("oauth.redirect is unknown")
+	}
+	if !redirectHosts[o.RedirectHost] {
+		return errors.New("oauth.redirectHost must be localhost or 127.0.0.1")
 	}
 	switch o.Redirect {
 	case RedirectFixed:
@@ -256,13 +291,31 @@ func (o *OAuth) validateFlow() error {
 		if !strings.HasPrefix(o.CallbackPath, "/") || strings.ContainsAny(o.CallbackPath, "?#\\ ") || text.HasASCIIControl(o.CallbackPath) {
 			return errors.New("oauth.callbackPath must be an absolute path")
 		}
-	case RedirectLocal:
-		if o.FixedPort != 0 || o.CallbackPath != "" {
-			return errors.New("oauth.fixedPort and callbackPath belong to the fixed redirect")
+	default:
+		if o.FixedPort != 0 || o.CallbackPath != "" || o.RedirectHost != "" {
+			return errors.New("oauth.fixedPort, callbackPath and redirectHost belong to the fixed redirect")
 		}
+	}
+	if o.AppFromAccount && (o.Redirect == RedirectFixed || o.NoClient || o.Flow != FlowCodePKCE) {
+		return errors.New("oauth.appFromAccount needs a code-pkce login on the local or public redirect with a client")
+	}
+	if o.Flow == FlowCode {
+		return o.validateCode()
 	}
 	if !encodings[o.Exchange] {
 		return errors.New("oauth.exchange is unknown")
+	}
+	return nil
+}
+
+// validateCode checks a login with no PKCE: its authorize address is the
+// provider's own parameters, so none of the code-pkce fields apply.
+func (o *OAuth) validateCode() error {
+	if o.Exchange != "" || o.EchoState {
+		return errors.New("a code login has no exchange encoding or echoed state")
+	}
+	if o.Dialect == "" {
+		return errors.New("a code login needs a dialect")
 	}
 	return nil
 }
@@ -292,8 +345,8 @@ func (o *OAuth) validateMint() error {
 // validateCallHeaders checks the headers of the router's own calls. A value may
 // hold the device id placeholder and nothing else in braces.
 func (o *OAuth) validateCallHeaders() error {
-	if !dialects[o.Dialect] {
-		return errors.New("oauth.dialect is unknown")
+	if err := o.validateDialect(); err != nil {
+		return err
 	}
 	if len(o.CallHeaders) > maxCallHeaders {
 		return errors.New("oauth.callHeaders has too many entries")
@@ -303,6 +356,20 @@ func (o *OAuth) validateCallHeaders() error {
 		if !loginHeader(k) || len(v) > maxHeaderBytes || text.HasASCIIControl(v) || strings.ContainsAny(rest, "{}") {
 			return errors.New("an oauth call header is not allowed")
 		}
+	}
+	return nil
+}
+
+// validateDialect holds a dialect to the kind of login that has it: a device
+// dialect replaces the start and the poll, a code dialect the exchange and the
+// renewal.
+func (o *OAuth) validateDialect() error {
+	switch {
+	case o.Dialect == "":
+	case o.Flow == FlowDevice && deviceDialects[o.Dialect]:
+	case o.Flow == FlowCode && codeDialects[o.Dialect]:
+	default:
+		return errors.New("oauth.dialect is unknown for this flow")
 	}
 	return nil
 }
@@ -359,15 +426,28 @@ func (o *OAuth) validateRest() error {
 	}
 	seen := map[string]bool{}
 	for _, p := range o.Params {
-		if !paramName.MatchString(p.Name) || ownParams[p.Name] || seen[p.Name] {
+		// A code login has no standard parameters, so the names the code-pkce
+		// login sets itself are free for it to use.
+		if !paramName.MatchString(p.Name) || (o.Flow != FlowCode && ownParams[p.Name]) || seen[p.Name] {
 			return errors.New("an oauth parameter name is not allowed")
 		}
-		if len(p.Value) > maxParamValue || text.HasASCIIControl(p.Value) {
-			return errors.New("an oauth parameter value is too long or holds a control character")
+		if len(p.Value) > maxParamValue || text.HasASCIIControl(p.Value) || strings.ContainsAny(o.paramRest(p.Value), "{}") {
+			return errors.New("an oauth parameter value is too long, holds a control character or an unknown placeholder")
 		}
 		seen[p.Name] = true
 	}
 	return nil
+}
+
+// paramRest is a parameter value without the placeholders its flow may use. The
+// login fills a nonce for either flow; the redirect and the state are the
+// parameters a code login writes itself.
+func (o *OAuth) paramRest(v string) string {
+	v = strings.ReplaceAll(v, NonceToken, "")
+	if o.Flow == FlowCode {
+		v = strings.ReplaceAll(strings.ReplaceAll(v, RedirectToken, ""), StateToken, "")
+	}
+	return v
 }
 
 // HookNames lists the login steps a data file may name.
@@ -376,7 +456,11 @@ func HookNames() []string { return names(hooks) }
 // RefreshHookNames and DialectNames list the names a data file may use for a
 // renewal step and for a device login that does not follow RFC 8628.
 func RefreshHookNames() []string { return names(refreshHooks) }
-func DialectNames() []string     { return names(dialects) }
+func DialectNames() []string     { return names(deviceDialects) }
+
+// CodeDialectNames lists the names a data file may use for a code login whose
+// exchange and renewal are not plain token calls.
+func CodeDialectNames() []string { return names(codeDialects) }
 
 func names(set map[string]bool) []string {
 	out := make([]string, 0, len(set))

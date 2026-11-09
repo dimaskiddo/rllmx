@@ -27,7 +27,7 @@ func (r *Refresher) pending(list []repository.Connection) []repository.Connectio
 		if status, _ := d.GetString("testStatus"); status == repository.StatusExpired {
 			continue
 		}
-		f, ok := r.Flow(c.Provider)
+		f, ok := r.flowOf(c)
 		if !ok {
 			continue
 		}

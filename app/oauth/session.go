@@ -36,6 +36,9 @@ type Session struct {
 	// on the provider's calls and is stored with the account; the browser never
 	// sees it.
 	DeviceID string
+	// App is the OAuth application that came with the request, for a login
+	// whose data asks for one. It lives here and in the stored account only.
+	App *App
 }
 
 type phase int

@@ -1,0 +1,41 @@
+{
+  "id": "xai",
+  "alias": "xai",
+  "category": "oauth",
+  "display": { "name": "xAI (Grok)" },
+  "transport": {
+    "baseUrl": "https://api.x.ai/v1/chat/completions"
+  },
+  "auth": {
+    "scheme": "bearer",
+    "header": "Authorization",
+    "validateUrl": "https://api.x.ai/v1/models"
+  },
+  "oauth": {
+    "flow": "code-pkce",
+    "authorizeUrl": "https://auth.x.ai/oauth2/authorize",
+    "tokenUrl": "https://auth.x.ai/oauth2/token",
+    "scope": "openid profile email offline_access grok-cli:access api:access",
+    "params": [
+      { "name": "nonce", "value": "{nonce}" },
+      { "name": "plan", "value": "generic" },
+      { "name": "referrer", "value": "cli-proxy-api" }
+    ],
+    "redirect": "fixed",
+    "redirectHost": "127.0.0.1",
+    "fixedPort": 56121,
+    "callbackPath": "/callback",
+    "exchange": "form",
+    "hook": "xai",
+    "refresh": { "encoding": "form", "leadSeconds": 300 }
+  },
+  "models": [
+    { "id": "grok-4.7", "name": "Grok 4.7" },
+    { "id": "grok-4.6", "name": "Grok 4.6" },
+    { "id": "grok-4.5", "name": "Grok 4.5" },
+    { "id": "grok-4", "name": "Grok 4" },
+    { "id": "grok-4-fast-reasoning", "name": "Grok 4 Fast Reasoning" },
+    { "id": "grok-code-fast-1", "name": "Grok Code Fast" },
+    { "id": "grok-3", "name": "Grok 3" }
+  ]
+}

@@ -2,6 +2,7 @@ package oauth
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"strconv"
 	"time"
@@ -14,6 +15,16 @@ import (
 	"rllmx/app/oidc"
 	"rllmx/app/repository"
 	"rllmx/app/upstream"
+)
+
+// Errors only this file raises; the others are in flow.go.
+var (
+	// ErrApp means the request brought an application a provider does not take,
+	// or none to a provider that needs one.
+	ErrApp = errors.New("oauth: the login needs its own application, or takes none")
+	// ErrPublicBase means the login's redirect is the gateway's public address and
+	// none is known.
+	ErrPublicBase = errors.New("oauth: the login needs APP_URL to build its redirect")
 )
 
 // Failure codes a finished login can end with. They are fixed words, never
@@ -61,34 +72,77 @@ func (s *Service) flow(provider string) (Flow, error) {
 	return FlowFor(s.Registry, s.ClientID, provider)
 }
 
-// Start opens a login. local says whether the browser runs on this machine;
-// routerPort is the port the router listens on; bind ties the login to the
-// dashboard session.
-func (s *Service) Start(provider, bind string, local bool, routerPort int) (Started, error) {
+// StartRequest is what opens a login.
+type StartRequest struct {
+	Provider string
+	// Bind ties the login to the dashboard session.
+	Bind string
+	// Local says whether the browser runs on this machine.
+	Local bool
+	// RouterPort is the port the router listens on.
+	RouterPort int
+	// PublicBase is the address this gateway is reached at, or "" when none is
+	// known; only a login on the public redirect reads it.
+	PublicBase string
+	// App is the application that came with the request, or nil.
+	App *App
+}
+
+// flowFor resolves the login of a request: the provider's own, or the one the
+// request's application rebuilds.
+func (s *Service) flowFor(provider string, app *App) (Flow, error) {
 	f, err := s.flow(provider)
 	if err != nil {
-		return Started{}, err
+		return Flow{}, err
 	}
-	verifier, err := oidc.Verifier()
+	if f.AppFromAccount != (app != nil) {
+		return Flow{}, ErrApp
+	}
+	if app == nil {
+		return f, nil
+	}
+	if f, err = f.WithApp(*app); err != nil {
+		return Flow{}, ErrApp
+	}
+	return f, nil
+}
+
+// Start opens a login.
+func (s *Service) Start(req StartRequest) (Started, error) {
+	f, err := s.flowFor(req.Provider, req.App)
 	if err != nil {
 		return Started{}, err
 	}
-	redirect := f.RedirectURL(routerPort)
+	if f.NeedsPublicBase() && req.PublicBase == "" {
+		return Started{}, ErrPublicBase
+	}
+	var verifier, challenge string
+	if f.Flow == upstream.FlowCodePKCE {
+		if verifier, err = oidc.Verifier(); err != nil {
+			return Started{}, err
+		}
+		challenge = oidc.Challenge(verifier)
+	}
+	nonce, err := newNonce()
+	if err != nil {
+		return Started{}, err
+	}
+	redirect := f.RedirectURL(req.RouterPort, req.PublicBase)
 	port := f.ListenerPort()
-	paste := !local
+	paste := !req.Local && !f.NeedsPublicBase()
 	if port != 0 {
 		if s.Listeners == nil || !s.Listeners.Acquire(port, f.CallbackPath) {
 			paste = true
 		}
 	}
-	state, err := s.Sessions.Put(Session{Provider: f.Provider, Redirect: redirect, Verifier: verifier, Port: port, Bind: bind})
+	state, err := s.Sessions.Put(Session{Provider: f.Provider, Redirect: redirect, Verifier: verifier, Port: port, Bind: req.Bind, App: req.App})
 	if err != nil {
 		if port != 0 && s.Listeners != nil {
 			s.Listeners.Release(port)
 		}
 		return Started{}, err
 	}
-	return Started{AuthURL: f.URL(redirect, state, oidc.Challenge(verifier)), State: state, Redirect: redirect, Paste: paste}, nil
+	return Started{AuthURL: f.URL(redirect, state, challenge, nonce), State: state, Redirect: redirect, Paste: paste}, nil
 }
 
 // Complete finishes a login from the dashboard. The state must belong to a
@@ -116,7 +170,7 @@ func (s *Service) finish(ctx context.Context, state string, in Input, allow func
 	if in.Failed {
 		return "", s.end(state, sess, "", CodeDenied)
 	}
-	f, err := s.flow(sess.Provider)
+	f, err := s.flowFor(sess.Provider, sess.App)
 	if err != nil {
 		return "", s.end(state, sess, "", CodeInput)
 	}
@@ -156,11 +210,6 @@ func (s *Service) release(sess Session) {
 // made one, is kept in the account's provider data. A hook that fails ends the
 // login: nothing is stored.
 func (s *Service) store(ctx context.Context, f Flow, t Tokens, deviceID string) (string, error) {
-	accounts := s.Accounts()
-	if accounts == nil {
-		return "", ErrStorage
-	}
-	now := s.Now()
 	var acc Account
 	if h, ok := hooks[f.Hook]; ok {
 		var err error
@@ -168,6 +217,16 @@ func (s *Service) store(ctx context.Context, f Flow, t Tokens, deviceID string) 
 			return "", err
 		}
 	}
+	return s.save(ctx, f, t, acc, deviceID)
+}
+
+// save writes the account a login or a pasted token ends with.
+func (s *Service) save(ctx context.Context, f Flow, t Tokens, acc Account, deviceID ...string) (string, error) {
+	accounts := s.Accounts()
+	if accounts == nil {
+		return "", ErrStorage
+	}
+	now := s.Now()
 	if acc.Email == "" {
 		acc.Email = t.Email
 	}
@@ -175,8 +234,16 @@ func (s *Service) store(ctx context.Context, f Flow, t Tokens, deviceID string) 
 	fields["testStatus"] = quote(repository.StatusActive)
 	fields["lastRefreshAt"] = quote(dialect.FormatTimestamp(now))
 	psd := acc.PSD
-	if deviceID != "" {
-		psd = withPSD(psd, deviceIDKey, deviceID)
+	if len(deviceID) > 0 && deviceID[0] != "" {
+		psd = withPSD(psd, deviceIDKey, deviceID[0])
+	}
+	if f.AppBase != "" {
+		psd = withPSD(psd, "baseUrl", f.AppBase)
+		psd = withPSD(psd, "clientId", f.ClientID)
+		if f.ClientSecret != "" {
+			psd = withPSD(psd, "clientSecret", f.ClientSecret)
+		}
+		psd = withPSD(psd, "authKind", "oauth")
 	}
 	conn, err := accounts.Create(ctx, repository.ConnInput{
 		Provider: f.Provider, AuthType: "oauth", Email: acc.Email, Fields: fields, PSD: psd,

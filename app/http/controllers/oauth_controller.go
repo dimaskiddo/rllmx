@@ -5,6 +5,7 @@ import (
 	nethttp "net/http"
 	"net/url"
 	"strconv"
+	"strings"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
 
@@ -49,20 +50,86 @@ func (c *OAuthController) routerPort(r *nethttp.Request, local bool) int {
 	return c.Server.Port
 }
 
-// Authorize answers GET /api/oauth/{provider}/authorize.
+// Authorize answers GET /api/oauth/{provider}/authorize for a provider that
+// uses the application of the deployment.
 func (c *OAuthController) Authorize(ctx contractshttp.Context) contractshttp.Response {
+	return c.start(ctx, nil)
+}
+
+type authorizeBody struct {
+	BaseURL      string `json:"baseUrl"`
+	ClientID     string `json:"clientId"`
+	ClientSecret string `json:"clientSecret"`
+}
+
+// AuthorizeApp answers POST /api/oauth/{provider}/authorize for a provider
+// whose OAuth application comes with the request. The secret travels in the
+// body, never the address, and nothing returns it.
+func (c *OAuthController) AuthorizeApp(ctx contractshttp.Context) contractshttp.Response {
+	var b authorizeBody
+	if err := bindJSON(ctx, &b); err != nil {
+		return flat(ctx, nethttp.StatusBadRequest, "Invalid request body")
+	}
+	app := oauth.App{BaseURL: strings.TrimSpace(b.BaseURL), ClientID: strings.TrimSpace(b.ClientID), ClientSecret: strings.TrimSpace(b.ClientSecret)}
+	if !app.Valid() {
+		return flat(ctx, nethttp.StatusBadRequest, "The server address must be a bare https address and the application id a short word")
+	}
+	return c.start(ctx, &app)
+}
+
+type patBody struct {
+	Token   string `json:"token"`
+	BaseURL string `json:"baseUrl"`
+}
+
+// ConnectToken answers POST /api/oauth/{provider}/pat: a personal access token
+// pasted in place of a login. It answers the new account's id and nothing else.
+func (c *OAuthController) ConnectToken(ctx contractshttp.Context) contractshttp.Response {
+	r := ctx.Request().Origin()
+	if c.bind(r) == "" {
+		return flat(ctx, nethttp.StatusUnauthorized, "Sign in to the dashboard first")
+	}
+	var b patBody
+	if err := bindJSON(ctx, &b); err != nil {
+		return flat(ctx, nethttp.StatusBadRequest, "Invalid request body")
+	}
+	id, err := c.Service.ConnectToken(r.Context(), ctx.Request().Route("provider"), strings.TrimSpace(b.BaseURL), strings.TrimSpace(b.Token))
+	switch {
+	case err == nil:
+		return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"success": true, "connectionId": id})
+	case errors.Is(err, oauth.ErrUnsupported):
+		return flat(ctx, nethttp.StatusNotFound, "This provider takes no token")
+	case errors.Is(err, oauth.ErrDisabled):
+		return flat(ctx, nethttp.StatusBadRequest, "This login is switched off")
+	case errors.Is(err, oauth.ErrToken):
+		return flat(ctx, nethttp.StatusBadRequest, "The server did not accept that token")
+	case errors.Is(err, oauth.ErrStorage):
+		return flat(ctx, nethttp.StatusServiceUnavailable, "Storage is not available")
+	}
+	return flat(ctx, nethttp.StatusInternalServerError, "The token could not be saved")
+}
+
+func (c *OAuthController) start(ctx contractshttp.Context, app *oauth.App) contractshttp.Response {
 	r := ctx.Request().Origin()
 	bind := c.bind(r)
 	if bind == "" {
 		return flat(ctx, nethttp.StatusUnauthorized, "Sign in to the dashboard first")
 	}
 	local := apphttp.IsLocalRequest(r, c.Auth.TrustLoopback)
-	started, err := c.Service.Start(ctx.Request().Route("provider"), bind, local, c.routerPort(r, local))
+	base, _ := sso.PublicBase(c.Server, r, local)
+	started, err := c.Service.Start(oauth.StartRequest{
+		Provider: ctx.Request().Route("provider"), Bind: bind, Local: local,
+		RouterPort: c.routerPort(r, local), PublicBase: base, App: app,
+	})
 	switch {
 	case errors.Is(err, oauth.ErrUnsupported):
 		return flat(ctx, nethttp.StatusNotFound, "This provider has no login")
 	case errors.Is(err, oauth.ErrDisabled):
 		return flat(ctx, nethttp.StatusBadRequest, "This login is switched off: its client id is not configured")
+	case errors.Is(err, oauth.ErrApp):
+		return flat(ctx, nethttp.StatusBadRequest, "This provider's login does not take that request: it needs its own application, or none")
+	case errors.Is(err, oauth.ErrPublicBase):
+		return flat(ctx, nethttp.StatusBadRequest, "Set APP_URL to the address of this gateway to use this login")
 	case err != nil:
 		return flat(ctx, nethttp.StatusServiceUnavailable, "The login could not be started")
 	}

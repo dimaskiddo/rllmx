@@ -3,6 +3,7 @@ package upstream
 import (
 	"errors"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"unicode"
@@ -13,6 +14,9 @@ const (
 	SchemeBearer = "bearer"
 	SchemeRaw    = "raw"
 	SchemeQuery  = "query"
+	// SchemeWorkOS is a bearer token that carries the `workos:` marker when it is
+	// a WorkOS access token, and goes unchanged when it is an API key.
+	SchemeWorkOS = "workos"
 )
 
 const (
@@ -72,10 +76,26 @@ func (a *Auth) RequestHeaders(key string) map[string]string {
 	switch a.Scheme {
 	case SchemeBearer:
 		h[a.Header] = "Bearer " + key
+	case SchemeWorkOS:
+		h[a.Header] = "Bearer " + WorkOSToken(key)
 	case SchemeRaw:
 		h[a.Header] = key
 	}
 	return h
+}
+
+// workOSJWT is the start of a WorkOS access token: a JWT whose header is
+// base64url JSON.
+var workOSJWT = regexp.MustCompile(`^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+`)
+
+// WorkOSToken is the credential as the provider reads it: a WorkOS access token
+// with the `workos:` marker in front, anything else (a plan's API key) as it is.
+func WorkOSToken(key string) string {
+	key = strings.TrimSpace(key)
+	if !workOSJWT.MatchString(key) {
+		return key
+	}
+	return "workos:" + key
 }
 
 // WithKey puts the key into target as a query parameter for the query scheme
@@ -105,14 +125,14 @@ func (a *Auth) BadKeyStatus(code int) bool {
 // validate checks an auth block against the provider's transport address.
 func (a *Auth) validate(transportURL string) error {
 	switch a.Scheme {
-	case SchemeBearer, SchemeRaw, SchemeQuery:
+	case SchemeBearer, SchemeRaw, SchemeQuery, SchemeWorkOS:
 	default:
 		return errors.New("auth.scheme is unknown")
 	}
 	if !HeaderName(a.Header) {
 		return errors.New("auth.header is not a valid name")
 	}
-	if a.Scheme != SchemeQuery && ReservedHeader(a.Header) && !(a.Scheme == SchemeBearer && strings.EqualFold(a.Header, "authorization")) {
+	if a.Scheme != SchemeQuery && ReservedHeader(a.Header) && !((a.Scheme == SchemeBearer || a.Scheme == SchemeWorkOS) && strings.EqualFold(a.Header, "authorization")) {
 		return errors.New("auth.header names a reserved header")
 	}
 	if len(a.Headers) > maxAuthHeaders {

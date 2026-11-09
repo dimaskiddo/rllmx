@@ -124,6 +124,9 @@ type Quirks struct {
 	// InlineImages fetches remote image URLs and sends the bytes, for an
 	// upstream that cannot fetch a URL itself.
 	InlineImages bool `json:"inlineImages,omitempty"`
+	// ClineEnvelope unwraps a non-stream answer shaped {"success":true,"data":{...}}
+	// to its data. Any other body passes unchanged.
+	ClineEnvelope bool `json:"clineEnvelope,omitempty"`
 }
 
 // Reasoning scopes a provider may name.

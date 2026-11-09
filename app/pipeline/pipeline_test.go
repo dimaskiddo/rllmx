@@ -111,6 +111,9 @@ func newRig(t *testing.T, steps ...tests.Reply) *rig {
 		`"auth":{"scheme":"bearer","header":"Authorization"},"models":[{"id":"short","upstreamId":"vendor/long-name"}]}`
 	acct := `{"id":"acct","category":"freeTier","display":{"name":"A"},"transport":{"baseUrl":"` + up.URL + `/accounts/{accountId}/chat/completions","format":"openai"},` +
 		`"auth":{"scheme":"bearer","header":"Authorization"},"models":[{"id":"am"}]}`
+	cln := `{"id":"cln","category":"oauth","display":{"name":"N"},"transport":{"baseUrl":"` + up.URL + `/api/v1/chat/completions","format":"openai","quirks":{"clineEnvelope":true}},` +
+		`"auth":{"scheme":"workos","header":"Authorization"},"models":[{"id":"cl-1"}]}`
+	glb := `{"id":"glb","category":"oauth","display":{"name":"B"},"transport":{"baseUrl":"{baseUrl}/api/v4/chat/completions","format":"openai"},"models":[{"id":"gm1"}]}`
 	cdx := `{"id":"cdx","category":"apikey","display":{"name":"C"},"executor":"codex","forceStream":true,` +
 		`"transport":{"baseUrl":"` + up.URL + `/codex/responses","format":"openai-responses","quirks":{"inlineImages":true}},` +
 		`"auth":{"scheme":"bearer","header":"Authorization"},"models":[{"id":"cm","levels":["low","medium","high","xhigh"]},{"id":"cm-vision","levels":["low","medium"]},{"id":"cl","lite":true,"levels":["low","medium","high"]}]}`
@@ -139,7 +142,7 @@ func newRig(t *testing.T, steps ...tests.Reply) *rig {
 		`"models":[{"id":"m1"}]}`
 	reg, err := upstream.Load(fstest.MapFS{
 		"data/kim.json": {Data: []byte(kim)}, "data/mus.json": {Data: []byte(mus)}, "data/kc.json": {Data: []byte(kc)}, "data/lane.json": {Data: []byte(lane)},
-		"data/cop.json": {Data: []byte(cop)},
+		"data/cop.json": {Data: []byte(cop)}, "data/cln.json": {Data: []byte(cln)}, "data/glb.json": {Data: []byte(glb)},
 		"data/cdx.json": {Data: []byte(cdx)}, "data/grk.json": {Data: []byte(grk)},
 		"data/forced.json": {Data: []byte(forced)}, "data/gem.json": {Data: []byte(gem)}, "data/sub.json": {Data: []byte(sub)}, "data/subx.json": {Data: []byte(subx)},
 		"data/wire.json": {Data: []byte(wire)}, "data/acct.json": {Data: []byte(acct)},

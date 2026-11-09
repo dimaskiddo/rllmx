@@ -41,13 +41,13 @@ func flowFor(t *testing.T, id string) Flow {
 }
 
 func TestTheAuthorizeAddressIsExactPerProvider(t *testing.T) {
-	claude := flowFor(t, "claude").URL("http://localhost:20128/callback", "ST", "CH")
+	claude := flowFor(t, "claude").URL("http://localhost:20128/callback", "ST", "CH", "NO")
 	wantClaude := "https://claude.ai/oauth/authorize?response_type=code&client_id=client-claude&redirect_uri=http%3A%2F%2Flocalhost%3A20128%2Fcallback" +
 		"&scope=org%3Acreate_api_key%20user%3Aprofile%20user%3Ainference&code_challenge=CH&code_challenge_method=S256&code=true&state=ST"
 	if claude != wantClaude {
 		t.Fatalf("claude:\n got %s\nwant %s", claude, wantClaude)
 	}
-	codex := flowFor(t, "codex").URL("http://localhost:1455/auth/callback", "ST", "CH")
+	codex := flowFor(t, "codex").URL("http://localhost:1455/auth/callback", "ST", "CH", "NO")
 	wantCodex := "https://auth.openai.com/oauth/authorize?response_type=code&client_id=client-codex&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback" +
 		"&scope=openid%20profile%20email%20offline_access&code_challenge=CH&code_challenge_method=S256" +
 		"&id_token_add_organizations=true&codex_cli_simplified_flow=true&originator=codex_cli_rs&state=ST"
@@ -57,10 +57,10 @@ func TestTheAuthorizeAddressIsExactPerProvider(t *testing.T) {
 }
 
 func TestTheServerDecidesTheRedirect(t *testing.T) {
-	if got := flowFor(t, "claude").RedirectURL(9000); got != "http://localhost:9000/callback" {
+	if got := flowFor(t, "claude").RedirectURL(9000, ""); got != "http://localhost:9000/callback" {
 		t.Fatalf("claude: %s", got)
 	}
-	if got := flowFor(t, "codex").RedirectURL(9000); got != "http://localhost:1455/auth/callback" {
+	if got := flowFor(t, "codex").RedirectURL(9000, ""); got != "http://localhost:1455/auth/callback" {
 		t.Fatalf("codex ignores the router port: %s", got)
 	}
 	if flowFor(t, "claude").ListenerPort() != 0 || flowFor(t, "codex").ListenerPort() != 1455 {
@@ -400,7 +400,7 @@ func TestAFullLoginStoresTheAccountOnce(t *testing.T) {
 	srv, _ := tokenServer(t, 200, `{"access_token":"AT","refresh_token":"RT","expires_in":3600,"scope":"s"}`, &seen)
 	svc, accounts := newService(t, srv.URL, srv.Client())
 
-	started, err := svc.Start("claude", "bind", true, 20128)
+	started, err := startLogin(svc, "claude", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -457,7 +457,7 @@ func TestEveryCompletionPathChecksTheState(t *testing.T) {
 			return err
 		},
 	} {
-		started, err := svc.Start("claude", "bind", true, 20128)
+		started, err := startLogin(svc, "claude", true)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -472,7 +472,7 @@ func TestEveryCompletionPathChecksTheState(t *testing.T) {
 
 func TestAProviderErrorEndsTheLoginWithAFixedCode(t *testing.T) {
 	svc, accounts := newService(t, "https://unused.invalid/token", http.DefaultClient)
-	started, _ := svc.Start("claude", "bind", true, 20128)
+	started, _ := startLogin(svc, "claude", true)
 	_, err := svc.Complete(context.Background(), started.State, Input{Failed: true}, "bind")
 	var f *Failure
 	if !asFailure(err, &f) || f.Code != CodeDenied {
@@ -491,7 +491,7 @@ func TestACodexLoginKeepsTheAccountIdentity(t *testing.T) {
 	body := `{"access_token":"AT","refresh_token":"RT","id_token":"` + jwt(`{"email":"a@x.test","https://api.openai.com/auth":{"chatgpt_account_id":"acct-1"}}`) + `"}`
 	srv, _ := tokenServer(t, 200, body, &seen)
 	svc, accounts := newService(t, srv.URL, srv.Client())
-	started, err := svc.Start("codex", "bind", false, 20128)
+	started, err := startLogin(svc, "codex", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -507,13 +507,13 @@ func TestACodexLoginKeepsTheAccountIdentity(t *testing.T) {
 func TestADisabledLoginSendsNothing(t *testing.T) {
 	svc, _ := newService(t, "https://unused.invalid/token", http.DefaultClient)
 	svc.ClientID = func(string) string { return "" }
-	if _, err := svc.Start("claude", "bind", true, 20128); err != ErrDisabled {
+	if _, err := startLogin(svc, "claude", true); err != ErrDisabled {
 		t.Fatalf("%v", err)
 	}
-	if _, err := svc.Start("openai", "bind", true, 20128); err != ErrUnsupported {
+	if _, err := startLogin(svc, "openai", true); err != ErrUnsupported {
 		t.Fatalf("%v", err)
 	}
-	if _, err := svc.Start("nothing", "bind", true, 20128); err != ErrUnsupported {
+	if _, err := startLogin(svc, "nothing", true); err != ErrUnsupported {
 		t.Fatalf("%v", err)
 	}
 }
@@ -522,4 +522,10 @@ func asFailure(err error, out **Failure) bool {
 	f, ok := err.(*Failure)
 	*out = f
 	return ok
+}
+
+// startLogin opens a login on the test port, for a browser that is or is not on
+// this machine.
+func startLogin(svc *Service, provider string, local bool) (Started, error) {
+	return svc.Start(StartRequest{Provider: provider, Bind: "bind", Local: local, RouterPort: 20128})
 }

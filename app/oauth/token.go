@@ -72,6 +72,15 @@ type TokenClient struct {
 	HTTP *http.Client
 	// Sleep pauses between the tries of a hook; nil waits on a real timer.
 	Sleep func(ctx context.Context, d time.Duration) error
+	// Now reads the clock for an expiry given as a date; nil is the real one.
+	Now func() time.Time
+}
+
+func (c *TokenClient) now() time.Time {
+	if c.Now != nil {
+		return c.Now()
+	}
+	return time.Now()
 }
 
 // wait pauses for d, or until ctx ends.
@@ -95,14 +104,22 @@ func NewTokenClient(allow *network.Allow) *TokenClient {
 	return &TokenClient{HTTP: network.NewClient(network.Options{ConnectTimeout: connectTimeout, MaxRedirects: -1, Allow: allow})}
 }
 
-// Exchange trades an authorization code for tokens.
+// Exchange trades an authorization code for tokens. A code dialect does it its
+// own way; the rest send the standard call, with the client's secret when the
+// application has one.
 func (c *TokenClient) Exchange(ctx context.Context, f Flow, code, redirect, verifier, state string) (Tokens, error) {
+	if d, ok := codeDialects[f.Dialect]; ok {
+		return d.exchange(ctx, c, f, code, redirect)
+	}
 	fields := map[string]string{
 		"grant_type": "authorization_code", "client_id": f.ClientID, "code": code,
 		"redirect_uri": redirect, "code_verifier": verifier,
 	}
 	if f.EchoState {
 		fields["state"] = state
+	}
+	if f.ClientSecret != "" {
+		fields["client_secret"] = f.ClientSecret
 	}
 	return c.call(ctx, f.TokenURL, f.Exchange, fields, nil)
 }
@@ -218,9 +235,17 @@ func (c *TokenClient) Refresh(ctx context.Context, f Flow, refreshToken string, 
 	if f.Refresh.TokenHeader != "" {
 		headers = withEntry(headers, f.Refresh.TokenHeader, refreshToken)
 	}
-	t, err := c.call(ctx, f.TokenURL, f.Refresh.Encoding, map[string]string{
-		"grant_type": "refresh_token", "refresh_token": refreshToken, "client_id": f.ClientID,
-	}, headers)
+	var t Tokens
+	var err error
+	if d, ok := codeDialects[f.Dialect]; ok {
+		t, err = d.refresh(ctx, c, f, refreshToken, headers)
+	} else {
+		fields := map[string]string{"grant_type": "refresh_token", "refresh_token": refreshToken, "client_id": f.ClientID}
+		if f.ClientSecret != "" {
+			fields["client_secret"] = f.ClientSecret
+		}
+		t, err = c.call(ctx, c.refreshURL(f), f.Refresh.Encoding, fields, headers)
+	}
 	if err != nil {
 		return Tokens{}, err
 	}
@@ -228,4 +253,13 @@ func (c *TokenClient) Refresh(ctx context.Context, f Flow, refreshToken string, 
 		t.Refresh = refreshToken
 	}
 	return t, nil
+}
+
+// refreshURL is where a renewal goes: its own address when the data names one,
+// else the token address.
+func (c *TokenClient) refreshURL(f Flow) string {
+	if f.Refresh.URL != "" {
+		return f.Refresh.URL
+	}
+	return f.TokenURL
 }

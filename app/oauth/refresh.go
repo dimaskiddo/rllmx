@@ -68,6 +68,24 @@ type Refresher struct {
 	Wait func(ctx context.Context, d time.Duration) error
 }
 
+// flowOf is the login an account renews with: the provider's own, or for a
+// provider whose application came with the account, the one stored with it. An
+// account that lost its application cannot be renewed.
+func (r *Refresher) flowOf(conn repository.Connection) (Flow, bool) {
+	f, ok := r.Flow(conn.Provider)
+	if !ok || !f.AppFromAccount {
+		return f, ok
+	}
+	psd, _ := conn.Doc().GetRaw("providerSpecificData")
+	app := App{
+		BaseURL:      gjson.Get(psd, "baseUrl").String(),
+		ClientID:     gjson.Get(psd, "clientId").String(),
+		ClientSecret: gjson.Get(psd, "clientSecret").String(),
+	}
+	f, err := f.WithApp(app)
+	return f, err == nil
+}
+
 func (r *Refresher) now() time.Time {
 	if r.Now != nil {
 		return r.Now()
@@ -114,7 +132,7 @@ func (r *Refresher) Ready(ctx context.Context, conn repository.Connection) (repo
 	if conn.AuthType != "oauth" || conn.Corrupt {
 		return conn, nil
 	}
-	f, ok := r.Flow(conn.Provider)
+	f, ok := r.flowOf(conn)
 	if !ok || !Due(f, conn.Doc(), r.now()) {
 		return conn, nil
 	}
@@ -170,7 +188,7 @@ func (r *Refresher) Refresh(ctx context.Context, id, rejected string) (repositor
 	if status, _ := conn.Doc().GetString("testStatus"); status == repository.StatusExpired {
 		return conn, ErrExpired
 	}
-	f, ok := r.Flow(conn.Provider)
+	f, ok := r.flowOf(conn)
 	if !ok {
 		return conn, ErrNoRefresh
 	}
@@ -280,7 +298,7 @@ func (r *Refresher) Ensure(ctx context.Context, id string) (refreshed bool, err 
 	if access, _ := d.GetString("accessToken"); access == "" {
 		return false, ErrNoToken
 	}
-	f, ok := r.Flow(conn.Provider)
+	f, ok := r.flowOf(conn)
 	if !ok {
 		return false, ErrNoRefresh
 	}

@@ -1,0 +1,26 @@
+{
+  "id": "gitlab",
+  "alias": "gitlab",
+  "aliases": ["gitlab-duo"],
+  "category": "oauth",
+  "display": { "name": "GitLab Duo" },
+  "transport": {
+    "baseUrl": "{baseUrl}/api/v4/chat/completions"
+  },
+  "oauth": {
+    "flow": "code-pkce",
+    "authorizeUrl": "https://gitlab.com/oauth/authorize",
+    "tokenUrl": "https://gitlab.com/oauth/token",
+    "scope": "api read_user",
+    "redirect": "public",
+    "exchange": "form",
+    "appFromAccount": true,
+    "pat": true,
+    "hook": "gitlab",
+    "endpoints": {
+      "user": "https://gitlab.com/api/v4/user"
+    },
+    "refresh": { "encoding": "form", "leadSeconds": 300 }
+  },
+  "models": []
+}

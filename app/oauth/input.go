@@ -10,9 +10,11 @@ import (
 // ErrInput means pasted text holds no usable code.
 var ErrInput = errors.New("oauth: the pasted text holds no authorization code")
 
+// A code may carry the tokens themselves (Cline's does), so it can be as long as
+// two JWTs.
 const (
-	maxInput = 8 << 10
-	maxCode  = 4 << 10
+	maxInput = 32 << 10
+	maxCode  = 16 << 10
 )
 
 // Input is what a browser brings back from the provider.
@@ -49,8 +51,13 @@ func ParseInput(raw string) (Input, error) {
 	return check(Input{Code: code, State: state})
 }
 
+// fromValues reads a decoded query. Decoding turns the plus sign of a base64
+// code into a space and no code holds a real space, so a space is put back as
+// the plus sign. Pasted text that was never decoded keeps its spaces and is
+// refused.
 func fromValues(v url.Values) Input {
-	return Input{Code: v.Get("code"), State: v.Get("state"), Failed: v.Get("error") != ""}
+	code := strings.ReplaceAll(v.Get("code"), " ", "+")
+	return Input{Code: code, State: v.Get("state"), Failed: v.Get("error") != ""}
 }
 
 func check(in Input) (Input, error) {

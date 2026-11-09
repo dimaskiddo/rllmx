@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"rllmx/app/oidc"
+	"rllmx/app/sso"
 	"rllmx/app/upstream"
 )
 
@@ -27,7 +28,72 @@ var (
 type Flow struct {
 	Provider string
 	ClientID string
+	// ClientSecret is the secret of an application that came with the account,
+	// or "". Configuration never holds one.
+	ClientSecret string
+	// AppBase is the server address of that application, or "".
+	AppBase string
 	upstream.OAuth
+}
+
+// App is an OAuth application that comes with a login request: the server it
+// lives on, its id and, when it has one, its secret. It is held in memory for
+// the length of the login and sealed with the account.
+type App struct {
+	BaseURL      string
+	ClientID     string
+	ClientSecret string
+}
+
+const maxAppField = 256
+
+// Valid reports an application fit to log in with: a bare https origin and an
+// id and secret that are short and free of spaces and control characters.
+func (a App) Valid() bool {
+	return upstream.BareOrigin(a.BaseURL) && appText(a.ClientID, true) && appText(a.ClientSecret, false)
+}
+
+func appText(s string, required bool) bool {
+	if s == "" {
+		return !required
+	}
+	return len(s) <= maxAppField && !strings.ContainsFunc(s, func(r rune) bool { return r <= ' ' || r == 0x7f })
+}
+
+// WithApp returns the flow for an application that came with the account: its
+// own id and secret, and every provider address moved onto its server. Only a
+// login whose data asks for it takes one.
+func (f Flow) WithApp(a App) (Flow, error) {
+	if !f.AppFromAccount || !a.Valid() {
+		return Flow{}, ErrUnsupported
+	}
+	f.ClientID, f.ClientSecret, f.AppBase = a.ClientID, a.ClientSecret, a.BaseURL
+	f.AuthorizeURL = rebase(f.AuthorizeURL, a.BaseURL)
+	f.TokenURL = rebase(f.TokenURL, a.BaseURL)
+	f.Refresh.URL = rebase(f.Refresh.URL, a.BaseURL)
+	f.Endpoints = rebaseAll(f.Endpoints, a.BaseURL)
+	return f, nil
+}
+
+// rebaseAll moves every endpoint address onto another server.
+func rebaseAll(eps map[string]string, base string) map[string]string {
+	out := make(map[string]string, len(eps))
+	for k, v := range eps {
+		out[k] = rebase(v, base)
+	}
+	return out
+}
+
+// rebase puts the path and query of a data address on another server.
+func rebase(addr, base string) string {
+	if addr == "" {
+		return ""
+	}
+	u, err := url.Parse(addr)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSuffix(base, "/") + u.EscapedPath()
 }
 
 // FlowFor finds the login of a provider by its name or alias and joins it with
@@ -47,21 +113,33 @@ func NewFlow(e upstream.Entry, clientID string) (Flow, error) {
 	if e.OAuth == nil {
 		return Flow{}, ErrUnsupported
 	}
-	if clientID == "" && !e.OAuth.NoClient {
+	if clientID == "" && !e.OAuth.NoClient && !e.OAuth.AppFromAccount {
 		return Flow{}, ErrDisabled
 	}
 	return Flow{Provider: e.ID, ClientID: clientID, OAuth: *e.OAuth}, nil
 }
 
 // RedirectURL is the address the provider sends the browser back to. The
-// server decides it: a fixed port for a client registered that way, else the
-// router's own port. Nothing from the request builds it but the port.
-func (f Flow) RedirectURL(routerPort int) string {
-	if f.Redirect == upstream.RedirectFixed {
-		return fmt.Sprintf("http://localhost:%d%s", f.FixedPort, f.CallbackPath)
+// server decides it: a fixed port for a client registered that way, the public
+// address of this gateway for one registered with it, else the router's own
+// port. Nothing from the request builds it but the port and the public base,
+// which the caller took from configuration or a local host.
+func (f Flow) RedirectURL(routerPort int, publicBase string) string {
+	switch f.Redirect {
+	case upstream.RedirectFixed:
+		host := f.RedirectHost
+		if host == "" {
+			host = "localhost"
+		}
+		return fmt.Sprintf("http://%s:%d%s", host, f.FixedPort, f.CallbackPath)
+	case upstream.RedirectPublic:
+		return sso.CleanURL(publicBase, upstream.LocalCallbackPath)
 	}
 	return fmt.Sprintf("http://localhost:%d%s", routerPort, upstream.LocalCallbackPath)
 }
+
+// NeedsPublicBase reports a login whose redirect is the gateway's public address.
+func (f Flow) NeedsPublicBase() bool { return f.Redirect == upstream.RedirectPublic }
 
 // ListenerPort is the port a listener must serve for this login, or 0.
 func (f Flow) ListenerPort() int {
@@ -71,17 +149,24 @@ func (f Flow) ListenerPort() int {
 	return 0
 }
 
-// URL builds the authorize address: the standard parameters, the provider's
-// extra ones in file order, then the state. Spaces are written %20.
-func (f Flow) URL(redirect, state, challenge string) string {
-	pairs := [][2]string{
-		{"response_type", "code"}, {"client_id", f.ClientID}, {"redirect_uri", redirect},
-		{"scope", f.Scope}, {"code_challenge", challenge}, {"code_challenge_method", oidc.Method},
+// URL builds the authorize address. A code-pkce login sends the standard
+// parameters, the provider's extra ones in file order, then the state; a code
+// login sends only the provider's own parameters. Spaces are written %20.
+func (f Flow) URL(redirect, state, challenge, nonce string) string {
+	var pairs [][2]string
+	if f.Flow != upstream.FlowCode {
+		pairs = [][2]string{
+			{"response_type", "code"}, {"client_id", f.ClientID}, {"redirect_uri", redirect},
+			{"scope", f.Scope}, {"code_challenge", challenge}, {"code_challenge_method", oidc.Method},
+		}
 	}
+	fill := strings.NewReplacer(upstream.RedirectToken, redirect, upstream.StateToken, state, upstream.NonceToken, nonce)
 	for _, p := range f.Params {
-		pairs = append(pairs, [2]string{p.Name, p.Value})
+		pairs = append(pairs, [2]string{p.Name, fill.Replace(p.Value)})
 	}
-	pairs = append(pairs, [2]string{"state", state})
+	if f.Flow != upstream.FlowCode {
+		pairs = append(pairs, [2]string{"state", state})
+	}
 	var b strings.Builder
 	b.WriteString(f.AuthorizeURL)
 	for i, p := range pairs {
