@@ -1,0 +1,37 @@
+{
+  "id": "nous",
+  "alias": "nous",
+  "aliases": ["nous-portal", "nous-research", "ns"],
+  "category": "freeTier",
+  "display": { "name": "Nous Research" },
+  "transport": {
+    "baseUrl": "https://inference-api.nousresearch.com/v1/chat/completions",
+    "format": "openai"
+  },
+  "oauth": {
+    "flow": "device",
+    "deviceUrl": "https://portal.nousresearch.com/api/oauth/device/code",
+    "tokenUrl": "https://portal.nousresearch.com/api/oauth/token",
+    "scope": "inference:invoke inference:mint_agent_key",
+    "hook": "nous",
+    "endpoints": {
+      "agentKey": "https://portal.nousresearch.com/api/oauth/agent-key"
+    },
+    "refresh": {
+      "encoding": "form",
+      "leadSeconds": 300,
+      "tokenHeader": "x-nous-refresh-token",
+      "hook": "nous"
+    }
+  },
+  "models": [
+    { "id": "meituan/longcat-2.0:free", "name": "Meituan: LongCat 2.0" },
+    { "id": "meituan/longcat-2.5-preview:free", "name": "Meituan: LongCat 2.5 Preview" },
+    { "id": "stepfun/step-5-preview:free", "name": "StepFun: Step 5 Preview" },
+    { "id": "upstage/solar-mini4:free", "name": "Upstage: Solar Mini 4" },
+    { "id": "stepfun/step-3.7-flash:free", "name": "StepFun: Step 3.7 Flash" },
+    { "id": "poolside/laguna-s-2.1:free", "name": "Poolside: Laguna S 2.1" },
+    { "id": "poolside/laguna-xs-2.1:free", "name": "Poolside: Laguna XS 2.1" },
+    { "id": "stealth/missingno", "name": "MissingNo" }
+  ]
+}

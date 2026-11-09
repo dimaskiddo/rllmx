@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/goravel/framework/contracts/log"
+	"github.com/tidwall/gjson"
 
 	"rllmx/app/dialect"
 	"rllmx/app/document"
@@ -127,7 +128,7 @@ func (s *Service) finish(ctx context.Context, state string, in Input, allow func
 		}
 		return "", s.end(state, sess, "", code)
 	}
-	id, err := s.store(ctx, f, tokens)
+	id, err := s.store(ctx, f, tokens, "")
 	if err != nil {
 		if s.Log != nil {
 			s.Log.Warningf("oauth: storing a login failed: %v", err)
@@ -151,7 +152,10 @@ func (s *Service) release(sess Session) {
 	}
 }
 
-func (s *Service) store(ctx context.Context, f Flow, t Tokens) (string, error) {
+// store runs the login's hook and writes the account. deviceID, when the login
+// made one, is kept in the account's provider data. A hook that fails ends the
+// login: nothing is stored.
+func (s *Service) store(ctx context.Context, f Flow, t Tokens, deviceID string) (string, error) {
 	accounts := s.Accounts()
 	if accounts == nil {
 		return "", ErrStorage
@@ -159,15 +163,39 @@ func (s *Service) store(ctx context.Context, f Flow, t Tokens) (string, error) {
 	now := s.Now()
 	var acc Account
 	if h, ok := hooks[f.Hook]; ok {
-		acc = h(ctx, s.Tokens, f, t)
+		var err error
+		if acc, err = h(ctx, s.Tokens, f, t, callHeaders(f, deviceID)); err != nil {
+			return "", err
+		}
 	}
-	fields := map[string]string{
-		"accessToken":   quote(t.Access),
-		"testStatus":    quote(repository.StatusActive),
-		"lastRefreshAt": quote(dialect.FormatTimestamp(now)),
+	if acc.Email == "" {
+		acc.Email = t.Email
 	}
-	if t.Refresh != "" {
-		fields["refreshToken"] = quote(t.Refresh)
+	fields := credentialFields(t, acc, now)
+	fields["testStatus"] = quote(repository.StatusActive)
+	fields["lastRefreshAt"] = quote(dialect.FormatTimestamp(now))
+	psd := acc.PSD
+	if deviceID != "" {
+		psd = withPSD(psd, deviceIDKey, deviceID)
+	}
+	conn, err := accounts.Create(ctx, repository.ConnInput{
+		Provider: f.Provider, AuthType: "oauth", Email: acc.Email, Fields: fields, PSD: psd,
+	}, nil)
+	if err != nil {
+		return "", err
+	}
+	return conn.ID, nil
+}
+
+// credentialFields turns tokens and what a hook decided into the stored fields.
+func credentialFields(t Tokens, acc Account, now time.Time) map[string]string {
+	access := t.Access
+	if acc.Access != "" {
+		access = acc.Access
+	}
+	fields := map[string]string{"accessToken": quote(access)}
+	if acc.APIKey != "" {
+		fields["apiKey"] = quote(acc.APIKey)
 	}
 	if t.ID != "" {
 		fields["idToken"] = quote(t.ID)
@@ -175,17 +203,38 @@ func (s *Service) store(ctx context.Context, f Flow, t Tokens) (string, error) {
 	if t.Scope != "" {
 		fields["scope"] = quote(t.Scope)
 	}
+	if acc.NoRefresh {
+		return fields
+	}
+	if t.Refresh != "" {
+		fields["refreshToken"] = quote(t.Refresh)
+	}
+	var expires time.Time
 	if t.ExpiresIn > 0 {
+		expires = now.Add(time.Duration(t.ExpiresIn) * time.Second)
 		fields["expiresIn"] = jsonInt(t.ExpiresIn)
-		fields["expiresAt"] = quote(dialect.FormatTimestamp(now.Add(time.Duration(t.ExpiresIn) * time.Second)))
 	}
-	conn, err := accounts.Create(ctx, repository.ConnInput{
-		Provider: f.Provider, AuthType: "oauth", Email: acc.Email, Fields: fields, PSD: acc.PSD,
-	}, nil)
-	if err != nil {
-		return "", err
+	if !acc.ExpiresAt.IsZero() && (expires.IsZero() || acc.ExpiresAt.Before(expires)) {
+		expires = acc.ExpiresAt
 	}
-	return conn.ID, nil
+	if !expires.IsZero() {
+		fields["expiresAt"] = quote(dialect.FormatTimestamp(expires))
+	}
+	return fields
+}
+
+// withPSD sets one string key in a provider data object ("" is empty).
+func withPSD(psd, k, v string) string {
+	m := map[string]string{}
+	if psd != "" {
+		for key, val := range gjson.Parse(psd).Map() {
+			if val.Type == gjson.String {
+				m[key] = val.String()
+			}
+		}
+	}
+	m[k] = v
+	return jsonObject(m)
 }
 
 func quote(s string) string { return document.Encode(s) }

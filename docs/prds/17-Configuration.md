@@ -57,7 +57,7 @@ The **Step** column names the `TASKS.md` step that adds the group. No code reads
 | Token savers | `SAVER_HEADROOM_URL` (`http://localhost:8787`) (planned) | 3.1 |
 | Catalog | `CATALOG_SYNC` (true; `false` turns sync off) (planned) | 2.6 |
 | Translator | `TRANSLATOR_ENABLED` (false) (planned) | 2.6 |
-| OAuth clients | `OAUTH_<PROVIDER>_CLIENT_ID` for antigravity, claude, codex, github, google, iflow, kimi, kimi_coding, minimax_code, muse, nous, trae, windsurf, xai; `_CLIENT_SECRET` only for antigravity, google, iflow, trae. Default empty, which disables that provider's login; `.env.example` carries working values. `google` serves Gemini and Gemini CLI, `minimax_code` both MiniMax Code regions, `xai` xAI and Grok CLI. Built in 1.9a: `OAUTH_CLAUDE_CLIENT_ID` and `OAUTH_CODEX_CLIENT_ID` (at most 256 characters, no spaces or control characters); 1.10c adds `OAUTH_GITHUB_CLIENT_ID` | 1.9a, 1.10 |
+| OAuth clients | `OAUTH_CLIENT_ID_<PROVIDER>` for antigravity, claude, codex, github, google, iflow, kimi, kimi_coding, minimax_code, muse, nous, trae, windsurf, xai; `OAUTH_CLIENT_SECRET_<PROVIDER>` only for antigravity, google, iflow, trae. Default empty, which disables that provider's login; `.env.example` carries working values. `google` serves Gemini and Gemini CLI, `minimax_code` both MiniMax Code regions, `xai` xAI and Grok CLI. Built in 1.9a: `OAUTH_CLIENT_ID_CLAUDE` and `OAUTH_CLIENT_ID_CODEX` (at most 256 characters, no spaces or control characters); 1.10c adds `OAUTH_CLIENT_ID_GITHUB`; 1.10d adds `OAUTH_CLIENT_ID_KIMI`, `OAUTH_CLIENT_ID_MUSE`, `OAUTH_CLIENT_ID_NOUS` and `OAUTH_CLIENT_ID_XAI` (the Grok CLI login reads the xAI one; Kilo Code needs none) | 1.9a, 1.10 |
 | Provider overrides | `PROVIDER_AZURE_ENDPOINT`, `..._AZURE_DEPLOYMENT`, `..._AZURE_API_VERSION`, `..._AZURE_ORGANIZATION`, `..._MIMO_PLATFORM_URL`, `..._COMMANDCODE_BASE_URL` (planned) | 1.10 |
 
 ### Not Read
@@ -127,9 +127,9 @@ The status column is the v1 target, not the build state: behavior steps land aft
 | `HEADROOM_URL` | `SAVER_HEADROOM_URL` | planned, step 3.1 |
 | `MODEL_CATALOG_SYNC` (`off` disables) | `CATALOG_SYNC` | boolean: `false` disables; planned, step 2.6 |
 | `AZURE_ENDPOINT`, `AZURE_DEPLOYMENT`, `AZURE_API_VERSION`, `AZURE_ORGANIZATION` | `PROVIDER_AZURE_*` | planned, step 1.10 |
-| `KIMI_OAUTH_CLIENT_ID`, `KIMI_CODING_OAUTH_CLIENT_ID` | `OAUTH_KIMI_CLIENT_ID`, `OAUTH_KIMI_CODING_CLIENT_ID` | |
+| `KIMI_OAUTH_CLIENT_ID`, `KIMI_CODING_OAUTH_CLIENT_ID` | `OAUTH_CLIENT_ID_KIMI`, `OAUTH_CLIENT_ID_KIMI_CODING` | |
 | `MIMO_PLATFORM_URL`, `COMMAND_CODE_API_BASE_URL` | `PROVIDER_MIMO_PLATFORM_URL`, `PROVIDER_COMMANDCODE_BASE_URL` | planned, step 1.10 |
-| OAuth client ids and secrets hardcoded in `open-sse/providers/registry/*.js`, `shared.js`, `services/nous.js` | `OAUTH_<PROVIDER>_CLIENT_ID` and `_CLIENT_SECRET` (18 variables, listed in `.env.example`) | diverged: configuration, not code |
+| OAuth client ids and secrets hardcoded in `open-sse/providers/registry/*.js`, `shared.js`, `services/nous.js` | `OAUTH_CLIENT_ID_<PROVIDER>` and `OAUTH_CLIENT_SECRET_<PROVIDER>` (18 variables, listed in `.env.example`) | diverged: configuration, not code |
 
 ---
 ### 2. Not Read

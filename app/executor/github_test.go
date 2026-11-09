@@ -149,3 +149,28 @@ func TestEveryCopilotAddressIsChosenByWireFormat(t *testing.T) {
 		t.Errorf("a provider with one address: %s", got)
 	}
 }
+
+// The operator's header overrides apply to the chat address only, as in the
+// reference; the other two endpoints get the fixed identity set alone.
+func TestHeaderOverridesReachOnlyTheCopilotChatAddress(t *testing.T) {
+	up := tests.NewUpstream(t, tests.Reply{Body: `{}`}, tests.Reply{Body: `{}`}, tests.Reply{Body: `{}`})
+	g := &GitHub{Default: &Default{Client: http.DefaultClient}}
+	for _, path := range []string{"/chat/completions", "/responses", "/v1/messages"} {
+		req := copilotReq(up.URL+path, `{"messages":[]}`)
+		req.Overrides = map[string]string{"X-Operator": "yes"}
+		resp, err := g.Execute(context.Background(), req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+	}
+	calls := up.Calls()
+	if calls[0].Header.Get("X-Operator") != "yes" || calls[1].Header.Get("X-Operator") != "" || calls[2].Header.Get("X-Operator") != "" {
+		t.Fatalf("%v %v %v", calls[0].Header, calls[1].Header, calls[2].Header)
+	}
+	for _, c := range calls {
+		if c.Header.Get("X-Initiator") != "user" {
+			t.Errorf("the identity set is missing on %s: %v", c.Path, c.Header)
+		}
+	}
+}

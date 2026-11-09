@@ -96,7 +96,8 @@ func TestADeviceLoginIsValidatedAtLoad(t *testing.T) {
 		{"a redirect belongs to the other flow", `,"redirect":"local"`, "device login"},
 		{"an exchange belongs to the other flow", `,"exchange":"json"`, "device login"},
 		{"an authorize address belongs to the other flow", `,"authorizeUrl":"https://a.example/a"`, "device login"},
-		{"parameters belong to the other flow", `,"params":[{"name":"a","value":"1"}]`, "device login"},
+		{"a device login may send extra start parameters", `,"params":[{"name":"referrer","value":"x"}]`, ""},
+		{"a device parameter the login sets itself", `,"params":[{"name":"client_id","value":"x"}]`, "parameter name"},
 		{"a refresh block with a bad encoding", `,"refresh":{"encoding":"xml","leadSeconds":1}`, "oauth.refresh.encoding"},
 		{"unknown mint", `,"mint":"cookie"`, "oauth.mint"},
 		{"a mint with no endpoint", `,"mint":"copilot"`, "copilotToken endpoint"},
@@ -151,12 +152,15 @@ func TestTheGitHubLoginDeclaresItsDeviceFlow(t *testing.T) {
 	}
 }
 
+// The pipeline sends every Claude-named model to the Claude address by its
+// name, as the reference does; the data names a format only for the one model
+// the reference learns to need /responses.
 func TestTheGitHubModelsChooseTheirWireFormat(t *testing.T) {
 	reg, _ := Default()
 	want := map[string]string{
-		"claude-sonnet-5": FormatClaude, "claude-opus-4.8-fast": FormatClaude, "claude-haiku-4.5": FormatClaude,
 		"gpt-5.3-codex": FormatResponses,
 		"gpt-5.4":       "", "gemini-3.7-flash": "", "kimi-k3": "", "mai-code-1.1-flash": "",
+		"claude-sonnet-5": "", "claude-opus-4.8-fast": "", "claude-haiku-4.5": "",
 	}
 	for id, format := range want {
 		m, ok := reg.Model("github", id)
@@ -165,9 +169,12 @@ func TestTheGitHubModelsChooseTheirWireFormat(t *testing.T) {
 		}
 	}
 	e, _ := reg.ByID("github")
+	if e.Transport.MessagesURL == "" || e.Transport.ResponsesURL == "" {
+		t.Errorf("the Claude and Responses addresses are data: %+v", e.Transport)
+	}
 	for _, m := range e.Models {
-		if strings.HasPrefix(m.ID, "claude-") && m.TargetFormat != FormatClaude {
-			t.Errorf("%s goes to the chat endpoint", m.ID)
+		if strings.HasPrefix(m.ID, "claude-") && m.TargetFormat != "" {
+			t.Errorf("%s names a format the pipeline already decides by its name", m.ID)
 		}
 	}
 }

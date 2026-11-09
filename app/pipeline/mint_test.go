@@ -109,6 +109,59 @@ func TestTheWireFormatAndTheAddressFollowTheModel(t *testing.T) {
 	}
 }
 
+// A Claude-named model reaches the Claude address even when the data does not
+// list it: the live catalog gets new ones first.
+func TestAClaudeNamedModelTheDataDoesNotListStillGoesToTheClaudeAddress(t *testing.T) {
+	r := newRig(t, tests.Reply{ContentType: "application/json", Body: okJSON})
+	r.p.d.Minter = &fakeMinter{tokens: []string{"C"}}
+	r.copilot("a@x.test")
+	r.run("/v1/chat/completions", `{"model":"cop/claude-opus-9","messages":[{"role":"user","content":"hi"}]}`)
+	calls := r.up.Calls()
+	if len(calls) != 1 || calls[0].Path != "/v1/messages" {
+		t.Fatalf("%d calls, path %q", len(calls), calls[0].Path)
+	}
+}
+
+func TestTheClaudeNameIsMatchedWhateverTheCase(t *testing.T) {
+	r := newRig(t, tests.Reply{ContentType: "application/json", Body: okJSON})
+	r.p.d.Minter = &fakeMinter{tokens: []string{"C"}}
+	r.copilot("a@x.test")
+	r.run("/v1/chat/completions", `{"model":"cop/Claude-Opus-9","messages":[{"role":"user","content":"hi"}]}`)
+	if calls := r.up.Calls(); len(calls) != 1 || calls[0].Path != "/v1/messages" {
+		t.Fatalf("%v", calls)
+	}
+}
+
+// Only Copilot picks its address by the model's name; a model of another
+// provider that happens to say claude stays on that provider's own address.
+func TestAClaudeNamedModelOfAnotherProviderIsNotRedirected(t *testing.T) {
+	r := newRig(t, tests.Reply{ContentType: "application/json", Body: okJSON})
+	r.accountConn("wire", "k1", "")
+	r.run("/v1/chat/completions", `{"model":"wire/claude-like","messages":[{"role":"user","content":"hi"}]}`)
+	calls := r.up.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("%d calls", len(calls))
+	}
+	// The Claude codec writes `max_tokens` and a `system` field; the OpenAI one
+	// keeps `messages` with a user role. The body tells which codec wrote it.
+	if gjson.GetBytes(calls[0].Body, "messages.0.role").String() != "user" || gjson.GetBytes(calls[0].Body, "system").Exists() {
+		t.Fatalf("body %s", calls[0].Body)
+	}
+	if gjson.GetBytes(calls[0].Body, "max_tokens").Exists() {
+		t.Fatalf("a Claude body was written for another provider: %s", calls[0].Body)
+	}
+}
+
+func TestANonClaudeUnlistedModelStaysOnTheChatAddress(t *testing.T) {
+	r := newRig(t, tests.Reply{ContentType: "application/json", Body: okJSON})
+	r.p.d.Minter = &fakeMinter{tokens: []string{"C"}}
+	r.copilot("a@x.test")
+	r.run("/v1/chat/completions", `{"model":"cop/gemini-9","messages":[{"role":"user","content":"hi"}]}`)
+	if calls := r.up.Calls(); len(calls) != 1 || calls[0].Path != "/chat/completions" {
+		t.Fatalf("%v", calls)
+	}
+}
+
 func TestARefusedMintedTokenIsReplacedOnceAndNeverSentAgain(t *testing.T) {
 	for _, status := range []int{401, 403} {
 		r := newRig(t, tests.Reply{Status: status, Body: `{"error":{"message":"expired"}}`}, tests.Reply{ContentType: "application/json", Body: okJSON})

@@ -106,6 +106,8 @@ sequenceDiagram
 | default (registry-driven) | done | 1.8, 1.10a |
 | azure | done | 1.10a |
 | codex (peek, Lite, `/compact`, reset time, images), grok-cli | done | 1.10b |
+| grok-cli login and renewal (device flow on the xAI client, profile hook) | done | 1.10d |
+| kimi, muse, nous, kilocode (logins, headers, renewal where the provider has one) | done | 1.10d |
 | github (Copilot token, chat, messages and Responses addresses) | done | 1.10c |
 | codebuddy-cn and codebuddy-intl, minimax-code and minimax-code-global | todo | 1.10f |
 | iflow, antigravity, commandcode, gemini-cli, qoder and qoder-cn, kiro, zed, cursor | todo | 1.10 |
@@ -157,7 +159,8 @@ Every provider the references ship, with executor kind, status and delivering st
 | Executor | Status | Providers |
 |---|---|---|
 | default | done (1.10a) | agnes, api-airforce, bazaarlink, byteplus, cloudflare-ai, kilo-gateway, nvidia, poolside |
-| default | todo 1.10 | nous (login hook), ollama (its own wire format) |
+| default | done (1.10d) | nous |
+| default | todo 1.10 | ollama (its own wire format) |
 | default | done | gemini, openrouter |
 | default | todo 1.11 | coqui, edge-tts, google-tts, local-device, searxng, tortoise |
 | specialized | todo 1.10 | kimchi, vertex |
@@ -166,7 +169,8 @@ Every provider the references ship, with executor kind, status and delivering st
 
 | Executor | Status | Providers |
 |---|---|---|
-| default | todo 1.10 | cline, clinepass, gitlab, glm, kilocode, kimi, muse, xai |
+| default | done (1.10d) | kilocode, kimi, muse |
+| default | todo 1.10 | cline, clinepass, gitlab, glm, xai |
 | default | partial (1.9c: a login's headers and address suffix, the computed beta list and the disguise are data and `pipeline`, no executor code) | claude |
 | specialized | done (1.10b) | codex, grok-cli |
 | specialized | done (1.10c) | github |
@@ -204,7 +208,8 @@ Auth: pasted cookie over a plain HTTP client. Browser or TLS-fingerprint clients
 - [x] 1.10a: `executor.Mux` (an unregistered name fails the call, a node uses `Default`), per-provider `transport` fields (`headers`, `urlSuffix`, `retry`, `quirks`, `reasoningInject`), `{accountId}` in the address (checked against `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`, a bad one sends nothing), a model's `upstreamId` on the wire, `azure`, and 45 data files. Param rules for cerebras, mistral, groq, cloudflare-ai and the volcengine kimi cap are in `params.json`; the MiniMax pair drop `output_config`
 - [x] 1.10b: the `codex` and `grok-cli` executors on `Default`, shared Responses shaping (`responses_body.go`: field allowlist rebuilt not edited, flat tools, `\p{` patterns stripped), the SSE peek with an idle bound, `/compact`, `Model.lite` and `levels`, the `inlineImages` quirk. Not built: the `web_search` auto-injection, the live-catalog guard (1.10h)
 - [x] 1.10c: the `github` executor on `Default`, the Copilot token mint, `responsesUrl` and `messagesUrl` beside `baseUrl` (a model's `targetFormat` now picks the address as well as the codec), the GitHub device login, the `github` param rules
-- [ ] 1.10d to 1.10k: the rest of the parity table (the small login providers; the Google family; AWS; signed and session protocols; cookie providers; live-catalog guards and probes)
+- [x] 1.10d: five data files (kimi, muse, nous, kilocode and an `oauth` block in `grok-cli.json`), all on the default executor; the Nous and Kimi thinking writers and capability rows; four client-id variables (`OAUTH_KIMI_`, `_MUSE_`, `_NOUS_`, `_XAI_CLIENT_ID`; Grok CLI uses the xAI one). Models are the reference's today
+- [ ] 1.10e to 1.10k: the rest of the parity table (the code-flow logins; codebuddy, minimax and glm; the Google family; AWS; signed and session protocols; cookie providers; live-catalog guards and probes)
 - [ ] Still missing from the base: `regions` and `defaultRegion`, `baseUrls` fallback (D102), `stallTimeoutMs`/`timeoutMs` per provider, the JSON-schema to `json_object` fallback for compatible nodes. No 1.10a provider needs them; each lands with the first provider that does
 - [ ] Live-catalog guards for kiro, codex, cursor, kimchi, qoder: account model list (5-minute cache) before dispatch; unknown model 400; a fetch failure lets the request through
 - **Done when:** every provider in the parity table has an executor; each passes its fake-upstream tests; live checks are in `TASKS.md` Open items.
@@ -230,8 +235,9 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 227 | The cache key sent to Codex and to the Grok CLI proxy is always the keyed session (a hash bound to the account), never a `prompt_cache_key` the client chose; with no session the field is removed | One client cannot pick the cache another client's conversation reads |
 | 228 | The Codex peek has an idle bound: when no byte arrives for the stall timeout it hands over what it read and the normal stream timers act. The reference waits for output or 256 KiB with no timer | A stalled upstream is not hidden behind the peek |
 | 229 | A Codex model id carries no hyphen effort suffix (`gpt-5.3-codex-high`); the level comes from the request (`reasoning`, `(high)`) and the model's `levels`. The reference removes the first match of `-high` anywhere in the name | An id is an exact registry row; no match in the middle of a name |
-| 234 | The wire format of a GitHub Copilot model is data (`targetFormat`): Claude models to `/v1/messages`, `gpt-5.3-codex` to `/responses`, the rest to `/chat/completions`. The reference starts every non-Claude model on `/chat/completions`, remembers a 400 "not accessible via the /chat/completions endpoint" for the model in a per-process set, and sends it to `/responses` afterwards; nothing here learns at run time | The routing survives a restart and does not cost a failed first request per model after every start. Which other `gpt-*` ids need `/responses` is an open item for a live account |
-| 236 | The Copilot identity headers are sent on all three endpoints and the operator's header overrides apply on all three. The reference sends the headers on all three but applies the overrides on `/chat/completions` only, and the stripping rules for Claude-named models never run there (they go to `/v1/messages`), so they are not built | One rule for every endpoint; dead rules not carried over (improvement) |
+| 244 | **Retired.** A Kimi request goes to the lane of the client's own format (`transport.lanes`): Claude at `/coding/v1/messages?beta=true` with the token raw in `x-api-key`, OpenAI at `/chat/completions` and Responses at `/responses` with a bearer token; any other client is translated to the Claude lane. As the reference does | Recorded so the number stays citable |
+| 234 | A GitHub Copilot model is sent to `/v1/messages` when its name says Claude, and to `/chat/completions` otherwise, as the reference does. The one difference left is `gpt-5.3-codex`, which is listed in the data as a Responses model: the reference reaches `/responses` by remembering a 400 answer for the model in a per-process set, and this router does not learn at run time | The choice survives a restart and costs no failed first request per model after every start (router improvement). Which other `gpt-*` ids need `/responses` is a live-account check |
+| 236 | **Retired.** The Copilot identity headers go on all three endpoints and the operator's header overrides on the chat address only, as the reference does. The stripping rules for Claude-named models are not built, since those models go to `/v1/messages` where the reference never runs them | Recorded so the number stays citable |
 | 164 | Device name fixed word `router`; model is build OS and architecture; stable device id from account's stored data, else generated | Host name identifies operator's machine to third party; upstream does not need it |
 | 166 | Only provider whose data sets `clineEnvelope`, only when `success` true, `data` an object; any other body passes unchanged | Unrelated envelope-shaped body not rewritten |
 | 175 | Data-named headers on login calls pass same filter as upstream headers; content type, accept, framing, credential headers cannot be set | Data file cannot forge framing or replace credential on a token call |
@@ -244,5 +250,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 ---
 
 ## Findings
+
+**The core follows the reference.** A new executor, a request shape, a header set or a body quirk follows 9router 0.5.112 (`AGENTS.md`, Clean-Room). The router's own rules sit on top and are never traded away for parity: no secret, token, cookie or host name in a log or a URL; the guarded dialer and no redirect on a credential call; a bounded read. A kept difference is a divergence row that says which of the two it is.
 
 `app/upstream` exists since 1.7a with a strict loader (unknown field, duplicate id or alias, unknown category, format or executor, and a file name that differs from its id all fail the load, and an error never repeats file content). `app/executor` does not exist: the interface and the remaining data files land in 1.8 and 1.10.

@@ -25,8 +25,12 @@ func (g *GitHub) Execute(ctx context.Context, req Request) (Response, error) {
 	if req.Key == "" {
 		return Response{}, ErrNoCredential
 	}
+	// The chat address takes the sanitized body and the operator's header
+	// overrides; the other two take neither, as the reference does.
 	if path, _, _ := strings.Cut(req.URL, "?"); strings.HasSuffix(path, chatPath) {
 		req.Body = fitCopilot(req.Body)
+	} else {
+		req.Overrides = nil
 	}
 	if req.Auth != nil {
 		a := *req.Auth

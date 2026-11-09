@@ -32,6 +32,10 @@ type Session struct {
 	DeviceCode string
 	Interval   time.Duration
 	Life       time.Duration
+	// DeviceID is the id made for the account when the login started. It goes
+	// on the provider's calls and is stored with the account; the browser never
+	// sees it.
+	DeviceID string
 }
 
 type phase int

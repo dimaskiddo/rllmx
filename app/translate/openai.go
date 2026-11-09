@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/tidwall/gjson"
+
+	"rllmx/app/upstream"
 )
 
 // OpenAICodec joins OpenAI Chat Completions to the hub.
@@ -228,14 +230,102 @@ func (OpenAICodec) WriteRequest(r *Request, c *Ctx) ([]byte, error) {
 		o["response_format"] = p.ResponseFormat
 	}
 	if r.Thinking.Set() {
-		switch r.Thinking.Mode {
-		case "none":
-			o["reasoning_effort"] = "none"
-		case "level":
-			o["reasoning_effort"] = r.Thinking.Level
-		}
+		writeOpenAIThinking(o, r.Thinking, c)
 	}
 	return json.Marshal(withExtra(o, r.Extra))
+}
+
+// writeOpenAIThinking writes a thinking request in the form the upstream reads.
+// Most OpenAI-format upstreams take reasoning_effort. Nous takes a reasoning
+// object with an on switch, and sends nothing to turn thinking off. Kimi's
+// highest level is max, and a model that cannot switch off never gets "none".
+func writeOpenAIThinking(o obj, th Thinking, c *Ctx) {
+	var caps upstream.Capability
+	if c != nil {
+		caps = c.Caps
+	}
+	none := th.Mode == "none"
+	// A model that cannot switch thinking off is asked for the least instead.
+	if none && !caps.ThinkingCanOff {
+		th, none = Thinking{Mode: "level", Level: "minimal"}, false
+	}
+	level := th.Level
+	switch th.Mode {
+	case "budget":
+		level = budgetLevel(th.Budget)
+		if level == "" {
+			level = "medium"
+		}
+	case "auto":
+		level = "auto"
+	case "none":
+		level = ""
+	}
+	switch caps.ThinkingFormat {
+	case "nous":
+		// Disabled is the field left out; enabled is a nested object.
+		if none {
+			return
+		}
+		if level == "auto" {
+			level = "medium"
+		}
+		out := obj{"enabled": true}
+		if level != "" {
+			out["effort"] = level
+		}
+		o["reasoning"] = out
+		return
+	case "kimi":
+		if none {
+			o["thinking"] = obj{"type": "disabled"}
+			return
+		}
+		if effort := kimiLevel(level); effort != "" {
+			o["reasoning_effort"] = effort
+		}
+		return
+	}
+	switch th.Mode {
+	case "none":
+		o["reasoning_effort"] = "none"
+	case "level":
+		o["reasoning_effort"] = th.Level
+	}
+}
+
+// kimiLevel maps a level to one Kimi reads, or "" for one it does not.
+func kimiLevel(l string) string {
+	switch l {
+	case "auto":
+		return "high"
+	case "minimal":
+		return "low"
+	case "xhigh", "ultra":
+		return "max"
+	case "low", "medium", "high", "max":
+		return l
+	}
+	return ""
+}
+
+// budgetLevel is the level a token budget stands for, or "" for none.
+func budgetLevel(b int) string {
+	switch {
+	case b <= 0:
+		return ""
+	case b <= 768:
+		return "minimal"
+	case b <= 4096:
+		return "low"
+	case b <= 16384:
+		return "medium"
+	case b <= 28672:
+		return "high"
+	case b <= 80384:
+		return "xhigh"
+	}
+	return "max"
 }
 
 func writeOpenAIMessage(m Message, keepCache bool) (obj, bool) {

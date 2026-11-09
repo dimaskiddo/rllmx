@@ -25,6 +25,7 @@ Load once per session, in order: `caveman`, `ponytail`, `humanizer`, `code-human
 - Re-author data tables (providers, prices, capabilities, models) by hand from the reference. Never convert with a script.
 - Docs may name 9router. Code, comments, identifiers, tests and fixtures never do, except the on-disk compatibility surface (database identifiers, `modelLock_` keys, API key format).
 - **Reference first:** read how the references do a mechanism before asking. Ask only when they are silent, ambiguous or conflict with a rule here.
+- **Core follows 9router 0.5.112.** Cloaking, translation and execution (translation shapes, the Claude disguise and its headers, request shape, parameter rules, lane choice) copy the reference. Do not ask. Router improvements stay: cache, account selection, locks, backoff, 503 and capacity handling, and the Security rules. A kept difference keeps its divergence row.
 - Never copy a reference bug. Fix it and record the divergence in the PRD's `Divergences` section, indexed in `docs/DIVERGENCES.md`.
 - Every parity row names the reference version and a status (`todo`, `partial`, `done`, `diverged`, `deferred`, `out`). A feature is `done` only when its tests pass and its row is updated in the same change. Reference updates: Parity Sync playbook, `docs/WORKFLOWS.md`.
 
@@ -104,7 +105,7 @@ Full wording and reasons for the Go rules: `docs/ARCHITECTURE.md`, Go Convention
 
 ### Naming & Layout
 - Flat `app/`: every product package is a direct child (only Goravel's `app/http/*`, `app/console/commands`, `app/providers`, `app/facades` nest). Package: one lower-case noun, no `util`/`common`/`helpers`, never a Goravel name reused (`app/providers` is Goravel's; upstream LLM code is `app/upstream`).
-- Files `snake_case.go` for the type or topic; a provider file is `<provider_id>.go`. Exported names `StudlyCase`, not repeating the package (`auth.Login`); `…Controller`, `…ServiceProvider`; Artisan signature `group:action`.
+- Files `snake_case.go` for the type or topic, one word per segment: `call_headers.go`, `device_login_test.go`, never `callheaders.go`. A single English word needs no underscore (`pipeline.go`). A provider file is `<provider_id>.go`. Exported names `StudlyCase`, not repeating the package (`auth.Login`); `…Controller`, `…ServiceProvider`; Artisan signature `group:action`.
 - `pkg/` only if it imports no `app/` package, takes no product types, and has an outside consumer; there: documented exports, safe zero values, sentinel errors, golden tests, a fuzz target per parser. A format owner documents the format beside the code; a change is breaking.
 - Renaming a package or file updates the docs in the same change. Audits cover `app/`, `bootstrap/`, `config/`, `routes/`, `pkg/` and `web/`.
 

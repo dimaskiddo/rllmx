@@ -82,6 +82,10 @@ type Transport struct {
 	Headers map[string]string `json:"headers,omitempty"`
 	// URLSuffix is a query string added to the address.
 	URLSuffix string `json:"urlSuffix,omitempty"`
+	// Lanes are the provider's other endpoints, one per wire format. A request
+	// whose client format has a lane goes to it with no translation; any other
+	// request goes to the provider's own address.
+	Lanes map[string]Lane `json:"lanes,omitempty"`
 	// Retry replaces the built-in in-place retry rule of the listed statuses.
 	Retry map[int]Retry `json:"retry,omitempty"`
 	// Quirks are the few body edits a provider needs.
@@ -90,6 +94,16 @@ type Transport struct {
 	// turn without reasoning text gets a placeholder, for upstreams that refuse
 	// a thinking conversation without it.
 	ReasoningInject string `json:"reasoningInject,omitempty"`
+}
+
+// Lane is one endpoint of a provider that serves several wire formats: its
+// address, the query string and static headers that go with it, and how the
+// credential is presented there.
+type Lane struct {
+	BaseURL   string            `json:"baseUrl"`
+	URLSuffix string            `json:"urlSuffix,omitempty"`
+	Headers   map[string]string `json:"headers,omitempty"`
+	Auth      *Auth             `json:"auth,omitempty"`
 }
 
 // Retry is an in-place retry rule: Attempts more tries, each after DelayMs.

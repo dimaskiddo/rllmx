@@ -40,6 +40,9 @@ func (t *Transport) validate(executor, authHeader string) error {
 		strings.ContainsFunc(t.URLSuffix, func(r rune) bool { return r <= ' ' || r == '#' || r == 0x7f })) {
 		return errors.New("transport.urlSuffix must be a short query string")
 	}
+	if err := t.validateLanes(); err != nil {
+		return err
+	}
 	if len(t.Retry) > maxRetryRules {
 		return errors.New("transport.retry has too many entries")
 	}
@@ -52,6 +55,51 @@ func (t *Transport) validate(executor, authHeader string) error {
 	case "", ReasoningAll, ReasoningToolCalls:
 	default:
 		return errors.New("transport.reasoningInject is unknown")
+	}
+	return nil
+}
+
+// maxLanes bounds the endpoints one provider may name: one per wire format.
+const maxLanes = 4
+
+// validateLanes holds each lane to the rules of the provider's own address: a
+// known format, an address on the same host, plain headers, a known scheme.
+func (t *Transport) validateLanes() error {
+	if len(t.Lanes) > maxLanes {
+		return errors.New("transport.lanes has too many entries")
+	}
+	base, err := url.Parse(strings.ReplaceAll(t.BaseURL, AccountIDToken, "x"))
+	if err != nil {
+		return errors.New("transport.baseUrl is not a plain http or https address")
+	}
+	for format, l := range t.Lanes {
+		if !formats[format] {
+			return errors.New("a transport lane has an unknown format")
+		}
+		u, err := url.Parse(l.BaseURL)
+		if err != nil || u.Scheme != base.Scheme || !strings.EqualFold(u.Host, base.Host) || u.User != nil || u.Fragment != "" || u.RawQuery != "" {
+			return errors.New("a transport lane must be a plain address on the base address's host")
+		}
+		if l.URLSuffix != "" && (!strings.HasPrefix(l.URLSuffix, "?") || len(l.URLSuffix) > 64 ||
+			strings.ContainsFunc(l.URLSuffix, func(r rune) bool { return r <= ' ' || r == '#' || r == 0x7f })) {
+			return errors.New("a transport lane urlSuffix must be a short query string")
+		}
+		authHeader := ""
+		if l.Auth != nil {
+			authHeader = l.Auth.Header
+			if err := l.Auth.validate(l.BaseURL); err != nil {
+				return err
+			}
+		}
+		if len(l.Headers) > maxAuthHeaders {
+			return errors.New("a transport lane has too many headers")
+		}
+		for name, value := range l.Headers {
+			if !HeaderName(name) || ReservedHeader(name) || (authHeader != "" && strings.EqualFold(name, authHeader)) ||
+				len(value) > maxHeaderBytes || strings.IndexFunc(value, unicode.IsControl) >= 0 {
+				return errors.New("a transport lane has an invalid header")
+			}
+		}
 	}
 	return nil
 }

@@ -317,13 +317,13 @@ func TestOnlyADeviceProviderStartsADeviceLogin(t *testing.T) {
 
 func TestADeviceAnswerIsCheckedBeforeItIsShown(t *testing.T) {
 	good := `{"device_code":"d","user_code":"U","verification_uri":"https://h.example/x","expires_in":60,"interval":3}`
-	if g, err := parseGrant([]byte(good)); err != nil || g.Interval != 3*time.Second || g.ExpiresIn != time.Minute {
+	if g, err := parseGrant([]byte(good), ""); err != nil || g.Interval != 3*time.Second || g.ExpiresIn != time.Minute {
 		t.Fatalf("%+v %v", g, err)
 	}
-	if g, _ := parseGrant([]byte(`{"device_code":"d","verification_uri":"https://h.example/x","verification_uri_complete":"https://h.example/x?c=1"}`)); g.VerificationURI != "https://h.example/x?c=1" || g.Interval != defaultInterval || g.ExpiresIn != defaultLife {
+	if g, _ := parseGrant([]byte(`{"device_code":"d","verification_uri":"https://h.example/x","verification_uri_complete":"https://h.example/x?c=1"}`), ""); g.VerificationURI != "https://h.example/x?c=1" || g.Interval != defaultInterval || g.ExpiresIn != defaultLife {
 		t.Fatalf("complete address and defaults: %+v", g)
 	}
-	if g, _ := parseGrant([]byte(`{"device_code":"d","verification_uri":"https://h.example/x","interval":9999,"expires_in":99999}`)); g.Interval != time.Minute || g.ExpiresIn != maxLife {
+	if g, _ := parseGrant([]byte(`{"device_code":"d","verification_uri":"https://h.example/x","interval":9999,"expires_in":99999}`), ""); g.Interval != time.Minute || g.ExpiresIn != maxLife {
 		t.Fatalf("limits: %+v", g)
 	}
 	for name, raw := range map[string]string{
@@ -336,7 +336,7 @@ func TestADeviceAnswerIsCheckedBeforeItIsShown(t *testing.T) {
 		"control in code":  `{"device_code":"d\u0000","verification_uri":"https://h.example/x"}`,
 		"long user code":   `{"device_code":"d","user_code":"` + strings.Repeat("A", 65) + `","verification_uri":"https://h.example/x"}`,
 	} {
-		if _, err := parseGrant([]byte(raw)); ClassOf(err) != ClassMalformed {
+		if _, err := parseGrant([]byte(raw), ""); ClassOf(err) != ClassMalformed {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
@@ -347,7 +347,7 @@ func FuzzParseGrant(f *testing.F) {
 		f.Add([]byte(s))
 	}
 	f.Fuzz(func(t *testing.T, raw []byte) {
-		g, err := parseGrant(raw)
+		g, err := parseGrant(raw, "")
 		if err != nil {
 			return
 		}

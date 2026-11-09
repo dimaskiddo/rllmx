@@ -1,0 +1,35 @@
+{
+  "id": "muse",
+  "alias": "muse",
+  "aliases": ["muse-ai", "muse-code", "meta-model-api", "muse-subscription"],
+  "category": "oauth",
+  "display": { "name": "Muse (Meta Model API)" },
+  "transport": {
+    "baseUrl": "https://api.meta.ai/v1/chat/completions",
+    "responsesUrl": "https://api.meta.ai/v1/responses",
+    "format": "openai"
+  },
+  "oauth": {
+    "flow": "device",
+    "deviceUrl": "https://auth.meta.com/oidc/device/authorization/",
+    "tokenUrl": "https://auth.meta.com/oidc/device/token/",
+    "scope": "muse",
+    "hook": "muse",
+    "endpoints": {
+      "key": "https://api.meta.ai/muse-code/key"
+    },
+    "callHeaders": {
+      "x-api-version": "1.0.0"
+    },
+    "headers": {
+      "x-api-version": "1.0.0"
+    }
+  },
+  "models": [
+    { "id": "muse-spark-1.3", "name": "Muse Spark 1.3", "targetFormat": "openai-responses" },
+    { "id": "muse-spark-1.2", "name": "Muse Spark 1.2", "targetFormat": "openai-responses" },
+    { "id": "muse-spark-1.1", "name": "Muse Spark 1.1", "targetFormat": "openai-responses" },
+    { "id": "muse-spark-1.3-contributor", "name": "Muse Spark 1.3 Contributor", "targetFormat": "openai-responses" },
+    { "id": "muse-spark-1.2-contributor", "name": "Muse Spark 1.2 Contributor", "targetFormat": "openai-responses" }
+  ]
+}

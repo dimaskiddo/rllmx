@@ -175,7 +175,7 @@ Environment variables or `.env` through `config/`; the process environment wins.
 | `DB_DATABASE_ANALYTICS` / `ANALYTICS_RETENTION_DAYS` | empty / `90` | Usage-row destination (empty: beside the main database); per-request row retention |
 | `REDIS_HOST` / `REDIS_PORT` | empty / `6379` | In-process memory store default; `REDIS_HOST` also uses Redis or Valkey for shared cache groups |
 | `LOG_CHANNEL`, `LOG_LEVEL` | `single`, `info` | Goravel log channel (`single`, `daily`, `stack`), level; file `storage/logs/rllmx.log` |
-| `OAUTH_<PROVIDER>_CLIENT_ID` / `_CLIENT_SECRET` | empty in code; values in `.env.example` | OAuth app credentials per provider. Empty: that login off |
+| `OAUTH_CLIENT_ID_<PROVIDER>` / `OAUTH_CLIENT_SECRET_<PROVIDER>` | empty in code; values in `.env.example` | OAuth app credentials per provider. Empty: that login off |
 | `UPSTREAM_ALLOW_PRIVATE` | empty | Hosts, addresses, CIDRs reachable on a private network or this machine (`localhost` node, LAN host, private IdP). Link-local and cloud metadata always refused. Only this variable widens the list, never a dashboard session |
 | `UPSTREAM_CONNECT_TIMEOUT` | `60s` | Upstream response-header deadline |
 

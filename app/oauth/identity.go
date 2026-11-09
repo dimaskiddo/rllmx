@@ -3,15 +3,28 @@ package oauth
 import (
 	"encoding/base64"
 	"strings"
+	"time"
 
 	"github.com/tidwall/gjson"
 )
 
-// Account is who a login belongs to, read from the tokens.
+// Account is who a login belongs to, read from the tokens, and what a hook
+// changes about the credential that is stored.
 type Account struct {
 	Email string
 	// PSD is a providerSpecificData object as JSON, or "".
 	PSD string
+	// Access replaces the access token that is stored, for a login whose real
+	// credential is minted from the token the provider handed out.
+	Access string
+	// APIKey is stored as the key a request carries; it wins over the access
+	// token.
+	APIKey string
+	// NoRefresh drops the refresh token and the expiry, for a credential that
+	// cannot be renewed.
+	NoRefresh bool
+	// ExpiresAt, when it falls before the token's own expiry, is stored instead.
+	ExpiresAt time.Time
 }
 
 const maxJWT = 16 << 10

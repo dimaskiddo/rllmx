@@ -259,22 +259,25 @@ func renameHistory(body []byte) []byte {
 	return next
 }
 
-// Uncloak gives a tool name back to the client. The map decides; while the
-// attempt was cloaked a trailing suffix is dropped when the map misses it, and a
-// decoy name is left alone because none ends in the suffix, so the client sees
-// "unavailable" rather than a silent no-op. An attempt that was not cloaked
-// never changes a name.
+// Uncloak gives a tool name back to the client. The map decides; a trailing
+// suffix is dropped when the map misses it, so a name from an answer is
+// restored even when the attempt was not cloaked and only the answer carries it
+// (the reference's rule). A decoy the map lost is left alone, so the client
+// sees "unavailable" rather than a silent call of a real tool.
 func Uncloak(name string, names map[string]string, cloaked bool) string {
-	if !cloaked {
-		return name
-	}
 	if orig, ok := names[name]; ok {
 		return orig
 	}
-	if !strings.HasSuffix(name, toolSuffix) || len(name) == len(toolSuffix) {
+	if decoySet[name] {
 		return name
 	}
-	return strings.TrimSuffix(name, toolSuffix)
+	// The map is the only way a decoy name reaches the client renamed: a name
+	// that strips back to a decoy is that decoy, not a client tool.
+	base, ok := strings.CutSuffix(name, toolSuffix)
+	if !ok || base == "" || decoySet[base] {
+		return name
+	}
+	return base
 }
 
 func quote(s string) string { return document.Encode(s) }

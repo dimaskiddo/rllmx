@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"rllmx/app/dialect"
 	"rllmx/app/upstream"
 )
 
@@ -41,12 +42,17 @@ func (s *Service) StartDevice(ctx context.Context, provider, bind string) (Devic
 	if f.Flow != upstream.FlowDevice {
 		return DeviceStarted{}, ErrUnsupported
 	}
-	grant, err := s.Tokens.Device(ctx, f)
+	var deviceID string
+	if f.UsesDeviceID() {
+		deviceID = dialect.NewID()
+	}
+	grant, err := s.Tokens.Device(ctx, f, deviceID)
 	if err != nil {
 		return DeviceStarted{}, err
 	}
 	state, err := s.Sessions.Put(Session{
 		Provider: f.Provider, Bind: bind, DeviceCode: grant.DeviceCode, Interval: grant.Interval, Life: grant.ExpiresIn,
+		DeviceID: deviceID,
 	})
 	if err != nil {
 		return DeviceStarted{}, err
@@ -73,7 +79,7 @@ func (s *Service) PollDevice(ctx context.Context, state, bind string) DevicePoll
 	if err != nil {
 		return s.endDevice(state, CodeInput)
 	}
-	tokens, pending, err := s.Tokens.DevicePoll(ctx, f, sess.DeviceCode)
+	tokens, pending, err := s.Tokens.DevicePoll(ctx, f, sess.DeviceCode, sess.DeviceID)
 	switch {
 	case err != nil:
 		return s.endDevice(state, deviceCode(err))
@@ -84,8 +90,11 @@ func (s *Service) PollDevice(ctx context.Context, state, bind string) DevicePoll
 		s.Sessions.Rest(state, sess.Interval)
 		return DevicePolled{Status: "pending", Interval: int(sess.Interval / time.Second)}
 	}
-	id, err := s.store(ctx, f, tokens)
+	id, err := s.store(ctx, f, tokens, sess.DeviceID)
 	if err != nil {
+		if code := ClassOf(err); code != "" {
+			return s.endDevice(state, deviceCode(err))
+		}
 		if s.Log != nil {
 			s.Log.Warningf("oauth: storing a login failed")
 		}

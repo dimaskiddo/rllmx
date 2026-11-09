@@ -178,6 +178,19 @@ func TestAClientToolAlreadyNamedLikeADecoyOrWithTheSuffixRoundTrips(t *testing.T
 	}
 }
 
+// A decoy name the map lost must reach the client as it is: stripping the
+// suffix would turn "unavailable" into a silent call of a real tool.
+func TestAMappedDecoyNameIsLeftAloneWithoutTheMap(t *testing.T) {
+	if got := Uncloak("Read_ide", map[string]string{}, true); got != "Read_ide" {
+		t.Fatalf("a lost decoy became %q", got)
+	}
+	// A tool the client really named like a decoy is renamed like any other, and
+	// the map brings it back (TestUncloak covers the direction).
+	if got := Uncloak("Read_ide", map[string]string{"Read_ide": "Read"}, true); got != "Read" {
+		t.Fatalf("a client tool the map renamed became %q", got)
+	}
+}
+
 func TestUncloak(t *testing.T) {
 	names := map[string]string{"read_file_ide": "read_file"}
 	cases := []struct {
@@ -189,11 +202,13 @@ func TestUncloak(t *testing.T) {
 		{"by the map", "read_file_ide", true, "read_file"},
 		{"by the suffix when the map lost it", "other_ide", true, "other"},
 		{"a decoy is never touched", "Task", true, "Task"},
-		{"a decoy name plus the suffix is a renamed client tool", "Task_ide", true, "Task"},
+		{"an unmapped name that strips back to a decoy is left alone", "Task_ide", true, "Task_ide"},
 		{"no suffix", "plain", true, "plain"},
 		{"only the suffix", "_ide", true, "_ide"},
-		{"an uncloaked attempt never changes a name", "x_ide", false, "x_ide"},
-		{"even a name in the map", "read_file_ide", false, "read_file_ide"},
+		{"the suffix is dropped even when the attempt was not cloaked", "x_ide", false, "x"},
+		{"the suffix is dropped without the map too", "read_file_ide", false, "read_file"},
+		{"a decoy is left alone", "Task", false, "Task"},
+		{"a decoy is left alone even with the suffix", "Bash_ide", false, "Bash_ide"},
 	}
 	for _, tc := range cases {
 		if got := Uncloak(tc.in, names, tc.cloaked); got != tc.want {
@@ -286,10 +301,13 @@ func FuzzUncloak(f *testing.F) {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, name string) {
-		if Uncloak(name, nil, false) != name {
-			t.Fatalf("an uncloaked attempt changed %q", name)
+		// The reference drops the suffix whatever the attempt: only a decoy and a
+		// name that is the suffix alone stay.
+		got := Uncloak(name, nil, false)
+		if got != name && !(!decoySet[name] && strings.HasSuffix(name, toolSuffix) && len(name) > len(toolSuffix)) {
+			t.Fatalf("%q became %q", name, got)
 		}
-		got := Uncloak(name, nil, true)
+		got = Uncloak(name, nil, true)
 		if decoySet[name] && got != name {
 			t.Fatalf("decoy %q changed to %q", name, got)
 		}

@@ -132,8 +132,8 @@ func TestCheckEnvFile(t *testing.T) {
 		{"encryption secret is known now", "DB_ENCRYPTION_SECRET=x\nANALYTICS_RETENTION_DAYS=30\n", ""},
 		{"stream names are known now", "STREAM_STALL_TIMEOUT=30s\nSTREAM_USAGE_WAIT=1s\n", ""},
 		{"planned name", "STREAM_EMPTY_PEEK_DEADLINE=30s\n", "STREAM_EMPTY_PEEK_DEADLINE"},
-		{"oauth names are known now", "OAUTH_CLAUDE_CLIENT_ID=x\nOAUTH_CALLBACK_HOST=0.0.0.0\n", ""},
-		{"planned oauth name", "OAUTH_GITLAB_CLIENT_ID=x\n", "OAUTH_GITLAB_CLIENT_ID"},
+		{"oauth names are known now", "OAUTH_CLIENT_ID_CLAUDE=x\nOAUTH_CALLBACK_HOST=0.0.0.0\n", ""},
+		{"planned oauth name", "OAUTH_CLIENT_ID_GITLAB=x\n", "OAUTH_CLIENT_ID_GITLAB"},
 		{"names of other programs", "PATH=/usr/bin\nHOME=/home/x\nTEST_REDIS_URL=redis://127.0.0.1\nSERVERX=1\n", ""},
 	}
 	for _, tt := range cases {

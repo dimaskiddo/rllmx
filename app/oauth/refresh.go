@@ -5,9 +5,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"maps"
 	"time"
 
 	"github.com/goravel/framework/contracts/log"
+	"github.com/tidwall/gjson"
 
 	"rllmx/app/cache"
 	"rllmx/app/dialect"
@@ -209,7 +211,9 @@ func (r *Refresher) Refresh(ctx context.Context, id, rejected string) (repositor
 // exchange spends the refresh token once and stores the answer. It runs inside
 // the cache's single flight.
 func (r *Refresher) exchange(ctx context.Context, st Store, f Flow, conn repository.Connection, rt string) ([]byte, error) {
-	t, err := r.Tokens.Refresh(ctx, f, rt)
+	psd, _ := conn.Doc().GetRaw("providerSpecificData")
+	headers := callHeaders(f, gjson.Get(psd, deviceIDKey).String())
+	t, err := r.Tokens.Refresh(ctx, f, rt, headers)
 	if err != nil {
 		if ClassOf(err) != ClassInvalidGrant {
 			return nil, err
@@ -229,9 +233,24 @@ func (r *Refresher) exchange(ctx context.Context, st Store, f Flow, conn reposit
 	if t.ID != "" {
 		fields["idToken"] = quote(t.ID)
 	}
+	var expires time.Time
 	if t.ExpiresIn > 0 {
 		fields["expiresIn"] = jsonInt(t.ExpiresIn)
-		fields["expiresAt"] = quote(dialect.FormatTimestamp(now.Add(time.Duration(t.ExpiresIn) * time.Second)))
+		expires = now.Add(time.Duration(t.ExpiresIn) * time.Second)
+	}
+	if h := refreshHooks[f.Refresh.Hook]; h != nil {
+		// A failed step keeps the key the account already has.
+		if upd, herr := h(ctx, r.Tokens, f, t, headers); herr == nil {
+			maps.Copy(fields, upd.Fields)
+			if !upd.ExpiresAt.IsZero() && (expires.IsZero() || upd.ExpiresAt.Before(expires)) {
+				expires = upd.ExpiresAt
+			}
+		} else {
+			r.warn("oauth: a %s renewal step failed: %s", conn.Provider, string(ClassOf(herr)))
+		}
+	}
+	if !expires.IsZero() {
+		fields["expiresAt"] = quote(dialect.FormatTimestamp(expires))
 	}
 	if _, _, err := st.SwapCredentials(ctx, conn.ID, rt, fields); err != nil {
 		return nil, ErrStorage

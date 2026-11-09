@@ -32,6 +32,28 @@
       }
     }
   },
+  "oauth": {
+    "flow": "device",
+    "deviceUrl": "https://auth.x.ai/oauth2/device/code",
+    "tokenUrl": "https://auth.x.ai/oauth2/token",
+    "scope": "openid profile email offline_access grok-cli:access api:access conversations:read conversations:write",
+    "params": [
+      { "name": "referrer", "value": "grok-build" }
+    ],
+    "hook": "grokCli",
+    "endpoints": {
+      "user": "https://cli-chat-proxy.grok.com/v1/user"
+    },
+    "callHeaders": {
+      "User-Agent": "grok-pager/1.0.44 grok-shell/1.0.44 (linux; x86_64)",
+      "x-xai-token-auth": "xai-grok-cli",
+      "x-grok-client-version": "1.0.44"
+    },
+    "refresh": {
+      "encoding": "form",
+      "leadSeconds": 300
+    }
+  },
   "models": [
     {
       "id": "grok-build",

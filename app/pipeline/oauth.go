@@ -129,11 +129,28 @@ func (c *call) prepare(conn repository.Connection) sent {
 	if v := accountHeader(conn, o.Account); v != "" {
 		headers[o.Account.Name] = v
 	}
-	out.auth = &upstream.Auth{Scheme: upstream.SchemeBearer, Header: "Authorization", Headers: headers}
+	out.auth = c.loginAuth(headers)
 	if o.URLSuffix != "" && !strings.Contains(out.url, "?") {
 		out.url += o.URLSuffix
 	}
 	return out
+}
+
+// loginAuth presents a login's token. On a lane it is the lane's own scheme; on
+// the provider's default address it is the scheme the provider's data states,
+// and with none stated a bearer token, which is what the Claude and Codex logins
+// send.
+func (c *call) loginAuth(headers map[string]string) *upstream.Auth {
+	scheme := &upstream.Auth{Scheme: upstream.SchemeBearer, Header: "Authorization"}
+	switch {
+	case c.dest.lane != nil:
+		if c.dest.lane.Auth != nil {
+			scheme = c.dest.lane.Auth
+		}
+	case c.dest.entry.Auth != nil:
+		scheme = c.dest.entry.Auth
+	}
+	return &upstream.Auth{Scheme: scheme.Scheme, Header: scheme.Header, Headers: headers}
 }
 
 // claudeOAuthPrefix begins every access token of a Claude login.

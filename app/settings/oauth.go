@@ -18,10 +18,18 @@ const (
 
 // oauthClients maps a provider id to the config key holding its client id.
 var oauthClients = map[string]struct{ key, env string }{
-	"claude": {"oauth.claude_client_id", "OAUTH_CLAUDE_CLIENT_ID"},
-	"codex":  {"oauth.codex_client_id", "OAUTH_CODEX_CLIENT_ID"},
-	"github": {"oauth.github_client_id", "OAUTH_GITHUB_CLIENT_ID"},
+	"claude": {"oauth.claude_client_id", "OAUTH_CLIENT_ID_CLAUDE"},
+	"codex":  {"oauth.codex_client_id", "OAUTH_CLIENT_ID_CODEX"},
+	"github": {"oauth.github_client_id", "OAUTH_CLIENT_ID_GITHUB"},
+	"kimi":   {"oauth.kimi_client_id", "OAUTH_CLIENT_ID_KIMI"},
+	"muse":   {"oauth.muse_client_id", "OAUTH_CLIENT_ID_MUSE"},
+	"nous":   {"oauth.nous_client_id", "OAUTH_CLIENT_ID_NOUS"},
+	"xai":    {"oauth.xai_client_id", "OAUTH_CLIENT_ID_XAI"},
 }
+
+// sharedClients lists the providers that log in with another provider's client
+// id: Grok CLI is the xAI client.
+var sharedClients = map[string]string{"grok-cli": "xai"}
 
 // OAuth is the validated view of the OAUTH_* settings.
 type OAuth struct {
@@ -65,6 +73,9 @@ func LoadOAuth(cfg config.Config) (*OAuth, error) {
 func (o *OAuth) ClientID(provider string) string {
 	if o == nil {
 		return ""
+	}
+	if owner, shared := sharedClients[provider]; shared {
+		provider = owner
 	}
 	return o.clients[provider]
 }

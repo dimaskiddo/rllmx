@@ -6,7 +6,9 @@
     "claude-budget": ["none", "low", "medium", "high", "xhigh", "max"],
     "gemini-level": ["minimal", "low", "medium", "high"],
     "gemini-budget": ["none", "low", "medium", "high"],
-    "deepseek": ["none", "high", "max"]
+    "deepseek": ["none", "high", "max"],
+    "kimi": ["none", "low", "medium", "high", "max"],
+    "nous": ["none", "low", "medium", "high"]
   },
   "rules": [
     { "pattern": "*gemini-4*", "levels": ["low", "medium", "high"] },

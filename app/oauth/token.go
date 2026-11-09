@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -59,12 +60,34 @@ type Tokens struct {
 	ID        string
 	Scope     string
 	ExpiresIn int64
+	// Email is what a poll that carries the account's address hands over; the
+	// RFC 8628 answer has none.
+	Email string
 }
 
 // TokenClient calls token endpoints. It follows no redirect, because a moved
 // endpoint would carry the code or refresh token elsewhere, and it reads at
 // most one mebibyte.
-type TokenClient struct{ HTTP *http.Client }
+type TokenClient struct {
+	HTTP *http.Client
+	// Sleep pauses between the tries of a hook; nil waits on a real timer.
+	Sleep func(ctx context.Context, d time.Duration) error
+}
+
+// wait pauses for d, or until ctx ends.
+func (c *TokenClient) wait(ctx context.Context, d time.Duration) error {
+	if c.Sleep != nil {
+		return c.Sleep(ctx, d)
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
 
 // NewTokenClient builds the client on the guarded dialer. allow is the
 // operator's list of private addresses.
@@ -81,11 +104,11 @@ func (c *TokenClient) Exchange(ctx context.Context, f Flow, code, redirect, veri
 	if f.EchoState {
 		fields["state"] = state
 	}
-	return c.call(ctx, f.TokenURL, f.Exchange, fields)
+	return c.call(ctx, f.TokenURL, f.Exchange, fields, nil)
 }
 
-func (c *TokenClient) call(ctx context.Context, tokenURL, encoding string, fields map[string]string) (Tokens, error) {
-	status, raw, err := c.post(ctx, tokenURL, encoding, fields)
+func (c *TokenClient) call(ctx context.Context, tokenURL, encoding string, fields, headers map[string]string) (Tokens, error) {
+	status, raw, err := c.post(ctx, tokenURL, encoding, fields, headers)
 	if err != nil {
 		return Tokens{}, err
 	}
@@ -97,7 +120,7 @@ func (c *TokenClient) call(ctx context.Context, tokenURL, encoding string, field
 
 // post sends one form or JSON body and returns the status and the bounded
 // answer. Every failure is already a class.
-func (c *TokenClient) post(ctx context.Context, target, encoding string, fields map[string]string) (int, []byte, error) {
+func (c *TokenClient) post(ctx context.Context, target, encoding string, fields, headers map[string]string) (int, []byte, error) {
 	var body []byte
 	var contentType string
 	if encoding == upstream.EncodingJSON {
@@ -110,14 +133,35 @@ func (c *TokenClient) post(ctx context.Context, target, encoding string, fields 
 		}
 		body, contentType = []byte(form.Encode()), "application/x-www-form-urlencoded"
 	}
+	return c.do(ctx, http.MethodPost, target, contentType, body, headers)
+}
+
+// get makes one bounded GET with the given headers and returns the status and
+// the answer. A failure is already a class.
+func (c *TokenClient) get(ctx context.Context, target string, headers map[string]string) (int, []byte, error) {
+	return c.do(ctx, http.MethodGet, target, "", nil, headers)
+}
+
+// do sends one request. A header the caller names is set after the defaults, so
+// it can replace Accept but never the content type of a body it did not build.
+func (c *TokenClient) do(ctx context.Context, method, target, contentType string, body []byte, headers map[string]string) (int, []byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, tokenTimeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(body))
+	var rd io.Reader
+	if body != nil {
+		rd = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, target, rd)
 	if err != nil {
 		return 0, nil, &Error{ClassTransport}
 	}
-	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("Accept", "application/json")
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return 0, nil, &Error{ClassTransport}
@@ -133,32 +177,9 @@ func (c *TokenClient) post(ctx context.Context, target, encoding string, fields 
 	return resp.StatusCode, raw, nil
 }
 
-// get makes one bounded GET with the given headers and returns the status and
-// the answer. A failure is already a class.
-func (c *TokenClient) get(ctx context.Context, target string, headers map[string]string) (int, []byte, error) {
-	ctx, cancel := context.WithTimeout(ctx, tokenTimeout)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
-	if err != nil {
-		return 0, nil, &Error{ClassTransport}
-	}
-	req.Header.Set("Accept", "application/json")
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
-	resp, err := c.HTTP.Do(req)
-	if err != nil {
-		return 0, nil, &Error{ClassTransport}
-	}
-	defer resp.Body.Close()
-	raw, err := file.ReadCapped(resp.Body, maxTokenBody)
-	if errors.Is(err, file.ErrTooLarge) {
-		return 0, nil, &Error{ClassMalformed}
-	}
-	if err != nil {
-		return 0, nil, &Error{ClassTransport}
-	}
-	return resp.StatusCode, raw, nil
+// postJSON sends a JSON body that holds more than strings, for a hook's call.
+func (c *TokenClient) postJSON(ctx context.Context, target, body string, headers map[string]string) (int, []byte, error) {
+	return c.do(ctx, http.MethodPost, target, "application/json", []byte(body), headers)
 }
 
 // classify reduces an error body to a class by the codes both providers use.
@@ -191,10 +212,15 @@ func parseTokens(raw []byte) (Tokens, error) {
 
 // Refresh trades a refresh token for new tokens. A provider that does not
 // rotate its refresh token leaves the field out, and then the old one stays.
-func (c *TokenClient) Refresh(ctx context.Context, f Flow, refreshToken string) (Tokens, error) {
+// headers are the login's call headers for this account; when the data names a
+// token header, the refresh token goes there too.
+func (c *TokenClient) Refresh(ctx context.Context, f Flow, refreshToken string, headers map[string]string) (Tokens, error) {
+	if f.Refresh.TokenHeader != "" {
+		headers = withEntry(headers, f.Refresh.TokenHeader, refreshToken)
+	}
 	t, err := c.call(ctx, f.TokenURL, f.Refresh.Encoding, map[string]string{
 		"grant_type": "refresh_token", "refresh_token": refreshToken, "client_id": f.ClientID,
-	})
+	}, headers)
 	if err != nil {
 		return Tokens{}, err
 	}

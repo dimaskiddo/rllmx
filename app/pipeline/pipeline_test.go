@@ -123,7 +123,22 @@ func newRig(t *testing.T, steps ...tests.Reply) *rig {
 		`"oauth":{"flow":"device","deviceUrl":"https://a.example/device","tokenUrl":"https://a.example/token","scope":"s","hook":"github","mint":"copilot",` +
 		`"endpoints":{"copilotToken":"https://a.example/copilot"},"headers":{"copilot-integration-id":"vscode-chat","X-Initiator":"user"}},` +
 		`"models":[{"id":"cm-chat"},{"id":"cm-claude","targetFormat":"claude"},{"id":"cm-resp","targetFormat":"openai-responses"}]}`
+	dev := func(id, extra string) string {
+		return `{"id":"` + id + `","category":"oauth","display":{"name":"D"},"transport":{"baseUrl":"` + up.URL + `/chat/completions","format":"openai"},` +
+			`"oauth":{"flow":"device","deviceUrl":"https://a.example/device","tokenUrl":"https://a.example/token","scope":"s"` + extra + `},"models":[{"id":"m1"}]}`
+	}
+	kim := dev("kim", `,"headers":{"X-Msh-Platform":"rllmx"},"callHeaders":{"X-Msh-Device-Id":"{deviceId}"},"refresh":{"encoding":"form","leadSeconds":300},"account":{"name":"X-Msh-Device-Id","from":["deviceId"]}`)
+	mus := dev("mus", `,"headers":{"x-api-version":"1.0.0"}`)
+	kc := dev("kc", `,"account":{"name":"X-Kilocode-OrganizationID","from":["orgId"]}`)
+	lane := `{"id":"lane","category":"oauth","display":{"name":"L"},"transport":{"baseUrl":"` + up.URL + `/v1/messages","format":"claude","urlSuffix":"?beta=true",` +
+		`"headers":{"anthropic-version":"2023-06-01"},"lanes":{` +
+		`"openai":{"baseUrl":"` + up.URL + `/v1/chat/completions","auth":{"scheme":"bearer","header":"Authorization"}},` +
+		`"openai-responses":{"baseUrl":"` + up.URL + `/v1/responses","auth":{"scheme":"raw","header":"x-lane-key"},"headers":{"X-Lane":"resp"}}}},` +
+		`"auth":{"scheme":"raw","header":"x-api-key"},` +
+		`"oauth":{"flow":"device","deviceUrl":"https://a.example/device","tokenUrl":"https://a.example/token","scope":"s","headers":{"X-Login":"1"}},` +
+		`"models":[{"id":"m1"}]}`
 	reg, err := upstream.Load(fstest.MapFS{
+		"data/kim.json": {Data: []byte(kim)}, "data/mus.json": {Data: []byte(mus)}, "data/kc.json": {Data: []byte(kc)}, "data/lane.json": {Data: []byte(lane)},
 		"data/cop.json": {Data: []byte(cop)},
 		"data/cdx.json": {Data: []byte(cdx)}, "data/grk.json": {Data: []byte(grk)},
 		"data/forced.json": {Data: []byte(forced)}, "data/gem.json": {Data: []byte(gem)}, "data/sub.json": {Data: []byte(sub)}, "data/subx.json": {Data: []byte(subx)},

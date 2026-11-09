@@ -45,6 +45,9 @@ func RegistryURL(e upstream.Entry, format, model string, stream bool) string {
 	return base + "/" + url.PathEscape(model) + ":generateContent"
 }
 
+// LaneURL is the address of a lane: its own base and its own query string.
+func LaneURL(l upstream.Lane) string { return withSuffix(l.BaseURL, l.URLSuffix) }
+
 // formatAddress is the endpoint a wire format is sent to: the provider's own
 // address for it when its data names one, else the base address.
 func formatAddress(t upstream.Transport, format string) string {

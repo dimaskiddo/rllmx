@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 
 	"rllmx/app/executor"
 	"rllmx/app/repository"
@@ -21,6 +22,9 @@ type destination struct {
 	entry  upstream.Entry
 	node   *repository.Node
 	auth   *upstream.Auth
+	// lane is the provider's endpoint for a client's own wire format, when its
+	// data names one: the request goes there with no translation.
+	lane *upstream.Lane
 }
 
 func (c *call) resolve(ctx context.Context) (Output, bool) {
@@ -67,6 +71,21 @@ func (c *call) destinationOf(ctx context.Context, t routing.Target) (destination
 				d.format = m.TargetFormat
 			}
 		}
+		// A provider whose data names a Claude address sends every Claude-named
+		// model there, listed or not: its live catalog gets new Claude models
+		// before a data file does.
+		if e.Executor == upstream.ExecutorGitHub && claudeNamed(t.Model) {
+			d.format = upstream.FormatClaude
+		}
+		// A client whose own format has a lane is served there untranslated,
+		// whatever format the model would otherwise be reached in.
+		if l, ok := e.Transport.Lanes[c.format]; ok {
+			d.format, d.lane = c.format, &l
+			d.auth = laneAuth(l, d.format)
+			// The provider's own static headers belong to its default address;
+			// a lane carries its own.
+			d.entry.Transport.Headers = l.Headers
+		}
 		if d.auth == nil {
 			d.auth = defaultAuth(d.format)
 		}
@@ -92,6 +111,20 @@ func (c *call) destinationOf(ctx context.Context, t routing.Target) (destination
 	}
 	d.auth = defaultAuth(d.format)
 	return d, Output{}, true
+}
+
+// laneAuth is how a key is presented on a lane: the lane's own block, else the
+// default for its format.
+func laneAuth(l upstream.Lane, format string) *upstream.Auth {
+	if l.Auth != nil {
+		return l.Auth
+	}
+	return defaultAuth(format)
+}
+
+// claudeNamed reports a model whose name says it is a Claude model.
+func claudeNamed(model string) bool {
+	return strings.Contains(strings.ToLower(model), "claude")
 }
 
 // defaultAuth is how a key is presented when the provider's data names no block.
@@ -135,6 +168,9 @@ func (c *call) url() string {
 		base, _ := d.node.Doc().GetString("baseUrl")
 		api, _ := d.node.Doc().GetString("apiType")
 		return executor.NodeURL(d.node.Type, base, api)
+	}
+	if d.lane != nil {
+		return executor.LaneURL(*d.lane)
 	}
 	return executor.RegistryURL(d.entry, d.format, d.model, c.upStream)
 }

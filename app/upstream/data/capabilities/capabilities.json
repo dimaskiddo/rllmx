@@ -8,6 +8,28 @@
         "thinkingFormat": "claude-adaptive",
         "maxOutput": 32000
       }
+    },
+    "nous": {
+      "meituan/longcat-2.0:free": { "reasoning": true, "thinkingFormat": "nous" },
+      "meituan/longcat-2.5-preview:free": { "reasoning": true, "thinkingFormat": "nous" },
+      "stepfun/step-5-preview:free": { "reasoning": true, "thinkingFormat": "nous" },
+      "upstage/solar-mini4:free": { "reasoning": true, "thinkingFormat": "nous" },
+      "stepfun/step-3.7-flash:free": { "reasoning": true, "thinkingFormat": "nous" },
+      "poolside/laguna-s-2.1:free": { "reasoning": true, "thinkingFormat": "nous" },
+      "poolside/laguna-xs-2.1:free": { "reasoning": true, "thinkingFormat": "nous" },
+      "stealth/missingno": { "reasoning": true, "thinkingFormat": "nous" }
+    },
+    "kimi": {
+      "kimi-k3": { "reasoning": true, "thinkingFormat": "kimi", "thinkingCanDisable": false },
+      "k3": { "reasoning": true, "thinkingFormat": "kimi", "thinkingCanDisable": false },
+      "kimi-for-coding": { "reasoning": true, "thinkingFormat": "kimi", "thinkingCanDisable": false },
+      "kimi-for-coding-highspeed": { "reasoning": true, "thinkingFormat": "kimi", "thinkingCanDisable": false },
+      "kimi-k2.7-code": { "reasoning": true, "thinkingFormat": "kimi", "thinkingCanDisable": false },
+      "kimi-k2.7-code-highspeed": { "reasoning": true, "thinkingFormat": "kimi", "thinkingCanDisable": false },
+      "kimi-k2.6": { "reasoning": true, "thinkingFormat": "kimi", "thinkingCanDisable": true },
+      "kimi-k2.5": { "reasoning": true, "thinkingFormat": "kimi", "thinkingCanDisable": true },
+      "kimi-k2.5-thinking": { "reasoning": true, "thinkingFormat": "kimi", "thinkingCanDisable": true },
+      "kimi-latest": { "reasoning": true, "thinkingFormat": "kimi", "thinkingCanDisable": true }
     }
   },
   "models": {

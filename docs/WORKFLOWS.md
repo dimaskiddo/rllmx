@@ -236,7 +236,7 @@ Run after `references/` changes, before touching code.
 
 1. **Pin check.** Reference version (`package.json`) and latest commit against pins in `docs/PARITY.md`.
 2. **Read the delta.** Reference `CHANGELOG.md` and `git -C references/9router log <pinned>..HEAD`.
-3. **Classify** each change: **adopt** (parity row and task), **diverge** (row in the area PRD's `Divergences` section, indexed in `DIVERGENCES.md`), **out** (excluded feature).
+3. **Classify** each change: **adopt** (parity row and task), **diverge** (row in the area PRD's `Divergences` section, indexed in `DIVERGENCES.md`), **out** (excluded feature). A change to the core of cloaking, translation or execution is **adopt** when the baseline is plain: `AGENTS.md` (Clean-Room) settles it in the reference's favor, so no question is raised. It is **diverge** only where a router improvement or a security rule requires it, and the row says which.
 4. **Contract checks.** Reference `schema.js` against PRD 15; `DEFAULT_SETTINGS` against Go defaults and PRD 17; its `.env.example` against ours.
 5. **Provider diff.** Registry directory for added or removed ids; update provider data and PRD 8.
 6. **Route inventory.** List `references/9router/src/app/api/**/route.js` and the extended equivalent. Every route needs a row in PRD 3, every provider file a row in PRD 8; add missing rows with a status and a phase.

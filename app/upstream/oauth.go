@@ -19,6 +19,16 @@ const (
 	// Endpoint roles a hook or the mint calls.
 	EndpointCopilotToken = "copilotToken"
 	EndpointUser         = "user"
+	EndpointKey          = "key"
+	EndpointAgentKey     = "agentKey"
+	EndpointProfile      = "profile"
+	// EndpointVerify is the page a device login falls back to when the provider
+	// names none.
+	EndpointVerify = "verify"
+
+	// DeviceIDToken is the one placeholder a call header may hold: the id made for
+	// the account when its device login starts.
+	DeviceIDToken = "{deviceId}"
 
 	RedirectFixed = "fixed"
 	RedirectLocal = "local"
@@ -33,8 +43,12 @@ const (
 var (
 	redirects = map[string]bool{RedirectFixed: true, RedirectLocal: true}
 	encodings = map[string]bool{EncodingJSON: true, EncodingForm: true}
-	hooks     = map[string]bool{"": true, "codex": true, "github": true}
+	hooks     = map[string]bool{"": true, "codex": true, "github": true, "muse": true, "nous": true, "kilocode": true, "grokCli": true}
 	mints     = map[string]bool{"": true, MintCopilot: true}
+	// refreshHooks run after a token renewal; dialects replace the start and the
+	// poll of a device login that does not follow RFC 8628.
+	refreshHooks = map[string]bool{"": true, "nous": true}
+	dialects     = map[string]bool{"": true, "kilocode": true}
 
 	paramName = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 	// ownParams are set by the login itself, so a data file cannot name them.
@@ -55,6 +69,7 @@ const (
 	maxLeadSeconds  = 7 * 24 * 3600
 	maxAgeSeconds   = 90 * 24 * 3600
 	maxOAuthHeaders = 8
+	maxCallHeaders  = 8
 	maxEndpoints    = 8
 )
 
@@ -87,6 +102,14 @@ type OAuth struct {
 	// Mint names a second credential made from the login's token, which is then
 	// the one a request carries.
 	Mint string `json:"mint,omitempty"`
+	// Dialect names a device login that does not follow RFC 8628.
+	Dialect string `json:"dialect,omitempty"`
+	// NoClient marks a login the provider runs without a client id.
+	NoClient bool `json:"noClient,omitempty"`
+	// CallHeaders go on the calls the router makes to the provider while logging
+	// in and renewing: the device start, the poll, the renewal and a hook. The
+	// value may hold the device id placeholder.
+	CallHeaders map[string]string `json:"callHeaders,omitempty"`
 	// Refresh says how the access token is renewed. A device login may omit it.
 	Refresh Refresh `json:"refresh"`
 	// Headers are static headers sent with every request made on a login's
@@ -143,6 +166,10 @@ type Refresh struct {
 	// MaxAgeSeconds renews a token whose last refresh is older than this, even
 	// when its expiry is far off. Zero means no such rule.
 	MaxAgeSeconds int `json:"maxAgeSeconds,omitempty"`
+	// TokenHeader names a header that also carries the refresh token.
+	TokenHeader string `json:"tokenHeader,omitempty"`
+	// Hook names a step run on a renewal's answer, from a table of its own.
+	Hook string `json:"hook,omitempty"`
 }
 
 // Param is one extra authorize parameter.
@@ -165,7 +192,8 @@ func (o *OAuth) validate() error {
 			return err
 		}
 	}
-	if strings.TrimSpace(o.Scope) == "" || text.HasASCIIControl(o.Scope) {
+	// A dialect builds its own start, so it may send no scope.
+	if (strings.TrimSpace(o.Scope) == "" && o.Dialect == "") || text.HasASCIIControl(o.Scope) {
 		return errors.New("oauth.scope is empty or holds a control character")
 	}
 	if err := o.validateFlow(); err != nil {
@@ -177,29 +205,45 @@ func (o *OAuth) validate() error {
 	if err := o.validateMint(); err != nil {
 		return err
 	}
-	// A device login the provider never renews has no refresh block.
-	if o.Flow != FlowDevice || o.Refresh != (Refresh{}) {
-		if !encodings[o.Refresh.Encoding] {
-			return errors.New("oauth.refresh.encoding is unknown")
-		}
-		if o.Refresh.LeadSeconds < 0 || o.Refresh.LeadSeconds > maxLeadSeconds || o.Refresh.MaxAgeSeconds < 0 || o.Refresh.MaxAgeSeconds > maxAgeSeconds {
-			return errors.New("oauth.refresh timing is out of range")
-		}
+	if err := o.validateRefresh(); err != nil {
+		return err
 	}
 	return o.validateRest()
+}
+
+// validateRefresh checks the renewal block. A device login the provider never
+// renews has none.
+func (o *OAuth) validateRefresh() error {
+	r := o.Refresh
+	if o.Flow == FlowDevice && r == (Refresh{}) {
+		return nil
+	}
+	if !encodings[r.Encoding] {
+		return errors.New("oauth.refresh.encoding is unknown")
+	}
+	if r.LeadSeconds < 0 || r.LeadSeconds > maxLeadSeconds || r.MaxAgeSeconds < 0 || r.MaxAgeSeconds > maxAgeSeconds {
+		return errors.New("oauth.refresh timing is out of range")
+	}
+	if r.TokenHeader != "" && !loginHeader(r.TokenHeader) {
+		return errors.New("oauth.refresh.tokenHeader is not allowed")
+	}
+	if !refreshHooks[r.Hook] {
+		return errors.New("oauth.refresh.hook is unknown")
+	}
+	return nil
 }
 
 // validateFlow checks the fields that belong to one kind of login and refuses
 // the ones that belong to the other.
 func (o *OAuth) validateFlow() error {
 	if o.Flow == FlowDevice {
-		if o.AuthorizeURL != "" || o.Redirect != "" || o.FixedPort != 0 || o.CallbackPath != "" || o.Exchange != "" || o.EchoState || len(o.Params) > 0 {
-			return errors.New("a device login has no authorize address, redirect, exchange or parameters")
+		if o.AuthorizeURL != "" || o.Redirect != "" || o.FixedPort != 0 || o.CallbackPath != "" || o.Exchange != "" || o.EchoState {
+			return errors.New("a device login has no authorize address, redirect or exchange")
 		}
 		return nil
 	}
-	if o.DeviceURL != "" {
-		return errors.New("oauth.deviceUrl belongs to the device flow")
+	if o.DeviceURL != "" || o.Dialect != "" || o.NoClient || len(o.CallHeaders) > 0 {
+		return errors.New("oauth.deviceUrl, dialect, noClient and callHeaders belong to the device flow")
 	}
 	if !redirects[o.Redirect] {
 		return errors.New("oauth.redirect is unknown")
@@ -245,9 +289,40 @@ func (o *OAuth) validateMint() error {
 	return nil
 }
 
+// validateCallHeaders checks the headers of the router's own calls. A value may
+// hold the device id placeholder and nothing else in braces.
+func (o *OAuth) validateCallHeaders() error {
+	if !dialects[o.Dialect] {
+		return errors.New("oauth.dialect is unknown")
+	}
+	if len(o.CallHeaders) > maxCallHeaders {
+		return errors.New("oauth.callHeaders has too many entries")
+	}
+	for k, v := range o.CallHeaders {
+		rest := strings.ReplaceAll(v, DeviceIDToken, "")
+		if !loginHeader(k) || len(v) > maxHeaderBytes || text.HasASCIIControl(v) || strings.ContainsAny(rest, "{}") {
+			return errors.New("an oauth call header is not allowed")
+		}
+	}
+	return nil
+}
+
+// UsesDeviceID reports whether a call header asks for the account's device id.
+func (o *OAuth) UsesDeviceID() bool {
+	for _, v := range o.CallHeaders {
+		if strings.Contains(v, DeviceIDToken) {
+			return true
+		}
+	}
+	return false
+}
+
 // validateRest checks what every login shares: headers, address suffix, beta
 // list, session and account headers, and extra parameters.
 func (o *OAuth) validateRest() error {
+	if err := o.validateCallHeaders(); err != nil {
+		return err
+	}
 	if len(o.Headers) > maxOAuthHeaders {
 		return errors.New("oauth.headers has too many entries")
 	}
@@ -296,9 +371,16 @@ func (o *OAuth) validateRest() error {
 }
 
 // HookNames lists the login steps a data file may name.
-func HookNames() []string {
-	out := make([]string, 0, len(hooks))
-	for n := range hooks {
+func HookNames() []string { return names(hooks) }
+
+// RefreshHookNames and DialectNames list the names a data file may use for a
+// renewal step and for a device login that does not follow RFC 8628.
+func RefreshHookNames() []string { return names(refreshHooks) }
+func DialectNames() []string     { return names(dialects) }
+
+func names(set map[string]bool) []string {
+	out := make([]string, 0, len(set))
+	for n := range set {
 		if n != "" {
 			out = append(out, n)
 		}
