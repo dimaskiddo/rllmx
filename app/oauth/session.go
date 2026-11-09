@@ -26,6 +26,12 @@ type Session struct {
 	Port int
 	// Bind ties the login to the dashboard session that started it.
 	Bind string
+	// DeviceCode, Interval and Life belong to a device login. The code never
+	// leaves this process; Interval is the pause the provider asked for between
+	// two polls, and Life how long the code stays valid.
+	DeviceCode string
+	Interval   time.Duration
+	Life       time.Duration
 }
 
 type phase int
@@ -43,6 +49,8 @@ type entry struct {
 	code    string
 	created time.Time
 	expires time.Time
+	// next is the earliest time the provider may be asked again.
+	next time.Time
 }
 
 // Sessions is the store of logins. Begin hands a login out once, so a callback
@@ -97,8 +105,56 @@ func (s *Sessions) Put(sess Session) (string, error) {
 	if own >= maxPerBind {
 		delete(s.m, oldest)
 	}
-	s.m[state] = &entry{Session: sess, phase: pending, created: now, expires: now.Add(sessionLife)}
+	life := sessionLife
+	if sess.Life > 0 {
+		life = sess.Life
+	}
+	s.m[state] = &entry{Session: sess, phase: pending, created: now, expires: now.Add(life), next: now.Add(sess.Interval)}
 	return state, nil
+}
+
+// Gate is what a poll learns before it may call the provider.
+type Gate int
+
+const (
+	// GateUnknown: no such login, a login that is not this browser's, or one that
+	// has finished, whose outcome the status read hands out.
+	GateUnknown Gate = iota
+	// GateWait: the provider asked for more time between polls.
+	GateWait
+	// GateGo: the caller holds the login and must call Rest or End.
+	GateGo
+)
+
+// Poll hands a pending device login to one caller, but not before the pause the
+// provider asked for has passed. The login is busy until Rest or End, so two
+// simultaneous polls make one provider call.
+func (s *Sessions) Poll(state string, allow func(Session) bool) (Session, Gate) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.Now()
+	s.sweep(now)
+	e, ok := s.m[state]
+	if !ok || e.DeviceCode == "" || e.phase == finished || !allow(e.Session) {
+		return Session{}, GateUnknown
+	}
+	if e.phase != pending || now.Before(e.next) {
+		return Session{}, GateWait
+	}
+	e.phase = busy
+	return e.Session, GateGo
+}
+
+// Rest gives a device login back after a poll that found it still waiting, and
+// sets when it may be asked again.
+func (s *Sessions) Rest(state string, interval time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e, ok := s.m[state]
+	if !ok || e.phase != busy {
+		return
+	}
+	e.phase, e.Interval, e.next = pending, interval, s.Now().Add(interval)
 }
 
 // Begin takes a pending login if allow accepts it. The login is then busy, so

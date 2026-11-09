@@ -240,7 +240,7 @@ Run after `references/` changes, before touching code.
 4. **Contract checks.** Reference `schema.js` against PRD 15; `DEFAULT_SETTINGS` against Go defaults and PRD 17; its `.env.example` against ours.
 5. **Provider diff.** Registry directory for added or removed ids; update provider data and PRD 8.
 6. **Route inventory.** List `references/9router/src/app/api/**/route.js` and the extended equivalent. Every route needs a row in PRD 3, every provider file a row in PRD 8; add missing rows with a status and a phase.
-7. **Update parity rows** in the topic file and the Sync Log in `docs/PARITY.md` (date, versions, decisions).
+7. **Update parity rows** in the topic file and add a row to the sync log (date, step, change, divergences, not copied, new unverified values; see `TASKS.md`, Sync log); a pin that moves is recorded in the same place.
 8. **Fixture refresh.** If schema or settings changed, regenerate the fixture database from a real run of the new reference, rerun compatibility tests.
 9. **Bump the pins** last, same change.
 10. 9router-extended: repeat with its own pin; compare its fork base too, so upstream features it lacks are not read as removals.

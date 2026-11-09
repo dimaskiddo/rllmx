@@ -240,6 +240,39 @@ func TestUpdateMergesOnlyPatchedKeys(t *testing.T) {
 	}
 }
 
+func TestAGitHubLoginWithNoEmailIsTheSameAccountByItsUserID(t *testing.T) {
+	s := newMigrated(t)
+	a := mkConn(t, s, ConnInput{Provider: "github", AuthType: "oauth", PSD: `{"githubUserId":"42","githubLogin":"octo"}`})
+	again := mkConn(t, s, ConnInput{Provider: "github", AuthType: "oauth", PSD: `{"githubUserId":"42","githubLogin":"octo2"}`})
+	if again.ID != a.ID {
+		t.Fatalf("the same GitHub user got a second row: %s and %s", a.ID, again.ID)
+	}
+	if got := psdOf(again).Get("githubLogin").String(); got != "octo2" {
+		t.Fatalf("the row was not updated: %s", again.Data)
+	}
+	other := mkConn(t, s, ConnInput{Provider: "github", AuthType: "oauth", PSD: `{"githubUserId":"43"}`})
+	if other.ID == a.ID {
+		t.Fatal("another GitHub user took the row")
+	}
+	// The user id decides; a shared email does not merge two users.
+	e1 := mkConn(t, s, ConnInput{Provider: "github", AuthType: "oauth", Email: "same@x.io", PSD: `{"githubUserId":"50"}`})
+	e2 := mkConn(t, s, ConnInput{Provider: "github", AuthType: "oauth", Email: "same@x.io", PSD: `{"githubUserId":"51"}`})
+	if e1.ID == e2.ID {
+		t.Fatal("two users with one email were merged")
+	}
+	// A user id of one provider never matches a row of another.
+	gl := mkConn(t, s, ConnInput{Provider: "gitlab", AuthType: "oauth", PSD: `{"githubUserId":"42"}`})
+	if gl.ID == a.ID {
+		t.Fatal("a row of another provider matched")
+	}
+	// Without a user id the old rule is untouched.
+	n1 := mkConn(t, s, ConnInput{Provider: "github", AuthType: "oauth", Email: "plain@x.io"})
+	n2 := mkConn(t, s, ConnInput{Provider: "github", AuthType: "oauth", Email: "plain@x.io"})
+	if n1.ID != n2.ID {
+		t.Fatal("the email rule stopped working")
+	}
+}
+
 func TestUpdateChangesTheColumnFields(t *testing.T) {
 	s := newMigrated(t)
 	ctx := context.Background()

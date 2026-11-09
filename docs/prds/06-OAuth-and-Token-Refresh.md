@@ -1,6 +1,6 @@
 # PRD 06 — OAuth & Token Refresh (`app/oauth/`)
 
-**Status:** partial · **Steps:** 1.9a, 1.9b, 1.9c
+**Status:** partial · **Steps:** 1.9a, 1.9b, 1.9c, 1.10c to 1.10f
 
 Step 1.9 brings the framework and the two seed providers (`claude`, `codex`); the rest add a data file and post-login hooks in 1.10. It is built in three parts: **1.9a** the login (sessions, token client, routes, callback page, listener; built), **1.9b** the refresh (proactive, reactive, background, the expired mark, the connection test; built, and a login's token now goes as a bearer token), **1.9c** the headers a login's token carries, the client tool and the Claude disguise (built).
 
@@ -8,21 +8,47 @@ Step 1.9 brings the framework and the two seed providers (`claude`, `codex`); th
 
 A provider's flow is data (`oauth.flow` in its file), run by one engine per kind.
 
-`app/oauth` holds the `code-pkce` flow since 1.9a (claude and codex). Every other flow below is the design step 1.10 implements.
+`app/oauth` holds the `code-pkce` flow since 1.9a (claude and codex) and the RFC 8628 `device` flow since 1.10c (github). Every other flow below is the design the later 1.10 steps implement.
 
 | Flow | Providers (examples) | Step |
 |---|---|---|
-| `code-pkce`: authorization code with PKCE | claude, codex, gitlab, xai | 1.9 for claude and codex; 1.10 for the rest |
-| `code`: authorization code | gemini-cli, antigravity, iflow, cline, trae, windsurf, zed | 1.10 |
-| `device` | github (then a Copilot token), kiro, kimi, kilocode, qoder, glm, grok-cli, nous, codebuddy, minimax-code, freebuff | 1.10 |
+| `code-pkce`: authorization code with PKCE | claude, codex, gitlab, xai | 1.9 for claude and codex; 1.10e for the rest |
+| `code`: authorization code | gemini-cli, antigravity, iflow, cline, trae, windsurf, zed | 1.10e (cline), 1.10g and later for the rest |
+| `device` | github (then a Copilot token) | 1.10c |
+| `device`, with a hook or headers | kimi, muse, nous, kilocode, grok-cli | 1.10d |
+| `device`, own dialect | codebuddy, minimax-code, glm | 1.10f |
+| `device`, later | kiro, qoder, freebuff | 1.10h to 1.10j |
 | `paste`: token or cookie paste | cursor, kimchi, iflow cookie, web-cookie providers, API keys | 1.10 |
 | Bulk import | codex, grok-cli | 1.10 |
 
 There is no browser launch, so the dashboard shows the URL to open. The only process the router ever starts is `git clone`, through the filter gate in `app/git` (`PRD 11`), for the skill update (Skills Studio); the gate does not exist yet.
 
-### Login Data and Steps (step 1.10 D)
+### Device Login (built in 1.10c)
 
-Nothing provider specific is code that data cannot name. A provider file's `oauth` block picks from fixed tables, and a test keeps each table equal to the schema's allowed names.
+A device provider's `oauth` block has `flow: device`, `deviceUrl` and `tokenUrl` (both https), `scope`, and no authorize address, redirect, exchange or parameters; a refresh block is optional (a provider that never renews its token has none).
+
+| Item | Behavior |
+|---|---|
+| Start | `GET /api/oauth/{provider}/device-code` posts the client id and scope to `deviceUrl` as a form and answers `{state, userCode, verificationUri, expiresIn, interval}`. The device code is kept in the server-side session and never returned. The answer must hold a device code (at most 1 KiB), a user code of at most 64 characters, and a plain https page without credentials; the interval is 1 to 60 s (default 5 s), the lifetime up to 30 min (default 15 min) |
+| Poll | `POST /api/oauth/poll` with `{state}`. The session is bound to the dashboard session that started it, like the redirect flows. The router asks the provider at most once per interval whatever the browser sends, and two simultaneous polls make one call (`Sessions.Poll` hands the login to one caller and the rest read `pending`). `authorization_pending` and `slow_down` come back in a 200 body or an error status, so the body is read first; `slow_down` adds 5 s to the interval, capped at 30 s. A finished login answers once, then `unknown` |
+| End | `expired_token`, `access_denied`, any other provider error or a body with no access token end the login with a fixed word (`expired_token`, `access_denied`, `rejected`, `transport`); provider text is never kept |
+| Hook | After the tokens arrive, the `hook` named in the data runs from the table in `app/oauth/hooks.go` and returns the account's email and provider data. A hook never fails a login: what it cannot learn it leaves out. A test keeps the table equal to `upstream.HookNames` |
+
+### Copilot Token (built in 1.10c)
+
+A GitHub login token cannot call the Copilot API. The data's `mint: copilot` and `endpoints.copilotToken` make the login's token a source for a second credential, and that credential is the one a request carries.
+
+| Item | Behavior |
+|---|---|
+| Mint | `GET` the endpoint with `Authorization: token <login token>` and the data's `user-agent`, `editor-version`, `editor-plugin-version` and `x-github-api-version` headers (the chat-only headers are not sent). Only `token` and `expires_at` are read; the token is at most 4 KiB with no control character |
+| Keeping | `oauth.Minter` serves the stored token while more than five minutes of it remain, else mints. One mint is in flight per account (`cache.Load` on the memory-only `connections` group, 10 s) however many requests ask. The token is also written sealed to `providerSpecificData.copilotToken` with its expiry, so a restart does not mint for every account at once |
+| Refusal | A 401 or 403 from the chat endpoint asks for one new token (`Minter.Renew`, which hands back a token another request already replaced without a call) and sends the same body once more. A refused token is never sent twice |
+| Failure | A mint that fails is the account's failure with a fixed text (`transport` gives 502, any other 401 "no credentials"); nothing the provider said, and no token, is logged, stored in an error or returned |
+| GitHub profile | `GET` the `user` endpoint with the login token. Login name, display name, email and numeric id are stored (short text only, no control characters). The email is often hidden, so a login with a `githubUserId` is the same account as an earlier row with that id (divergence 235) |
+
+### Login Data and Steps (steps 1.10c to 1.10f)
+
+Nothing provider specific is code that data cannot name. A provider file's `oauth` block picks from fixed tables, and a test keeps each table equal to the schema's allowed names. Built in 1.10c: `flow: device`, `deviceUrl`, `hook: github`, `mint`, `endpoints`.
 
 | Data field | Meaning |
 |---|---|
@@ -92,7 +118,9 @@ All four triggers use `oauth.Refresher.Refresh` (built in 1.9b). Per provider, t
 - [x] Token refresh: proactive, reactive on 401/403, background every 5 minutes; the expired mark (1.9b)
 - [x] A login's token goes as `Authorization: Bearer` with the provider's static headers; an API key keeps its scheme (1.9b)
 - [x] The computed `anthropic-beta` list, `x-claude-code-session-id`, the identity headers and URL suffix, the Codex headers, client tool detection and the Claude disguise (1.9c; the design is in PRD 7). The Codex request *body* (forced stream, `store:false`, instructions, allowlist, lite mode, `/compact`) is 1.10
-- [ ] Step 1.10: device code, the remaining redirect policies, and the Google family, Zed, kiro `kiro://`, Windsurf, Trae and Mimo token shapes
+- [x] 1.10c: the device flow (start, poll with the provider's interval, `slow_down`), the hook table, the GitHub login and its Copilot token (D154, D182, divergences 234 to 237)
+- [ ] 1.10d to 1.10f: the other device logins, the code-flow logins, the `public` redirect, `dialect`, `deviceIdHeader`, `refresh.tokenHeader`, `refresh.fields`, `noClient`, `appFromAccount`
+- [ ] The Google family, Zed, kiro `kiro://`, Windsurf, Trae and Mimo token shapes (1.10g and later)
 - [x] Token refresh detail: one call per provider and refresh token through `app/cache.Load` with a 10s result cache; `invalid_grant` and reuse mark the connection (`testStatus: expired`) and stop retrying
 
 ---
@@ -115,6 +143,8 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 156 | One refresh path for request, 401 retry, background pass, connection test: one call per provider and refresh token, 10 s result; credentials stored only while stored refresh token still the one used (compare and swap, one transaction), so two processes cannot both spend a single-use token | Refresh storm costs one call; rotating tokens spent once |
 | 182 | One flight per account; token in bounded cache, stored with account | Burst makes one GitHub call, not one per request |
 | 172 | Step ends login with fixed message; provider text never kept or shown | Provider cannot put its own text or links into the dashboard |
+| 235 | A GitHub login whose profile gives a numeric user id is the same account as an earlier row with that id, whatever the email; two users who share an email stay two rows. Without an id the email rule is unchanged | The reference matches on the email alone, and GitHub hides it for most users, so every login there made another row for the same person (improvement) |
+| 237 | The Copilot token is minted once per account for any number of requests, kept 10 s in the memory-only `connections` group and stored sealed in the account's provider data; the login token is never sent to the chat endpoint. A mint that fails gives a fixed account failure and no provider text | The reference mints in several places with and without de-duplication and logs the failure; one flight and a sealed copy cost one call per hour and survive a restart (improvement) |
 
 ---
 
@@ -141,5 +171,11 @@ Deliberate differences from the references in this area. Numbers are stable and 
 `app/git` is still open.
 
 **1.9c built: what a login's request looks like.** The provider's data decides every header: the identity set, the URL suffix, the way the beta list is computed, the session header (Claude Code's own, or a keyed hash for Codex) and the account header (`ChatGPT-Account-ID` from the first of `workspaceId`, `chatgptAccountId`, `accountId` that the account holds). The pipeline computes the values and the request headers it reads are an allow-list (`pipeline.PickHeaders`), so a client header cannot reach an upstream. A Codex request now carries the right headers but still the pre-1.10 body, so it will likely be refused until 1.10.
+
+**1.10c built: the device flow and GitHub Copilot.** A device login is one more kind of session in the existing store, so the same binding, the same single use and the same read-once outcome apply. The poll gate lives in the store (`Sessions.Poll`), not in the handler: it hands the login to one caller and keeps the provider's interval, so the browser's own timer cannot make the router call GitHub faster than GitHub allows. GitHub answers a pending poll with a 200 body, so the body is read before the status. The finished-login check had to sit in the gate too: a login that already ended answers through the status read, not as `pending`.
+
+**The login token and the chat token are two secrets.** Only the minted Copilot token leaves for the chat endpoint, and the pipeline asks the minter, not the stored account, for it. A key added by hand to the same provider keeps its own scheme and never meets the minter (a test pins it).
+
+**Not verified without a live account:** that GitHub still accepts the 0.38.0 editor headers on the mint and the chat endpoints, which `gpt-*` ids need `/responses`, and whether it issues refresh tokens for this client id (the login stores one only if it is sent).
 
 **The session sent to Codex is never the client's.** A keyed hash of the session and the account is sent, so one client cannot choose the value another client's conversation uses (PRD 11).

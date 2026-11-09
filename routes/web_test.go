@@ -241,7 +241,7 @@ func oauthRoutes(t *testing.T) (*goravelgin.Route, *apphttp.Guard) {
 func TestTheLoginRoutesNeedASessionAndTheCallbackPageIsPublic(t *testing.T) {
 	r, g := oauthRoutes(t)
 	for _, rt := range [][2]string{
-		{"GET", "/api/oauth/{provider}/authorize"}, {"POST", "/api/oauth/exchange"},
+		{"GET", "/api/oauth/{provider}/authorize"}, {"GET", "/api/oauth/{provider}/device-code"}, {"POST", "/api/oauth/poll"}, {"POST", "/api/oauth/exchange"},
 		{"POST", "/api/oauth/callback"}, {"GET", "/api/oauth/status"},
 	} {
 		if class, ok := g.RouteClass(rt[0], rt[1]); !ok || class != apphttp.ClassAlwaysProtected {

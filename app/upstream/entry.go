@@ -26,16 +26,17 @@ const ExecutorDefault = "default"
 // ExecutorAzure builds its address and headers from the account's own data.
 const ExecutorAzure = "azure"
 
-// Executors that shape a Responses body for one backend.
+// Executors that shape a body for one backend.
 const (
 	ExecutorCodex   = "codex"
 	ExecutorGrokCLI = "grok-cli"
+	ExecutorGitHub  = "github"
 )
 
 var (
 	categories = map[string]bool{CategoryAPIKey: true, CategoryOAuth: true, CategoryFree: true, CategoryFreeTier: true, CategoryCookie: true}
 	formats    = map[string]bool{FormatOpenAI: true, FormatResponses: true, FormatClaude: true, FormatGemini: true}
-	executors  = map[string]bool{ExecutorDefault: true, ExecutorAzure: true, ExecutorCodex: true, ExecutorGrokCLI: true}
+	executors  = map[string]bool{ExecutorDefault: true, ExecutorAzure: true, ExecutorCodex: true, ExecutorGrokCLI: true, ExecutorGitHub: true}
 )
 
 // Entry is one provider as its data file describes it. The files are decoded
@@ -70,7 +71,12 @@ type Transport struct {
 	// BaseURL is the chat address. It may hold {accountId}, filled from the
 	// account's data. Empty only for an executor that builds the address itself.
 	BaseURL string `json:"baseUrl"`
-	Format  string `json:"format,omitempty"`
+	// ResponsesURL and MessagesURL are the addresses of the same provider's
+	// Responses and Claude endpoints, used when a model's wire format is one of
+	// them. Both stay on the base address's host.
+	ResponsesURL string `json:"responsesUrl,omitempty"`
+	MessagesURL  string `json:"messagesUrl,omitempty"`
+	Format       string `json:"format,omitempty"`
 	// Headers are static headers on every request. None is a credential or
 	// framing header.
 	Headers map[string]string `json:"headers,omitempty"`

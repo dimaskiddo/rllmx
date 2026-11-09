@@ -85,6 +85,9 @@ type Deps struct {
 	Signatures Loader
 	// Refresher renews OAuth tokens; nil leaves them as stored.
 	Refresher Refresher
+	// Minter makes the credential of a provider whose login is traded for one;
+	// nil sends the stored token.
+	Minter Minter
 	// Sessions names the conversation a request belongs to; nil makes one.
 	Sessions *conversation.Store
 	Timers   stream.Timers

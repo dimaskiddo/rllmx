@@ -33,6 +33,7 @@ func NewMux(d *Default, o Options) *Mux {
 		upstream.ExecutorAzure:   &Azure{Default: d},
 		upstream.ExecutorCodex:   &Codex{Default: d, PeekIdle: o.PeekIdle},
 		upstream.ExecutorGrokCLI: &Grok{Default: d},
+		upstream.ExecutorGitHub:  &GitHub{Default: d},
 	}}
 }
 

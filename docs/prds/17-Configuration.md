@@ -57,7 +57,7 @@ The **Step** column names the `TASKS.md` step that adds the group. No code reads
 | Token savers | `SAVER_HEADROOM_URL` (`http://localhost:8787`) (planned) | 3.1 |
 | Catalog | `CATALOG_SYNC` (true; `false` turns sync off) (planned) | 2.6 |
 | Translator | `TRANSLATOR_ENABLED` (false) (planned) | 2.6 |
-| OAuth clients | `OAUTH_<PROVIDER>_CLIENT_ID` for antigravity, claude, codex, github, google, iflow, kimi, kimi_coding, minimax_code, muse, nous, trae, windsurf, xai; `_CLIENT_SECRET` only for antigravity, google, iflow, trae. Default empty, which disables that provider's login; `.env.example` carries working values. `google` serves Gemini and Gemini CLI, `minimax_code` both MiniMax Code regions, `xai` xAI and Grok CLI. Built in 1.9a: `OAUTH_CLAUDE_CLIENT_ID` and `OAUTH_CODEX_CLIENT_ID` (at most 256 characters, no spaces or control characters) | 1.9a, 1.10 |
+| OAuth clients | `OAUTH_<PROVIDER>_CLIENT_ID` for antigravity, claude, codex, github, google, iflow, kimi, kimi_coding, minimax_code, muse, nous, trae, windsurf, xai; `_CLIENT_SECRET` only for antigravity, google, iflow, trae. Default empty, which disables that provider's login; `.env.example` carries working values. `google` serves Gemini and Gemini CLI, `minimax_code` both MiniMax Code regions, `xai` xAI and Grok CLI. Built in 1.9a: `OAUTH_CLAUDE_CLIENT_ID` and `OAUTH_CODEX_CLIENT_ID` (at most 256 characters, no spaces or control characters); 1.10c adds `OAUTH_GITHUB_CLIENT_ID` | 1.9a, 1.10 |
 | Provider overrides | `PROVIDER_AZURE_ENDPOINT`, `..._AZURE_DEPLOYMENT`, `..._AZURE_API_VERSION`, `..._AZURE_ORGANIZATION`, `..._MIMO_PLATFORM_URL`, `..._COMMANDCODE_BASE_URL` (planned) | 1.10 |
 
 ### Not Read

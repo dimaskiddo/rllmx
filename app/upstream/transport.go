@@ -73,6 +73,15 @@ func (t *Transport) checkAddress(executor string) error {
 	if err != nil || u.Host == "" || u.User != nil || u.Fragment != "" || (u.Scheme != "https" && u.Scheme != "http") {
 		return errors.New("transport.baseUrl is not a plain http or https address")
 	}
+	for _, other := range []string{t.ResponsesURL, t.MessagesURL} {
+		if other == "" {
+			continue
+		}
+		o, err := url.Parse(other)
+		if err != nil || o.Scheme != u.Scheme || !strings.EqualFold(o.Host, u.Host) || o.User != nil || o.Fragment != "" || o.RawQuery != "" {
+			return errors.New("transport.responsesUrl and messagesUrl must be plain addresses on the base address's host")
+		}
+	}
 	return nil
 }
 

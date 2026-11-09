@@ -11,9 +11,9 @@ One file per area. Each carries its status, the steps that deliver it, the desig
 | 03 | [Request Pipeline](03-Request-Pipeline.md) | todo | 1.8 |
 | 04 | [Model Resolution & Combos](04-Model-Resolution-and-Combos.md) | partial | 1.7, 2.4 |
 | 05 | [Account Selection, Error Rules & Backoff](05-Account-Selection-and-Backoff.md) | partial | 1.7 |
-| 06 | [OAuth & Token Refresh](06-OAuth-and-Token-Refresh.md) | partial | 1.9a, 1.9b, 1.9c, 1.10 |
+| 06 | [OAuth & Token Refresh](06-OAuth-and-Token-Refresh.md) | partial | 1.9a, 1.9b, 1.9c, 1.10c to 1.10f |
 | 07 | [Format Translation](07-Format-Translation.md) | partial | 1.8, 1.10 |
-| 08 | [Executors](08-Executors.md) | partial | 1.8c, 1.10a to 1.10h |
+| 08 | [Executors](08-Executors.md) | partial | 1.8c, 1.10a to 1.10k |
 | 09 | [Streaming](09-Streaming.md) | partial | 1.0, 1.8, 2.4 |
 | 10 | [Token Savers](10-Token-Savers.md) | todo | 3.1 |
 | 11 | [Skills, Session & Auto Plan](11-Skills-Session-and-Auto-Plan.md) | todo | 3.2 to 3.4 |
@@ -37,10 +37,10 @@ One file per area. Each carries its status, the steps that deliver it, the desig
 | File | Holds |
 |---|---|
 | `../AGENTS.md` | Scope, workflow, Go rules (concurrency, memory, security, clean code), Goravel and build constraints, the compatibility contract |
-| `TASKS.md` | Current step, open items, what you must decide |
+| `TASKS.md` | Current step, audits, dependency gates, open items, backlog, sync log |
 | `ARCHITECTURE.md` | Module map, key design decisions, terminal commands |
 | `WORKFLOWS.md` | Startup order, operator procedures, the Parity Sync playbook |
-| `PARITY.md` | Pinned reference versions, status vocabulary, sync log |
+| `PARITY.md` | Pinned reference versions, status vocabulary |
 | `DIVERGENCES.md` | Index of divergence numbers; the rows live in each PRD |
 
 ## Conventions

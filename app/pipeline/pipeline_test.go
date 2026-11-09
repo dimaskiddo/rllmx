@@ -117,7 +117,14 @@ func newRig(t *testing.T, steps ...tests.Reply) *rig {
 	grk := `{"id":"grk","category":"apikey","display":{"name":"G"},"executor":"grok-cli","forceStream":true,` +
 		`"transport":{"baseUrl":"` + up.URL + `/grok/responses","format":"openai-responses","headers":{"x-grok-client-identifier":"grok-shell"}},` +
 		`"auth":{"scheme":"bearer","header":"Authorization"},"models":[{"id":"gm","levels":["low","high"]},{"id":"gn"}]}`
+	cop := `{"id":"cop","category":"oauth","display":{"name":"P"},"executor":"github",` +
+		`"transport":{"baseUrl":"` + up.URL + `/chat/completions","responsesUrl":"` + up.URL + `/responses","messagesUrl":"` + up.URL + `/v1/messages","format":"openai",` +
+		`"headers":{"anthropic-version":"2023-06-01"}},` +
+		`"oauth":{"flow":"device","deviceUrl":"https://a.example/device","tokenUrl":"https://a.example/token","scope":"s","hook":"github","mint":"copilot",` +
+		`"endpoints":{"copilotToken":"https://a.example/copilot"},"headers":{"copilot-integration-id":"vscode-chat","X-Initiator":"user"}},` +
+		`"models":[{"id":"cm-chat"},{"id":"cm-claude","targetFormat":"claude"},{"id":"cm-resp","targetFormat":"openai-responses"}]}`
 	reg, err := upstream.Load(fstest.MapFS{
+		"data/cop.json": {Data: []byte(cop)},
 		"data/cdx.json": {Data: []byte(cdx)}, "data/grk.json": {Data: []byte(grk)},
 		"data/forced.json": {Data: []byte(forced)}, "data/gem.json": {Data: []byte(gem)}, "data/sub.json": {Data: []byte(sub)}, "data/subx.json": {Data: []byte(subx)},
 		"data/wire.json": {Data: []byte(wire)}, "data/acct.json": {Data: []byte(acct)},

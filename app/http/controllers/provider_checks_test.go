@@ -446,7 +446,7 @@ func TestOnlyALoginOfAProviderWithOneIsTestedThatWay(t *testing.T) {
 	}
 
 	other, err := m.st.Connections().Create(context.Background(), repository.ConnInput{
-		Provider: "github", AuthType: "oauth", Email: "g@b.c", Fields: map[string]string{"accessToken": `"AT"`},
+		Provider: "openai", AuthType: "oauth", Email: "g@b.c", Fields: map[string]string{"accessToken": `"AT"`},
 	}, nil)
 	if err != nil {
 		t.Fatal(err)

@@ -258,6 +258,9 @@ func psdOf(c Connection) gjson.Result { return gjson.Get(c.Data, "providerSpecif
 
 // sameIdentity decides whether an OAuth login belongs to an existing row with the same email.
 func sameIdentity(provider string, incoming gjson.Result, existing Connection) bool {
+	if inGH := incoming.Get("githubUserId").String(); inGH != "" {
+		return inGH == psdOf(existing).Get("githubUserId").String()
+	}
 	inWs, exWs := incoming.Get("chatgptAccountId").String(), psdOf(existing).Get("chatgptAccountId").String()
 	if provider == "codex" {
 		return inWs != "" && exWs != "" && inWs == exWs
@@ -345,6 +348,10 @@ func (r *ConnectionsRepo) Create(ctx context.Context, in ConnInput, allowOverwri
 		var candidates []Connection
 		var err error
 		switch {
+		case in.AuthType == "oauth" && psd.Get("githubUserId").String() != "":
+			// A GitHub profile often hides its email, so the account is known by
+			// its user id.
+			candidates, err = r.rows(tx, ` WHERE "provider" = ? AND "authType" = 'oauth' ORDER BY "createdAt","id"`, dialect.StripNUL(in.Provider))
 		case in.AuthType == "oauth" && in.Email != "":
 			candidates, err = r.rows(tx, ` WHERE "provider" = ? AND "authType" = 'oauth' AND "email" = ? ORDER BY "createdAt","id"`, dialect.StripNUL(in.Provider), dialect.StripNUL(in.Email))
 		case in.AuthType == "apikey" && in.Name != "":

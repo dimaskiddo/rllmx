@@ -12,6 +12,13 @@ import (
 // Login flows and redirect policies a data file may name.
 const (
 	FlowCodePKCE = "code-pkce"
+	FlowDevice   = "device"
+
+	// MintCopilot names the second credential a GitHub login is exchanged for.
+	MintCopilot = "copilot"
+	// Endpoint roles a hook or the mint calls.
+	EndpointCopilotToken = "copilotToken"
+	EndpointUser         = "user"
 
 	RedirectFixed = "fixed"
 	RedirectLocal = "local"
@@ -26,7 +33,8 @@ const (
 var (
 	redirects = map[string]bool{RedirectFixed: true, RedirectLocal: true}
 	encodings = map[string]bool{EncodingJSON: true, EncodingForm: true}
-	hooks     = map[string]bool{"": true, "codex": true}
+	hooks     = map[string]bool{"": true, "codex": true, "github": true}
+	mints     = map[string]bool{"": true, MintCopilot: true}
 
 	paramName = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 	// ownParams are set by the login itself, so a data file cannot name them.
@@ -47,30 +55,39 @@ const (
 	maxLeadSeconds  = 7 * 24 * 3600
 	maxAgeSeconds   = 90 * 24 * 3600
 	maxOAuthHeaders = 8
+	maxEndpoints    = 8
 )
 
 // OAuth is how an account is connected by logging in. The client id is not
 // here: it comes from configuration, so a deployer can replace it.
 type OAuth struct {
 	Flow         string `json:"flow"`
-	AuthorizeURL string `json:"authorizeUrl"`
-	TokenURL     string `json:"tokenUrl"`
-	Scope        string `json:"scope"`
+	AuthorizeURL string `json:"authorizeUrl,omitempty"`
+	// DeviceURL starts a device login, which the user then approves on the
+	// provider's own page.
+	DeviceURL string `json:"deviceUrl,omitempty"`
+	TokenURL  string `json:"tokenUrl"`
+	Scope     string `json:"scope"`
 	// Params are extra authorize parameters, sent in this order after the
 	// standard ones.
 	Params []Param `json:"params,omitempty"`
 	// Redirect is fixed (a listener on FixedPort serves CallbackPath) or local
 	// (the router's own port serves LocalCallbackPath).
-	Redirect     string `json:"redirect"`
+	Redirect     string `json:"redirect,omitempty"`
 	FixedPort    int    `json:"fixedPort,omitempty"`
 	CallbackPath string `json:"callbackPath,omitempty"`
 	// Exchange is the encoding of the code exchange body: json or form.
-	Exchange string `json:"exchange"`
+	Exchange string `json:"exchange,omitempty"`
 	// EchoState sends the login state in the exchange body.
 	EchoState bool `json:"echoState,omitempty"`
 	// Hook names a step run on the tokens to read the account's identity.
 	Hook string `json:"hook,omitempty"`
-	// Refresh says how the access token is renewed.
+	// Endpoints are the addresses a hook or a mint calls, by role. Each is https.
+	Endpoints map[string]string `json:"endpoints,omitempty"`
+	// Mint names a second credential made from the login's token, which is then
+	// the one a request carries.
+	Mint string `json:"mint,omitempty"`
+	// Refresh says how the access token is renewed. A device login may omit it.
 	Refresh Refresh `json:"refresh"`
 	// Headers are static headers sent with every request made on a login's
 	// token. None is a credential or framing header.
@@ -135,16 +152,54 @@ type Param struct {
 }
 
 func (o *OAuth) validate() error {
-	if o.Flow != FlowCodePKCE {
+	first := o.AuthorizeURL
+	switch o.Flow {
+	case FlowCodePKCE:
+	case FlowDevice:
+		first = o.DeviceURL
+	default:
 		return errors.New("oauth.flow is unknown")
 	}
-	for _, u := range []string{o.AuthorizeURL, o.TokenURL} {
+	for _, u := range []string{first, o.TokenURL} {
 		if err := httpsURL(u); err != nil {
 			return err
 		}
 	}
 	if strings.TrimSpace(o.Scope) == "" || text.HasASCIIControl(o.Scope) {
 		return errors.New("oauth.scope is empty or holds a control character")
+	}
+	if err := o.validateFlow(); err != nil {
+		return err
+	}
+	if !hooks[o.Hook] {
+		return errors.New("oauth.hook is unknown")
+	}
+	if err := o.validateMint(); err != nil {
+		return err
+	}
+	// A device login the provider never renews has no refresh block.
+	if o.Flow != FlowDevice || o.Refresh != (Refresh{}) {
+		if !encodings[o.Refresh.Encoding] {
+			return errors.New("oauth.refresh.encoding is unknown")
+		}
+		if o.Refresh.LeadSeconds < 0 || o.Refresh.LeadSeconds > maxLeadSeconds || o.Refresh.MaxAgeSeconds < 0 || o.Refresh.MaxAgeSeconds > maxAgeSeconds {
+			return errors.New("oauth.refresh timing is out of range")
+		}
+	}
+	return o.validateRest()
+}
+
+// validateFlow checks the fields that belong to one kind of login and refuses
+// the ones that belong to the other.
+func (o *OAuth) validateFlow() error {
+	if o.Flow == FlowDevice {
+		if o.AuthorizeURL != "" || o.Redirect != "" || o.FixedPort != 0 || o.CallbackPath != "" || o.Exchange != "" || o.EchoState || len(o.Params) > 0 {
+			return errors.New("a device login has no authorize address, redirect, exchange or parameters")
+		}
+		return nil
+	}
+	if o.DeviceURL != "" {
+		return errors.New("oauth.deviceUrl belongs to the device flow")
 	}
 	if !redirects[o.Redirect] {
 		return errors.New("oauth.redirect is unknown")
@@ -165,15 +220,34 @@ func (o *OAuth) validate() error {
 	if !encodings[o.Exchange] {
 		return errors.New("oauth.exchange is unknown")
 	}
-	if !hooks[o.Hook] {
-		return errors.New("oauth.hook is unknown")
+	return nil
+}
+
+// validateMint checks the endpoints and the mint they serve.
+func (o *OAuth) validateMint() error {
+	if !mints[o.Mint] {
+		return errors.New("oauth.mint is unknown")
 	}
-	if !encodings[o.Refresh.Encoding] {
-		return errors.New("oauth.refresh.encoding is unknown")
+	if len(o.Endpoints) > maxEndpoints {
+		return errors.New("oauth.endpoints has too many entries")
 	}
-	if o.Refresh.LeadSeconds < 0 || o.Refresh.LeadSeconds > maxLeadSeconds || o.Refresh.MaxAgeSeconds < 0 || o.Refresh.MaxAgeSeconds > maxAgeSeconds {
-		return errors.New("oauth.refresh timing is out of range")
+	for name, u := range o.Endpoints {
+		if !fieldName.MatchString(name) {
+			return errors.New("oauth.endpoints holds a bad name")
+		}
+		if err := httpsURL(u); err != nil {
+			return err
+		}
 	}
+	if o.Mint == MintCopilot && o.Endpoints[EndpointCopilotToken] == "" {
+		return errors.New("oauth.mint needs the copilotToken endpoint")
+	}
+	return nil
+}
+
+// validateRest checks what every login shares: headers, address suffix, beta
+// list, session and account headers, and extra parameters.
+func (o *OAuth) validateRest() error {
 	if len(o.Headers) > maxOAuthHeaders {
 		return errors.New("oauth.headers has too many entries")
 	}
@@ -219,6 +293,17 @@ func (o *OAuth) validate() error {
 		seen[p.Name] = true
 	}
 	return nil
+}
+
+// HookNames lists the login steps a data file may name.
+func HookNames() []string {
+	out := make([]string, 0, len(hooks))
+	for n := range hooks {
+		if n != "" {
+			out = append(out, n)
+		}
+	}
+	return out
 }
 
 // BetaFlag reports whether s is a plain beta-flag token: a client may send it,

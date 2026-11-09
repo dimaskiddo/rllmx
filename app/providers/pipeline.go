@@ -75,6 +75,7 @@ func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.P
 		ResponseCache: responseCache(app, store),
 		Signatures:    signatureCache(app),
 		Refresher:     h.Refresher,
+		Minter:        h.Minter,
 		Timers:        stream.Timers{FirstChunk: h.Stream.FirstChunk, Stall: h.Stream.Stall, UsageWait: h.Stream.UsageWait},
 		Log:           log,
 	})

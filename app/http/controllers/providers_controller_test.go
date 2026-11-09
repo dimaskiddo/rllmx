@@ -182,6 +182,29 @@ func TestCreateListUpdateDeleteNeverShowsACredential(t *testing.T) {
 	}
 }
 
+func TestAGitHubAccountNeverShowsItsLoginOrCopilotToken(t *testing.T) {
+	m := newMgmtRig(t)
+	c, err := m.st.Connections().Create(context.Background(), repository.ConnInput{
+		Provider: "github", AuthType: "oauth", Email: "o@x.test",
+		Fields: map[string]string{"accessToken": `"GH-LOGIN-TOKEN"`, "testStatus": `"active"`},
+		PSD:    `{"copilotToken":"tid=COPILOT-SECRET","copilotTokenExpiresAt":4102444800,"githubLogin":"octo","githubUserId":"4242"}`,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/api/providers", "/api/providers/" + c.ID} {
+		_, _, raw := m.call("GET", path, "", true)
+		for _, leak := range []string{"GH-LOGIN-TOKEN", "COPILOT-SECRET"} {
+			if strings.Contains(raw, leak) {
+				t.Fatalf("%s leaks %q: %s", path, leak, raw)
+			}
+		}
+		if !strings.Contains(raw, "octo") {
+			t.Fatalf("%s hides the login name: %s", path, raw)
+		}
+	}
+}
+
 func TestNoCredentialFieldNameEverAppearsInAView(t *testing.T) {
 	m := newMgmtRig(t)
 	ctx := context.Background()

@@ -69,6 +69,27 @@
       "flattenContent": true
     },
     {
+      "provider": "github",
+      "pattern": "gpt-5*",
+      "rename": {
+        "max_tokens": "max_completion_tokens"
+      }
+    },
+    {
+      "provider": "github",
+      "pattern": "o[134]-*",
+      "rename": {
+        "max_tokens": "max_completion_tokens"
+      }
+    },
+    {
+      "provider": "github",
+      "pattern": "gpt-5.4*",
+      "drop": [
+        "temperature"
+      ]
+    },
+    {
       "provider": "cerebras",
       "drop": [
         "client_metadata"

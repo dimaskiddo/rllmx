@@ -36,13 +36,25 @@ func NodeURL(nodeType, base, apiType string) string {
 // action and stream, never by the body.
 func RegistryURL(e upstream.Entry, format, model string, stream bool) string {
 	if format != upstream.FormatGemini {
-		return withSuffix(e.Transport.BaseURL, e.Transport.URLSuffix)
+		return withSuffix(formatAddress(e.Transport, format), e.Transport.URLSuffix)
 	}
 	base := strings.TrimRight(e.Transport.BaseURL, "/")
 	if stream {
 		return base + "/" + url.PathEscape(model) + ":streamGenerateContent?alt=sse"
 	}
 	return base + "/" + url.PathEscape(model) + ":generateContent"
+}
+
+// formatAddress is the endpoint a wire format is sent to: the provider's own
+// address for it when its data names one, else the base address.
+func formatAddress(t upstream.Transport, format string) string {
+	switch {
+	case format == upstream.FormatResponses && t.ResponsesURL != "":
+		return t.ResponsesURL
+	case format == upstream.FormatClaude && t.MessagesURL != "":
+		return t.MessagesURL
+	}
+	return t.BaseURL
 }
 
 // withSuffix adds a provider's query string to an address that has none.

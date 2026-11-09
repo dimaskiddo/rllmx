@@ -81,6 +81,119 @@ func TestALoginBlockIsValidatedAtLoad(t *testing.T) {
 	}
 }
 
+func deviceFile(fields string) string {
+	return entry("p", `,"oauth":{"flow":"device","deviceUrl":"https://a.example/device","tokenUrl":"https://a.example/token","scope":"s"`+fields+`}`)
+}
+
+func TestADeviceLoginIsValidatedAtLoad(t *testing.T) {
+	const mint = `,"mint":"copilot","endpoints":{"copilotToken":"https://a.example/copilot"}`
+	cases := []struct {
+		name, fields, reason string
+	}{
+		{"ok, no refresh block", ``, ""},
+		{"ok, with a hook and a mint", `,"hook":"github"` + mint, ""},
+		{"ok, with a refresh block", `,"refresh":{"encoding":"form","leadSeconds":60}`, ""},
+		{"a redirect belongs to the other flow", `,"redirect":"local"`, "device login"},
+		{"an exchange belongs to the other flow", `,"exchange":"json"`, "device login"},
+		{"an authorize address belongs to the other flow", `,"authorizeUrl":"https://a.example/a"`, "device login"},
+		{"parameters belong to the other flow", `,"params":[{"name":"a","value":"1"}]`, "device login"},
+		{"a refresh block with a bad encoding", `,"refresh":{"encoding":"xml","leadSeconds":1}`, "oauth.refresh.encoding"},
+		{"unknown mint", `,"mint":"cookie"`, "oauth.mint"},
+		{"a mint with no endpoint", `,"mint":"copilot"`, "copilotToken endpoint"},
+		{"an endpoint over plain http", `,"mint":"copilot","endpoints":{"copilotToken":"http://a.example/c"}`, "https"},
+		{"an endpoint with a bad name", `,"endpoints":{"a b":"https://a.example/c"}`, "endpoints"},
+		{"too many endpoints", `,"endpoints":{` + strings.TrimSuffix(strings.Repeat(`"e1":"https://a.example/c",`, 1), ",") + `,"e2":"https://a.example/c","e3":"https://a.example/c","e4":"https://a.example/c","e5":"https://a.example/c","e6":"https://a.example/c","e7":"https://a.example/c","e8":"https://a.example/c","e9":"https://a.example/c"}`, "too many"},
+		{"a credential header", `,"headers":{"Authorization":"x"}`, "oauth header"},
+	}
+	for _, tc := range cases {
+		_, err := Load(fstest.MapFS{"data/p.json": file(deviceFile(tc.fields))}, "data")
+		switch {
+		case tc.reason == "" && err != nil:
+			t.Errorf("%s: %v", tc.name, err)
+		case tc.reason != "" && (err == nil || !strings.Contains(err.Error(), tc.reason)):
+			t.Errorf("%s: error %v, want %q", tc.name, err, tc.reason)
+		}
+	}
+	// A redirect login keeps its own rules.
+	for name, fields := range map[string]string{
+		"a device address on a redirect login": `"redirect":"local","exchange":"json","refresh":{"encoding":"json","leadSeconds":1},"deviceUrl":"https://a.example/d"`,
+		"a device flow with no device address": ``,
+	} {
+		body := loginFile(fields)
+		if name == "a device flow with no device address" {
+			body = strings.Replace(deviceFile(``), `"deviceUrl":"https://a.example/device",`, "", 1)
+		}
+		if _, err := Load(fstest.MapFS{"data/p.json": file(body)}, "data"); err == nil {
+			t.Errorf("%s: loaded", name)
+		}
+	}
+}
+
+func TestTheGitHubLoginDeclaresItsDeviceFlow(t *testing.T) {
+	reg, err := Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	gh, _ := reg.ByID("github")
+	o := gh.OAuth
+	if o == nil || o.Flow != FlowDevice || o.DeviceURL != "https://github.com/login/device/code" || o.TokenURL != "https://github.com/login/oauth/access_token" ||
+		o.Scope != "read:user" || o.Hook != "github" || o.Mint != MintCopilot || o.Endpoints[EndpointCopilotToken] == "" || o.Endpoints[EndpointUser] == "" ||
+		o.Refresh != (Refresh{}) || gh.Executor != ExecutorGitHub {
+		t.Fatalf("%+v executor %s", o, gh.Executor)
+	}
+	if gh.Transport.ResponsesURL == "" || gh.Transport.MessagesURL == "" {
+		t.Fatalf("%+v", gh.Transport)
+	}
+	for _, h := range []string{"copilot-integration-id", "editor-version", "editor-plugin-version", "user-agent", "openai-intent", "x-github-api-version", "x-vscode-user-agent-library-version", "X-Initiator"} {
+		if o.Headers[h] == "" {
+			t.Errorf("header %s is missing", h)
+		}
+	}
+}
+
+func TestTheGitHubModelsChooseTheirWireFormat(t *testing.T) {
+	reg, _ := Default()
+	want := map[string]string{
+		"claude-sonnet-5": FormatClaude, "claude-opus-4.8-fast": FormatClaude, "claude-haiku-4.5": FormatClaude,
+		"gpt-5.3-codex": FormatResponses,
+		"gpt-5.4":       "", "gemini-3.7-flash": "", "kimi-k3": "", "mai-code-1.1-flash": "",
+	}
+	for id, format := range want {
+		m, ok := reg.Model("github", id)
+		if !ok || m.TargetFormat != format {
+			t.Errorf("%s: %+v %v, want %q", id, m, ok, format)
+		}
+	}
+	e, _ := reg.ByID("github")
+	for _, m := range e.Models {
+		if strings.HasPrefix(m.ID, "claude-") && m.TargetFormat != FormatClaude {
+			t.Errorf("%s goes to the chat endpoint", m.ID)
+		}
+	}
+}
+
+func TestAFormatAddressStaysOnTheBaseHost(t *testing.T) {
+	const base = `"transport":{"baseUrl":"https://h.example/chat/completions"`
+	for name, tc := range map[string]struct {
+		extra string
+		ok    bool
+	}{
+		"same host":       {`,"responsesUrl":"https://h.example/responses","messagesUrl":"https://h.example/v1/messages"`, true},
+		"other host":      {`,"responsesUrl":"https://evil.example/responses"`, false},
+		"other scheme":    {`,"messagesUrl":"http://h.example/m"`, false},
+		"a query":         {`,"messagesUrl":"https://h.example/m?x=1"`, false},
+		"a user":          {`,"messagesUrl":"https://u:p@h.example/m"`, false},
+		"a fragment":      {`,"messagesUrl":"https://h.example/m#f"`, false},
+		"host in capital": {`,"responsesUrl":"https://H.EXAMPLE/responses"`, true},
+	} {
+		body := `{"id":"p","category":"apikey",` + base + tc.extra + `},"models":[]}`
+		_, err := Load(fstest.MapFS{"data/p.json": file(body)}, "data")
+		if (err == nil) != tc.ok {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
 func TestAnOAuthAddressMustBePlainHTTPS(t *testing.T) {
 	for _, bad := range []string{"http://a.example/t", "https://u:p@a.example/t", "https://a.example/t?x=1", "https://a.example/t#f", "ftp://a.example", "/relative"} {
 		body := strings.Replace(loginFile(`"redirect":"local","exchange":"json","refresh":{"encoding":"json","leadSeconds":300}`), "https://a.example/token", bad, 1)

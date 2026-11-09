@@ -53,12 +53,20 @@ func newOAuthRig(t *testing.T, tokenBody string) *oauthRig {
 		mu.Lock()
 		seen = append(seen, r.Form.Encode())
 		mu.Unlock()
+		if r.URL.Path == "/device" {
+			_, _ = w.Write([]byte(`{"device_code":"DEVICE-SECRET","user_code":"WXYZ-9876","verification_uri":"https://h.example/device","expires_in":600,"interval":5}`))
+			return
+		}
 		_, _ = w.Write([]byte(tokenBody))
 	}))
 	t.Cleanup(token.Close)
 
-	reg, err := upstream.Load(fstest.MapFS{"data/claude.json": {Data: []byte(`{"id":"claude","category":"oauth","transport":{"baseUrl":"https://x.example/v1","format":"claude"},"models":[],` +
-		`"oauth":{"flow":"code-pkce","authorizeUrl":"https://a.example/authorize","tokenUrl":"` + token.URL + `","scope":"s","redirect":"local","exchange":"form","refresh":{"encoding":"json","leadSeconds":300}}}`)}}, "data")
+	reg, err := upstream.Load(fstest.MapFS{
+		"data/claude.json": {Data: []byte(`{"id":"claude","category":"oauth","transport":{"baseUrl":"https://x.example/v1","format":"claude"},"models":[],` +
+			`"oauth":{"flow":"code-pkce","authorizeUrl":"https://a.example/authorize","tokenUrl":"` + token.URL + `","scope":"s","redirect":"local","exchange":"form","refresh":{"encoding":"json","leadSeconds":300}}}`)},
+		"data/dev.json": {Data: []byte(`{"id":"dev","category":"oauth","transport":{"baseUrl":"https://x.example/v1","format":"openai"},"models":[],` +
+			`"oauth":{"flow":"device","deviceUrl":"` + token.URL + `/device","tokenUrl":"` + token.URL + `/token","scope":"s"}}`)},
+	}, "data")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,6 +85,8 @@ func newOAuthRig(t *testing.T, tokenBody string) *oauthRig {
 		g.Handle(r, class, method, path, h)
 	}
 	handle(apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/oauth/{provider}/authorize", oc.Authorize)
+	handle(apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/oauth/{provider}/device-code", oc.DeviceCode)
+	handle(apphttp.ClassAlwaysProtected, nethttp.MethodPost, "/api/oauth/poll", oc.Poll)
 	handle(apphttp.ClassAlwaysProtected, nethttp.MethodPost, "/api/oauth/exchange", oc.Exchange)
 	handle(apphttp.ClassAlwaysProtected, nethttp.MethodPost, "/api/oauth/callback", oc.Callback)
 	handle(apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/oauth/status", oc.Status)
@@ -126,6 +136,80 @@ func TestEveryLoginRouteNeedsASession(t *testing.T) {
 		if code, _, _ := o.call(rt[0], rt[1], `{"state":"x","input":"y","code":"z"}`, ""); code != 401 {
 			t.Errorf("%s %s without a session: %d", rt[0], rt[1], code)
 		}
+	}
+}
+
+func TestTheDeviceRoutesNeedASession(t *testing.T) {
+	o := newOAuthRig(t, `{"access_token":"AT"}`)
+	if code, _, _ := o.call("GET", "/api/oauth/dev/device-code", "", ""); code != 401 {
+		t.Errorf("device-code without a session: %d", code)
+	}
+	if code, _, _ := o.call("POST", "/api/oauth/poll", `{"state":"x"}`, ""); code != 401 {
+		t.Errorf("poll without a session: %d", code)
+	}
+}
+
+func TestADeviceStartShowsTheUserCodeAndNeverTheDeviceCode(t *testing.T) {
+	o := newOAuthRig(t, `{"access_token":"AT"}`)
+	code, out, raw := o.call("GET", "/api/oauth/dev/device-code", "", o.cookie)
+	if code != 200 || out["userCode"] != "WXYZ-9876" || out["verificationUri"] != "https://h.example/device" || out["state"] == "" || out["interval"] != float64(5) {
+		t.Fatalf("%d %s", code, raw)
+	}
+	if strings.Contains(raw, "DEVICE-SECRET") {
+		t.Fatalf("the device code reached the browser: %s", raw)
+	}
+}
+
+func TestADeviceStartRefusesWhatIsNotADeviceLogin(t *testing.T) {
+	o := newOAuthRig(t, `{"access_token":"AT"}`)
+	if code, _, _ := o.call("GET", "/api/oauth/claude/device-code", "", o.cookie); code != 404 {
+		t.Errorf("a redirect login: %d", code)
+	}
+	if code, _, _ := o.call("GET", "/api/oauth/nothing/device-code", "", o.cookie); code != 404 {
+		t.Errorf("an unknown provider: %d", code)
+	}
+	o.svc.ClientID = func(string) string { return "" }
+	if code, _, _ := o.call("GET", "/api/oauth/dev/device-code", "", o.cookie); code != 400 {
+		t.Errorf("a switched-off login: %d", code)
+	}
+}
+
+func TestPollingBelongsToTheBrowserThatStartedTheLogin(t *testing.T) {
+	o := newOAuthRig(t, `{"error":"authorization_pending"}`)
+	_, out, _ := o.call("GET", "/api/oauth/dev/device-code", "", o.cookie)
+	state, _ := out["state"].(string)
+	body := `{"state":"` + state + `"}`
+	if code, got, raw := o.call("POST", "/api/oauth/poll", body, o.cookie); code != 200 || got["status"] != "pending" {
+		t.Fatalf("%d %s", code, raw)
+	}
+	// The same claims sign to the same cookie, so a second browser needs its own.
+	other, ok := o.auth.Issue(context.Background(), auth.MethodPassword, "other@x.test", "", false)
+	if !ok || other.Value == o.cookie {
+		t.Fatal("no distinct second session")
+	}
+	if _, got, raw := o.call("POST", "/api/oauth/poll", body, other.Value); got["status"] != "unknown" {
+		t.Fatalf("another session polled: %s", raw)
+	}
+	for name, bad := range map[string]string{"no state": `{}`, "not json": `x`, "empty": ``} {
+		if code, _, _ := o.call("POST", "/api/oauth/poll", bad, o.cookie); code != 400 {
+			t.Errorf("%s: %d", name, code)
+		}
+	}
+}
+
+func TestAnApprovedDeviceLoginIsStoredAndReadThroughPoll(t *testing.T) {
+	o := newOAuthRig(t, `{"access_token":"AT","refresh_token":"RT"}`)
+	_, out, _ := o.call("GET", "/api/oauth/dev/device-code", "", o.cookie)
+	state, _ := out["state"].(string)
+	o.svc.Sessions.Now = func() time.Time { return time.Now().Add(time.Minute) }
+	_, got, raw := o.call("POST", "/api/oauth/poll", `{"state":"`+state+`"}`, o.cookie)
+	id, _ := got["connectionId"].(string)
+	if got["status"] != "done" || id == "" || strings.Contains(raw, "AT") && strings.Contains(raw, "access") {
+		t.Fatalf("%s", raw)
+	}
+	conn, found, _ := o.st.Connections().Get(context.Background(), id)
+	if !found || conn.Provider != "dev" {
+		t.Fatalf("%+v %v", conn, found)
 	}
 }
 

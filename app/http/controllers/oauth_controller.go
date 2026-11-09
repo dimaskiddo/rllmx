@@ -69,6 +69,44 @@ func (c *OAuthController) Authorize(ctx contractshttp.Context) contractshttp.Res
 	return ctx.Response().Json(nethttp.StatusOK, started)
 }
 
+// DeviceCode answers GET /api/oauth/{provider}/device-code: it starts a device
+// login and returns what the user needs to approve it. The device code stays on
+// the server.
+func (c *OAuthController) DeviceCode(ctx contractshttp.Context) contractshttp.Response {
+	r := ctx.Request().Origin()
+	bind := c.bind(r)
+	if bind == "" {
+		return flat(ctx, nethttp.StatusUnauthorized, "Sign in to the dashboard first")
+	}
+	started, err := c.Service.StartDevice(r.Context(), ctx.Request().Route("provider"), bind)
+	switch {
+	case errors.Is(err, oauth.ErrUnsupported):
+		return flat(ctx, nethttp.StatusNotFound, "This provider has no device login")
+	case errors.Is(err, oauth.ErrDisabled):
+		return flat(ctx, nethttp.StatusBadRequest, "This login is switched off: its client id is not configured")
+	case oauth.ClassOf(err) == oauth.ClassTransport:
+		return flat(ctx, nethttp.StatusBadGateway, "The provider could not be reached")
+	case err != nil:
+		return flat(ctx, nethttp.StatusServiceUnavailable, "The login could not be started")
+	}
+	return ctx.Response().Json(nethttp.StatusOK, started)
+}
+
+type pollBody struct {
+	State string `json:"state"`
+}
+
+// Poll answers POST /api/oauth/poll: one look at a device login. The router asks
+// the provider no more often than the provider allows, whatever the browser does.
+func (c *OAuthController) Poll(ctx contractshttp.Context) contractshttp.Response {
+	var b pollBody
+	if err := bindJSON(ctx, &b); err != nil || b.State == "" {
+		return flat(ctx, nethttp.StatusBadRequest, "Invalid request body")
+	}
+	r := ctx.Request().Origin()
+	return ctx.Response().Json(nethttp.StatusOK, c.Service.PollDevice(r.Context(), b.State, c.bind(r)))
+}
+
 type exchangeBody struct {
 	State string `json:"state"`
 	Input string `json:"input"`

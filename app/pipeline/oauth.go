@@ -23,6 +23,54 @@ type Refresher interface {
 	Renew(ctx context.Context, conn repository.Connection) (repository.Connection, error)
 }
 
+// Minter makes the second credential a login's token is traded for, which is the
+// one a request carries.
+type Minter interface {
+	Token(ctx context.Context, conn repository.Connection) (string, error)
+	Renew(ctx context.Context, conn repository.Connection, rejected string) (string, error)
+}
+
+// mints reports whether this connection's requests carry a minted credential.
+func (c *call) mints(conn repository.Connection) bool {
+	return c.p.d.Minter != nil && c.signedIn(conn) && c.dest.entry.OAuth.Mint != ""
+}
+
+// keyFor is the credential a request on this connection carries: the stored one,
+// or for a provider with a mint the minted one. A mint that fails is the
+// account's failure and carries no provider text.
+func (c *call) keyFor(ctx context.Context, conn repository.Connection) (string, *accountFail) {
+	if !c.mints(conn) {
+		return credential(conn), nil
+	}
+	key, err := c.p.d.Minter.Token(ctx, conn)
+	if err != nil {
+		return "", c.mintFailed(ctx, err)
+	}
+	return key, nil
+}
+
+func (c *call) mintFailed(ctx context.Context, err error) *accountFail {
+	if ctx.Err() != nil {
+		return &accountFail{status: http.StatusGatewayTimeout, class: "timeout", text: "The upstream did not answer in time"}
+	}
+	c.logRefresh(err)
+	if oauth.ClassOf(err) == oauth.ClassTransport {
+		return &accountFail{status: http.StatusBadGateway, class: "network", text: "The upstream could not be reached"}
+	}
+	return &accountFail{status: http.StatusUnauthorized, class: "auth", text: "no credentials"}
+}
+
+// renew answers a refusal: a mint is replaced once, any other login is renewed.
+// The connection and the credential for the second send come back.
+func (c *call) renew(ctx context.Context, conn repository.Connection, rejected string) (repository.Connection, string, error) {
+	if c.mints(conn) {
+		key, err := c.p.d.Minter.Renew(ctx, conn, rejected)
+		return conn, key, err
+	}
+	fresh, err := c.p.d.Refresher.Renew(ctx, conn)
+	return fresh, credential(fresh), err
+}
+
 // signedIn reports whether a request on this connection carries a login's token
 // rather than a key: an OAuth account of a provider that has a login.
 func (c *call) signedIn(conn repository.Connection) bool {
@@ -132,7 +180,10 @@ func (c *call) ready(ctx context.Context, conn repository.Connection) (repositor
 // retryable reports whether a refusal on this connection may be answered by
 // renewing its token and sending the request once more.
 func (c *call) retryable(conn repository.Connection, status int) bool {
-	return c.p.d.Refresher != nil && c.signedIn(conn) && (status == http.StatusUnauthorized || status == http.StatusForbidden)
+	if status != http.StatusUnauthorized && status != http.StatusForbidden {
+		return false
+	}
+	return c.mints(conn) || (c.p.d.Refresher != nil && c.signedIn(conn))
 }
 
 func (c *call) logRefresh(err error) {

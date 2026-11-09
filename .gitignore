@@ -16,3 +16,4 @@ references
 *.sqlite-shm
 !*.gitkeep
 TASKS.md
+NOTES.md

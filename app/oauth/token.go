@@ -26,6 +26,10 @@ const (
 	ClassTransport    Class = "transport"
 	ClassRejected     Class = "rejected"
 	ClassMalformed    Class = "malformed"
+	// ClassExpired and ClassDenied end a device login: the code ran out, or the
+	// user refused it.
+	ClassExpired Class = "expired_token"
+	ClassDenied  Class = "access_denied"
 )
 
 // Error is a failed token call.
@@ -81,6 +85,19 @@ func (c *TokenClient) Exchange(ctx context.Context, f Flow, code, redirect, veri
 }
 
 func (c *TokenClient) call(ctx context.Context, tokenURL, encoding string, fields map[string]string) (Tokens, error) {
+	status, raw, err := c.post(ctx, tokenURL, encoding, fields)
+	if err != nil {
+		return Tokens{}, err
+	}
+	if status < 200 || status > 299 {
+		return Tokens{}, &Error{classify(raw)}
+	}
+	return parseTokens(raw)
+}
+
+// post sends one form or JSON body and returns the status and the bounded
+// answer. Every failure is already a class.
+func (c *TokenClient) post(ctx context.Context, target, encoding string, fields map[string]string) (int, []byte, error) {
 	var body []byte
 	var contentType string
 	if encoding == upstream.EncodingJSON {
@@ -95,28 +112,53 @@ func (c *TokenClient) call(ctx context.Context, tokenURL, encoding string, field
 	}
 	ctx, cancel := context.WithTimeout(ctx, tokenTimeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(body))
 	if err != nil {
-		return Tokens{}, &Error{ClassTransport}
+		return 0, nil, &Error{ClassTransport}
 	}
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("Accept", "application/json")
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return Tokens{}, &Error{ClassTransport}
+		return 0, nil, &Error{ClassTransport}
 	}
 	defer resp.Body.Close()
 	raw, err := file.ReadCapped(resp.Body, maxTokenBody)
 	if errors.Is(err, file.ErrTooLarge) {
-		return Tokens{}, &Error{ClassMalformed}
+		return 0, nil, &Error{ClassMalformed}
 	}
 	if err != nil {
-		return Tokens{}, &Error{ClassTransport}
+		return 0, nil, &Error{ClassTransport}
 	}
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return Tokens{}, &Error{classify(raw)}
+	return resp.StatusCode, raw, nil
+}
+
+// get makes one bounded GET with the given headers and returns the status and
+// the answer. A failure is already a class.
+func (c *TokenClient) get(ctx context.Context, target string, headers map[string]string) (int, []byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, tokenTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	if err != nil {
+		return 0, nil, &Error{ClassTransport}
 	}
-	return parseTokens(raw)
+	req.Header.Set("Accept", "application/json")
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return 0, nil, &Error{ClassTransport}
+	}
+	defer resp.Body.Close()
+	raw, err := file.ReadCapped(resp.Body, maxTokenBody)
+	if errors.Is(err, file.ErrTooLarge) {
+		return 0, nil, &Error{ClassMalformed}
+	}
+	if err != nil {
+		return 0, nil, &Error{ClassTransport}
+	}
+	return resp.StatusCode, raw, nil
 }
 
 // classify reduces an error body to a class by the codes both providers use.

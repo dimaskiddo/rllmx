@@ -1,6 +1,6 @@
 # PRD 08 — Executors (`app/executor/`)
 
-**Status:** partial · **Steps:** 1.8c, 1.10a, 1.10b to 1.10h
+**Status:** partial · **Steps:** 1.8c, 1.10a, 1.10b to 1.10k
 
 Built in 1.8c: `app/executor` with the `Executor` interface (`Execute(ctx, Request) (Response, error)`), the default executor, the URL builders, the retry table and the upstream error parser. It returns the response unread; the pipeline decides stream or buffer. The credential is read from the connection at the last moment and is never stored, logged or put in an error. Not built: a per-provider executor, token refresh on 401/403 (1.9), the `baseUrls` fallback. Everything below the interface is the design step 1.10 completes.
 
@@ -31,7 +31,7 @@ Registered by provider id; aliases in parentheses.
 | antigravity | `v1internal:streamGenerateContent`, function-name sanitizing, thought-signature handling, reset-time parsing |
 | gemini-cli | Cloud Code envelope `{project, model, request}`, client headers |
 | codex | Body shaped to the Codex backend (allowlisted fields, `system` to `developer`, stored item ids removed, tools flattened and Unicode-property patterns stripped, effort among the model's levels, Lite prefix); workspace and session headers; `/compact` chosen by the route (`Request.Compact` from the path, never executor state), answered with JSON and forwarded to a Responses client as sent; remote images inlined through the `inlineImages` quirk (16 images, 20 MB per request); the first 256 KiB of the stream are read for `server_is_overloaded` and `service_unavailable_error` (same account, the 503 rule), `model_at_capacity` (503 at once so another account serves), and replayed byte for byte when clean. The look ends at the first output delta, at 256 KiB, or when no byte arrives for `STREAM_STALL_TIMEOUT` (D228). An error after real output is never retried. Built in 1.10b; `prompt_cache_key` is always the keyed session (D227), instructions are our own text (D192), the effort comes from the model's `levels` and has no hyphen suffix (D229) |
-| github | The pipeline picks the wire format from the model data (`targetFormat` for Claude and Codex models) and the executor picks the address of that format; the GitHub token is exchanged for a Copilot token (one mint per account for any number of requests, kept in the memory-only `connections` cache group and sealed with the account, replaced 5 minutes before expiry, replaced once on a 401, a refused token never sent again); a chat body is fitted to Copilot (text and image parts, `max_completion_tokens`, no `reasoning_effort: none`) |
+| github | The pipeline picks the wire format from the model data (`targetFormat` for Claude and Codex models) and the executor picks the address of that format; the GitHub token is exchanged for a Copilot token (one mint per account for any number of requests, kept in the memory-only `connections` cache group and sealed with the account, replaced 5 minutes before expiry, replaced once on a 401, a refused token never sent again); a chat body is fitted to Copilot (text and image parts, `max_completion_tokens`, no `reasoning_effort: none`). Built in 1.10c: the executor sends the minted token, one `x-request-id` per request and the data's fixed identity headers (`copilot-integration-id`, `editor-version`, `editor-plugin-version`, `user-agent`, `openai-intent`, `x-github-api-version`, `x-vscode-user-agent-library-version`, `X-Initiator: user`, `anthropic-version`) on all three endpoints; the chat body fit applies only to `/chat/completions`. The parameter rules (`max_tokens` to `max_completion_tokens` for `gpt-5*` and `o1`, `o3` and `o4`, no `temperature` on `gpt-5.4*`) are data in `params.json` |
 | grok-cli | Responses body shaped to the proxy's allowlist, native item ids only, tool outputs without a call dropped; identity and session headers from the account and the derived session; `prompt_cache_key` is always the derived session, never the client's; a bounded per-account turn counter; the agent id is the stored one or derived from the connection, never from the machine |
 | kiro | AWS headers, endpoint ordering, event-stream to SSE |
 | cursor (`cu`) | Connect protobuf over HTTP/2, agent service for auto/agent models |
@@ -106,7 +106,8 @@ sequenceDiagram
 | default (registry-driven) | done | 1.8, 1.10a |
 | azure | done | 1.10a |
 | codex (peek, Lite, `/compact`, reset time, images), grok-cli | done | 1.10b |
-| github (Copilot token, chat, messages and Responses addresses), codebuddy-cn and codebuddy-intl, minimax-code | todo | 1.10c |
+| github (Copilot token, chat, messages and Responses addresses) | done | 1.10c |
+| codebuddy-cn and codebuddy-intl, minimax-code and minimax-code-global | todo | 1.10f |
 | iflow, antigravity, commandcode, gemini-cli, qoder and qoder-cn, kiro, zed, cursor | todo | 1.10 |
 | windsurf, trae (reference loads neither, D158) | out | - |
 | bedrock and bedrock-xai, opencode (opencode-go, opencode-zen), vertex and vertex-partner | todo | 1.10 |
@@ -168,7 +169,8 @@ Every provider the references ship, with executor kind, status and delivering st
 | default | todo 1.10 | cline, clinepass, gitlab, glm, kilocode, kimi, muse, xai |
 | default | partial (1.9c: a login's headers and address suffix, the computed beta list and the disguise are data and `pipeline`, no executor code) | claude |
 | specialized | done (1.10b) | codex, grok-cli |
-| specialized | todo 1.10 | codebuddy-cn, codebuddy-intl, github, minimax-code, minimax-code-global |
+| specialized | done (1.10c) | github |
+| specialized | todo 1.10f | codebuddy-cn, codebuddy-intl, minimax-code, minimax-code-global |
 | specialized | todo 1.10 | antigravity, cursor, iflow, qoder, qoder-cn, xiaomi-mimo, zed |
 | specialized | out | trae, windsurf |
 
@@ -201,10 +203,11 @@ Auth: pasted cookie over a plain HTTP client. Browser or TLS-fingerprint clients
 - [x] Executor base: URL, auth block, header order with the overrides last, per-status retry, error parsing (1.8c). The `baseUrls` fallback stays unbuilt (D102)
 - [x] 1.10a: `executor.Mux` (an unregistered name fails the call, a node uses `Default`), per-provider `transport` fields (`headers`, `urlSuffix`, `retry`, `quirks`, `reasoningInject`), `{accountId}` in the address (checked against `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`, a bad one sends nothing), a model's `upstreamId` on the wire, `azure`, and 45 data files. Param rules for cerebras, mistral, groq, cloudflare-ai and the volcengine kimi cap are in `params.json`; the MiniMax pair drop `output_config`
 - [x] 1.10b: the `codex` and `grok-cli` executors on `Default`, shared Responses shaping (`responses_body.go`: field allowlist rebuilt not edited, flat tools, `\p{` patterns stripped), the SSE peek with an idle bound, `/compact`, `Model.lite` and `levels`, the `inlineImages` quirk. Not built: the `web_search` auto-injection, the live-catalog guard (1.10h)
-- [ ] 1.10c to 1.10h: the rest of the parity table (github and the small login providers; the Google family; AWS; signed and session protocols; cookie providers; live-catalog guards and probes)
-- [ ] Still missing from the base: `regions` and `defaultRegion`, `baseUrls` fallback (D102), `stallTimeoutMs`/`timeoutMs` per provider, `responsesUrl`/`messagesUrl`, the JSON-schema to `json_object` fallback for compatible nodes. No 1.10a provider needs them; each lands with the first provider that does
+- [x] 1.10c: the `github` executor on `Default`, the Copilot token mint, `responsesUrl` and `messagesUrl` beside `baseUrl` (a model's `targetFormat` now picks the address as well as the codec), the GitHub device login, the `github` param rules
+- [ ] 1.10d to 1.10k: the rest of the parity table (the small login providers; the Google family; AWS; signed and session protocols; cookie providers; live-catalog guards and probes)
+- [ ] Still missing from the base: `regions` and `defaultRegion`, `baseUrls` fallback (D102), `stallTimeoutMs`/`timeoutMs` per provider, the JSON-schema to `json_object` fallback for compatible nodes. No 1.10a provider needs them; each lands with the first provider that does
 - [ ] Live-catalog guards for kiro, codex, cursor, kimchi, qoder: account model list (5-minute cache) before dispatch; unknown model 400; a fetch failure lets the request through
-- **Done when:** every provider in the parity table has an executor; each passes its fake-upstream tests; live checks are in Open items.
+- **Done when:** every provider in the parity table has an executor; each passes its fake-upstream tests; live checks are in `TASKS.md` Open items.
 
 ---
 
@@ -227,11 +230,13 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 227 | The cache key sent to Codex and to the Grok CLI proxy is always the keyed session (a hash bound to the account), never a `prompt_cache_key` the client chose; with no session the field is removed | One client cannot pick the cache another client's conversation reads |
 | 228 | The Codex peek has an idle bound: when no byte arrives for the stall timeout it hands over what it read and the normal stream timers act. The reference waits for output or 256 KiB with no timer | A stalled upstream is not hidden behind the peek |
 | 229 | A Codex model id carries no hyphen effort suffix (`gpt-5.3-codex-high`); the level comes from the request (`reasoning`, `(high)`) and the model's `levels`. The reference removes the first match of `-high` anywhere in the name | An id is an exact registry row; no match in the middle of a name |
+| 234 | The wire format of a GitHub Copilot model is data (`targetFormat`): Claude models to `/v1/messages`, `gpt-5.3-codex` to `/responses`, the rest to `/chat/completions`. The reference starts every non-Claude model on `/chat/completions`, remembers a 400 "not accessible via the /chat/completions endpoint" for the model in a per-process set, and sends it to `/responses` afterwards; nothing here learns at run time | The routing survives a restart and does not cost a failed first request per model after every start. Which other `gpt-*` ids need `/responses` is an open item for a live account |
+| 236 | The Copilot identity headers are sent on all three endpoints and the operator's header overrides apply on all three. The reference sends the headers on all three but applies the overrides on `/chat/completions` only, and the stripping rules for Claude-named models never run there (they go to `/v1/messages`), so they are not built | One rule for every endpoint; dead rules not carried over (improvement) |
 | 164 | Device name fixed word `router`; model is build OS and architecture; stable device id from account's stored data, else generated | Host name identifies operator's machine to third party; upstream does not need it |
 | 166 | Only provider whose data sets `clineEnvelope`, only when `success` true, `data` an object; any other body passes unchanged | Unrelated envelope-shaped body not rewritten |
 | 175 | Data-named headers on login calls pass same filter as upstream headers; content type, accept, framing, credential headers cannot be set | Data file cannot forge framing or replace credential on a token call |
-| 159 | Static keys only (access key id, secret, optional session token); `apiKeyOptionalWith: profile` removed from data **(planned 1.10 F)** | `credential_process` runs an arbitrary external command; only filter-gated `git clone` may start (`PRD 11`); AWS config package not approved (scope cut) |
-| 160 | gemini-web, muse-web deferred; chatgpt-web answers error to Turnstile demand instead of opening browser **(planned 1.10 H)** | No browser in the router (PRD 22) (scope cut) |
+| 159 | Static keys only (access key id, secret, optional session token); `apiKeyOptionalWith: profile` removed from data **(planned 1.10i)** | `credential_process` runs an arbitrary external command; only filter-gated `git clone` may start (`PRD 11`); AWS config package not approved (scope cut) |
+| 160 | gemini-web, muse-web deferred; chatgpt-web answers error to Turnstile demand instead of opening browser **(planned 1.10k)** | No browser in the router (PRD 22) (scope cut) |
 | 93, 104 | Registered pasted-credential providers or nodes only; set grows through 1.10, closes when last provider file lands **(1.10)**; restricted key refused on chat (403), sees empty list until key access **(2.2)** | Stopgaps, fail closed (temporary) |
 | 158 | Not built, listed `out` in PRD 8; no executor, data file, callback listener | Reference does not serve them either; saves a gRPC-web protobuf protocol and a two-step session (scope cut) |
 | 162 | Not read; endpoint, version, deployment from account only | Configuration is product's own variables and settings row, never another program's names (scope cut) |

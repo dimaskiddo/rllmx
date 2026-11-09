@@ -137,8 +137,8 @@ Full wording and reasons for the Go rules: `docs/ARCHITECTURE.md`, Go Convention
 | `references/` | Read-only 9router sources and the 9router fixture database (git-ignored; Clean-Room) |
 | `docs/prds/` | One PRD per area: status, design, parity rows, divergences, findings. **Design authority**; index in `docs/prds/README.md` |
 | `docs/ARCHITECTURE.md` | Module map, design decisions, approved modules, Go conventions, terminal commands |
-| `docs/PARITY.md`, `docs/DIVERGENCES.md` | Pinned references and sync log; divergence index |
+| `docs/PARITY.md`, `docs/DIVERGENCES.md` | Pinned references and status vocabulary; divergence index |
 | `docs/WORKFLOWS.md` | Pipeline, startup order, operator procedures, Parity Sync |
-| `TASKS.md` | Steps, open items, dependency gates, what the user must decide |
+| `TASKS.md` | Steps, audits, dependency gates, open items and decisions, backlog, sync log, unverified reference values, code-quality record (the last five link to their tables) |
 | `.env.example` | Every variable with its default (`PRD 17`) |
 | `Makefile`, `Dockerfile`, `.goreleaser.yml` | Build, container, release |

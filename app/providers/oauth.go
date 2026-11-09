@@ -15,7 +15,7 @@ import (
 // newLogin builds the account login service and the refresher that keeps its
 // tokens alive. The store opens in a runner after every provider registered, so
 // accounts are looked up on use.
-func newLogin(app foundation.Application, reg *upstream.Registry, cfg *settings.OAuth, up *settings.Upstream) (*oauth.Service, *oauth.Refresher) {
+func newLogin(app foundation.Application, reg *upstream.Registry, cfg *settings.OAuth, up *settings.Upstream) (*oauth.Service, *oauth.Refresher, *oauth.Minter) {
 	sessions := oauth.NewSessions()
 	listeners := &oauth.Listeners{Host: cfg.CallbackHost, Sessions: sessions, Log: app.MakeLog()}
 	tokens := oauth.NewTokenClient(up.Allow)
@@ -45,7 +45,17 @@ func newLogin(app foundation.Application, reg *upstream.Registry, cfg *settings.
 			return store.Connections()
 		},
 	}
-	return svc, refresher
+	minter := &oauth.Minter{
+		Registry: reg, Tokens: tokens, Cache: cacheOrNil(app), Log: app.MakeLog(), Now: time.Now,
+		Store: func() oauth.PSDStore {
+			store := DataOf(app).Runner.Store()
+			if store == nil {
+				return nil
+			}
+			return store.Connections()
+		},
+	}
+	return svc, refresher, minter
 }
 
 // oauthRunner owns what the login keeps running: the callback listeners, which

@@ -56,14 +56,18 @@ func (c *call) try(ctx context.Context, conn repository.Connection) (Output, *ac
 		ctx, cancel = context.WithTimeout(ctx, c.p.d.BodyTimeout)
 		defer cancel()
 	}
-	resp, err := c.send(ctx, conn)
+	key, fail := c.keyFor(ctx, conn)
+	if fail != nil {
+		return Output{}, fail
+	}
+	resp, err := c.send(ctx, conn, key)
 	if err != nil {
 		return c.executeFailed(ctx, err)
 	}
 	if c.retryable(conn, resp.Status) {
 		first := executor.ReadError(resp.Status, resp.Body)
 		_ = resp.Body.Close()
-		fresh, rerr := c.p.d.Refresher.Renew(ctx, conn)
+		fresh, newKey, rerr := c.renew(ctx, conn, key)
 		switch {
 		case errors.Is(rerr, oauth.ErrExpired):
 			return Output{}, &accountFail{expired: true}
@@ -71,7 +75,7 @@ func (c *call) try(ctx context.Context, conn repository.Connection) (Output, *ac
 			c.logRefresh(rerr)
 			return Output{}, &accountFail{status: first.Status, text: first.Message, resetAt: first.ResetAt}
 		}
-		if resp, err = c.send(ctx, fresh); err != nil {
+		if resp, err = c.send(ctx, fresh, newKey); err != nil {
 			return c.executeFailed(ctx, err)
 		}
 	}
@@ -87,7 +91,7 @@ func (c *call) try(ctx context.Context, conn repository.Connection) (Output, *ac
 // send makes one upstream call on a connection. The disguise is rebuilt for
 // each call, so a retry on the next account never inherits another account's
 // names.
-func (c *call) send(ctx context.Context, conn repository.Connection) (executor.Response, error) {
+func (c *call) send(ctx context.Context, conn repository.Connection, key string) (executor.Response, error) {
 	p := c.prepare(conn)
 	c.tctx.ToolName = nil
 	if p.cloaked {
@@ -97,7 +101,7 @@ func (c *call) send(ctx context.Context, conn repository.Connection) (executor.R
 	c.cloakedNames = p.names
 	req := executor.Request{
 		URL: p.url, Body: p.body, Stream: c.upStream, Entry: c.dest.entry,
-		Key: credential(conn), Auth: p.auth, Model: c.dest.model, Account: accountField(conn),
+		Key: key, Auth: p.auth, Model: c.dest.model, Account: accountField(conn),
 		Session: p.session, Compact: strings.HasSuffix(c.in.Path, "/compact"),
 	}
 	req.Spec, _ = c.p.d.Registry.Model(c.dest.provider, c.dest.model)

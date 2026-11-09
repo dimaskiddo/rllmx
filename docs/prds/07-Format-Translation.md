@@ -65,6 +65,10 @@ A request is disguised when all of these hold: the upstream format is Claude, th
 | Other nodes | A node whose base URL is not Anthropic's also gets the key as a bearer token and loses `x-app`, the browser-access header and `claude-code-20250219` **(not built: no node serves Claude through this path yet, 1.10)** |
 | Client headers | Never copied. `Input.Header` holds only the headers the pipeline reads (`pipeline.PickHeaders`) |
 
+### Wire Format by Model (1.10c)
+
+A model entry's `targetFormat` picks the codec, and since 1.10c the address too: a provider whose transport names `responsesUrl` or `messagesUrl` sends a Responses-format model to the first and a Claude-format model to the second, and any other model to `baseUrl`. Both stay on the base address's host. GitHub Copilot is the first user: its Claude models go to `/v1/messages`, `gpt-5.3-codex` to `/responses`, the rest to `/chat/completions`. The choice is data; the reference learns it per process from a 400 answer and forgets it on restart (divergence 234).
+
 ### Provider Quirks (1.10a)
 
 A provider's `transport` names the few body edits it needs, as data. The codecs read them from `Ctx.Entry`; nothing else in the pipeline knows a provider by name.

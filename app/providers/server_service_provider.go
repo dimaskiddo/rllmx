@@ -61,6 +61,8 @@ type HTTP struct {
 	OAuth *oauth.Service
 	// Refresher renews the tokens of logged-in accounts.
 	Refresher *oauth.Refresher
+	// Minter makes the Copilot token of a GitHub account.
+	Minter *oauth.Minter
 	// OAuthSettings is the checked OAUTH_* configuration.
 	OAuthSettings *settings.OAuth
 }
@@ -158,7 +160,7 @@ func (r *ServerServiceProvider) Register(app foundation.Application) {
 		a.SSOAllow = allowSSO.Allows
 		trust := apphttp.NewTrust(s.TrustedProxies)
 		a.ClientAddr = trust.ClientAddr
-		login, refresher := newLogin(app, registry, oauthCfg, upstreamCfg)
+		login, refresher, minter := newLogin(app, registry, oauthCfg, upstreamCfg)
 		return &HTTP{
 			Settings:      s,
 			Guard:         apphttp.NewGuard(a, s.TrustLoopback),
@@ -172,6 +174,7 @@ func (r *ServerServiceProvider) Register(app foundation.Application) {
 			Upstream:      upstreamCfg,
 			OAuth:         login,
 			Refresher:     refresher,
+			Minter:        minter,
 			OAuthSettings: oauthCfg,
 		}, nil
 	})

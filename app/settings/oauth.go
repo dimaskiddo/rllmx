@@ -20,6 +20,7 @@ const (
 var oauthClients = map[string]struct{ key, env string }{
 	"claude": {"oauth.claude_client_id", "OAUTH_CLAUDE_CLIENT_ID"},
 	"codex":  {"oauth.codex_client_id", "OAUTH_CODEX_CLIENT_ID"},
+	"github": {"oauth.github_client_id", "OAUTH_GITHUB_CLIENT_ID"},
 }
 
 // OAuth is the validated view of the OAUTH_* settings.

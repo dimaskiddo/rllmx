@@ -158,8 +158,8 @@ func (s *Service) store(ctx context.Context, f Flow, t Tokens) (string, error) {
 	}
 	now := s.Now()
 	var acc Account
-	if f.Hook == "codex" {
-		acc = codexAccount(t)
+	if h, ok := hooks[f.Hook]; ok {
+		acc = h(ctx, s.Tokens, f, t)
 	}
 	fields := map[string]string{
 		"accessToken":   quote(t.Access),

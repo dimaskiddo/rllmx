@@ -11,6 +11,7 @@ func init() {
 		// Empty switches that provider's login off.
 		"claude_client_id": config.Env("OAUTH_CLAUDE_CLIENT_ID", ""),
 		"codex_client_id":  config.Env("OAUTH_CODEX_CLIENT_ID", ""),
+		"github_client_id": config.Env("OAUTH_GITHUB_CLIENT_ID", ""),
 		// Address the fixed-port login listener binds to.
 		"callback_host": config.Env("OAUTH_CALLBACK_HOST", "127.0.0.1"),
 		// Renew access tokens in the background, before a request needs them.

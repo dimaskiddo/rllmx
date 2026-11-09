@@ -10,12 +10,13 @@ import (
 	"testing"
 )
 
-// The public client ids of the two command line tools whose logins the router
-// uses live in configuration only. They are held here as hashes, so this file
+// The public client ids of the tools whose logins the router uses live in
+// configuration only. They are held here as hashes, so this file
 // does not carry the literals it forbids elsewhere.
 var clientIDHashes = map[string]string{
 	"claude": "473668f2b13c71009d028ff0ef74c2cf76e71cbdd33b76e69fcc42d7e59aca4b",
 	"codex":  "584341c2f0e88ad1f7c6856553d81dc4776ff42c43951daed3e2d8d91552eaa2",
+	"github": "9954bfea80f3d9092fcfed1cf263006469bc818ce55ee7114580fe2a8142af71",
 }
 
 var scanRoots = []string{"app", "bootstrap", "config", "routes", "pkg", "web"}
