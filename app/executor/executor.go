@@ -46,6 +46,13 @@ type Request struct {
 	// Account reads a text field of the account's provider specific data; nil
 	// reads nothing.
 	Account func(name string) string
+	// Sign signs the request once its headers are assembled, adding whatever
+	// proof the provider wants. A signer that fails stops the call: an unsigned
+	// request would be refused anyway, and sending it costs a round trip.
+	Sign func(method, target string, h http.Header, body []byte) error
+	// NoRedirect refuses a redirect instead of following it, for a request that
+	// carries a credential no other origin may be handed.
+	NoRedirect bool
 }
 
 // Response is the upstream's answer, not yet read. The caller closes Body.

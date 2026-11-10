@@ -14,6 +14,7 @@ import (
 	"rllmx/app/cache"
 	"rllmx/app/dialect"
 	"rllmx/app/repository"
+	"rllmx/app/upstream"
 )
 
 // Errors of a renewal. None carries provider text.
@@ -78,8 +79,26 @@ type Refresher struct {
 // account that lost its application cannot be renewed.
 func (r *Refresher) flowOf(conn repository.Connection) (Flow, bool) {
 	f, ok := r.Flow(conn.Provider)
-	if !ok || !f.AppFromAccount {
-		return f, ok
+	if !ok {
+		return f, false
+	}
+	// A device dialect that registers its own client keeps that client on the
+	// account, since the pair belongs to the login and not to the provider.
+	if !f.AppFromAccount && deviceDialects[f.Dialect].refresh != nil {
+		psd, _ := conn.Doc().GetRaw("providerSpecificData")
+		f.ClientID = gjson.Get(psd, "clientId").String()
+		f.ClientSecret = gjson.Get(psd, "clientSecret").String()
+		return f, f.ClientID != ""
+	}
+	// A code dialect that signs in through an identity provider renews with the
+	// one the account used, which its own data recorded.
+	if !f.AppFromAccount && codeDialects[f.Dialect].refresh != nil {
+		psd, _ := conn.Doc().GetRaw("providerSpecificData")
+		f.Params = append(append([]upstream.Param{}, f.Params...), upstream.Param{Name: kiroIdpParam, Value: gjson.Get(psd, "authMethod").String()})
+		return f, true
+	}
+	if !f.AppFromAccount {
+		return f, true
 	}
 	psd, _ := conn.Doc().GetRaw("providerSpecificData")
 	app := App{

@@ -17,6 +17,9 @@ const (
 	KindSSE
 	KindNDJSON
 	KindJSON
+	// KindEvents is AWS EventStream, the binary framing Bedrock and
+	// CodeWhisperer answer a streamed request with. NewFrames reads it.
+	KindEvents
 )
 
 // KindOf classifies a Content-Type value. An empty or unknown type is
@@ -31,6 +34,8 @@ func KindOf(contentType string) Kind {
 		return KindSSE
 	case "application/x-ndjson", "application/ndjson", "application/jsonl", "application/x-jsonlines":
 		return KindNDJSON
+	case "application/vnd.amazon.eventstream":
+		return KindEvents
 	case "application/json":
 		return KindJSON
 	}

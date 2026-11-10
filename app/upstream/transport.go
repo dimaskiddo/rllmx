@@ -67,6 +67,12 @@ func (t *Transport) validate(executor, authHeader string) error {
 	if err := t.validateLanes(); err != nil {
 		return err
 	}
+	if err := t.validateHosts(); err != nil {
+		return err
+	}
+	if t.Region != "" && !ValidRegion(t.Region) {
+		return errors.New("transport.region is not an AWS region")
+	}
 	if len(t.Retry) > maxRetryRules {
 		return errors.New("transport.retry has too many entries")
 	}
@@ -130,6 +136,30 @@ func (t *Transport) validateLanes() error {
 				return errors.New("a transport lane has an invalid header")
 			}
 		}
+	}
+	return nil
+}
+
+// maxHosts bounds the addresses one provider may list: a failover list longer
+// than this is a data error, not a deployment.
+const maxHosts = 4
+
+// validateHosts holds every extra address to the same rules as the base one: a
+// plain https address, no credentials, no query, and a host of its own.
+func (t *Transport) validateHosts() error {
+	if len(t.BaseURLs) > maxHosts {
+		return errors.New("transport.baseUrls has too many entries")
+	}
+	seen := map[string]bool{}
+	for _, raw := range t.BaseURLs {
+		u, err := url.Parse(probeAddress(raw))
+		if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Fragment != "" || u.RawQuery != "" {
+			return errors.New("a transport baseUrls entry is not a plain https address")
+		}
+		if seen[u.Host] {
+			return errors.New("transport.baseUrls repeats a host")
+		}
+		seen[u.Host] = true
 	}
 	return nil
 }

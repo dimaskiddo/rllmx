@@ -2,6 +2,14 @@ package translate
 
 import "rllmx/app/upstream"
 
+// ReplayStore keeps the opening user turn of a conversation, so a later turn
+// can send it back exactly as the first one did. Implementations scope entries
+// per API key and account.
+type ReplayStore interface {
+	Frozen(session string) (turn string, ok bool)
+	Freeze(session, turn string)
+}
+
 // SignatureStore keeps provider signatures a client may drop between turns
 // (Gemini thought signatures). Implementations scope entries per API key.
 type SignatureStore interface {
@@ -41,6 +49,20 @@ type Ctx struct {
 	// Safety asks the Gemini writer for the settings that switch every harm
 	// filter off, as Gemini CLI sends them.
 	Safety bool
+	// Session is the conversation id an upstream's body carries. The pipeline
+	// sets it, so a codec never invents one.
+	Session string
+	// Replay keeps a conversation's opening turn, for an upstream that caches a
+	// prompt from it. May be nil.
+	Replay ReplayStore
+}
+
+// session is the conversation id, or a fixed word when the caller set none.
+func (c *Ctx) session() string {
+	if c == nil || c.Session == "" {
+		return "conversation"
+	}
+	return c.Session
 }
 
 // RestoreTool gives an upstream tool name back to the client.

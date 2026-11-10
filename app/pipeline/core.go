@@ -174,6 +174,12 @@ func (c *call) send(ctx context.Context, conn repository.Connection, key string)
 		c.tctx.ToolName = func(n string) string { return translate.Uncloak(n, names, true) }
 	}
 	c.cloakedNames = p.names
+	// The conversation id is bound to the account, so the body a codec builds
+	// can only carry it once the account is known.
+	c.tctx.Session = p.session
+	if c.p.d.Replay != nil && c.dest.format == translate.FormatKiro {
+		c.tctx.Replay = NewReplay(c.p.d.Replay, c.in.Caller.ID, conn.ID)
+	}
 	req := executor.Request{
 		URL: p.url, Body: p.body, Stream: c.upStream, Entry: c.dest.entry,
 		Key: key, Auth: p.auth, Model: c.dest.model, Account: accountField(conn),

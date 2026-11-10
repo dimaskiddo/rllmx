@@ -74,6 +74,7 @@ func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.P
 		Prefetch:      prefetch.New(),
 		ResponseCache: responseCache(app, store),
 		Signatures:    signatureCache(app),
+		Replay:        signatureCache(app),
 		Refresher:     h.Refresher,
 		Minter:        h.Minter,
 		Projects:      h.Google.Projects,

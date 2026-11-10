@@ -112,7 +112,7 @@ func NewTokenClient(allow *network.Allow) *TokenClient {
 // application has one.
 func (c *TokenClient) Exchange(ctx context.Context, f Flow, code, redirect, verifier, state string) (Tokens, error) {
 	if d, ok := codeDialects[f.Dialect]; ok {
-		return d.exchange(ctx, c, f, code, redirect)
+		return d.exchange(ctx, c, f, codeInput{Code: code, Verifier: verifier, Redirect: redirect})
 	}
 	fields := map[string]string{
 		"grant_type": "authorization_code", "client_id": f.ClientID, "code": code,

@@ -21,6 +21,7 @@ var (
 	ErrDisabled    = errors.New("oauth: the login is not configured")
 	ErrSession     = errors.New("oauth: the login was not found, has expired or was already used")
 	ErrStorage     = errors.New("oauth: storage is not available")
+	ErrVariant     = errors.New("oauth: this login needs one of the choices its provider offers")
 )
 
 // Flow is one provider's login: its registry block and the client id that
@@ -157,7 +158,14 @@ func (f Flow) ListenerPort() int {
 // URL builds the authorize address. A code-pkce login sends the standard
 // parameters, the provider's extra ones in file order, then the state; a code
 // login sends only the provider's own parameters. Spaces are written %20.
+//
+// A dialect whose provider owns the redirect scheme builds its own address:
+// Kiro's provider only answers a custom scheme, so its parameters are not the
+// standard ones and cannot be reached by editing this list.
 func (f Flow) URL(redirect, state, challenge, nonce string) string {
+	if f.Dialect == kiroSocialDialect {
+		return kiroSocialAuthorize(f, state, challenge)
+	}
 	var pairs [][2]string
 	if f.Flow != upstream.FlowCode {
 		pairs = [][2]string{

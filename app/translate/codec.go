@@ -18,6 +18,8 @@ const (
 	// CLI and Antigravity; FormatVertex is a Gemini body for Vertex AI.
 	FormatCloudCode = "gemini-cli"
 	FormatVertex    = "vertex"
+	// FormatKiro is CodeWhisperer's conversation body.
+	FormatKiro = "kiro"
 )
 
 // GeminiFamily reports a format whose bodies and streams are Gemini's, with or
@@ -64,6 +66,26 @@ func Lookup(format string) (Codec, bool) {
 	c, ok := codecs[format]
 	return c, ok
 }
+
+// WriteFormats lists the formats a client can be answered in, in name order. A
+// format only an upstream speaks is left out: nothing asks this router to
+// answer in it.
+func WriteFormats() []string {
+	mu.RLock()
+	defer mu.RUnlock()
+	out := make([]string, 0, len(codecs))
+	for n, c := range codecs {
+		if ro, ok := c.(readOnly); ok && ro.ReadOnly() {
+			continue
+		}
+		out = append(out, n)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// readOnly is a codec whose format an upstream speaks and no client does.
+type readOnly interface{ ReadOnly() bool }
 
 // Formats lists the registered formats in name order.
 func Formats() []string {

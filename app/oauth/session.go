@@ -42,6 +42,8 @@ type Session struct {
 	// App is the OAuth application that came with the request, for a login
 	// whose data asks for one. It lives here and in the stored account only.
 	App *App
+	// Variant is which of a provider's several logins this is.
+	Variant string
 }
 
 type phase int

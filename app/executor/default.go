@@ -95,7 +95,20 @@ func (d *Default) once(ctx context.Context, req Request) (Response, error) {
 		return Response{}, fmt.Errorf("executor: build request: %w", ErrUnreachable)
 	}
 	headers(hr.Header, req, auth)
-	resp, err := d.Client.Do(hr)
+	if req.Sign != nil {
+		if err := req.Sign(method, target, hr.Header, req.Body); err != nil {
+			return Response{}, fmt.Errorf("%w: %w", ErrBadAccount, err)
+		}
+	}
+	client := d.Client
+	if req.NoRedirect {
+		// A copy, so one provider's policy never becomes every provider's: the
+		// shared client is reused across requests and its transport is not copied.
+		strict := *d.Client
+		strict.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+		client = &strict
+	}
+	resp, err := client.Do(hr)
 	if err != nil {
 		return Response{}, ErrUnreachable
 	}
@@ -106,7 +119,8 @@ func (d *Default) once(ctx context.Context, req Request) (Response, error) {
 // writes replace the credential: content type, the provider's transport
 // headers, its auth headers and the key, the stream marker, and last the
 // operator's overrides, from which credential and framing headers are dropped
-// again here.
+// again here. A provider that named its own Accept keeps it: Bedrock frames a
+// stream as a binary event stream, not as SSE.
 func headers(h http.Header, req Request, auth *upstream.Auth) {
 	h.Set("Content-Type", "application/json")
 	for k, v := range req.Entry.Transport.Headers {
@@ -117,7 +131,7 @@ func headers(h http.Header, req Request, auth *upstream.Auth) {
 			h.Set(k, v)
 		}
 	}
-	if req.Stream {
+	if req.Stream && h.Get("Accept") == "" {
 		h.Set("Accept", "text/event-stream")
 	}
 	for k, v := range req.Overrides {

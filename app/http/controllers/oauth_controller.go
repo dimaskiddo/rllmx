@@ -120,10 +120,13 @@ func (c *OAuthController) start(ctx contractshttp.Context, app *oauth.App) contr
 	started, err := c.Service.Start(oauth.StartRequest{
 		Provider: ctx.Request().Route("provider"), Bind: bind, Local: local,
 		RouterPort: c.routerPort(r, local), PublicBase: base, App: app,
+		Variant: strings.TrimSpace(ctx.Request().Query("variant")),
 	})
 	switch {
 	case errors.Is(err, oauth.ErrUnsupported):
 		return flat(ctx, nethttp.StatusNotFound, "This provider has no login")
+	case errors.Is(err, oauth.ErrVariant):
+		return flat(ctx, nethttp.StatusBadRequest, "Choose which account provider to sign in with")
 	case errors.Is(err, oauth.ErrDisabled):
 		return flat(ctx, nethttp.StatusBadRequest, "This login is switched off: its client id is not configured")
 	case errors.Is(err, oauth.ErrApp):

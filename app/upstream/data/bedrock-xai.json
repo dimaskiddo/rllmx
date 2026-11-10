@@ -1,0 +1,20 @@
+{
+  "id": "bedrock-xai",
+  "alias": "brx",
+  "aliases": [
+    "bedrock-grok"
+  ],
+  "category": "apikey",
+  "executor": "bedrock-xai",
+  "display": {
+    "name": "AWS Bedrock (xAI)"
+  },
+  "transport": {
+    "format": "openai",
+    "region": "us-east-1"
+  },
+  "models": [
+    { "id": "us.xai.grok-4.6", "name": "Grok 4.6" },
+    { "id": "global.xai.grok-4.6", "name": "Grok 4.6 (global)" }
+  ]
+}

@@ -36,6 +36,8 @@ var hooks = map[string]hook{
 
 	"google":      googleAccount,
 	"antigravity": antigravityAccount,
+	"kiro":        kiroAccount,
+	"kiroSocial":  kiroSocialAccount,
 }
 
 const (

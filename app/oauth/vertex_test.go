@@ -36,8 +36,8 @@ func testKey(t *testing.T) (*rsa.PrivateKey, string) {
 	return k, string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}))
 }
 
-func saKey(pemText string) upstream.GoogleKey {
-	return upstream.GoogleKey{Kind: upstream.KeyServiceAccount, Project: "my-proj-123", ClientEmail: "sa@my-proj-123.iam.gserviceaccount.com", PrivateKey: pemText}
+func saKey(pemText string) upstream.CloudKey {
+	return upstream.CloudKey{Kind: upstream.KeyServiceAccount, Project: "my-proj-123", Account: "sa@my-proj-123.iam.gserviceaccount.com", PrivateKey: pemText}
 }
 
 func TestAServiceAccountAssertionIsASignedRS256JWTForTheTokenAddress(t *testing.T) {
@@ -123,7 +123,7 @@ func TestAServiceAccountTokenIsMintedOnceForABurst(t *testing.T) {
 func TestUserCredentialsRefreshWithTheirOwnClient(t *testing.T) {
 	m, f := minterRig(t)
 	f.on("/token", ok(`{"access_token":"UTOK","expires_in":3600}`))
-	key := upstream.GoogleKey{Kind: upstream.KeyADC, ClientID: "cid", ClientSecret: "csec", RefreshToken: "rt"}
+	key := upstream.CloudKey{Kind: upstream.KeyADC, ClientID: "cid", ClientSecret: "csec", RefreshToken: "rt"}
 	tok, err := m.Token(context.Background(), key)
 	if err != nil || tok != "UTOK" {
 		t.Fatalf("%q %v", tok, err)
@@ -136,7 +136,7 @@ func TestUserCredentialsRefreshWithTheirOwnClient(t *testing.T) {
 
 func TestARawKeyNeedsNoTokenAndNoCall(t *testing.T) {
 	m, f := minterRig(t)
-	tok, err := m.Token(context.Background(), upstream.GoogleKey{Kind: upstream.KeyRaw})
+	tok, err := m.Token(context.Background(), upstream.CloudKey{Kind: upstream.KeyRaw})
 	if err != nil || tok != "" || f.count("/token") != 0 {
 		t.Fatalf("%q %v", tok, err)
 	}
@@ -158,12 +158,12 @@ func TestAMintThatFailsGivesAFixedClassAndNoProviderText(t *testing.T) {
 		}
 	}
 	m, _ := minterRig(t)
-	if _, err := m.Token(context.Background(), upstream.GoogleKey{Kind: upstream.KeyServiceAccount, PrivateKey: "x"}); err != ErrBadKey {
+	if _, err := m.Token(context.Background(), upstream.CloudKey{Kind: upstream.KeyServiceAccount, PrivateKey: "x"}); err != ErrBadKey {
 		t.Fatalf("%v", err)
 	}
 }
 
-func TestTheGoogleKeyParserSeparatesKindsAndRefusesHalfFiles(t *testing.T) {
+func TestTheCloudKeyParserSeparatesKindsAndRefusesHalfFiles(t *testing.T) {
 	sa, _ := json.Marshal(map[string]string{"type": "service_account", "project_id": "my-proj-123", "client_email": "a@b", "private_key": "K"})
 	for name, tc := range map[string]struct {
 		text string
@@ -181,23 +181,23 @@ func TestTheGoogleKeyParserSeparatesKindsAndRefusesHalfFiles(t *testing.T) {
 		"empty":             {"  ", "", false},
 		"over the size cap": {strings.Repeat("a", 17<<10), "", false},
 	} {
-		k, ok := upstream.ParseGoogleKey(tc.text)
+		k, ok := upstream.ParseCloudKey(tc.text)
 		if ok != tc.ok || (ok && k.Kind != tc.kind) {
 			t.Errorf("%s: %+v %v", name, k, ok)
 		}
 	}
-	k, _ := upstream.ParseGoogleKey(`{"type":"authorized_user","client_id":"i","client_secret":"s","refresh_token":"r","quota_project_id":"bad project"}`)
+	k, _ := upstream.ParseCloudKey(`{"type":"authorized_user","client_id":"i","client_secret":"s","refresh_token":"r","quota_project_id":"bad project"}`)
 	if k.Project != "" {
 		t.Fatalf("a bad quota project was kept: %q", k.Project)
 	}
 }
 
-func FuzzParseGoogleKey(f *testing.F) {
+func FuzzParseCloudKey(f *testing.F) {
 	for _, s := range []string{"", "AIza", `{}`, `{"type":"service_account"}`, `{"type":"authorized_user","client_id":"i","client_secret":"s","refresh_token":"r"}`, "\x00"} {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, s string) {
-		k, ok := upstream.ParseGoogleKey(s)
+		k, ok := upstream.ParseCloudKey(s)
 		if ok && k.Project != "" && !upstream.ValidProject(k.Project) {
 			t.Fatalf("accepted project %q", k.Project)
 		}

@@ -88,6 +88,10 @@ type StartRequest struct {
 	PublicBase string
 	// App is the application that came with the request, or nil.
 	App *App
+	// Variant names which of a provider's several logins this is, when its data
+	// offers more than one: Kiro signs in through AWS SSO or through an identity
+	// provider, and only the second needs the user to choose which.
+	Variant string
 }
 
 // flowFor resolves the login of a request: the provider's own, or the one the
@@ -115,6 +119,11 @@ func (s *Service) Start(req StartRequest) (Started, error) {
 	if err != nil {
 		return Started{}, err
 	}
+	if f.Dialect != "" {
+		if f, err = withVariant(f, req.Variant); err != nil {
+			return Started{}, err
+		}
+	}
 	if f.NeedsPublicBase() && req.PublicBase == "" {
 		return Started{}, ErrPublicBase
 	}
@@ -131,13 +140,15 @@ func (s *Service) Start(req StartRequest) (Started, error) {
 	}
 	redirect := f.RedirectURL(req.RouterPort, req.PublicBase)
 	port := f.ListenerPort()
-	paste := !req.Local && !f.NeedsPublicBase()
+	// A login whose provider answers a scheme no server receives is finished by
+	// pasting, whatever this request looks like.
+	paste := !req.Local && !f.NeedsPublicBase() || f.Dialect == kiroSocialDialect
 	if port != 0 {
 		if s.Listeners == nil || !s.Listeners.Acquire(port, f.CallbackPath) {
 			paste = true
 		}
 	}
-	state, err := s.Sessions.Put(Session{Provider: f.Provider, Redirect: redirect, Verifier: verifier, Port: port, Bind: req.Bind, App: req.App})
+	state, err := s.Sessions.Put(Session{Provider: f.Provider, Redirect: redirect, Verifier: verifier, Port: port, Bind: req.Bind, App: req.App, Variant: req.Variant})
 	if err != nil {
 		if port != 0 && s.Listeners != nil {
 			s.Listeners.Release(port)
@@ -175,6 +186,11 @@ func (s *Service) finish(ctx context.Context, state string, in Input, allow func
 	f, err := s.flowFor(sess.Provider, sess.App)
 	if err != nil {
 		return "", s.end(state, sess, "", CodeInput)
+	}
+	if f.Dialect != "" {
+		if f, err = withVariant(f, sess.Variant); err != nil {
+			return "", s.end(state, sess, "", CodeInput)
+		}
 	}
 	tokens, err := s.Tokens.Exchange(ctx, f, in.Code, sess.Redirect, sess.Verifier, state)
 	if err != nil {

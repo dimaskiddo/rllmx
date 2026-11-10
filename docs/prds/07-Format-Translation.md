@@ -144,7 +144,8 @@ All go through the OpenAI hub; no direct pairs (PRD 7). References under `transl
 | Capability, thinking-level and vision tables | `providers/{capabilities,thinkingLevels,visionPatterns}.js` | todo (`app/upstream`, `data/capabilities/*.json`; catalog overlay 2.6, commandcode and kiro rules 1.10) | 1.8 |
 | gemini-cli, antigravity (from openai, and the answer back) | `request/openai-to-gemini.js`, `response/gemini-to-openai.js` | done (1.10g; the Gemini codec wrapped in the Cloud Code envelope, divergence 256 for the inbound reader) | 1.10g |
 | openai to vertex | `request/openai-to-vertex.js` | done (1.10g) | 1.10g |
-| kiro, cursor, commandcode (to and from openai) | `*/*kiro*.js`, `*cursor*.js`, `*commandcode*.js` | todo | 1.10 |
+| kiro (openai to kiro; the answer is read as events) | `request/openai-to-kiro.js`, `request/claude-to-kiro.js`, `concerns/kiroConversation.js`, `config/kiroConstants.js` | done | 1.10h |
+| cursor, commandcode (to and from openai) | `*cursor*.js`, `*commandcode*.js` | todo | 1.10 |
 | Webtools translators for web providers | `*webTools*` | deferred | - |
 
 ---
@@ -160,7 +161,8 @@ All go through the OpenAI hub; no direct pairs (PRD 7). References under `transl
 - [x] Image prefetch (`app/prefetch`, 1.8d): Gemini and Ollama targets only, magic bytes decide the type
 - [x] Claude cloak: tool suffix, decoys, billing block, user id, restore on body and stream (1.9c)
 - [x] Step 1.10g: gemini-cli, antigravity and vertex (`CloudCodeCodec`, `VertexCodec`; the Gemini writer takes a placeholder signature and the safety settings through `Ctx`)
-- [ ] Step 1.10: kiro, cursor and commandcode translators
+- [x] 1.10h: the kiro format (`translate/kiro.go`, `kiro_wire.go`, `kiro_canon.go`, `kiro_stream.go`, `kiro_alias.go`) built in 1.10h
+- [ ] Step 1.10: cursor and commandcode translators
 
 ---
 

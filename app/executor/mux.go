@@ -46,6 +46,10 @@ func NewMux(d *Default, o Options) *Mux {
 		upstream.ExecutorAntigravity:   &CloudCode{Default: d, Antigravity: true},
 		upstream.ExecutorVertex:        &Vertex{Default: d, Tokens: o.VertexTokens},
 		upstream.ExecutorVertexPartner: &Vertex{Default: d, Tokens: o.VertexTokens, Partner: true},
+
+		upstream.ExecutorBedrock:    &Bedrock{Default: d},
+		upstream.ExecutorBedrockXAI: &Bedrock{Default: d, XAI: true},
+		upstream.ExecutorKiro:       &Kiro{Default: d},
 	}}
 }
 

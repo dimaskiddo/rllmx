@@ -17,6 +17,12 @@ const (
 	FlowCode   = "code"
 	FlowDevice = "device"
 
+	// Variants a login may be started with, for a provider that signs in more
+	// than one way. Kiro reaches the same service through AWS SSO or through an
+	// identity provider.
+	VariantGoogle = "google"
+	VariantGitHub = "github"
+
 	// MintCopilot names the second credential a GitHub login is exchanged for.
 	MintCopilot = "copilot"
 	// Endpoint roles a hook or the mint calls.
@@ -33,6 +39,9 @@ const (
 	// say what is left of an account's usage.
 	EndpointQuotaModels  = "quotaModels"
 	EndpointQuotaSummary = "quotaSummary"
+	// EndpointProfiles is where a Kiro login reads the account's own
+	// CodeWhisperer profile.
+	EndpointProfiles = "profiles"
 	// EndpointVerify is the page a device login falls back to when the provider
 	// names none.
 	EndpointVerify = "verify"
@@ -62,13 +71,13 @@ var (
 	// redirectHosts are the names a fixed redirect may use for this machine.
 	redirectHosts = map[string]bool{"": true, "localhost": true, "127.0.0.1": true}
 	encodings     = map[string]bool{EncodingJSON: true, EncodingForm: true}
-	hooks         = map[string]bool{"": true, "codex": true, "github": true, "muse": true, "nous": true, "kilocode": true, "grokCli": true, "gitlab": true, "xai": true, "google": true, "antigravity": true}
+	hooks         = map[string]bool{"": true, "codex": true, "github": true, "muse": true, "nous": true, "kilocode": true, "grokCli": true, "gitlab": true, "xai": true, "google": true, "antigravity": true, "kiro": true, "kiroSocial": true}
 	mints         = map[string]bool{"": true, MintCopilot: true}
 	// refreshHooks run after a token renewal; dialects replace the start and the
 	// poll of a device login that does not follow RFC 8628.
 	refreshHooks   = map[string]bool{"": true, "nous": true}
-	deviceDialects = map[string]bool{"kilocode": true, "codebuddy": true, "minimax": true, "zcode": true}
-	codeDialects   = map[string]bool{"cline": true}
+	deviceDialects = map[string]bool{"kilocode": true, "codebuddy": true, "minimax": true, "zcode": true, "kiro": true}
+	codeDialects   = map[string]bool{"cline": true, "kiro-social": true}
 
 	paramName = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 	// ownParams are set by the login itself, so a data file cannot name them.
@@ -316,7 +325,10 @@ func (o *OAuth) validateFlow() error {
 	if len(o.CallHeaders) > 0 && o.Flow != FlowCodePKCE {
 		return errors.New("oauth.callHeaders belong to the device and code-pkce flows")
 	}
-	if o.NoClient && o.Flow != FlowCode {
+	// A code-pkce login may go without a configured client when its dialect is
+	// the provider's own: Kiro's social sign-in has no client of the deployer's,
+	// and the dialect builds every call that would have named one.
+	if o.NoClient && o.Flow != FlowCode && !(o.Flow == FlowCodePKCE && o.Dialect != "") {
 		return errors.New("oauth.noClient belongs to the device and code flows")
 	}
 	if !redirects[o.Redirect] {
@@ -407,12 +419,13 @@ func (o *OAuth) validateCallHeaders() error {
 
 // validateDialect holds a dialect to the kind of login that has it: a device
 // dialect replaces the start and the poll, a code dialect the exchange and the
-// renewal.
+// renewal. A code dialect also serves a code-pkce login whose provider owns the
+// redirect scheme, which is a code login in everything but its PKCE.
 func (o *OAuth) validateDialect() error {
 	switch {
 	case o.Dialect == "":
 	case o.Flow == FlowDevice && deviceDialects[o.Dialect]:
-	case o.Flow == FlowCode && codeDialects[o.Dialect]:
+	case codeDialects[o.Dialect] && (o.Flow == FlowCode || o.Flow == FlowCodePKCE):
 	default:
 		return errors.New("oauth.dialect is unknown for this flow")
 	}

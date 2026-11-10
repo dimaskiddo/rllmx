@@ -96,6 +96,9 @@ type Deps struct {
 	// Signatures keeps provider thought signatures between turns; nil means a
 	// signature the client drops is not restored.
 	Signatures Loader
+	// Replay keeps a conversation's opening turn for an upstream that caches a
+	// prompt from it; nil rebuilds that turn on every request.
+	Replay Loader
 	// Refresher renews OAuth tokens; nil leaves them as stored.
 	Refresher Refresher
 	// Minter makes the credential of a provider whose login is traded for one;

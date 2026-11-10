@@ -84,7 +84,7 @@ func fold(chunks []Chunk) gist {
 }
 
 func TestEveryFormatSurvivesItsOwnRoundTrip(t *testing.T) {
-	for _, format := range Formats() {
+	for _, format := range WriteFormats() {
 		t.Run(format, func(t *testing.T) {
 			got := fold(back(t, format, emit(t, format, script())))
 			if got.text != "Hello world" || got.name != "weather" || got.args != `{"city":"Paris"}` {
@@ -107,8 +107,8 @@ func TestEveryFormatSurvivesItsOwnRoundTrip(t *testing.T) {
 }
 
 func TestEveryPairOfFormatsKeepsTheTurn(t *testing.T) {
-	for _, from := range Formats() {
-		for _, to := range Formats() {
+	for _, from := range WriteFormats() {
+		for _, to := range WriteFormats() {
 			t.Run(from+"_to_"+to, func(t *testing.T) {
 				upstream := back(t, from, emit(t, from, script()))
 				got := fold(back(t, to, emit(t, to, upstream)))
@@ -124,7 +124,7 @@ func TestEveryPairOfFormatsKeepsTheTurn(t *testing.T) {
 }
 
 func TestEveryReaderHonoursTheHubInvariants(t *testing.T) {
-	for _, format := range Formats() {
+	for _, format := range WriteFormats() {
 		chunks := back(t, format, emit(t, format, script()))
 		if len(chunks) == 0 || chunks[0].Role != RoleAssistant {
 			t.Errorf("%s: first chunk has no role", format)
@@ -142,7 +142,7 @@ func TestEveryReaderHonoursTheHubInvariants(t *testing.T) {
 }
 
 func TestAFinishWaitsForItsUsageAndCloseReleasesIt(t *testing.T) {
-	for _, format := range Formats() {
+	for _, format := range WriteFormats() {
 		c, _ := Lookup(format)
 		w := c.NewStreamWriter(NewCtx(format, format))
 		_ = w.Write(Chunk{ID: "chatcmpl-abcdef12", Model: "m", Role: RoleAssistant, Text: "hi"})
@@ -168,7 +168,7 @@ func TestAFinishWaitsForItsUsageAndCloseReleasesIt(t *testing.T) {
 }
 
 func TestOnlyOpenAIEndsWithDone(t *testing.T) {
-	for _, format := range Formats() {
+	for _, format := range WriteFormats() {
 		dones := 0
 		for _, f := range emit(t, format, script()) {
 			if f.Done {

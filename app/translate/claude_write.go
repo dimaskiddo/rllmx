@@ -395,11 +395,10 @@ func imageSource(p Part) *claudeSource {
 	if p.Data != "" {
 		return &claudeSource{Type: "base64", MediaType: p.MediaType, Data: p.Data}
 	}
-	if rest, ok := strings.CutPrefix(p.URL, "data:"); ok {
-		meta, data, found := strings.Cut(rest, ",")
-		if found && strings.HasSuffix(meta, ";base64") {
-			return &claudeSource{Type: "base64", MediaType: strings.TrimSuffix(meta, ";base64"), Data: data}
-		}
+	if media, data, ok := splitDataURI(p.URL); ok {
+		return &claudeSource{Type: "base64", MediaType: media, Data: data}
+	}
+	if strings.HasPrefix(p.URL, "data:") {
 		return nil
 	}
 	if p.URL != "" {

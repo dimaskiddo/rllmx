@@ -18,14 +18,23 @@ import (
 // own body and envelope. The rest of the login (the session, the state, the
 // hook, the storage) is the same engine.
 type codeDialect struct {
-	exchange func(ctx context.Context, c *TokenClient, f Flow, code, redirect string) (Tokens, error)
+	exchange func(ctx context.Context, c *TokenClient, f Flow, in codeInput) (Tokens, error)
 	refresh  func(ctx context.Context, c *TokenClient, f Flow, refreshToken string, h map[string]string) (Tokens, error)
 }
 
 // codeDialects are the names a data file may use for it. A test keeps the table
 // equal to upstream.CodeDialectNames.
 var codeDialects = map[string]codeDialect{
-	"cline": {exchange: clineExchange, refresh: clineRefresh},
+	"cline":       {exchange: clineExchange, refresh: clineRefresh},
+	"kiro-social": {exchange: kiroSocialExchange, refresh: kiroSocialRefresh},
+}
+
+// codeInput is what a code login's exchange works from: the code the browser
+// brought back, the verifier the login made, and the redirect it sent.
+type codeInput struct {
+	Code     string
+	Verifier string
+	Redirect string
 }
 
 // newNonce is 16 random bytes in hex, for a provider that wants a nonce.
@@ -46,12 +55,12 @@ const (
 // clineExchange takes the tokens out of the code itself. The provider hands the
 // browser a base64 JSON document that holds them; when the code is not that, it
 // is an ordinary code and the token address trades it.
-func clineExchange(ctx context.Context, c *TokenClient, f Flow, code, redirect string) (Tokens, error) {
-	if t, ok := clineTokens(code, c.now()); ok {
+func clineExchange(ctx context.Context, c *TokenClient, f Flow, in codeInput) (Tokens, error) {
+	if t, ok := clineTokens(in.Code, c.now()); ok {
 		return t, nil
 	}
 	status, raw, err := c.postJSON(ctx, f.TokenURL, jsonBody(map[string]string{
-		"grant_type": "authorization_code", "code": code, "client_type": clineClient, "redirect_uri": redirect,
+		"grant_type": "authorization_code", "code": in.Code, "client_type": clineClient, "redirect_uri": in.Redirect,
 	}), nil)
 	if err != nil {
 		return Tokens{}, err

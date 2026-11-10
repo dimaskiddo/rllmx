@@ -234,3 +234,17 @@ func (m Message) Text() string {
 
 // TextPart is a message body of plain text.
 func TextPart(s string) []Part { return []Part{{Type: PartText, Text: s}} }
+
+// splitDataURI reads a data URI into its media type and its base64 payload. A
+// URI that is not base64, or that has no media type, is not one.
+func splitDataURI(raw string) (media, data string, ok bool) {
+	rest, found := strings.CutPrefix(raw, "data:")
+	if !found {
+		return "", "", false
+	}
+	meta, payload, found := strings.Cut(rest, ",")
+	if !found || !strings.HasSuffix(meta, ";base64") || meta == ";base64" {
+		return "", "", false
+	}
+	return strings.TrimSuffix(meta, ";base64"), payload, true
+}

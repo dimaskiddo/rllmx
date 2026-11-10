@@ -33,10 +33,13 @@ func (c *call) respond(ctx context.Context, resp executor.Response) (Output, *ac
 	if c.compactJSON(kind) {
 		return c.forwardCompact(ctx, resp)
 	}
-	if c.upStream && (kind == stream.KindSSE || kind == stream.KindNDJSON) {
+	if c.upStream && (kind == stream.KindSSE || kind == stream.KindNDJSON || kind == stream.KindEvents) {
 		var src stream.Source = stream.NewReader(resp.Body)
-		if kind == stream.KindNDJSON {
+		switch kind {
+		case stream.KindNDJSON:
 			src = stream.NewLines(resp.Body)
+		case stream.KindEvents:
+			src = stream.NewFrames(resp.Body, c.framesWire())
 		}
 		if c.clientStream {
 			return c.relay(ctx, resp, src)
@@ -47,6 +50,19 @@ func (c *call) respond(ctx context.Context, resp executor.Response) (Output, *ac
 		return c.unexpected(resp, kind), nil
 	}
 	return c.buffered(ctx, resp)
+}
+
+// framesWire is what a binary-framed answer carries. The executor knows, not
+// the format: a Kiro request and a Claude request to another provider both go
+// out in "claude", and only one of them frames its answer.
+func (c *call) framesWire() stream.FramesWire {
+	switch c.dest.entry.Executor {
+	case upstream.ExecutorBedrock:
+		return stream.FramesBedrockClaude
+	case upstream.ExecutorBedrockXAI:
+		return stream.FramesBedrockOpenAI
+	}
+	return stream.FramesKiro
 }
 
 // unexpected answers an upstream that sent a page, or JSON where a stream was

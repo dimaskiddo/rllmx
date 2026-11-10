@@ -14,10 +14,10 @@ import (
 type fakeTokens struct {
 	token string
 	err   error
-	seen  []upstream.GoogleKey
+	seen  []upstream.CloudKey
 }
 
-func (f *fakeTokens) Token(_ context.Context, k upstream.GoogleKey) (string, error) {
+func (f *fakeTokens) Token(_ context.Context, k upstream.CloudKey) (string, error) {
 	f.seen = append(f.seen, k)
 	return f.token, f.err
 }
@@ -52,7 +52,7 @@ func TestTheVertexAddressFollowsTheKeyKindTheProjectAndTheLocation(t *testing.T)
 			"https://aiplatform.googleapis.com/v1/projects/sa-proj-111/locations/global/endpoints/openapi/chat/completions"},
 	} {
 		v := &Vertex{Partner: tc.partner}
-		key, ok := upstream.ParseGoogleKey(tc.key)
+		key, ok := upstream.ParseCloudKey(tc.key)
 		if !ok {
 			t.Fatalf("%s: key", name)
 		}

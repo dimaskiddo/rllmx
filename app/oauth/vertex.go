@@ -75,7 +75,7 @@ func (m *GoogleMinter) url() string {
 type VertexTokens struct{ Minter *GoogleMinter }
 
 // Token implements the executor's TokenSource.
-func (v VertexTokens) Token(ctx context.Context, key upstream.GoogleKey) (string, error) {
+func (v VertexTokens) Token(ctx context.Context, key upstream.CloudKey) (string, error) {
 	tok, err := v.Minter.Token(ctx, key)
 	if ClassOf(err) == ClassTransport {
 		return "", executor.ErrTokenUnreachable
@@ -84,11 +84,11 @@ func (v VertexTokens) Token(ctx context.Context, key upstream.GoogleKey) (string
 }
 
 // Token returns a bearer token for the key. A raw key has none: it returns "".
-func (m *GoogleMinter) Token(ctx context.Context, key upstream.GoogleKey) (string, error) {
+func (m *GoogleMinter) Token(ctx context.Context, key upstream.CloudKey) (string, error) {
 	if key.Kind == upstream.KeyRaw {
 		return "", nil
 	}
-	sum := sha256.Sum256([]byte(key.Kind + "\x00" + key.ClientEmail + "\x00" + key.ClientID + "\x00" + key.RefreshToken + "\x00" + key.PrivateKey))
+	sum := sha256.Sum256([]byte(key.Kind + "\x00" + key.Account + "\x00" + key.ClientID + "\x00" + key.RefreshToken + "\x00" + key.PrivateKey))
 	id := hex.EncodeToString(sum[:])
 	load := func(ctx context.Context) ([]byte, error) {
 		token, ttl, err := m.mint(ctx, key)
@@ -111,7 +111,7 @@ func (m *GoogleMinter) Token(ctx context.Context, key upstream.GoogleKey) (strin
 	return token, nil
 }
 
-func (m *GoogleMinter) mint(ctx context.Context, key upstream.GoogleKey) (string, time.Duration, error) {
+func (m *GoogleMinter) mint(ctx context.Context, key upstream.CloudKey) (string, time.Duration, error) {
 	fields := map[string]string{}
 	switch key.Kind {
 	case upstream.KeyServiceAccount:
@@ -146,7 +146,7 @@ func (m *GoogleMinter) mint(ctx context.Context, key upstream.GoogleKey) (string
 
 // signAssertion builds the RS256 JWT a service account trades for a token. The
 // audience is the token address it will be posted to.
-func signAssertion(key upstream.GoogleKey, audience string, now time.Time) (string, error) {
+func signAssertion(key upstream.CloudKey, audience string, now time.Time) (string, error) {
 	block, _ := pem.Decode([]byte(strings.ReplaceAll(key.PrivateKey, `\n`, "\n")))
 	if block == nil {
 		return "", ErrBadKey
@@ -161,7 +161,7 @@ func signAssertion(key upstream.GoogleKey, audience string, now time.Time) (stri
 	}
 	head, _ := json.Marshal(map[string]string{"alg": "RS256", "typ": "JWT"})
 	claims, _ := json.Marshal(map[string]any{
-		"iss": key.ClientEmail, "scope": vertexScope, "aud": audience,
+		"iss": key.Account, "scope": vertexScope, "aud": audience,
 		"iat": now.Unix(), "exp": now.Add(assertionLife).Unix(),
 	})
 	enc := base64.RawURLEncoding

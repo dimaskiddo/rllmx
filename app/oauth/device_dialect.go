@@ -39,6 +39,7 @@ var deviceDialects = map[string]deviceDialect{
 	"codebuddy": {start: codebuddyStart, poll: codebuddyPoll, refresh: codebuddyRefresh},
 	"minimax":   {start: minimaxStart, poll: minimaxPoll},
 	"zcode":     {start: zcodeStart, poll: zcodePoll},
+	"kiro":      {start: kiroStart, poll: kiroPoll, refresh: kiroRefresh},
 }
 
 // kiloCode is the shape of a code that goes into a request path.

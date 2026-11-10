@@ -78,7 +78,7 @@ func TestEveryPairPreservesTheConversation(t *testing.T) {
 }
 
 func TestEveryWriterProducesValidJSONForEveryReaderOutput(t *testing.T) {
-	for _, name := range Formats() {
+	for _, name := range WriteFormats() {
 		c, _ := Lookup(name)
 		for _, req := range []*Request{conversation(), {}, {Model: "m"}, {Messages: []Message{user("x")}, Stream: true}} {
 			out, err := c.WriteRequest(req, NewCtx(FormatOpenAI, name))
@@ -108,8 +108,11 @@ func TestEveryWriterProducesValidJSONForEveryReaderOutput(t *testing.T) {
 
 func TestEveryFormatIsRegistered(t *testing.T) {
 	got := strings.Join(Formats(), ",")
-	if got != "claude,gemini,gemini-cli,ollama,openai,openai-responses,vertex" {
-		t.Fatalf("%s", got)
+	if got != "claude,gemini,gemini-cli,kiro,ollama,openai,openai-responses,vertex" {
+		t.Fatalf("formats %s", got)
+	}
+	if w := strings.Join(WriteFormats(), ","); w != "claude,gemini,gemini-cli,ollama,openai,openai-responses,vertex" {
+		t.Fatalf("writable %s", w)
 	}
 }
 
@@ -117,7 +120,7 @@ func TestEveryResponseCarriesTheSameAnswerThroughAnyPair(t *testing.T) {
 	resp := &Response{ID: "r", Model: "m", FinishReason: FinishToolCalls,
 		Message: Message{Role: RoleAssistant, Content: TextPart("calling"), ToolCalls: []ToolCall{{ID: "c1", Name: "f", Arguments: `{"a":1}`}}},
 		Usage:   Usage{Prompt: 30, Completion: 9, Cached: 10, Reasoning: 3}}
-	for _, from := range Formats() {
+	for _, from := range WriteFormats() {
 		src, _ := Lookup(from)
 		body, err := src.WriteResponse(resp, NewCtx(FormatOpenAI, from))
 		if err != nil {
@@ -127,7 +130,7 @@ func TestEveryResponseCarriesTheSameAnswerThroughAnyPair(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", from, err)
 		}
-		for _, to := range Formats() {
+		for _, to := range WriteFormats() {
 			dst, _ := Lookup(to)
 			out, err := dst.WriteResponse(read, NewCtx(from, to))
 			if err != nil || !json.Valid(out) {
@@ -177,7 +180,7 @@ func fuzzReader(f *testing.F, c Codec) {
 		if err != nil || req == nil {
 			return
 		}
-		for _, name := range Formats() {
+		for _, name := range WriteFormats() {
 			w, _ := Lookup(name)
 			ctx := NewCtx(c.Name(), name)
 			Prepare(req, ctx)
@@ -204,7 +207,7 @@ func FuzzReadResponse(f *testing.F) {
 			if u.Prompt < 0 || u.Completion < 0 || u.Cached+u.CacheWrite > u.Prompt || u.Reasoning > u.Completion {
 				t.Fatalf("%s: usage invariants broken: %+v", name, u)
 			}
-			for _, to := range Formats() {
+			for _, to := range WriteFormats() {
 				w, _ := Lookup(to)
 				if out, err := w.WriteResponse(resp, NewCtx(name, to)); err == nil && !json.Valid(out) {
 					t.Fatalf("%s -> %s wrote invalid JSON", name, to)

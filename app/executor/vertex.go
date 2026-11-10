@@ -25,7 +25,7 @@ var ErrTokenUnreachable = errors.New("executor: the token endpoint could not be 
 // TokenSource gives the bearer token for a Vertex key. A failure it cannot
 // separate from a refused key is any other error.
 type TokenSource interface {
-	Token(ctx context.Context, key upstream.GoogleKey) (string, error)
+	Token(ctx context.Context, key upstream.CloudKey) (string, error)
 }
 
 // Vertex sends a request to Vertex AI. The key is a service-account file, user
@@ -44,7 +44,7 @@ func (v *Vertex) Execute(ctx context.Context, req Request) (Response, error) {
 	if req.Key == "" {
 		return Response{}, ErrNoCredential
 	}
-	key, ok := upstream.ParseGoogleKey(req.Key)
+	key, ok := upstream.ParseCloudKey(req.Key)
 	if !ok {
 		return Response{}, ErrBadAccount
 	}
@@ -80,7 +80,7 @@ func (v *Vertex) Execute(ctx context.Context, req Request) (Response, error) {
 
 // place picks the project and the location: the account's own data first, then
 // what the key names, then the model's default.
-func (v *Vertex) place(req Request, key upstream.GoogleKey) (project, location string) {
+func (v *Vertex) place(req Request, key upstream.CloudKey) (project, location string) {
 	if req.Account != nil {
 		project, location = req.Account("projectId"), req.Account("location")
 	}
@@ -96,7 +96,7 @@ func (v *Vertex) place(req Request, key upstream.GoogleKey) (project, location s
 // address builds the endpoint. A key that is a token source always needs a
 // project; a raw key uses the project when the account has one and the open
 // endpoint otherwise.
-func (v *Vertex) address(req Request, key upstream.GoogleKey, project, location string) (string, error) {
+func (v *Vertex) address(req Request, key upstream.CloudKey, project, location string) (string, error) {
 	if v.Partner {
 		if !upstream.ValidProject(project) {
 			return "", ErrBadAccount

@@ -21,7 +21,7 @@ const (
 	maxTierLength = 64
 )
 
-// ValidProject reports a Google Cloud project id fit to be stored and sent.
+// ValidProject reports a project id fit to be stored and sent.
 func ValidProject(s string) bool { return upstream.ValidProject(s) }
 
 // googleAccount names a Gemini CLI account from the user profile and stores the

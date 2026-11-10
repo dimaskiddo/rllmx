@@ -34,7 +34,7 @@ func ParseInput(raw string) (Input, error) {
 	if raw == "" || len(raw) > maxInput {
 		return Input{}, ErrInput
 	}
-	if strings.HasPrefix(raw, "http://") || strings.HasPrefix(raw, "https://") {
+	if looksLikeURL(raw) {
 		u, err := url.Parse(raw)
 		if err != nil {
 			return Input{}, ErrInput
@@ -69,6 +69,14 @@ func check(in Input) (Input, error) {
 		return Input{}, ErrInput
 	}
 	return in, nil
+}
+
+// looksLikeURL reports text an address bar would hold: a scheme, then a host.
+// A provider that answers a custom scheme (Kiro's `kiro://`) is pasted this way
+// too, and its code sits in the same query.
+func looksLikeURL(raw string) bool {
+	i := strings.Index(raw, "://")
+	return i > 0 && i <= 16 && !hasSpace(raw[:i])
 }
 
 func hasSpace(s string) bool {

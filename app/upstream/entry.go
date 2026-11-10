@@ -18,9 +18,11 @@ const (
 	FormatClaude    = "claude"
 	FormatGemini    = "gemini"
 	// FormatCloudCode is a Gemini body inside the Cloud Code envelope (Gemini CLI,
-	// Antigravity); FormatVertex is a Gemini body for Vertex AI.
+	// Antigravity); FormatVertex is a Gemini body for Vertex AI; FormatKiro is
+	// CodeWhisperer's conversation body.
 	FormatCloudCode = "gemini-cli"
 	FormatVertex    = "vertex"
+	FormatKiro      = "kiro"
 )
 
 // ExecutorDefault is the registry-driven executor every provider uses until a
@@ -46,15 +48,21 @@ const (
 	ExecutorAntigravity   = "antigravity"
 	ExecutorVertex        = "vertex"
 	ExecutorVertexPartner = "vertex-partner"
+	// The AWS executors: Bedrock with an Anthropic body or with a Chat
+	// Completions body, and CodeWhisperer's own conversation body.
+	ExecutorBedrock    = "bedrock"
+	ExecutorBedrockXAI = "bedrock-xai"
+	ExecutorKiro       = "kiro"
 )
 
 var (
 	categories = map[string]bool{CategoryAPIKey: true, CategoryOAuth: true, CategoryFree: true, CategoryFreeTier: true, CategoryCookie: true}
-	formats    = map[string]bool{FormatOpenAI: true, FormatResponses: true, FormatClaude: true, FormatGemini: true, FormatCloudCode: true, FormatVertex: true}
+	formats    = map[string]bool{FormatOpenAI: true, FormatResponses: true, FormatClaude: true, FormatGemini: true, FormatCloudCode: true, FormatVertex: true, FormatKiro: true}
 	executors  = map[string]bool{
 		ExecutorDefault: true, ExecutorAzure: true, ExecutorCodex: true, ExecutorGrokCLI: true, ExecutorGitHub: true,
 		ExecutorCodeBuddyCN: true, ExecutorCodeBuddyIntl: true, ExecutorMinimaxCode: true,
 		ExecutorGeminiCLI: true, ExecutorAntigravity: true, ExecutorVertex: true, ExecutorVertexPartner: true,
+		ExecutorBedrock: true, ExecutorBedrockXAI: true, ExecutorKiro: true,
 	}
 )
 
@@ -90,6 +98,10 @@ type Transport struct {
 	// BaseURL is the chat address. It may hold {accountId}, filled from the
 	// account's data. Empty only for an executor that builds the address itself.
 	BaseURL string `json:"baseUrl"`
+	// BaseURLs are the provider's other addresses, tried in the executor's order
+	// when the first does not serve a credential. A provider whose executor does
+	// not read them has none.
+	BaseURLs []string `json:"baseUrls,omitempty"`
 	// ResponsesURL and MessagesURL are the addresses of the same provider's
 	// Responses and Claude endpoints, used when a model's wire format is one of
 	// them. Both stay on the base address's host.
@@ -117,6 +129,9 @@ type Transport struct {
 	// over a model's own format, for a gateway that reads one shape whatever the
 	// model behind it.
 	ThinkingFormat string `json:"thinkingFormat,omitempty"`
+	// Region is the AWS region an executor builds this provider's address for,
+	// when the provider has no single address. A connection may name another.
+	Region string `json:"region,omitempty"`
 }
 
 // Lane is one endpoint of a provider that serves several wire formats: its
