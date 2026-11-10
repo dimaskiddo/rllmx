@@ -110,9 +110,11 @@ sequenceDiagram
 | kimi, muse, nous, kilocode (logins, headers, renewal where the provider has one) | done | 1.10d |
 | github (Copilot token, chat, messages and Responses addresses) | done | 1.10c |
 | codebuddy-cn and codebuddy-intl (stream forced, system prompt scrub or rebuild, request ids, rate-limit remap), minimax-code and minimax-code-global (zone and session headers, balance remap) | done | 1.10f |
-| iflow, antigravity, commandcode, gemini-cli, qoder and qoder-cn, kiro, zed, cursor | todo | 1.10 |
+| antigravity, gemini-cli (Cloud Code envelope fill, request ids, retry delays, reset hints) | done | 1.10g |
+| iflow, commandcode, qoder and qoder-cn, kiro, zed, cursor | todo | 1.10 |
 | windsurf, trae (reference loads neither, D158) | out | - |
-| bedrock and bedrock-xai, opencode (opencode-go, opencode-zen), vertex and vertex-partner | todo | 1.10 |
+| vertex and vertex-partner (three key kinds, project and location, token from a service account or user credentials) | done | 1.10g |
+| bedrock and bedrock-xai, opencode (opencode-go, opencode-zen) | todo | 1.10 |
 | freebuff (extended), xiaomi-tokenplan, xiaomi-mimo, mimo-free, kimchi, ollama-local | todo | 1.10 |
 | cookie web providers (paste only) | todo | 1.10 |
 | devin-cli (spawns a process) | out | - |
@@ -144,14 +146,16 @@ Every provider the references ship, with executor kind, status and delivering st
 | specialized | done (1.10a) | azure |
 | specialized | todo 1.10 | xiaomi-tokenplan |
 | specialized | todo 1.10 | bedrock, ollama-local |
-| specialized | todo 1.10 | bedrock-xai, commandcode, mmf, opencode-go, opencode-zen, vertex-partner |
+| specialized | done (1.10g) | vertex-partner |
+| specialized | todo 1.10 | bedrock-xai, commandcode, mmf, opencode-go, opencode-zen |
 | specialized | todo 1.11 | veoaifree-web |
 
 ## Free Providers (`free`)
 
 | Executor | Status | Providers |
 |---|---|---|
-| specialized | todo 1.10 | freebuff, gemini-cli, kiro, mimo-free, opencode |
+| specialized | done (1.10g) | gemini-cli |
+| specialized | todo 1.10 | freebuff, kiro, mimo-free, opencode |
 | specialized | out | devin-cli |
 
 ## Free-Tier Providers (`freeTier`)
@@ -212,7 +216,8 @@ Auth: pasted cookie over a plain HTTP client. Browser or TLS-fingerprint clients
 - [x] 1.10d: five data files (kimi, muse, nous, kilocode and an `oauth` block in `grok-cli.json`), all on the default executor; the Nous and Kimi thinking writers and capability rows; four client-id variables (`OAUTH_KIMI_`, `_MUSE_`, `_NOUS_`, `_XAI_CLIENT_ID`; Grok CLI uses the xAI one). Models are the reference's today
 - [x] 1.10e: four data files (xai, gitlab, cline, clinepass) on the default executor; the `workos` auth scheme, the `{baseUrl}` address placeholder, the `clineEnvelope` quirk, the Cline identity headers (divergences 165, 166, 247, 248)
 - [x] 1.10f: `executor.CodeBuddy` (both gateways), `executor.MinimaxCode`, five data files, the transport `thinkingFormat`, the `zai` thinking writer and the capability and level rows of the reference (divergences 249, 250)
-- [ ] 1.10g to 1.10k: the rest of the parity table (the Google family; AWS; signed and session protocols; cookie providers; live-catalog guards and probes)
+- [x] 1.10g: `executor.CloudCode` (Gemini CLI and Antigravity), `executor.Vertex` (and partner), `app/quota` and the selector hold, four data files, the capability rows (divergences 252 to 258, 259)
+- [ ] 1.10h to 1.10k: the rest of the parity table ( AWS; signed and session protocols; cookie providers; live-catalog guards and probes)
 - [ ] Still missing from the base: `regions` and `defaultRegion`, `baseUrls` fallback (D102), `stallTimeoutMs`/`timeoutMs` per provider, the JSON-schema to `json_object` fallback for compatible nodes. No 1.10a provider needs them; each lands with the first provider that does
 - [ ] Live-catalog guards for kiro, codex, cursor, kimchi, qoder: account model list (5-minute cache) before dispatch; unknown model 400; a fetch failure lets the request through
 - **Done when:** every provider in the parity table has an executor; each passes its fake-upstream tests; live checks are in `TASKS.md` Open items.
@@ -227,6 +232,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 |---|---|---|
 | 84, 95 | First 4096 bytes scanned, never logged; fixed message per test outcome | Error bodies carry keys, addresses, prompt fragments |
 | 251 | A CodeBuddy rate-limit refusal (code 6004 or its words) becomes a 429 whose body carries the reset moment, parsed from the message in the zone it names or China time and kept only when it lies in the next 400 days. Any other body keeps its status | The reference parses the same date but trusts any parsed date; a bad one would pin an account for ever (improvement) |
+| 259 | A refusal from Gemini CLI or Antigravity is rewritten to carry its retry hint as `error.resets_at` (`RetryInfo.retryDelay` on a 429; `quotaResetTimeStamp` then `retryDelay` on an Antigravity 429 or 409); a hint in the past, over seven days or unreadable is not used. Antigravity retries 429, 500 and 503 in place three times, waiting on `Retry-After`, `X-RateLimit-*` or the text `reset after 2h7m23s`, and gives the answer to the next account when the wait is over ten seconds | The lock reporter reads one field for every provider; a bad hint cannot pin an account for ever (improvement) |
 | 165 | Header functions can never write credential header. `workos` auth scheme adds `workos:` marker to WorkOS JWT, leaves other tokens (ClinePass key) as they are. **Built in 1.10e** (`upstream.WorkOSToken`): the marker goes on every request, not only after a renewal | One place sets credential; data, hooks cannot replace it. The reference computes the marked header and then overwrites it with the stored token, so the marker reaches the provider only on a renewed token |
 | 171 | Token dropped after key minted | Nothing uses it again; failing account signs in again; one less long-lived secret on disk |
 | 173 | POST body carries them; address must be bare https origin; id, secret bounded, free of control characters; secret sealed with account | Secret in URL lands in logs and history; address with path or credentials cannot redirect exchange |
@@ -255,6 +261,8 @@ Deliberate differences from the references in this area. Numbers are stable and 
 ---
 
 ## Findings
+
+**1.10g built: the Google executors and the quota gate.** `CloudCode` fills `project` from the account's `projectId` (checked against the project-id shape; an account without one sends nothing), the session as `-<int64>` from a hash, and a request id of `agent-<uuid>` for Gemini CLI or `agent/<conversation>/<ms>/<trajectory>/<step>` for Antigravity, whose ids are UUID-shaped from a hash so one conversation keeps them. Antigravity never sends `requestType` on chat; an image model is never streamed. `Vertex` builds `https://aiplatform.googleapis.com/v1[/projects/P/locations/L]/publishers/google/models/M:action`: a service account or user credentials always need a project (the file's, the account's or the credentials' `quota_project_id`), a raw key may go without. The location is the account's, the model's `defaultLocation` (global for Gemini 4 Argon), else `us-central1` for a token and `global` for a raw key. The pipeline asks `ProjectResolver` before a Cloud Code send when the account has no project. **The quota gate** (`app/quota`) reads memory when the selector asks (`Skip`) and calls Google only after an Antigravity 409 or 429: per-model limits for a paid account, the 5-hour and weekly limits for any, at most one fetch per account every 30 seconds, concurrent callers sharing one; a spent model, or a family whose models are all spent, holds the account until the reset; three refusals within a minute while the reading shows room hold the pair for 15 minutes, and a success clears the count. A gated failure stores no lock.
 
 **The core follows the reference.** A new executor, a request shape, a header set or a body quirk follows 9router 0.5.112 (`AGENTS.md`, Clean-Room). The router's own rules sit on top and are never traded away for parity: no secret, token, cookie or host name in a log or a URL; the guarded dialer and no redirect on a credential call; a bounded read. A kept difference is a divergence row that says which of the two it is.
 

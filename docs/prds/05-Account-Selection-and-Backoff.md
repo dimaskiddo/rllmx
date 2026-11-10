@@ -26,7 +26,7 @@ Serialized per provider by a mutex, so the usage counters it writes cannot race 
 
 **No candidate left:** if every candidate is locked, the error is `*AllLockedError` with the earliest lock end that applies to the model, "reset after 2m 30s" text, and the first such connection's last error and code. It becomes a 503 with `retryAfter`. No candidates, or locks without a future end, is `ErrNoConnections`.
 
-**Not in the selector:** credential-less providers (a virtual connection), exclusion hooks (Antigravity quota, Freebuff model assignment) and the circuit-breaker skip (PRD 12). The step that needs each adds it.
+**Not in the selector:** credential-less providers (a virtual connection), the Freebuff model-assignment hook and the circuit-breaker skip (PRD 12). The step that needs each adds it. The Antigravity quota gate is built (1.10g): a request carries `Request.Hold`, a function that names a connection spent for the model and the moment it frees up; a held connection counts as locked until then, and `AllLockedError` reports the earliest such moment, lock or hold. The selector reads memory only and `app/account` does not import `app/quota`.
 
 ### Error Classification (`account.Classify`)
 
@@ -76,7 +76,8 @@ flowchart TD
 - [x] Error rules as data, then backoff and lock arithmetic on top of the existing `modelLock_*` fields
 - [x] `Reporter`: `Fail` and `Succeed`
 - [x] Called from the account loop (1.8c)
-- [ ] Exclusion hooks (Antigravity quota, Freebuff model assignment), credential-less providers, the circuit-breaker skip — the steps that need each (**1.10**, **2.5**)
+- [x] Exclusion hook for Antigravity quota (`Request.Hold`, 1.10g)
+- [ ] Freebuff model assignment, credential-less providers, the circuit-breaker skip — the steps that need each (**1.10**, **2.5**)
 
 ---
 

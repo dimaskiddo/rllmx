@@ -2,6 +2,8 @@ package oauth
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/binary"
 	"time"
 
 	"rllmx/app/repository"
@@ -61,15 +63,17 @@ func (r *Refresher) Pass(ctx context.Context, gap time.Duration) int {
 		return 0
 	}
 	renewed := 0
+	pause := gap
 	for i, c := range r.pending(list) {
 		if ctx.Err() != nil {
 			return renewed
 		}
-		if i > 0 && gap > 0 {
-			if r.wait(ctx, gap) != nil {
+		if i > 0 && pause > 0 {
+			if r.wait(ctx, pause) != nil {
 				return renewed
 			}
 		}
+		pause = r.gapAfter(c, gap)
 		if _, err := r.Refresh(ctx, c.ID, ""); err != nil {
 			r.warn("oauth: the background renewal of a %s account failed: %s", c.Provider, reason(err))
 			continue
@@ -77,6 +81,32 @@ func (r *Refresher) Pass(ctx context.Context, gap time.Duration) int {
 		renewed++
 	}
 	return renewed
+}
+
+// maxSlowJitter is the most random time added to the pause after a slow
+// provider's account, so several of them do not renew on a fixed beat.
+const maxSlowJitter = 4 * time.Second
+
+// gapAfter is the pause before the next account once c has been renewed: the
+// common gap, or for a provider that rate-limits renewals the longer SlowGap
+// plus some jitter.
+func (r *Refresher) gapAfter(c repository.Connection, gap time.Duration) time.Duration {
+	f, ok := r.flowOf(c)
+	if !ok || !f.SlowRefresh || r.SlowGap <= 0 {
+		return gap
+	}
+	return r.SlowGap + r.jitter()
+}
+
+func (r *Refresher) jitter() time.Duration {
+	if r.Jitter != nil {
+		return r.Jitter(maxSlowJitter)
+	}
+	var b [2]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return 0
+	}
+	return time.Duration(uint64(binary.BigEndian.Uint16(b[:])) * uint64(maxSlowJitter) / 65536)
 }
 
 // reason names a failure without provider text.

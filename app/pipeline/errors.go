@@ -24,6 +24,10 @@ type accountFail struct {
 	// expired marks an account whose refresh token is dead. The mark is already
 	// stored and is the stronger state, so nothing is locked on top of it.
 	expired bool
+	// gated marks a refusal the quota gate has already accounted for: the
+	// account is passed over for this model until the gate's own time, with no
+	// lock stored.
+	gated bool
 }
 
 func classOf(status int) string {

@@ -266,7 +266,7 @@ func TestAGitLabAccountRenewsWithItsOwnApplication(t *testing.T) {
 	srv := rec.serve(t, 200, `{"access_token":"NEW","refresh_token":"RT2","expires_in":7200}`)
 	r := &Refresher{
 		Flow: func(p string) (Flow, bool) {
-			f, err := FlowFor(registry(t), func(string) string { return "" }, p)
+			f, err := FlowFor(registry(t), func(string) string { return "" }, nil, p)
 			return f, err == nil
 		},
 	}

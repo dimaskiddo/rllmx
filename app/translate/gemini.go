@@ -286,12 +286,18 @@ func (GeminiCodec) WriteRequest(r *Request, c *Ctx) ([]byte, error) {
 					parts = append(parts, obj{"text": p.Text})
 				}
 			}
+			first := true
 			for _, tc := range m.ToolCalls {
 				id := uniq(tc.ID)
 				queues[tc.ID] = append(queues[tc.ID], id)
 				fc := obj{"id": id, "name": sanitizeGeminiName(tc.Name), "args": rawOrEmpty(tc.Arguments)}
 				part := obj{"functionCall": fc}
-				if sig := c.signatureFor(tc); sig != "" {
+				sig := c.signatureFor(tc)
+				if sig == "" && first {
+					sig = c.Signature
+				}
+				first = false
+				if sig != "" {
 					part["thoughtSignature"] = sig
 				}
 				parts = append(parts, part)
@@ -347,7 +353,19 @@ func (GeminiCodec) WriteRequest(r *Request, c *Ctx) ([]byte, error) {
 	if gc := geminiGenerationConfig(r, c); len(gc) > 0 {
 		o["generationConfig"] = gc
 	}
+	if c.Safety {
+		o["safetySettings"] = safetyOff
+	}
 	return json.Marshal(withExtra(o, r.Extra))
+}
+
+// safetyOff turns every harm filter off, the setting Gemini CLI sends.
+var safetyOff = []any{
+	obj{"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "OFF"},
+	obj{"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "OFF"},
+	obj{"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "OFF"},
+	obj{"category": "HARM_CATEGORY_HARASSMENT", "threshold": "OFF"},
+	obj{"category": "HARM_CATEGORY_CIVIC_INTEGRITY", "threshold": "OFF"},
 }
 
 func rawOrEmpty(args string) json.RawMessage {

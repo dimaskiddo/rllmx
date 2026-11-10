@@ -25,6 +25,14 @@ const (
 	EndpointKey          = "key"
 	EndpointAgentKey     = "agentKey"
 	EndpointProfile      = "profile"
+	// EndpointLoadCodeAssist and EndpointOnboardUser are the Cloud Code calls that
+	// find an account's project and enable it.
+	EndpointLoadCodeAssist = "loadCodeAssist"
+	EndpointOnboardUser    = "onboardUser"
+	// EndpointQuotaModels and EndpointQuotaSummary are the Antigravity calls that
+	// say what is left of an account's usage.
+	EndpointQuotaModels  = "quotaModels"
+	EndpointQuotaSummary = "quotaSummary"
 	// EndpointVerify is the page a device login falls back to when the provider
 	// names none.
 	EndpointVerify = "verify"
@@ -54,7 +62,7 @@ var (
 	// redirectHosts are the names a fixed redirect may use for this machine.
 	redirectHosts = map[string]bool{"": true, "localhost": true, "127.0.0.1": true}
 	encodings     = map[string]bool{EncodingJSON: true, EncodingForm: true}
-	hooks         = map[string]bool{"": true, "codex": true, "github": true, "muse": true, "nous": true, "kilocode": true, "grokCli": true, "gitlab": true, "xai": true}
+	hooks         = map[string]bool{"": true, "codex": true, "github": true, "muse": true, "nous": true, "kilocode": true, "grokCli": true, "gitlab": true, "xai": true, "google": true, "antigravity": true}
 	mints         = map[string]bool{"": true, MintCopilot: true}
 	// refreshHooks run after a token renewal; dialects replace the start and the
 	// poll of a device login that does not follow RFC 8628.
@@ -110,6 +118,12 @@ type OAuth struct {
 	// AppFromAccount marks a login whose OAuth application and server address come
 	// with the request that starts it, not from configuration.
 	AppFromAccount bool `json:"appFromAccount,omitempty"`
+	// NoPKCE sends no code challenge and no verifier, for a client registered
+	// without it that authenticates with a secret instead (Google).
+	NoPKCE bool `json:"noPkce,omitempty"`
+	// SlowRefresh makes the background pass wait longer after this account, for a
+	// provider that rate-limits renewals (Google).
+	SlowRefresh bool `json:"slowRefresh,omitempty"`
 	// PAT lets an account be connected by a personal access token checked against
 	// the user endpoint of its server.
 	PAT bool `json:"pat,omitempty"`
@@ -296,8 +310,11 @@ func (o *OAuth) validateFlow() error {
 		}
 		return nil
 	}
-	if o.DeviceURL != "" || len(o.CallHeaders) > 0 {
-		return errors.New("oauth.deviceUrl and callHeaders belong to the device flow")
+	if o.DeviceURL != "" {
+		return errors.New("oauth.deviceUrl belongs to the device flow")
+	}
+	if len(o.CallHeaders) > 0 && o.Flow != FlowCodePKCE {
+		return errors.New("oauth.callHeaders belong to the device and code-pkce flows")
 	}
 	if o.NoClient && o.Flow != FlowCode {
 		return errors.New("oauth.noClient belongs to the device and code flows")
@@ -320,6 +337,9 @@ func (o *OAuth) validateFlow() error {
 		if o.FixedPort != 0 || o.CallbackPath != "" || o.RedirectHost != "" {
 			return errors.New("oauth.fixedPort, callbackPath and redirectHost belong to the fixed redirect")
 		}
+	}
+	if o.NoPKCE && o.Flow != FlowCodePKCE {
+		return errors.New("oauth.noPkce belongs to the code-pkce flow")
 	}
 	if o.AppFromAccount && (o.Redirect == RedirectFixed || o.NoClient || o.Flow != FlowCodePKCE) {
 		return errors.New("oauth.appFromAccount needs a code-pkce login on the local or public redirect with a client")

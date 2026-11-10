@@ -64,6 +64,11 @@ type Refresher struct {
 	Store func() Store
 	Log   log.Log
 	Now   func() time.Time
+	// SlowGap is the pause after an account of a provider whose data sets
+	// slowRefresh; zero means the common gap.
+	SlowGap time.Duration
+	// Jitter returns a random duration below its argument; nil uses crypto/rand.
+	Jitter func(max time.Duration) time.Duration
 	// Wait pauses between tries; nil uses a real timer.
 	Wait func(ctx context.Context, d time.Duration) error
 }

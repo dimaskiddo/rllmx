@@ -17,6 +17,10 @@ const (
 	FormatResponses = "openai-responses"
 	FormatClaude    = "claude"
 	FormatGemini    = "gemini"
+	// FormatCloudCode is a Gemini body inside the Cloud Code envelope (Gemini CLI,
+	// Antigravity); FormatVertex is a Gemini body for Vertex AI.
+	FormatCloudCode = "gemini-cli"
+	FormatVertex    = "vertex"
 )
 
 // ExecutorDefault is the registry-driven executor every provider uses until a
@@ -36,14 +40,21 @@ const (
 	ExecutorCodeBuddyCN   = "codebuddy-cn"
 	ExecutorCodeBuddyIntl = "codebuddy-intl"
 	ExecutorMinimaxCode   = "minimax-code"
+	// The Google executors: Cloud Code as Gemini CLI or as Antigravity, and
+	// Vertex AI with its partner models.
+	ExecutorGeminiCLI     = "gemini-cli"
+	ExecutorAntigravity   = "antigravity"
+	ExecutorVertex        = "vertex"
+	ExecutorVertexPartner = "vertex-partner"
 )
 
 var (
 	categories = map[string]bool{CategoryAPIKey: true, CategoryOAuth: true, CategoryFree: true, CategoryFreeTier: true, CategoryCookie: true}
-	formats    = map[string]bool{FormatOpenAI: true, FormatResponses: true, FormatClaude: true, FormatGemini: true}
+	formats    = map[string]bool{FormatOpenAI: true, FormatResponses: true, FormatClaude: true, FormatGemini: true, FormatCloudCode: true, FormatVertex: true}
 	executors  = map[string]bool{
 		ExecutorDefault: true, ExecutorAzure: true, ExecutorCodex: true, ExecutorGrokCLI: true, ExecutorGitHub: true,
 		ExecutorCodeBuddyCN: true, ExecutorCodeBuddyIntl: true, ExecutorMinimaxCode: true,
+		ExecutorGeminiCLI: true, ExecutorAntigravity: true, ExecutorVertex: true, ExecutorVertexPartner: true,
 	}
 )
 
@@ -169,6 +180,9 @@ type Model struct {
 	// Lite marks a Codex model that takes its tools and instructions as input
 	// items instead of fields.
 	Lite bool `json:"lite,omitempty"`
+	// DefaultLocation is where a Vertex model is served when the account names no
+	// location: "global" for a model that regional locations do not carry.
+	DefaultLocation string `json:"defaultLocation,omitempty"`
 	// Levels are the reasoning efforts the model accepts, when it is stricter
 	// than the shared tables.
 	Levels []string `json:"levels,omitempty"`

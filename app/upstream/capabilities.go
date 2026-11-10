@@ -94,6 +94,12 @@ type thinkingFile struct {
 	// for a thinking block or a first tool call that carries none.
 	ClaudeSignature string `json:"claudeSignature"`
 	GeminiSignature string `json:"geminiSignature"`
+	// GeminiCLISignature, AntigravitySignature and VertexSignature are the
+	// placeholder thought signatures each Gemini-family upstream accepts on a
+	// function call that has none.
+	GeminiCLISignature   string `json:"geminiCliSignature"`
+	AntigravitySignature string `json:"antigravitySignature"`
+	VertexSignature      string `json:"vertexSignature"`
 }
 
 type visionFile struct {
@@ -226,6 +232,9 @@ func NewCapabilities(capData, thinkData, visionData, paramData []byte, reg *Regi
 	}
 	if c.thinking.ClaudeSignature == "" || c.thinking.GeminiSignature == "" {
 		return nil, errors.New("upstream: thinking.json: both placeholder signatures are required")
+	}
+	if c.thinking.GeminiCLISignature == "" || c.thinking.AntigravitySignature == "" || c.thinking.VertexSignature == "" {
+		return nil, errors.New("upstream: thinking.json: the Gemini CLI, Antigravity and Vertex signatures are required")
 	}
 	var err error
 	if c.visionNo, err = joinRegexp("vision.json not", v.Not); err != nil {
@@ -431,6 +440,12 @@ func (c *Capabilities) Budget(level string) int { return c.thinking.Budgets[leve
 // ClaudeSignature and GeminiSignature are the placeholder signatures.
 func (c *Capabilities) ClaudeSignature() string { return c.thinking.ClaudeSignature }
 func (c *Capabilities) GeminiSignature() string { return c.thinking.GeminiSignature }
+
+// GeminiCLISignature, AntigravitySignature and VertexSignature are the
+// placeholders for the Google upstreams.
+func (c *Capabilities) GeminiCLISignature() string   { return c.thinking.GeminiCLISignature }
+func (c *Capabilities) AntigravitySignature() string { return c.thinking.AntigravitySignature }
+func (c *Capabilities) VertexSignature() string      { return c.thinking.VertexSignature }
 
 // ParamRules are the parameter rules that apply to a model, in file order.
 func (c *Capabilities) ParamRules(provider, model string) []ParamRule {

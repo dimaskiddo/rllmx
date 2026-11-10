@@ -160,7 +160,7 @@ func TestParamRulesApplyInFileOrderAndHonorProviderAndExclusion(t *testing.T) {
 	}
 }
 
-const thinkingJSON = `{"base":["low"],"formats":{},"rules":[],"budgets":{},"claudeSignature":"a","geminiSignature":"b"}`
+const thinkingJSON = `{"base":["low"],"formats":{},"rules":[],"budgets":{},"claudeSignature":"a","geminiSignature":"b","geminiCliSignature":"c","antigravitySignature":"d","vertexSignature":"e"}`
 const visionJSON = `{"not":["embed"],"name":["vision"]}`
 
 func TestTheCapabilityLoaderRefusesBadTables(t *testing.T) {
@@ -189,9 +189,10 @@ func TestTheCapabilityLoaderRefusesBadTables(t *testing.T) {
 		"inverted range":          {map[string]string{"cap": `{"models":{"m":{"thinkingMin":9,"thinkingMax":1}}}`}, "inverted"},
 		"empty pattern":           {map[string]string{"cap": `{"patterns":[{"pattern":"","set":{}}]}`}, "empty"},
 		"pattern set unknown key": {map[string]string{"cap": `{"patterns":[{"pattern":"a*","set":{"x":1}}]}`}, "unknown field"},
-		"thinking rule no levels": {map[string]string{"think": `{"base":["a"],"rules":[{"pattern":"a"}],"claudeSignature":"a","geminiSignature":"b"}`}, "levels"},
-		"budget out of range":     {map[string]string{"think": `{"base":["a"],"budgets":{"x":-5},"claudeSignature":"a","geminiSignature":"b"}`}, "range"},
+		"thinking rule no levels": {map[string]string{"think": `{"base":["a"],"rules":[{"pattern":"a"}],"claudeSignature":"a","geminiSignature":"b","geminiCliSignature":"c","antigravitySignature":"d","vertexSignature":"e"}`}, "levels"},
+		"budget out of range":     {map[string]string{"think": `{"base":["a"],"budgets":{"x":-5},"claudeSignature":"a","geminiSignature":"b","geminiCliSignature":"c","antigravitySignature":"d","vertexSignature":"e"}`}, "range"},
 		"no placeholder":          {map[string]string{"think": `{"base":["a"],"claudeSignature":"","geminiSignature":"b"}`}, "signatures"},
+		"no google signature":     {map[string]string{"think": `{"base":["a"],"claudeSignature":"a","geminiSignature":"b","geminiCliSignature":"c","antigravitySignature":"","vertexSignature":"e"}`}, "Antigravity"},
 		"vision no patterns":      {map[string]string{"vision": `{"not":[],"name":["v"]}`}, "no patterns"},
 		"vision bad regexp":       {map[string]string{"vision": `{"not":["("],"name":["v"]}`}, "compile"},
 		"param rule does nothing": {map[string]string{"params": `{"rules":[{"pattern":"a*"}]}`}, "does nothing"},

@@ -14,7 +14,17 @@ const (
 	FormatResponses = "openai-responses"
 	FormatGemini    = "gemini"
 	FormatOllama    = "ollama"
+	// FormatCloudCode is a Gemini body inside the Cloud Code envelope, for Gemini
+	// CLI and Antigravity; FormatVertex is a Gemini body for Vertex AI.
+	FormatCloudCode = "gemini-cli"
+	FormatVertex    = "vertex"
 )
+
+// GeminiFamily reports a format whose bodies and streams are Gemini's, with or
+// without a wrapper.
+func GeminiFamily(format string) bool {
+	return format == FormatGemini || format == FormatCloudCode || format == FormatVertex
+}
 
 // ErrBadBody means a body is not the shape its endpoint promises. The message
 // never repeats body content.

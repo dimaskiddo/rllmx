@@ -65,6 +65,9 @@ func (c *call) unexpected(resp executor.Response, kind stream.Kind) Output {
 }
 
 func (c *call) accept(ctx context.Context) {
+	if c.p.d.Quota != nil && c.dest.provider == antigravityID {
+		c.p.d.Quota.Succeeded(c.row.ConnectionID, c.dest.model)
+	}
 	if err := c.p.d.Reporter.Succeed(ctx, c.row.ConnectionID, c.dest.model, c.attemptStart); err != nil && c.p.d.Log != nil {
 		c.p.d.Log.Warningf("pipeline: clearing locks failed: %v", err)
 	}

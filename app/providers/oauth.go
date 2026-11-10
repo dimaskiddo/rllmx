@@ -2,12 +2,14 @@ package providers
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/goravel/framework/contracts/foundation"
 
 	"rllmx/app/data"
 	"rllmx/app/oauth"
+	"rllmx/app/quota"
 	"rllmx/app/settings"
 	"rllmx/app/upstream"
 )
@@ -15,12 +17,12 @@ import (
 // newLogin builds the account login service and the refresher that keeps its
 // tokens alive. The store opens in a runner after every provider registered, so
 // accounts are looked up on use.
-func newLogin(app foundation.Application, reg *upstream.Registry, cfg *settings.OAuth, up *settings.Upstream) (*oauth.Service, *oauth.Refresher, *oauth.Minter) {
+func newLogin(app foundation.Application, reg *upstream.Registry, cfg *settings.OAuth, up *settings.Upstream) (*oauth.Service, *oauth.Refresher, *oauth.Minter, *Google) {
 	sessions := oauth.NewSessions()
 	listeners := &oauth.Listeners{Host: cfg.CallbackHost, Sessions: sessions, Log: app.MakeLog()}
 	tokens := oauth.NewTokenClient(up.Allow)
 	svc := &oauth.Service{
-		Registry: reg, ClientID: cfg.ClientID, Sessions: sessions,
+		Registry: reg, ClientID: cfg.ClientID, ClientSecret: cfg.ClientSecret, Sessions: sessions,
 		Tokens: tokens, Listeners: listeners, Log: app.MakeLog(), Now: time.Now,
 		Accounts: func() oauth.Accounts {
 			store := DataOf(app).Runner.Store()
@@ -33,10 +35,11 @@ func newLogin(app foundation.Application, reg *upstream.Registry, cfg *settings.
 	listeners.Handle = svc.Listened
 	refresher := &oauth.Refresher{
 		Flow: func(provider string) (oauth.Flow, bool) {
-			f, err := oauth.FlowFor(reg, cfg.ClientID, provider)
+			f, err := oauth.FlowFor(reg, cfg.ClientID, cfg.ClientSecret, provider)
 			return f, err == nil
 		},
 		Tokens: tokens, Cache: cacheOrNil(app), Log: app.MakeLog(), Now: time.Now,
+		SlowGap: cfg.RefreshGoogleDelay,
 		Store: func() oauth.Store {
 			store := DataOf(app).Runner.Store()
 			if store == nil {
@@ -55,7 +58,54 @@ func newLogin(app foundation.Application, reg *upstream.Registry, cfg *settings.
 			return store.Connections()
 		},
 	}
-	return svc, refresher, minter
+	google := &Google{
+		Projects: &oauth.ProjectResolver{
+			Registry: reg, Tokens: tokens, Cache: cacheOrNil(app), Log: app.MakeLog(),
+			Store: func() oauth.ProjectStore {
+				store := DataOf(app).Runner.Store()
+				if store == nil {
+					return nil
+				}
+				return store.Connections()
+			},
+		},
+		Vertex: oauth.VertexTokens{Minter: &oauth.GoogleMinter{Tokens: tokens, Cache: cacheOrNil(app), Log: app.MakeLog(), Now: time.Now}},
+		Quota:  newQuotaGate(reg, tokens.HTTP),
+	}
+	return svc, refresher, minter, google
+}
+
+// Google holds what the Google providers need beside the common login: the
+// resolver that finds a Cloud Code account's project, the source that trades a
+// Vertex key for a token, and the Antigravity quota gate.
+type Google struct {
+	Projects *oauth.ProjectResolver
+	Vertex   oauth.VertexTokens
+	Quota    *quota.Gate
+}
+
+// newQuotaGate builds the Antigravity quota gate from the provider's own data: the
+// calls it makes and the client it says it is. A registry without Antigravity
+// gets a gate that never learns anything, which skips nothing.
+func newQuotaGate(reg *upstream.Registry, client quota.HTTP) *quota.Gate {
+	e, ok := reg.ByID("antigravity")
+	if !ok || e.OAuth == nil {
+		return quota.New(nil)
+	}
+	f := &quota.Fetcher{Client: client, URL: quota.Endpoints{
+		Models: e.OAuth.Endpoints[upstream.EndpointQuotaModels], Summary: e.OAuth.Endpoints[upstream.EndpointQuotaSummary],
+		Load: e.OAuth.Endpoints[upstream.EndpointLoadCodeAssist], UserAgent: e.Transport.Headers["User-Agent"], Version: quotaVersion(e.Transport.Headers["User-Agent"]),
+	}}
+	return quota.New(f.Fetch)
+}
+
+// quotaVersion reads the version out of "antigravity/hub/2.24.0 darwin/arm64".
+func quotaVersion(agent string) string {
+	head, _, _ := strings.Cut(agent, " ")
+	if i := strings.LastIndexByte(head, '/'); i >= 0 {
+		return head[i+1:]
+	}
+	return ""
 }
 
 // oauthRunner owns what the login keeps running: the callback listeners, which

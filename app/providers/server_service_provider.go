@@ -63,6 +63,8 @@ type HTTP struct {
 	Refresher *oauth.Refresher
 	// Minter makes the Copilot token of a GitHub account.
 	Minter *oauth.Minter
+	// Google finds a Cloud Code project and trades a Vertex key for a token.
+	Google *Google
 	// OAuthSettings is the checked OAUTH_* configuration.
 	OAuthSettings *settings.OAuth
 }
@@ -160,7 +162,7 @@ func (r *ServerServiceProvider) Register(app foundation.Application) {
 		a.SSOAllow = allowSSO.Allows
 		trust := apphttp.NewTrust(s.TrustedProxies)
 		a.ClientAddr = trust.ClientAddr
-		login, refresher, minter := newLogin(app, registry, oauthCfg, upstreamCfg)
+		login, refresher, minter, google := newLogin(app, registry, oauthCfg, upstreamCfg)
 		return &HTTP{
 			Settings:      s,
 			Guard:         apphttp.NewGuard(a, s.TrustLoopback),
@@ -175,6 +177,7 @@ func (r *ServerServiceProvider) Register(app foundation.Application) {
 			OAuth:         login,
 			Refresher:     refresher,
 			Minter:        minter,
+			Google:        google,
 			OAuthSettings: oauthCfg,
 		}, nil
 	})

@@ -195,3 +195,27 @@ func (r *ConnectionsRepo) MarkExpired(ctx context.Context, id, old, message stri
 	})
 	return marked, err
 }
+
+// SetProjectID stores a Cloud Code project on a connection that has none. A
+// project already there is kept, so a lookup that raced with a login or with
+// the user's own setting never overwrites it. It reports whether it wrote.
+func (r *ConnectionsRepo) SetProjectID(ctx context.Context, id, project string) (wrote bool, err error) {
+	err = r.s.Tx(ctx, func(tx contractsdb.Tx) error {
+		c, d, err := r.lockRow(tx, id)
+		if err != nil {
+			return err
+		}
+		if cur, _ := d.GetString("projectId"); cur != "" {
+			return nil
+		}
+		if err := d.SetString("projectId", project); err != nil {
+			return err
+		}
+		if _, err := r.writeData(tx, c, d); err != nil {
+			return err
+		}
+		wrote = true
+		return nil
+	})
+	return wrote, err
+}

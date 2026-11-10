@@ -121,6 +121,14 @@ func newRig(t *testing.T, steps ...tests.Reply) *rig {
 		`"transport":{"baseUrl":"` + up.URL + `/mavis/api/v1/llm/v1/messages","format":"claude","headers":{"x-api-key":"sk-xxx","anthropic-version":"2023-06-01"}},` +
 		`"oauth":{"flow":"device","dialect":"minimax","deviceUrl":"https://a.example/device","tokenUrl":"https://a.example/token","scope":"s"},` +
 		`"models":[{"id":"mm-1"}]}`
+	gcl := `{"id":"gcl","category":"oauth","display":{"name":"GC"},"executor":"gemini-cli",` +
+		`"transport":{"baseUrl":"` + up.URL + `/v1internal","format":"gemini-cli","headers":{"X-Rllmx-User-Agent":"GeminiCLI/0.34.0/{model} (router; router; terminal)"}},` +
+		`"oauth":{"flow":"code-pkce","noPkce":true,"authorizeUrl":"https://a.example/a","tokenUrl":"https://a.example/t","scope":"s","redirect":"local","exchange":"form","refresh":{"encoding":"form","leadSeconds":300}},` +
+		`"models":[{"id":"gm-1"}]}`
+	agy := `{"id":"antigravity","category":"oauth","display":{"name":"AG"},"executor":"antigravity",` +
+		`"transport":{"baseUrl":"` + up.URL + `/v1internal","format":"gemini-cli"},` +
+		`"oauth":{"flow":"code-pkce","noPkce":true,"authorizeUrl":"https://a.example/a","tokenUrl":"https://a.example/t","scope":"s","redirect":"local","exchange":"form","refresh":{"encoding":"form","leadSeconds":300}},` +
+		`"models":[{"id":"claude-opus-5-5-high"}]}`
 	cdx := `{"id":"cdx","category":"apikey","display":{"name":"C"},"executor":"codex","forceStream":true,` +
 		`"transport":{"baseUrl":"` + up.URL + `/codex/responses","format":"openai-responses","quirks":{"inlineImages":true}},` +
 		`"auth":{"scheme":"bearer","header":"Authorization"},"models":[{"id":"cm","levels":["low","medium","high","xhigh"]},{"id":"cm-vision","levels":["low","medium"]},{"id":"cl","lite":true,"levels":["low","medium","high"]}]}`
@@ -150,7 +158,7 @@ func newRig(t *testing.T, steps ...tests.Reply) *rig {
 	reg, err := upstream.Load(fstest.MapFS{
 		"data/kim.json": {Data: []byte(kim)}, "data/mus.json": {Data: []byte(mus)}, "data/kc.json": {Data: []byte(kc)}, "data/lane.json": {Data: []byte(lane)},
 		"data/cop.json": {Data: []byte(cop)}, "data/cln.json": {Data: []byte(cln)}, "data/glb.json": {Data: []byte(glb)},
-		"data/cbn.json": {Data: []byte(cbn)}, "data/mmx.json": {Data: []byte(mmx)},
+		"data/gcl.json": {Data: []byte(gcl)}, "data/antigravity.json": {Data: []byte(agy)}, "data/cbn.json": {Data: []byte(cbn)}, "data/mmx.json": {Data: []byte(mmx)},
 		"data/cdx.json": {Data: []byte(cdx)}, "data/grk.json": {Data: []byte(grk)},
 		"data/forced.json": {Data: []byte(forced)}, "data/gem.json": {Data: []byte(gem)}, "data/sub.json": {Data: []byte(sub)}, "data/subx.json": {Data: []byte(subx)},
 		"data/wire.json": {Data: []byte(wire)}, "data/acct.json": {Data: []byte(acct)},

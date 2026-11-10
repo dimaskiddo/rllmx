@@ -33,6 +33,9 @@ var hooks = map[string]hook{
 	"grokCli":  grokAccount,
 	"xai":      xaiAccount,
 	"gitlab":   gitlabAccount,
+
+	"google":      googleAccount,
+	"antigravity": antigravityAccount,
 }
 
 const (

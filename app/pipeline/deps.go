@@ -34,6 +34,19 @@ type Reporter interface {
 	Succeed(ctx context.Context, connID, model string, started time.Time) error
 }
 
+// Projects finds an account's Cloud Code project with its access token.
+type Projects interface {
+	Project(ctx context.Context, conn repository.Connection, access string) (string, error)
+}
+
+// Quota is the Antigravity quota gate. Skip reads memory only; Refused is asked
+// after a quota refusal and may fetch the account's live limits.
+type Quota interface {
+	Skip(account, model string) (time.Time, bool)
+	Refused(ctx context.Context, account, access, model string) (time.Time, bool)
+	Succeeded(account, model string)
+}
+
 // Nodes reads a user-defined provider node.
 type Nodes interface {
 	Get(ctx context.Context, id string) (repository.Node, bool, error)
@@ -88,6 +101,12 @@ type Deps struct {
 	// Minter makes the credential of a provider whose login is traded for one;
 	// nil sends the stored token.
 	Minter Minter
+	// Projects finds the Cloud Code project of a Google account that has none
+	// stored; nil leaves such an account to fail.
+	Projects Projects
+	// Quota passes over an Antigravity account whose model is spent; nil leaves
+	// that to the common lock rules.
+	Quota Quota
 	// Sessions names the conversation a request belongs to; nil makes one.
 	Sessions *conversation.Store
 	Timers   stream.Timers

@@ -116,7 +116,10 @@ func (c *TokenClient) Exchange(ctx context.Context, f Flow, code, redirect, veri
 	}
 	fields := map[string]string{
 		"grant_type": "authorization_code", "client_id": f.ClientID, "code": code,
-		"redirect_uri": redirect, "code_verifier": verifier,
+		"redirect_uri": redirect,
+	}
+	if verifier != "" {
+		fields["code_verifier"] = verifier
 	}
 	if f.EchoState {
 		fields["state"] = state

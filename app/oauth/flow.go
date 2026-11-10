@@ -28,8 +28,9 @@ var (
 type Flow struct {
 	Provider string
 	ClientID string
-	// ClientSecret is the secret of an application that came with the account,
-	// or "". Configuration never holds one.
+	// ClientSecret is the secret of the client: from configuration for a provider
+	// whose client has one (Google), or the one of an application that came with
+	// the account. Empty means the exchange and the renewal send none.
 	ClientSecret string
 	// AppBase is the server address of that application, or "".
 	AppBase string
@@ -97,14 +98,18 @@ func rebase(addr, base string) string {
 }
 
 // FlowFor finds the login of a provider by its name or alias and joins it with
-// its client id. ErrUnsupported means no such provider.
-func FlowFor(reg *upstream.Registry, clientID func(string) string, provider string) (Flow, error) {
+// its client id and, when configuration holds one, its client secret. ErrUnsupported means no such provider.
+func FlowFor(reg *upstream.Registry, clientID, clientSecret func(string) string, provider string) (Flow, error) {
 	id, ok := reg.Resolve(provider)
 	if !ok {
 		return Flow{}, ErrUnsupported
 	}
 	e, _ := reg.ByID(id)
-	return NewFlow(e, clientID(id))
+	f, err := NewFlow(e, clientID(id))
+	if err == nil && clientSecret != nil {
+		f.ClientSecret = clientSecret(id)
+	}
+	return f, err
 }
 
 // NewFlow joins a registry entry with its client id. An entry without a login
@@ -157,7 +162,10 @@ func (f Flow) URL(redirect, state, challenge, nonce string) string {
 	if f.Flow != upstream.FlowCode {
 		pairs = [][2]string{
 			{"response_type", "code"}, {"client_id", f.ClientID}, {"redirect_uri", redirect},
-			{"scope", f.Scope}, {"code_challenge", challenge}, {"code_challenge_method", oidc.Method},
+			{"scope", f.Scope},
+		}
+		if !f.NoPKCE {
+			pairs = append(pairs, [2]string{"code_challenge", challenge}, [2]string{"code_challenge_method", oidc.Method})
 		}
 	}
 	fill := strings.NewReplacer(upstream.RedirectToken, redirect, upstream.StateToken, state, upstream.NonceToken, nonce)

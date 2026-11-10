@@ -573,3 +573,54 @@ func TestAMarkedAccountIsNeverCalledValidEvenWhenItsTokenIsNotDue(t *testing.T) 
 		t.Fatalf("%d token calls for a dead account", g.end.calls.Load())
 	}
 }
+
+func TestAnAccountOfASlowProviderIsFollowedByTheLongerPauseWithJitter(t *testing.T) {
+	for name, tc := range map[string]struct {
+		first, second string
+		want          time.Duration
+	}{
+		"slow then common": {"claude", "codex", 15 * time.Second},
+		"common then slow": {"codex", "claude", 1500 * time.Millisecond},
+	} {
+		g := newRenewRig(t, good)
+		g.r.SlowGap = 12 * time.Second
+		g.r.Jitter = func(max time.Duration) time.Duration {
+			if max != maxSlowJitter {
+				t.Errorf("jitter bound %v", max)
+			}
+			return 3 * time.Second
+		}
+		slow := g.r.Flow
+		g.r.Flow = func(provider string) (Flow, bool) {
+			f, ok := slow(provider)
+			f.SlowRefresh = provider == "claude"
+			return f, ok
+		}
+		soon := dialect.FormatTimestamp(epoch.Add(time.Minute))
+		g.conn(t, tc.first, "a@x.test", map[string]string{"accessToken": "a", "refreshToken": "r1", "expiresAt": soon, "email": "a@x.test"})
+		g.conn(t, tc.second, "b@x.test", map[string]string{"accessToken": "a", "refreshToken": "r2", "expiresAt": soon, "email": "b@x.test"})
+		if n := g.r.Pass(context.Background(), 1500*time.Millisecond); n != 2 {
+			t.Fatalf("%s: renewed %d", name, n)
+		}
+		if len(g.waits) != 1 || g.waits[0] != tc.want {
+			t.Errorf("%s: pauses %v, want one of %v", name, g.waits, tc.want)
+		}
+	}
+}
+
+func TestTheCommonGapIsKeptWhenNoSlowGapIsSet(t *testing.T) {
+	g := newRenewRig(t, good)
+	slow := g.r.Flow
+	g.r.Flow = func(provider string) (Flow, bool) {
+		f, ok := slow(provider)
+		f.SlowRefresh = true
+		return f, ok
+	}
+	at := map[string]string{"accessToken": "a", "refreshToken": "r1", "expiresAt": dialect.FormatTimestamp(epoch.Add(time.Minute))}
+	g.conn(t, "claude", "", at)
+	g.conn(t, "claude", "", map[string]string{"accessToken": "a", "refreshToken": "r2", "expiresAt": at["expiresAt"]})
+	g.r.Pass(context.Background(), 1500*time.Millisecond)
+	if len(g.waits) != 1 || g.waits[0] != 1500*time.Millisecond {
+		t.Fatalf("%v", g.waits)
+	}
+}

@@ -14,6 +14,9 @@ type Account struct {
 	Email string
 	// PSD is a providerSpecificData object as JSON, or "".
 	PSD string
+	// ProjectID is the Cloud Code project of a Google account; it is stored as the
+	// connection's own `projectId` field.
+	ProjectID string
 	// Access replaces the access token that is stored, for a login whose real
 	// credential is minted from the token the provider handed out.
 	Access string

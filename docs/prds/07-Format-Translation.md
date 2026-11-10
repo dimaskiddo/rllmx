@@ -142,8 +142,8 @@ All go through the OpenAI hub; no direct pairs (PRD 7). References under `transl
 | openai to/from ollama | `*/*ollama*.js` | todo (all four directions; D136) | 1.8 |
 | Concerns: thinking, tool calls, usage, finish reasons, images, modality, params | `concerns/*` | todo (also same-format, D138; param rules in `params.json`: claude temperature, groq, openai, GitHub; OpenAI-shaped bodies drop `developer`, foreign blocks, blank messages as `filterToOpenAIFormat`; audit 2 fixes D183-D188) | 1.8 |
 | Capability, thinking-level and vision tables | `providers/{capabilities,thinkingLevels,visionPatterns}.js` | todo (`app/upstream`, `data/capabilities/*.json`; catalog overlay 2.6, commandcode and kiro rules 1.10) | 1.8 |
-| gemini-cli, antigravity (to and from openai) | `request/gemini-to-openai.js`, `openai-to-gemini.js`, `antigravity-to-openai.js` | todo | 1.10 |
-| openai to vertex | `request/openai-to-vertex.js` | todo | 1.10 |
+| gemini-cli, antigravity (from openai, and the answer back) | `request/openai-to-gemini.js`, `response/gemini-to-openai.js` | done (1.10g; the Gemini codec wrapped in the Cloud Code envelope, divergence 256 for the inbound reader) | 1.10g |
+| openai to vertex | `request/openai-to-vertex.js` | done (1.10g) | 1.10g |
 | kiro, cursor, commandcode (to and from openai) | `*/*kiro*.js`, `*cursor*.js`, `*commandcode*.js` | todo | 1.10 |
 | Webtools translators for web providers | `*webTools*` | deferred | - |
 
@@ -159,7 +159,8 @@ All go through the OpenAI hub; no direct pairs (PRD 7). References under `transl
 - [x] The stream direction of every codec: readers and writers for OpenAI, Claude, Responses, Gemini and Ollama; hold-for-usage; the `<think>` tag split for Responses; Claude `Read` tool argument repair (1.8b)
 - [x] Image prefetch (`app/prefetch`, 1.8d): Gemini and Ollama targets only, magic bytes decide the type
 - [x] Claude cloak: tool suffix, decoys, billing block, user id, restore on body and stream (1.9c)
-- [ ] Step 1.10: gemini-cli, antigravity, vertex, kiro, cursor and commandcode translators
+- [x] Step 1.10g: gemini-cli, antigravity and vertex (`CloudCodeCodec`, `VertexCodec`; the Gemini writer takes a placeholder signature and the safety settings through `Ctx`)
+- [ ] Step 1.10: kiro, cursor and commandcode translators
 
 ---
 
@@ -194,6 +195,8 @@ Deliberate differences from the references in this area. Numbers are stable and 
 ---
 
 ## Findings
+
+**1.10g built: the Google formats.** `gemini-cli` is the Gemini body inside `{project, model, userAgent, requestId, request}` and `vertex` is the Gemini body fitted to Vertex; both wrap `GeminiCodec`, so the mapping exists once. The codec leaves `project` and `requestId` empty and the executor fills them per account, so the body is built once for every account. Gemini CLI sends five harm filters set to `OFF` and its own placeholder signature on the first call without one; Antigravity sends no safety settings, drops another vendor's thinking fields (`output_config`, `thinking`, `reasoning_effort`, `reasoning`, `enable_thinking`, `thinking_budget`, `thinkingConfig`), caps the output at 64000 tokens, sets the validated tool mode and rewrites competing-client names in the system text (`RewriteBranding`: the Claude agent line, Hermes, the billing header, OpenCode). Vertex replaces every signature with its own and removes the `id` of calls and responses. The three placeholder signatures are data in `thinking.json`. A Claude-named model on Antigravity is written as a Gemini body like the rest. The reference first builds a Claude request and converts it, which differs in three small ways: it fills `temperature` 1 and `maxOutputTokens` 4096 when the client sent none, it removes the Claude Code system line, and it resolves a tool result's name from the call id. Here the hub already carries the call names, an unset field is left unset, and a "You are Claude Code" line is not removed (divergence 260).
 
 **The hub is typed so a conversion cannot silently invent or lose a field.** Unknown top-level fields of a body ride in `Extra` and are written back to the same format, which is what keeps a same-format request from losing what the hub does not model. A map hub would have made every codec a copy of the same guesswork.
 

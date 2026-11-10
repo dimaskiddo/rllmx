@@ -199,7 +199,7 @@ func (t *textReader) count(tr *Tracker, data []byte) {
 		if typ := get("type").String(); typ == "response.output_text.delta" || typ == "response.reasoning_summary_text.delta" {
 			tr.AddText(len(get("delta").String()))
 		}
-	case translate.FormatGemini:
+	case translate.FormatGemini, translate.FormatCloudCode, translate.FormatVertex:
 		for _, p := range get("candidates.0.content.parts").Array() {
 			tr.AddText(len(p.Get("text").String()))
 		}
@@ -215,7 +215,7 @@ func (t *textReader) finish(data []byte) string {
 		return get("choices.0.finish_reason").String()
 	case translate.FormatClaude:
 		return translate.FinishFromClaude(get("delta.stop_reason").String())
-	case translate.FormatGemini:
+	case translate.FormatGemini, translate.FormatCloudCode, translate.FormatVertex:
 		if f := get("candidates.0.finishReason").String(); f != "" {
 			return translate.FinishFromGemini(f)
 		}

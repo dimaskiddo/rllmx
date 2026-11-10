@@ -23,6 +23,9 @@ type Mux struct {
 type Options struct {
 	// PeekIdle bounds the silence tolerated while an answer's start is checked.
 	PeekIdle time.Duration
+	// VertexTokens trades a Vertex key for a bearer token; nil leaves the Vertex
+	// executors able to serve raw API keys only.
+	VertexTokens TokenSource
 }
 
 // NewMux builds a Mux around the default executor, with the specialized ones
@@ -38,6 +41,11 @@ func NewMux(d *Default, o Options) *Mux {
 		upstream.ExecutorCodeBuddyCN:   &CodeBuddy{Default: d},
 		upstream.ExecutorCodeBuddyIntl: &CodeBuddy{Default: d, Intl: true},
 		upstream.ExecutorMinimaxCode:   &MinimaxCode{Default: d},
+
+		upstream.ExecutorGeminiCLI:     &CloudCode{Default: d},
+		upstream.ExecutorAntigravity:   &CloudCode{Default: d, Antigravity: true},
+		upstream.ExecutorVertex:        &Vertex{Default: d, Tokens: o.VertexTokens},
+		upstream.ExecutorVertexPartner: &Vertex{Default: d, Tokens: o.VertexTokens, Partner: true},
 	}}
 }
 

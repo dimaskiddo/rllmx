@@ -63,7 +63,7 @@ func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.P
 		Resolver:      &routing.Resolver{Registry: h.Registry, Snapshot: routing.NewSnapshot(routing.NewRepositorySource(store), nil)},
 		Selector:      account.NewSelector(account.SelectorOptions{Conns: store.Connections(), Settings: store.Settings(), Log: log}),
 		Reporter:      account.NewReporter(store.Connections(), log, nil),
-		Executor:      executor.NewMux(&executor.Default{Client: client}, executor.Options{PeekIdle: h.Stream.Stall}),
+		Executor:      executor.NewMux(&executor.Default{Client: client}, executor.Options{PeekIdle: h.Stream.Stall, VertexTokens: h.Google.Vertex}),
 		Nodes:         store.Nodes(),
 		Registry:      h.Registry,
 		Caps:          h.Capabilities,
@@ -76,6 +76,8 @@ func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.P
 		Signatures:    signatureCache(app),
 		Refresher:     h.Refresher,
 		Minter:        h.Minter,
+		Projects:      h.Google.Projects,
+		Quota:         h.Google.Quota,
 		Timers:        stream.Timers{FirstChunk: h.Stream.FirstChunk, Stall: h.Stream.Stall, UsageWait: h.Stream.UsageWait},
 		Log:           log,
 	})

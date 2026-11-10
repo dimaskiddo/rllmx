@@ -35,7 +35,7 @@ func ReadUsageEvent(format string, data []byte) (Usage, bool) {
 		if u := get("usage"); u.IsObject() && get("type").String() != "" {
 			return readResponsesUsage(u), true
 		}
-	case FormatGemini:
+	case FormatGemini, FormatCloudCode, FormatVertex:
 		for _, p := range []string{"usageMetadata", "response.usageMetadata"} {
 			if u := get(p); u.IsObject() {
 				return readGeminiUsage(u), true

@@ -119,12 +119,18 @@ func TestCallHeadersAreValidatedAtLoad(t *testing.T) {
 	}
 }
 
-func TestCallHeadersBelongToTheDeviceFlowOnly(t *testing.T) {
+func TestCallHeadersBelongToTheDeviceAndCodePKCEFlowsOnly(t *testing.T) {
 	const local = `"redirect":"local","exchange":"json","refresh":{"encoding":"json","leadSeconds":300}`
+	if _, err := Load(fstest.MapFS{"data/p.json": file(loginFile(local + `,"callHeaders":{"X-Id":"1"}`))}, "data"); err != nil {
+		t.Errorf("a code-pkce login refused its call headers: %v", err)
+	}
+	codeFlow := `{"flow":"code","authorizeUrl":"https://a.example/a","tokenUrl":"https://a.example/t","scope":"s","redirect":"local","dialect":"cline","noClient":true,"callHeaders":{"X-Id":"1"},"refresh":{"encoding":"json","leadSeconds":300}}`
+	if _, err := Load(fstest.MapFS{"data/p.json": file(entry("p", `,"oauth":`+codeFlow))}, "data"); err == nil || !strings.Contains(err.Error(), "callHeaders") {
+		t.Errorf("a code login was allowed call headers: %v", err)
+	}
 	for extra, reason := range map[string]string{
-		`,"callHeaders":{"X-Id":"1"}`: "device flow",
-		`,"dialect":"kilocode"`:       "oauth.dialect",
-		`,"noClient":true`:            "noClient",
+		`,"dialect":"kilocode"`: "oauth.dialect",
+		`,"noClient":true`:      "noClient",
 	} {
 		_, err := Load(fstest.MapFS{"data/p.json": file(loginFile(local + extra))}, "data")
 		if err == nil || !strings.Contains(err.Error(), reason) {
@@ -247,5 +253,72 @@ func TestAProviderCanFixItsThinkingFormatOnlyToAKnownOne(t *testing.T) {
 	}
 	if _, err := Load(file("made-up"), "data"); err == nil {
 		t.Fatal("an unknown thinking format loaded")
+	}
+}
+
+func TestTheGoogleFilesDeclareWhatTheyNeed(t *testing.T) {
+	reg, err := Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, tc := range map[string]struct {
+		executor, format string
+		models           int
+		login            bool
+	}{
+		"gemini-cli":     {ExecutorGeminiCLI, FormatCloudCode, 7, true},
+		"antigravity":    {ExecutorAntigravity, FormatCloudCode, 27, true},
+		"vertex":         {ExecutorVertex, FormatVertex, 5, false},
+		"vertex-partner": {ExecutorVertexPartner, FormatOpenAI, 4, false},
+	} {
+		e, ok := reg.ByID(id)
+		if !ok || e.Executor != tc.executor || e.Transport.Format != tc.format || len(e.Models) != tc.models || (e.OAuth != nil) != tc.login {
+			t.Errorf("%s: %+v", id, e)
+		}
+	}
+	for _, id := range []string{"gemini-cli", "antigravity"} {
+		e, _ := reg.ByID(id)
+		o := e.OAuth
+		if !o.NoPKCE || !o.SlowRefresh || o.Redirect != RedirectLocal || o.Exchange != EncodingForm || o.Refresh.LeadSeconds != 300 ||
+			o.Endpoints[EndpointLoadCodeAssist] == "" || o.Endpoints[EndpointOnboardUser] == "" || o.Endpoints[EndpointUser] == "" {
+			t.Errorf("%s: %+v", id, o)
+		}
+	}
+	ag, _ := reg.ByID("antigravity")
+	if ag.OAuth.Hook != "antigravity" || ag.OAuth.Endpoints[EndpointQuotaModels] == "" || ag.OAuth.Endpoints[EndpointQuotaSummary] == "" || ag.OAuth.CallHeaders["x-request-source"] != "local" {
+		t.Errorf("antigravity: %+v", ag.OAuth)
+	}
+	for _, m := range ag.Models {
+		if strings.HasSuffix(m.ID, "-high") && m.UpstreamID == "" && strings.HasPrefix(m.ID, "gemini-4") {
+			t.Errorf("%s has no upstream id", m.ID)
+		}
+	}
+	for alias, id := range map[string]string{"gc": "gemini-cli", "ag": "antigravity", "vx": "vertex", "vxp": "vertex-partner"} {
+		if got, ok := reg.Resolve(alias); !ok || got != id {
+			t.Errorf("%s resolves to %q %v", alias, got, ok)
+		}
+	}
+	vx, _ := reg.ByID("vertex")
+	for _, m := range vx.Models {
+		if (m.ID == "gemini-4-argon") != (m.DefaultLocation == "global") {
+			t.Errorf("%s default location %q", m.ID, m.DefaultLocation)
+		}
+	}
+}
+
+func TestOnlyAPlainGoogleProjectIdAndLocationAreAccepted(t *testing.T) {
+	for id, want := range map[string]bool{
+		"my-proj-123": true, "abcde1": true, "a" + strings.Repeat("b", 28) + "c": true,
+		"../etc": false, "my/proj-123": false, "my.proj.123": false, "My-Proj-1": false, "1abcde": false,
+		"abcd": false, "a" + strings.Repeat("b", 29) + "c": false, "abcde-": false, "my proj 1": false, "": false,
+	} {
+		if ValidProject(id) != want {
+			t.Errorf("project %q: %v, want %v", id, ValidProject(id), want)
+		}
+	}
+	for loc, want := range map[string]bool{"global": true, "us-central1": true, "europe-west4": true, "../x": false, "a/b": false, "A": false, "": false, "x": false} {
+		if ValidLocation(loc) != want {
+			t.Errorf("location %q: %v, want %v", loc, ValidLocation(loc), want)
+		}
 	}
 }

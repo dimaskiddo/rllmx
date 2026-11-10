@@ -34,7 +34,7 @@ func bufferPaths(format string, payload []byte) []usagePath {
 		return []usagePath{{"message.usage", "input_tokens", ""}, {"usage", "input_tokens", ""}}
 	case translate.FormatResponses:
 		return []usagePath{{"response.usage", "input_tokens", "total_tokens"}, {"usage", "input_tokens", "total_tokens"}}
-	case translate.FormatGemini:
+	case translate.FormatGemini, translate.FormatCloudCode, translate.FormatVertex:
 		return []usagePath{{"usageMetadata", "promptTokenCount", "totalTokenCount"}, {"response.usageMetadata", "promptTokenCount", "totalTokenCount"}}
 	case translate.FormatOllama:
 		if gjson.GetBytes(payload, "done").Bool() {

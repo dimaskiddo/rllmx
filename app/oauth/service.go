@@ -48,14 +48,16 @@ type Accounts interface {
 
 // Service runs logins: Start opens one, Complete and Listened close it.
 type Service struct {
-	Registry  *upstream.Registry
-	ClientID  func(provider string) string
-	Sessions  *Sessions
-	Tokens    *TokenClient
-	Accounts  func() Accounts
-	Listeners *Listeners
-	Log       log.Log
-	Now       func() time.Time
+	Registry *upstream.Registry
+	ClientID func(provider string) string
+	// ClientSecret may be nil; it gives the secret of a client that has one.
+	ClientSecret func(provider string) string
+	Sessions     *Sessions
+	Tokens       *TokenClient
+	Accounts     func() Accounts
+	Listeners    *Listeners
+	Log          log.Log
+	Now          func() time.Time
 }
 
 // Started is what the browser needs to send the user to the provider.
@@ -69,7 +71,7 @@ type Started struct {
 }
 
 func (s *Service) flow(provider string) (Flow, error) {
-	return FlowFor(s.Registry, s.ClientID, provider)
+	return FlowFor(s.Registry, s.ClientID, s.ClientSecret, provider)
 }
 
 // StartRequest is what opens a login.
@@ -117,7 +119,7 @@ func (s *Service) Start(req StartRequest) (Started, error) {
 		return Started{}, ErrPublicBase
 	}
 	var verifier, challenge string
-	if f.Flow == upstream.FlowCodePKCE {
+	if f.Flow == upstream.FlowCodePKCE && !f.NoPKCE {
 		if verifier, err = oidc.Verifier(); err != nil {
 			return Started{}, err
 		}
@@ -231,6 +233,9 @@ func (s *Service) save(ctx context.Context, f Flow, t Tokens, acc Account, devic
 		acc.Email = t.Email
 	}
 	fields := credentialFields(t, acc, now)
+	if acc.ProjectID != "" {
+		fields["projectId"] = quote(acc.ProjectID)
+	}
 	fields["testStatus"] = quote(repository.StatusActive)
 	fields["lastRefreshAt"] = quote(dialect.FormatTimestamp(now))
 	psd := acc.PSD

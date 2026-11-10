@@ -35,6 +35,12 @@ type Ctx struct {
 	// set only while the attempt was disguised (see Cloak) and nil otherwise, so
 	// a name is never changed on an attempt that renamed nothing.
 	ToolName func(name string) string
+	// Signature is the placeholder thought signature a Gemini-family writer puts
+	// on the first function call that has none. Empty means none is added.
+	Signature string
+	// Safety asks the Gemini writer for the settings that switch every harm
+	// filter off, as Gemini CLI sends them.
+	Safety bool
 }
 
 // RestoreTool gives an upstream tool name back to the client.

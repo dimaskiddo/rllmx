@@ -20,6 +20,7 @@ func (c *call) serve(ctx context.Context) Output {
 	for {
 		sel, err := c.p.d.Selector.Select(ctx, account.Request{
 			Provider: c.dest.provider, Model: c.dest.model, RequestedModel: c.requested, Exclude: exclude,
+			Hold: c.hold(),
 		})
 		if err != nil {
 			return c.noAccount(ctx, err, last, sawExpired)
@@ -35,6 +36,11 @@ func (c *call) serve(ctx context.Context) Output {
 		if f.expired {
 			exclude[sel.Conn.ID] = true
 			sawExpired = true
+			continue
+		}
+		if f.gated {
+			exclude[sel.Conn.ID] = true
+			last = f
 			continue
 		}
 		res, err := c.p.d.Reporter.Fail(ctx, account.FailInput{

@@ -48,6 +48,11 @@ type Request struct {
 	RequestedModel string
 	// Exclude lists connections already tried in this request.
 	Exclude map[string]bool
+	// Hold, when set, names a connection the caller knows is spent for the model
+	// and the moment it frees up. A held connection is treated as locked until
+	// then, so it is skipped and still counts toward the retry time when every
+	// connection is locked. It reads memory only.
+	Hold func(connID string) (until time.Time, held bool)
 	// Prefer pins the request to one connection while it is a candidate. A pinned
 	// connection that is locked, excluded or expired falls back to the strategy.
 	Prefer string
@@ -150,6 +155,7 @@ func (s *Selector) Select(ctx context.Context, req Request) (Selection, error) {
 	now := s.now()
 
 	var usable, locked []repository.Connection
+	heldUntil := map[string]time.Time{}
 	skipped, expired := 0, 0
 	for _, c := range all {
 		if c.Corrupt {
@@ -167,12 +173,17 @@ func (s *Selector) Select(ctx context.Context, req Request) (Selection, error) {
 			locked = append(locked, c)
 			continue
 		}
+		if until, held := held(req, c.ID); held && until.After(now) {
+			heldUntil[c.ID] = until
+			locked = append(locked, c)
+			continue
+		}
 		usable = append(usable, c)
 	}
 
 	if len(usable) == 0 {
 		if len(locked) > 0 {
-			return Selection{Skipped: skipped}, allLocked(locked, req.Model, now)
+			return Selection{Skipped: skipped}, allLocked(locked, req.Model, now, heldUntil)
 		}
 		if expired > 0 {
 			return Selection{Skipped: skipped}, ErrAllExpired
@@ -223,14 +234,18 @@ func ModelEnabled(c repository.Connection, model string) bool {
 	return false
 }
 
-func allLocked(locked []repository.Connection, model string, now time.Time) error {
+func allLocked(locked []repository.Connection, model string, now time.Time, held map[string]time.Time) error {
 	var (
 		first time.Time
 		found bool
 		lead  repository.Connection
 	)
 	for _, c := range locked {
-		if until, ok := EarliestLockFor(c.Doc(), model, now); ok && (!found || until.Before(first)) {
+		until, ok := EarliestLockFor(c.Doc(), model, now)
+		if h, isHeld := held[c.ID]; isHeld && (!ok || h.Before(until)) {
+			until, ok = h, true
+		}
+		if ok && (!found || until.Before(first)) {
 			first, found, lead = until, true, c
 		}
 	}
@@ -314,4 +329,12 @@ func useTime(now time.Time, c repository.Connection) time.Time {
 		return prev.Add(time.Millisecond)
 	}
 	return now
+}
+
+// held asks the request's hook about a connection.
+func held(req Request, id string) (time.Time, bool) {
+	if req.Hold == nil {
+		return time.Time{}, false
+	}
+	return req.Hold(id)
 }

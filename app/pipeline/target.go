@@ -159,7 +159,7 @@ func (c *call) build(ctx context.Context, d destination) (Output, bool) {
 
 // needsInlineImages is true for the upstream formats that take no image URL.
 func needsInlineImages(format string) bool {
-	return format == translate.FormatGemini || format == translate.FormatOllama
+	return translate.GeminiFamily(format) || format == translate.FormatOllama
 }
 
 func (c *call) url() string {

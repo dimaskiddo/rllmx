@@ -605,3 +605,60 @@ func TestNothingAtAllIsNotAllExpired(t *testing.T) {
 		t.Fatalf("an excluded live account is not an expired one: %v", err)
 	}
 }
+
+func TestAHeldConnectionIsSkippedAndTheOtherServes(t *testing.T) {
+	r := newRig(t, `{}`)
+	a := r.add(t, "antigravity", "a", nil)
+	b := r.add(t, "antigravity", "b", nil)
+	until := r.now.Add(time.Hour)
+	hold := func(id string) (time.Time, bool) { return until, id == a.ID }
+	for range 6 {
+		if got := r.pick(t, Request{Provider: "antigravity", Model: "m", Hold: hold}); got.ID != b.ID {
+			t.Fatalf("a held connection was chosen: %s", got.ID)
+		}
+	}
+}
+
+func TestEveryConnectionHeldReportsTheEarliestFreeTime(t *testing.T) {
+	r := newRig(t, `{}`)
+	a := r.add(t, "antigravity", "a", nil)
+	b := r.add(t, "antigravity", "b", nil)
+	soon, late := r.now.Add(10*time.Minute), r.now.Add(2*time.Hour)
+	hold := func(id string) (time.Time, bool) {
+		if id == a.ID {
+			return late, true
+		}
+		return soon, id == b.ID
+	}
+	_, err := r.sel.Select(context.Background(), Request{Provider: "antigravity", Model: "m", Hold: hold})
+	var locked *AllLockedError
+	if !errors.As(err, &locked) || !locked.RetryAt.Equal(soon) {
+		t.Fatalf("%v", err)
+	}
+}
+
+func TestAHoldThatHasEndedOrNoHoldChangesNothing(t *testing.T) {
+	r := newRig(t, `{}`)
+	a := r.add(t, "antigravity", "a", nil)
+	past := func(string) (time.Time, bool) { return r.now.Add(-time.Second), true }
+	if got := r.pick(t, Request{Provider: "antigravity", Model: "m", Hold: past}); got.ID != a.ID {
+		t.Fatal("an ended hold still skipped the connection")
+	}
+	if got := r.pick(t, Request{Provider: "antigravity", Model: "m"}); got.ID != a.ID {
+		t.Fatal("no hold changed the pick")
+	}
+}
+
+func TestALockedConnectionIsReportedByItsLockWhateverTheHoldSays(t *testing.T) {
+	r := newRig(t, `{}`)
+	a := r.add(t, "antigravity", "a", nil)
+	reset := r.now.Add(3 * time.Hour)
+	if _, err := r.rep.Fail(context.Background(), FailInput{ConnID: a.ID, Provider: "antigravity", Model: "m", Status: 429, Text: "x", ResetAt: reset}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := r.sel.Select(context.Background(), Request{Provider: "antigravity", Model: "m", Hold: func(string) (time.Time, bool) { return r.now.Add(5 * time.Minute), true }})
+	var locked *AllLockedError
+	if !errors.As(err, &locked) || !locked.RetryAt.Equal(reset) {
+		t.Fatalf("%v", err)
+	}
+}

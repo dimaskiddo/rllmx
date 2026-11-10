@@ -30,7 +30,7 @@ Rates are dollars per million tokens: input, output, cached, reasoning, cache cr
 
 ### Quota
 
-Per-provider fetchers report live limits through `/api/usage/{connectionId}` (GitHub, Gemini CLI, Antigravity, Claude, Codex, Kiro, Qoder, iFlow, GLM, MiniMax, Kimi, DeepSeek, OpenCode, Zed, Cursor and others). API key quota limits are a separate feature (PRD 21).
+The Antigravity limits are already read by `app/quota` (1.10g) for the selector; `/api/usage/{connectionId}` (step 2.3) will show the same readings. Per-provider fetchers report live limits through `/api/usage/{connectionId}` (GitHub, Gemini CLI, Antigravity, Claude, Codex, Kiro, Qoder, iFlow, GLM, MiniMax, Kimi, DeepSeek, OpenCode, Zed, Cursor and others). API key quota limits are a separate feature (PRD 21).
 
 ---
 
