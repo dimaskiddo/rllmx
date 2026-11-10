@@ -13,7 +13,7 @@ VERSION     := $(if $(VERSION_GIT),$(VERSION_GIT),dev)
 COMMIT_GIT  := $(shell git rev-parse --short HEAD 2>/dev/null)
 COMMIT      := $(if $(COMMIT_GIT),$(COMMIT_GIT),none)
 
-.PHONY: init init-dist deps tidy release publish build docker-build run vet test test-race test-pg mutant clean-dist clean-build clean-vendor clean-cache clean commit rebase push pull
+.PHONY: init init-dist deps deps-download deps-verify tidy release publish build docker-build run vet test test-race test-pg mutant clean-dist clean-build clean-vendor clean-cache clean commit rebase push pull
 
 .SILENT:
 
@@ -24,12 +24,16 @@ init:
 init-dist:
 	mkdir -p dist
 
-# Dependencies come from the module cache, never from vendor/: a vendor folder
-# makes `./artisan package:install` fail (go run of the framework's setup
-# packages is refused under -mod=vendor), and it adds about 64 MB.
 deps:
-	rm -rf vendor
+	make clean-vendor
+	make tidy
+	make deps-download
+	make deps-verify
+
+deps-download:
 	GO111MODULE=on go mod download
+
+deps-verify:
 	GO111MODULE=on go mod verify
 
 tidy:
@@ -69,8 +73,6 @@ test:
 test-race:
 	CGO_ENABLED=1 go test -tags $(BUILD_TAGS) -race -count=1 ./...
 
-# The same suite against PostgreSQL. Needs TEST_PG_DSN, a database where the
-# user may create and drop schemas: one schema is made per test.
 test-pg:
 	@test -n "$(TEST_PG_DSN)" || { echo "TEST_PG_DSN is not set"; exit 1; }
 	CGO_ENABLED=1 TEST_PG_DSN="$(TEST_PG_DSN)" go test -tags $(BUILD_TAGS) -race -count=1 ./...

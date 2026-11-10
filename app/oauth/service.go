@@ -134,6 +134,15 @@ func (s *Service) Start(req StartRequest) (Started, error) {
 		}
 		challenge = oidc.Challenge(verifier)
 	}
+	// A sign-in that makes its own key returns the address and the key together:
+	// the address names the public half, and the private one is what the answer
+	// is read with.
+	var authURL string
+	if f.SignedIn() {
+		if authURL, verifier, err = zedAuthorize(f); err != nil {
+			return Started{}, err
+		}
+	}
 	nonce, err := newNonce()
 	if err != nil {
 		return Started{}, err
@@ -155,7 +164,10 @@ func (s *Service) Start(req StartRequest) (Started, error) {
 		}
 		return Started{}, err
 	}
-	return Started{AuthURL: f.URL(redirect, state, challenge, nonce), State: state, Redirect: redirect, Paste: paste}, nil
+	if authURL == "" {
+		authURL = f.URL(redirect, state, challenge, nonce)
+	}
+	return Started{AuthURL: authURL, State: state, Redirect: redirect, Paste: paste}, nil
 }
 
 // Complete finishes a login from the dashboard. The state must belong to a

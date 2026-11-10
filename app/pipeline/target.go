@@ -44,6 +44,16 @@ func (c *call) resolve(ctx context.Context) (Output, bool) {
 	if !ok {
 		return out, false
 	}
+	// A provider whose wire format depends on the model asks about it before the
+	// body is built; one that cannot answer is a local error, because a wrong
+	// format is refused upstream with nothing a reader can act on.
+	if dest.entry.Executor == upstream.ExecutorZed && c.p.d.Targets != nil {
+		format, out, ok := c.liveFormat(ctx, dest)
+		if !ok {
+			return out, false
+		}
+		dest.format = format
+	}
 	c.dest = dest
 
 	caps := c.p.d.Caps.For(dest.provider, dest.model)

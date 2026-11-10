@@ -163,6 +163,26 @@ func withTopLevel(data, key, value string) string {
 	return out
 }
 
+// renamed records the tool names a call had to change, so an answer carries the
+// caller's own back. A disguise's map wins: it was built for the client already.
+func (c *call) renamed(p sent) func(map[string]string) {
+	return func(names map[string]string) {
+		if p.cloaked {
+			return
+		}
+		c.tctx.ToolName = func(n string) string {
+			if back, ok := names[n]; ok {
+				return back
+			}
+			return n
+		}
+		c.cloakedNames = names
+		if c.p.d.Renames != nil {
+			c.p.d.Renames.Renamed(c.dest.provider, c.dest.model, names)
+		}
+	}
+}
+
 // send makes one upstream call on a connection. The disguise is rebuilt for
 // each call, so a retry on the next account never inherits another account's
 // names.
@@ -184,6 +204,7 @@ func (c *call) send(ctx context.Context, conn repository.Connection, key string)
 		URL: p.url, Body: p.body, Stream: c.upStream, Entry: c.dest.entry,
 		Key: key, Auth: p.auth, Model: c.dest.model, Account: accountField(conn),
 		Session: p.session, Compact: strings.HasSuffix(c.in.Path, "/compact"),
+		Renamed: c.renamed(p),
 	}
 	req.Spec, _ = c.p.d.Registry.Model(c.dest.provider, c.dest.model)
 	switch c.dest.entry.Executor {

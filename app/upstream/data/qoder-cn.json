@@ -1,0 +1,95 @@
+{
+  "id": "qoder-cn",
+  "alias": "qdcn",
+  "category": "oauth",
+  "display": {
+    "name": "Qoder (CN)"
+  },
+  "transport": {
+    "baseUrl": "https://gateway.qoder.com.cn",
+    "format": "openai",
+    "signingKey": "-----BEGIN PUBLIC KEY-----\nMIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDA8iMH5c02LilrsERw9t6Pv5Nc\n4k6Pz1EaDicBMpdpxKduSZu5OANqUq8er4GM95omAGIOPOh+Nx0spthYA2BqGz+l\n6HRkPJ7S236FZz73In/KVuLnwI8JJ2CbuJap8kvheCCZpmAWpb/cPx/3Vr/J6I17\nXcW+ML9FoCI6AOvOzwIDAQAB\n-----END PUBLIC KEY-----"
+  },
+  "executor": "qoder",
+  "oauth": {
+    "flow": "device",
+    "deviceUrl": "https://openapi.qoder.com.cn/api/v1/deviceToken/poll",
+    "tokenUrl": "https://openapi.qoder.com.cn/api/v1/deviceToken/poll",
+    "scope": "",
+    "dialect": "qoder",
+    "hook": "qoder",
+    "noClient": true,
+    "endpoints": {
+      "user": "https://openapi.qoder.com.cn"
+    },
+    "refresh": {
+      "encoding": "json"
+    }
+  },
+  "models": [
+    {
+      "id": "ultimate",
+      "name": "Ultimate"
+    },
+    {
+      "id": "auto",
+      "name": "Auto"
+    },
+    {
+      "id": "performance",
+      "name": "Performance"
+    },
+    {
+      "id": "efficient",
+      "name": "Efficient"
+    },
+    {
+      "id": "lite",
+      "name": "Lite"
+    },
+    {
+      "id": "qmodel_38max",
+      "name": "Qoder 38 Max"
+    },
+    {
+      "id": "qmodel_latest",
+      "name": "Qoder Latest"
+    },
+    {
+      "id": "qmodel",
+      "name": "Qoder"
+    },
+    {
+      "id": "qfmodel",
+      "name": "Qoder Fast"
+    },
+    {
+      "id": "kmodel_latest",
+      "name": "K Model Latest"
+    },
+    {
+      "id": "kmodel",
+      "name": "K Model"
+    },
+    {
+      "id": "gmodel",
+      "name": "G Model"
+    },
+    {
+      "id": "gfmodel",
+      "name": "G Model Fast"
+    },
+    {
+      "id": "dmodel",
+      "name": "D Model"
+    },
+    {
+      "id": "dfmodel",
+      "name": "D Model Fast"
+    },
+    {
+      "id": "mmodel",
+      "name": "M Model"
+    }
+  ]
+}

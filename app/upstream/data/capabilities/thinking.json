@@ -59,6 +59,14 @@
       "low",
       "medium",
       "high"
+    ],
+    "tokenrouter": [
+      "none",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
     ]
   },
   "rules": [

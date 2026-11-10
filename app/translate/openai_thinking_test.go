@@ -111,6 +111,29 @@ func TestKimiLevelsAreTheOnesKimiReads(t *testing.T) {
 	}
 }
 
+func TestTokenRouterSendsItsOwnLevelsAndNothingForOff(t *testing.T) {
+	caps := upstream.Capability{Reasoning: true, ThinkingCanOff: true, ThinkingFormat: "tokenrouter"}
+	for name, tc := range map[string]struct {
+		th   Thinking
+		want string
+	}{
+		"low":      {Thinking{Mode: "level", Level: "low"}, "low"},
+		"xhigh":    {Thinking{Mode: "level", Level: "xhigh"}, "xhigh"},
+		"max":      {Thinking{Mode: "level", Level: "max"}, "max"},
+		"auto":     {Thinking{Mode: "auto"}, ""},
+		"none":     {Thinking{Mode: "none"}, ""},
+		"a budget": {Thinking{Mode: "budget", Budget: 4096}, "low"},
+		"no level": {Thinking{Mode: "level"}, ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			out := writeWith(t, tc.th, caps)
+			if got := gjson.GetBytes(out, "reasoning_effort").String(); got != tc.want {
+				t.Fatalf("%q, want %q in %s", got, tc.want, out)
+			}
+		})
+	}
+}
+
 func TestOtherOpenAIUpstreamsKeepReasoningEffort(t *testing.T) {
 	plain := upstream.Capability{Reasoning: true, ThinkingCanOff: true}
 	for th, want := range map[Thinking]string{

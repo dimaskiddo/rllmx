@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"context"
 	"errors"
 	"regexp"
 	"strings"
@@ -11,6 +12,18 @@ import (
 // ErrBadAccount means the account's own data is missing or malformed for what
 // the provider needs, so nothing was sent. It never carries the value.
 var ErrBadAccount = errors.New("executor: the account's data is missing or invalid")
+
+// ErrAccountSession means a session the provider needs for the account itself
+// could not be had, so nothing was sent. It never carries the cookie.
+var ErrAccountSession = errors.New("executor: the account session could not be obtained")
+
+// CookieSource hands an executor a session cookie for one account and cluster.
+// The cookie is a credential: it is never logged and never stored in an answer.
+type CookieSource interface {
+	// Cookie returns the cookie header value, or ErrAccountSession when there is
+	// none. fresh skips a cached session.
+	Cookie(ctx context.Context, pass, userID, cUserID, region string, fresh bool) (string, error)
+}
 
 // accountToken is what an account id, a deployment or a version may look like:
 // nothing that could change the shape of an address or a header.

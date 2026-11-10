@@ -296,6 +296,14 @@ func writeOpenAIThinking(o obj, th Thinking, c *Ctx) {
 			o["reasoning_effort"] = effort
 		}
 		return
+	case "tokenrouter":
+		// The gateway reads its own levels and refuses "none" and "auto", so a
+		// request in either shape carries no field at all.
+		if none || level == "auto" || level == "" {
+			return
+		}
+		o["reasoning_effort"] = level
+		return
 	}
 	switch th.Mode {
 	case "none":

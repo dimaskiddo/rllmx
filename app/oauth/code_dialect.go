@@ -27,6 +27,7 @@ type codeDialect struct {
 var codeDialects = map[string]codeDialect{
 	"cline":       {exchange: clineExchange, refresh: clineRefresh},
 	"kiro-social": {exchange: kiroSocialExchange, refresh: kiroSocialRefresh},
+	"zed":         {exchange: zedExchange, refresh: zedNoRefresh},
 }
 
 // codeInput is what a code login's exchange works from: the code the browser

@@ -1,0 +1,33 @@
+{
+  "id": "xiaomi-mimo",
+  "alias": "mimo",
+  "aliases": ["mimo-desktop", "xmd"],
+  "category": "oauth",
+  "display": {
+    "name": "Xiaomi MiMo"
+  },
+  "transport": {
+    "baseUrl": "https://api.xiaomimimo.com/v1/chat/completions",
+    "messagesUrl": "https://api.xiaomimimo.com/anthropic/v1/messages",
+    "format": "openai",
+    "headers": {
+      "Anthropic-Version": "2023-06-01",
+      "Anthropic-Beta": "claude-code-20250219,interleaved-thinking-2025-05-14"
+    }
+  },
+  "executor": "xiaomi-mimo",
+  "auth": {
+    "scheme": "bearer",
+    "header": "Authorization",
+    "validateUrl": "https://api.xiaomimimo.com/v1/models"
+  },
+  "models": [
+    { "id": "mimo-v2.6-pro", "name": "MiMo V2.6 Pro", "upstreamId": "xiaomi/mimo-v2.6-pro", "targetFormat": "openai" },
+    { "id": "mimo-v2.6-flash", "name": "MiMo V2.6 Flash", "upstreamId": "xiaomi/mimo-v2.6-flash", "targetFormat": "openai" },
+    { "id": "mimo-v2.6-pro-ultraspeed", "name": "MiMo V2.6 Pro UltraSpeed", "upstreamId": "xiaomi/mimo-v2.6-pro-ultraspeed", "targetFormat": "openai" },
+    { "id": "mimo-v2.5-pro", "name": "MiMo V2.5 Pro" },
+    { "id": "mimo-v2.5", "name": "MiMo V2.5" },
+    { "id": "mimo-v2-omni", "name": "MiMo V2 Omni" },
+    { "id": "mimo-v2-flash", "name": "MiMo V2 Flash" }
+  ]
+}

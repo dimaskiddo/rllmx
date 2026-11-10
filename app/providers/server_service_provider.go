@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"rllmx/app/zed"
 	"strings"
 	"sync"
 
@@ -65,6 +66,10 @@ type HTTP struct {
 	Minter *oauth.Minter
 	// Google finds a Cloud Code project and trades a Vertex key for a token.
 	Google *Google
+	// Zed exchanges a Zed account's token for a hosted one and reads its catalog.
+	Zed *zed.Client
+	// Freebuff claims the session its backend binds an account to.
+	Freebuff *oauth.FreebuffSessions
 	// OAuthSettings is the checked OAUTH_* configuration.
 	OAuthSettings *settings.OAuth
 }
@@ -162,7 +167,7 @@ func (r *ServerServiceProvider) Register(app foundation.Application) {
 		a.SSOAllow = allowSSO.Allows
 		trust := apphttp.NewTrust(s.TrustedProxies)
 		a.ClientAddr = trust.ClientAddr
-		login, refresher, minter, google := newLogin(app, registry, oauthCfg, upstreamCfg)
+		login, refresher, minter, google, hosted, freebuff := newLogin(app, registry, oauthCfg, upstreamCfg)
 		return &HTTP{
 			Settings:      s,
 			Guard:         apphttp.NewGuard(a, s.TrustLoopback),
@@ -178,6 +183,8 @@ func (r *ServerServiceProvider) Register(app foundation.Application) {
 			Refresher:     refresher,
 			Minter:        minter,
 			Google:        google,
+			Zed:           hosted,
+			Freebuff:      freebuff,
 			OAuthSettings: oauthCfg,
 		}, nil
 	})

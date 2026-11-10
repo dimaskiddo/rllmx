@@ -1,0 +1,13 @@
+{
+  "id": "ollama-local",
+  "alias": "ollama-local",
+  "category": "apikey",
+  "display": {
+    "name": "Ollama Local"
+  },
+  "transport": {
+    "format": "ollama"
+  },
+  "executor": "ollama-local",
+  "models": []
+}

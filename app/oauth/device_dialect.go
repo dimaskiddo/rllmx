@@ -33,6 +33,8 @@ type deviceState struct {
 // deviceDialects are the names a data file may use for it. A test keeps the table
 // equal to upstream.DialectNames.
 var deviceDialects = map[string]deviceDialect{
+	"freebuff": {start: freebuffStart, poll: freebuffPoll},
+	"qoder":    {start: qoderStart, poll: qoderPoll, refresh: qoderNoRefresh},
 	"kilocode": {start: kiloStart, poll: func(ctx context.Context, c *TokenClient, f Flow, s deviceState, h map[string]string) (Tokens, pollState, error) {
 		return kiloPoll(ctx, c, f, s.Code, h)
 	}},

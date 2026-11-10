@@ -53,6 +53,10 @@ type Request struct {
 	// NoRedirect refuses a redirect instead of following it, for a request that
 	// carries a credential no other origin may be handed.
 	NoRedirect bool
+	// Renamed, when set, is told the tools this one call had to send under
+	// another name, as a map of the sent name to the caller's. It is called
+	// before the request goes out.
+	Renamed func(map[string]string)
 }
 
 // Response is the upstream's answer, not yet read. The caller closes Body.

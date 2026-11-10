@@ -23,6 +23,12 @@ const (
 	FormatCloudCode = "gemini-cli"
 	FormatVertex    = "vertex"
 	FormatKiro      = "kiro"
+	// FormatCommandCode is CommandCode's agent wrapper around an Anthropic-shaped
+	// conversation; its answer is a stream of AI SDK events.
+	FormatCommandCode = "commandcode"
+	// FormatOllama is Ollama's own chat body, for the cloud service and a local
+	// daemon alike.
+	FormatOllama = "ollama"
 )
 
 // ExecutorDefault is the registry-driven executor every provider uses until a
@@ -53,16 +59,40 @@ const (
 	ExecutorBedrock    = "bedrock"
 	ExecutorBedrockXAI = "bedrock-xai"
 	ExecutorKiro       = "kiro"
+	// ExecutorOllamaLocal sends to a daemon whose address the account names.
+	ExecutorOllamaLocal = "ollama-local"
+	// ExecutorXiaomiTokenPlan picks the host of the account's cluster;
+	// ExecutorXiaomiMimo adds the account-service route for its own ids.
+	ExecutorXiaomiTokenPlan = "xiaomi-tokenplan"
+	ExecutorXiaomiMimo      = "xiaomi-mimo"
+	// ExecutorCommandCode sends to the agent gateway and turns an error carried
+	// inside its stream back into a status.
+	ExecutorCommandCode = "commandcode"
+	// ExecutorOpenCode is the gateway's free lane; ExecutorOpenCodeGo and
+	// ExecutorOpenCodeZen are its keyed lanes.
+	ExecutorOpenCode    = "opencode"
+	ExecutorOpenCodeGo  = "opencode-go"
+	ExecutorOpenCodeZen = "opencode-zen"
+	// ExecutorZed exchanges the account's token for a hosted one and speaks the
+	// hosted service's own envelope.
+	ExecutorZed = "zed"
+	// ExecutorFreebuff registers a run, claims a session and speaks the backend's
+	// own metadata envelope.
+	ExecutorFreebuff = "freebuff"
+	// ExecutorQoder encodes and signs a request for the gateway's own protocol.
+	ExecutorQoder = "qoder"
 )
 
 var (
 	categories = map[string]bool{CategoryAPIKey: true, CategoryOAuth: true, CategoryFree: true, CategoryFreeTier: true, CategoryCookie: true}
-	formats    = map[string]bool{FormatOpenAI: true, FormatResponses: true, FormatClaude: true, FormatGemini: true, FormatCloudCode: true, FormatVertex: true, FormatKiro: true}
+	formats    = map[string]bool{FormatOpenAI: true, FormatResponses: true, FormatClaude: true, FormatGemini: true, FormatCloudCode: true, FormatVertex: true, FormatKiro: true, FormatOllama: true, FormatCommandCode: true}
 	executors  = map[string]bool{
 		ExecutorDefault: true, ExecutorAzure: true, ExecutorCodex: true, ExecutorGrokCLI: true, ExecutorGitHub: true,
 		ExecutorCodeBuddyCN: true, ExecutorCodeBuddyIntl: true, ExecutorMinimaxCode: true,
 		ExecutorGeminiCLI: true, ExecutorAntigravity: true, ExecutorVertex: true, ExecutorVertexPartner: true,
 		ExecutorBedrock: true, ExecutorBedrockXAI: true, ExecutorKiro: true,
+		ExecutorOllamaLocal: true, ExecutorXiaomiTokenPlan: true, ExecutorXiaomiMimo: true, ExecutorCommandCode: true,
+		ExecutorOpenCode: true, ExecutorOpenCodeGo: true, ExecutorOpenCodeZen: true, ExecutorZed: true, ExecutorFreebuff: true, ExecutorQoder: true,
 	}
 )
 
@@ -132,6 +162,10 @@ type Transport struct {
 	// Region is the AWS region an executor builds this provider's address for,
 	// when the provider has no single address. A connection may name another.
 	Region string `json:"region,omitempty"`
+	// SigningKey is the vendor's public key for a provider whose requests are
+	// signed with one. It is public data, and it fails the load when it is not a
+	// key the signer can use.
+	SigningKey string `json:"signingKey,omitempty"`
 }
 
 // Lane is one endpoint of a provider that serves several wire formats: its

@@ -77,6 +77,20 @@ type Settings interface {
 	Effective(ctx context.Context) (document.Doc, error)
 }
 
+// Targets learns a model's wire format from the provider, for a provider whose
+// catalog decides it. A format it cannot name ends the request locally.
+type Targets interface {
+	// Format returns the format a model is reached in, or ErrUnknownTarget.
+	Format(ctx context.Context, conn repository.Connection, model string) (string, error)
+}
+
+// Renames reports the tools one call had to send under another name. The
+// executor calls it before it sends, with a map of the sent name to the
+// client's; nil leaves a renamed answer carrying the sent name.
+type Renames interface {
+	Renamed(provider, model string, names map[string]string)
+}
+
 // Deps is everything a Pipeline needs. Overrides, Settings, Prefetch, Log and Now are optional.
 type Deps struct {
 	Resolver  Resolver
@@ -110,6 +124,10 @@ type Deps struct {
 	// Quota passes over an Antigravity account whose model is spent; nil leaves
 	// that to the common lock rules.
 	Quota Quota
+	// Renames records the tool names a disguise renamed; nil registers none.
+	Renames Renames
+	// Targets names the wire format of a provider whose catalog decides it.
+	Targets Targets
 	// Sessions names the conversation a request belongs to; nil makes one.
 	Sessions *conversation.Store
 	Timers   stream.Timers

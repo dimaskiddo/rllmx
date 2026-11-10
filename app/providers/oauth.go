@@ -5,6 +5,9 @@ import (
 	"strings"
 	"time"
 
+	"rllmx/app/network"
+	"rllmx/app/zed"
+
 	"github.com/goravel/framework/contracts/foundation"
 
 	"rllmx/app/data"
@@ -17,7 +20,7 @@ import (
 // newLogin builds the account login service and the refresher that keeps its
 // tokens alive. The store opens in a runner after every provider registered, so
 // accounts are looked up on use.
-func newLogin(app foundation.Application, reg *upstream.Registry, cfg *settings.OAuth, up *settings.Upstream) (*oauth.Service, *oauth.Refresher, *oauth.Minter, *Google) {
+func newLogin(app foundation.Application, reg *upstream.Registry, cfg *settings.OAuth, up *settings.Upstream) (*oauth.Service, *oauth.Refresher, *oauth.Minter, *Google, *zed.Client, *oauth.FreebuffSessions) {
 	sessions := oauth.NewSessions()
 	listeners := &oauth.Listeners{Host: cfg.CallbackHost, Sessions: sessions, Log: app.MakeLog()}
 	tokens := oauth.NewTokenClient(up.Allow)
@@ -70,9 +73,12 @@ func newLogin(app foundation.Application, reg *upstream.Registry, cfg *settings.
 			},
 		},
 		Vertex: oauth.VertexTokens{Minter: &oauth.GoogleMinter{Tokens: tokens, Cache: cacheOrNil(app), Log: app.MakeLog(), Now: time.Now}},
+		Mimo:   &oauth.MimoCookies{Tokens: tokens, Cache: cacheOrNil(app), Log: app.MakeLog()},
 		Quota:  newQuotaGate(reg, tokens.HTTP),
 	}
-	return svc, refresher, minter, google
+	hosted := &zed.Client{HTTP: network.NewClient(network.Options{MaxRedirects: 0, Allow: up.Allow, BodyCap: -1}), Cache: cacheOrNil(app)}
+	fb := &oauth.FreebuffSessions{HTTP: network.NewClient(network.Options{MaxRedirects: 0, Allow: up.Allow, BodyCap: -1}), Cache: cacheOrNil(app), Log: app.MakeLog()}
+	return svc, refresher, minter, google, hosted, fb
 }
 
 // Google holds what the Google providers need beside the common login: the
@@ -82,6 +88,8 @@ type Google struct {
 	Projects *oauth.ProjectResolver
 	Vertex   oauth.VertexTokens
 	Quota    *quota.Gate
+	// Mimo trades a MiMo desktop account's pass token for a session cookie.
+	Mimo *oauth.MimoCookies
 }
 
 // newQuotaGate builds the Antigravity quota gate from the provider's own data: the

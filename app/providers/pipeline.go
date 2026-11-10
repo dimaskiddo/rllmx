@@ -1,8 +1,12 @@
 package providers
 
 import (
+	"crypto/rsa"
+
 	"context"
 	"errors"
+	"rllmx/app/cosy"
+	"rllmx/app/zed"
 
 	"github.com/goravel/framework/contracts/foundation"
 
@@ -59,11 +63,20 @@ func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.P
 	client := network.NewClient(network.Options{
 		ConnectTimeout: h.Upstream.ConnectTimeout, MaxRedirects: -1, Allow: h.Upstream.Allow, BodyCap: -1,
 	})
+	// The free lane's gate reads the TLS offer itself, so that one lane goes
+	// through a client that lists the suites the tool's own client lists.
+	freeLane := network.NewClient(network.Options{
+		ConnectTimeout: h.Upstream.ConnectTimeout, MaxRedirects: -1, Allow: h.Upstream.Allow, BodyCap: -1,
+		CipherSuites: executor.OpenCodeCipherSuites,
+	})
 	return pipeline.New(pipeline.Deps{
-		Resolver:      &routing.Resolver{Registry: h.Registry, Snapshot: routing.NewSnapshot(routing.NewRepositorySource(store), nil)},
-		Selector:      account.NewSelector(account.SelectorOptions{Conns: store.Connections(), Settings: store.Settings(), Log: log}),
-		Reporter:      account.NewReporter(store.Connections(), log, nil),
-		Executor:      executor.NewMux(&executor.Default{Client: client}, executor.Options{PeekIdle: h.Stream.Stall, VertexTokens: h.Google.Vertex}),
+		Resolver: &routing.Resolver{Registry: h.Registry, Snapshot: routing.NewSnapshot(routing.NewRepositorySource(store), nil)},
+		Selector: account.NewSelector(account.SelectorOptions{Conns: store.Connections(), Settings: store.Settings(), Log: log}),
+		Reporter: account.NewReporter(store.Connections(), log, nil),
+		Executor: executor.NewMux(&executor.Default{Client: client}, executor.Options{
+			PeekIdle: h.Stream.Stall, VertexTokens: h.Google.Vertex, MimoCookies: h.Google.Mimo, OpenCodeClient: freeLane,
+			ZedTokens: h.Zed, FreebuffSessions: h.Freebuff, QoderKey: qoderKey(h.Registry), Cache: cacheOrNil(app),
+		}),
 		Nodes:         store.Nodes(),
 		Registry:      h.Registry,
 		Caps:          h.Capabilities,
@@ -78,10 +91,26 @@ func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.P
 		Refresher:     h.Refresher,
 		Minter:        h.Minter,
 		Projects:      h.Google.Projects,
+		Targets:       zed.Targets{Client: h.Zed},
 		Quota:         h.Google.Quota,
 		Timers:        stream.Timers{FirstChunk: h.Stream.FirstChunk, Stall: h.Stream.Stall, UsageWait: h.Stream.UsageWait},
 		Log:           log,
 	})
+}
+
+// qoderKey reads the signing key the gateway's providers carry. It is public
+// data, and a file whose key does not parse failed the load already.
+func qoderKey(reg *upstream.Registry) *rsa.PublicKey {
+	for _, id := range []string{"qoder", "qoder-cn"} {
+		e, ok := reg.ByID(id)
+		if !ok || e.Transport.SigningKey == "" {
+			continue
+		}
+		if key, err := cosy.ParseKey(e.Transport.SigningKey); err == nil {
+			return key
+		}
+	}
+	return nil
 }
 
 // headerOverrides gives the operator's extra headers for a provider, read from

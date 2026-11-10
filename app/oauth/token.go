@@ -66,6 +66,8 @@ type Tokens struct {
 	Email string
 	// PSD is provider data a poll hands over, as a JSON object of short text.
 	PSD string
+	// UserID and SystemID are what a native-app login's answer carried.
+	UserID, SystemID string
 }
 
 // TokenClient calls token endpoints. It follows no redirect, because a moved
@@ -157,6 +159,29 @@ func (c *TokenClient) post(ctx context.Context, target, encoding string, fields,
 		body, contentType = []byte(form.Encode()), "application/x-www-form-urlencoded"
 	}
 	return c.do(ctx, http.MethodPost, target, contentType, body, headers)
+}
+
+// head sends one bounded GET and returns its status and its headers, for a call
+// whose answer is a redirect and a cookie rather than a body.
+func (c *TokenClient) head(ctx context.Context, target string, headers map[string]string) (int, http.Header, error) {
+	ctx, cancel := context.WithTimeout(ctx, tokenTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	if err != nil {
+		return 0, nil, &Error{ClassTransport}
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return 0, nil, &Error{ClassTransport}
+	}
+	defer resp.Body.Close()
+	// The body of a hop is drained, not read: its length is not wanted and a
+	// connection left half-read would not be reused.
+	_, _ = io.CopyN(io.Discard, resp.Body, maxTokenBody)
+	return resp.StatusCode, resp.Header, nil
 }
 
 // get makes one bounded GET with the given headers and returns the status and

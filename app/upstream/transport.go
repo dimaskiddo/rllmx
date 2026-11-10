@@ -3,6 +3,7 @@ package upstream
 import (
 	"errors"
 	"net/url"
+	"rllmx/app/cosy"
 	"strings"
 	"unicode"
 )
@@ -89,11 +90,18 @@ func (t *Transport) validate(executor, authHeader string) error {
 	if t.ThinkingFormat != "" && !thinkingFormats[t.ThinkingFormat] {
 		return errors.New("transport.thinkingFormat is unknown")
 	}
+	if t.SigningKey != "" {
+		// A key that cannot be parsed would fail every request it signed, so it
+		// fails the load instead, where the message names the file.
+		if _, err := cosy.ParseKey(t.SigningKey); err != nil {
+			return errors.New("transport.signingKey is not a usable public key")
+		}
+	}
 	return nil
 }
 
 // thinkingFormats are the shapes a provider may fix for all its models.
-var thinkingFormats = map[string]bool{"openai": true, "claude-adaptive": true, "claude-budget": true, "zai": true, "kimi": true, "nous": true, "deepseek": true}
+var thinkingFormats = map[string]bool{"openai": true, "claude-adaptive": true, "claude-budget": true, "zai": true, "kimi": true, "nous": true, "deepseek": true, "tokenrouter": true}
 
 // maxLanes bounds the endpoints one provider may name: one per wire format.
 const maxLanes = 4

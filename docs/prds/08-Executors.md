@@ -39,15 +39,19 @@ Registered by provider id; aliases in parentheses.
 | vertex, vertex-partner | Project-scoped URLs, service-account JWT minting |
 | azure | Deployment URL, `api-key` header |
 | iflow | Signed headers |
-| commandcode | NDJSON to SSE |
-| qoder, qoder-cn | Signed URL, envelope unwrapping |
+| freebuff | The backend envelope (`codebuff_metadata` at the top level, a run opened and closed, the assistant marker, the closing tool), a session claimed once per account and model, and a login status poll (`app/oauth/dialect_freebuff.go`) |
+| zed | `app/zed`: the token exchange (one mint per account, 50 minutes, replaced once on a 401), the live catalog with a one-hour cache, the provider envelope, and the native sign-in (`app/oauth/dialect_zed.go`) |
+| commandcode | The agent wrapper (`codec` `commandcode`), the API SDK stream read as events, and an error the upstream carries inside a 200 turned back into its status |
+| qoder, qoder-cn | `app/cosy`: the encoded body, the wrapped key and the digest; the account's live model list (one hour), the payload built from its own block, the `{statusCodeValue, body}` envelope read from its first frame, and the queue wait (ten minutes, clamped to the interval the queue clears in) |
 | windsurf | gRPC-web protobuf |
 | trae | Two-step session and event stream |
 | zed | Short-lived LLM token exchange, NDJSON events |
 | grok-cli (`gcli`) | Responses-API proxy with a field allowlist |
-| opencode, opencode-go, opencode-zen | Free-tier fingerprint, chat vs responses per model |
-| freebuff (`fb`) | Session claim, agent run START/FINISH, metadata, gate handling |
-| xiaomi-tokenplan, xiaomi-mimo, mimo-free (`mmf`), minimax-code, kimchi, codebuddy-cn/intl, ollama-local | Small quirks: region or base URL, forced streaming, credit-error remapping, header sets |
+| opencode, opencode-go, opencode-zen | The free lane's fingerprint (its own two tool definitions, the environment marker, the session id's shape, a TLS offer of its own); the keyed lanes' Responses fit; Zen's stub tools and the free identity for a `-free` id |
+| xiaomi-tokenplan | The cluster picks the host (`sgp`, `cn`, `ams`); the model's own target format picks `/anthropic/v1/messages` or `/v1/chat/completions`. Built in 1.10i |
+| xiaomi-mimo | Two routes: the cloud API with the account's key, and the account service for `mimo-v2.6-*` when the account holds a pass token, authorized by a session cookie (`app/oauth/mimo.go`) and with the effort moved to `output_config`. Built in 1.10i |
+| ollama-local | The daemon address is the account's `baseUrl` (default `http://localhost:11434`), validated and joined with `/api/chat`; a keyless daemon gets no bearer at all. Built in 1.10i |
+| minimax-code, kimchi, codebuddy-cn/intl | Small quirks: forced streaming, credit-error remapping, header sets |
 | cookie web providers (chatgpt-web, deepseek-web, gemini-web, grok-web, perplexity-web, muse-web, uc-web) | Pasted-cookie auth over a plain HTTP client. Providers that need TLS fingerprinting or a browser are Deferred (PRD 22) |
 
 ### Model Thinking Settings
@@ -112,13 +116,17 @@ sequenceDiagram
 | github (Copilot token, chat, messages and Responses addresses) | done | 1.10c |
 | codebuddy-cn and codebuddy-intl (stream forced, system prompt scrub or rebuild, request ids, rate-limit remap), minimax-code and minimax-code-global (zone and session headers, balance remap) | done | 1.10f |
 | antigravity, gemini-cli (Cloud Code envelope fill, request ids, retry delays, reset hints) | done | 1.10g |
-| iflow, commandcode, qoder and qoder-cn, zed, cursor | todo | 1.10 |
+| commandcode | done (1.10i) | 1.10i |
+| opencode, opencode-go, opencode-zen | done (1.10i) | 1.10i |
+| zed | done (1.10i) | 1.10i |
+| qoder, qoder-cn | done (1.10i) | 1.10i |
+| iflow, cursor | todo | 1.10 |
 | kiro | done | 1.10h |
 | windsurf, trae (reference loads neither, D158) | out | - |
 | vertex and vertex-partner (three key kinds, project and location, token from a service account or user credentials) | done | 1.10g |
 | bedrock and bedrock-xai | done | 1.10h |
-| opencode (opencode-go, opencode-zen) | todo | 1.10 |
-| freebuff (extended), xiaomi-tokenplan, xiaomi-mimo, mimo-free, kimchi, ollama-local | todo | 1.10 |
+| freebuff (extended) | done (1.10i) | 1.10i |
+| kimchi | todo | 1.10 |
 | cookie web providers (paste only) | todo | 1.10 |
 | devin-cli (spawns a process) | out | - |
 | web providers needing a TLS-fingerprint client (checked per provider) | deferred | - |
@@ -143,16 +151,16 @@ Every provider the references ship, with executor kind, status and delivering st
 | Executor | Status | Providers |
 |---|---|---|
 | default | done (1.10a) | alicode, alicode-intl, alims-intl, alitp-intl, atria, bai, baidu, blackbox, bluesminds, cerebras, chutes, cohere, dahl, featherless, fireworks, glm-cn, hyperbolic, llm7, minimax, minimax-cn, mistral, morph, nebius, perplexity, perplexity-agent, runcrate, sambanova, sensenova, siliconflow, tencent, together, tokenharbor, venice, vercel-ai-gateway, volcengine-ark |
-| default | todo 1.10 | tokenrouter (its thinking format needs a writer of its own) |
+| default | done (1.10i) | tokenrouter |
 | default | done | anthropic, deepseek, groq, openai |
 | default | todo 1.11 | assemblyai, aws-polly, black-forest-labs, brave-search, cartesia, comfyui, deepgram, elevenlabs, exa, fal-ai, firecrawl, fish-audio, google-pse, huggingface, inworld, jina-ai, jina-reader, linkup, nace, nanobanana, ollama-search, playht, recraft, runwayml, sdwebui, searchapi, selfhosted-embedding, selfhosted-stt, selfhosted-tts, serper, stability-ai, tavily, tinyfish, topaz, v1m, voyage-ai, xquik, youcom |
 | specialized | done (1.10a) | azure |
-| specialized | todo 1.10 | xiaomi-tokenplan |
+| specialized | done (1.10i) | xiaomi-tokenplan |
 | specialized | done (1.10h) | bedrock |
-| specialized | todo 1.10 | ollama-local |
+| specialized | done (1.10i) | ollama-local |
 | specialized | done (1.10g) | vertex-partner |
 | specialized | done (1.10h) | bedrock-xai |
-| specialized | todo 1.10 | commandcode, mmf, opencode-go, opencode-zen |
+| specialized | done (1.10i) | commandcode, opencode-go, opencode-zen |
 | specialized | todo 1.11 | veoaifree-web |
 
 ## Free Providers (`free`)
@@ -161,7 +169,7 @@ Every provider the references ship, with executor kind, status and delivering st
 |---|---|---|
 | specialized | done (1.10g) | gemini-cli |
 | specialized | done (1.10h) | kiro, kiro-social |
-| specialized | todo 1.10 | freebuff, mimo-free, opencode |
+| specialized | done (1.10i) | freebuff |
 | specialized | out | devin-cli |
 
 ## Free-Tier Providers (`freeTier`)
@@ -170,7 +178,7 @@ Every provider the references ship, with executor kind, status and delivering st
 |---|---|---|
 | default | done (1.10a) | agnes, api-airforce, bazaarlink, byteplus, cloudflare-ai, kilo-gateway, nvidia, poolside |
 | default | done (1.10d) | nous |
-| default | todo 1.10 | ollama (its own wire format) |
+| default | done (1.10i) | ollama |
 | default | done | gemini, openrouter |
 | default | todo 1.11 | coqui, edge-tts, google-tts, local-device, searxng, tortoise |
 | specialized | todo 1.10 | kimchi, vertex |
@@ -186,7 +194,9 @@ Every provider the references ship, with executor kind, status and delivering st
 | specialized | done (1.10b) | codex, grok-cli |
 | specialized | done (1.10c) | github |
 | specialized | done (1.10f) | codebuddy-cn, codebuddy-intl, minimax-code, minimax-code-global |
-| specialized | todo 1.10 | antigravity, cursor, iflow, qoder, qoder-cn, xiaomi-mimo, zed |
+| specialized | done (1.10i) | xiaomi-mimo, zed |
+| specialized | done (1.10i) | qoder, qoder-cn |
+| specialized | todo 1.10 | antigravity, cursor, iflow |
 | specialized | out | trae, windsurf |
 
 ## Cookie Web Providers (`webCookie`)
@@ -206,7 +216,7 @@ Auth: pasted cookie over a plain HTTP client. Browser or TLS-fingerprint clients
 - **gemini-web, muse-web deferred.** Both drive a browser. chatgpt-web uses only plain HTTP and Sentinel; a Turnstile check returns an error, no browser.
 - **uc-web, veoaifree-web: 1.11.** Reference refuses their chat call; they exist for image and video.
 - **Media-only ids: 1.11.** huggingface, nace, v1m, xquik, local-device carry no chat model. dahl is a chat provider, 1.10.
-- **mmf**: separate registry id the reference routes to the mimo-free executor, listed specialized. Its alias clashes with mimo-free's own; settled when that executor lands.
+- **mimo-free and mmf out**: the reference hides both and its own registry comment says the free service has ended; their only identity is a hash of the host name and user. Neither is built (divergence 278).
 - **bedrock**: static keys only (access key id, secret, optional session token). Profile mode dropped: the AWS config stack can run external credential commands (divergence 159, built in 1.10h).
 - **Chat plus media** (fireworks, nebius, perplexity, together): chat part 1.10, media blocks 1.11.
 
@@ -269,11 +279,25 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 160 | gemini-web, muse-web deferred; chatgpt-web answers error to Turnstile demand instead of opening browser **(planned 1.10k)** | No browser in the router (PRD 22) (scope cut) |
 | 93, 104 | Registered pasted-credential providers or nodes only; set grows through 1.10, closes when last provider file lands **(1.10)**; restricted key refused on chat (403), sees empty list until key access **(2.2)** | Stopgaps, fail closed (temporary) |
 | 158 | Not built, listed `out` in PRD 8; no executor, data file, callback listener | Reference does not serve them either; saves a gRPC-web protobuf protocol and a two-step session (scope cut) |
+| 267 | The reference reads another application's local files to import a credential: Cursor's `state.vscdb` through SQLite (and, on Linux, `which cursor`), Zed's keychain through `secret-tool`/`security`/`powershell` and `db.sqlite`, and MiMo Desktop's cookie database. This router imports nothing: each provider takes a pasted credential, and the Zed and MiMo logins read their own callback. **Built in 1.10i** | A router that opens another program's database holds a key to data the operator never gave it, and a process spawn is forbidden outside the git gate (`PRD 11`). Zed's account token and Cursor's token are both pasteable; the MiMo account route takes its three identifiers as pasted provider data |
+| 268 | Nothing about the host goes on the wire. The reference sends `process.cwd()` and `os.tmpdir()` in OpenCode's environment marker, `process.cwd()` and `process.platform` in CommandCode's workspace block and its `x-project-slug`, the host name and user name in mimo-free's client hash, and the host platform in Cursor's client headers. This router sends fixed words (`/workspace`, `/tmp/opencode`, `linux`, `router`) and the build target's own operating system and architecture | The host's directory layout, user name and temporary paths are the operator's, not the router's business; same reason as D164 and D176 |
+| 269 | OpenCode's free lane passes its gate on the TLS ClientHello, which the reference reaches only through `wreq-js`, installed with `npm install` at run time. This router offers the same TLS 1.2 cipher list through the standard library's `tls.Config.CipherSuites` on the one guarded transport, with no extra module and no install. **Built in 1.10i**; if the gate still refuses, the lane answers the service's own 429 like any other refusal, and PRD 22's deferral narrows to non-standard TLS stacks | A runtime package install is a process spawn and an unreviewed dependency; an explicit cipher list is a field on a transport the router already owns |
+| 270 | Qoder's RSA public key is a literal in the reference's code. Here it is a PEM field in `qoder.json` and `qoder-cn.json`, parsed and checked at load (RSA, at least 1024 bits). **Built in 1.10i** | It is vendor data about a protocol, not a fact about this program; a data file is where vendor data lives, and it fails the load rather than a request when wrong |
+| 271 | The reference reads `QODER_CONTEXT_TIER` and `QODER_MODEL_QUEUE_MAX_WAIT_MS` from the environment. This router reads neither: the context tier comes from its own token estimate, and the queue wait is a fixed ten minutes | Configuration is this program's own variables and settings row, never another program's environment (same reason as D263) |
+| 272 | Freebuff's sessions and cooldowns, and the gateway's other per-account state, live in the bounded memory-only cache with a TTL, and one claim in flight per account and model. The reference keeps them in a `globalThis` map with a sweep | Every structure that grows from input has a bound and a TTL (`PRD 20`), and a credential never leaves the process |
+| 273 | Cursor's legacy ChatService path is not built. Its AgentService path is the one every translated request takes; the reference reaches the legacy path only with an empty message list | Dead code for a path no request reaches |
+| 274 | A Cursor refusal carried in the Connect end-stream trailer is read and answered with its status. The reference drops trailer frames, so the same refusal arrives as an empty turn | An error the service reported is still an error |
+| 275 | The opencode and commandcode session ids are derived from the keyed session the pipeline binds to the account, so one conversation keeps one id across restarts. The reference mints a fresh id per process, or from the clock with a memo | A conversation's identity survives a restart, and no client can choose another conversation's id |
+| 276 | A local Ollama daemon with no key gets no `Authorization` header. The reference sends `Bearer undefined` | An empty credential is not a credential |
+| 277 | iflow's key is read again after a renewal, in the same hook that reads it at login. The reference renews the token and keeps the old key | The key is what a request carries, so a stale one is a request that fails after a renewal that looked successful |
+| 278 | mimo-free and mmf are not built. The reference hides both, and its own registry says the free service has ended | An executor for an endpoint the vendor has closed is dead code |
 | 162 | Not read; endpoint, version, deployment from account only | Configuration is product's own variables and settings row, never another program's names (scope cut) |
 
 ---
 
 ## Findings
+
+**1.10i built so far: the plain-quirk providers, the two agent protocols and the hosted ones.** `tokenrouter`, `ollama` and `ollama-local`, `xiaomi-tokenplan` and `xiaomi-mimo` (cloud and account routes, with the session cookie in `app/oauth/mimo.go`), `commandcode` (codec and executor), the three `opencode` lanes (the free gate's identity, its two tool definitions, the marker, the session id, a TLS offer of its own; the keyed lanes' Responses fit), `zed` (`app/zed` and `app/oauth/dialect_zed.go`) and `freebuff` (`app/oauth/dialect_freebuff.go`). `qoder` and `qoder-cn` (`app/cosy`, the live model list, the envelope reader and the queue wait). Cursor is next.
 
 **1.10h built: the two AWS protocol packages and the three AWS providers.** `app/sigv4` signs one POST with both of the reference's pinned vectors reproduced byte for byte; a query string is refused rather than signed, the path is double-encoded, and a session token is sent and signed. `app/eventstream` reads the frame's prelude and message CRC, every header value type, and refuses out-of-bounds and duplicate headers; `stream.NewFrames` lifts a frame into the `Event` the pump already reads, so no part of the pipeline learns the binary format. `executor.Bedrock` (two variants) builds the signed address from the account's keys and region, drops what the address already carries, pins `anthropic_version` last, refuses an id from the wrong model family, and never follows a redirect. `executor.Kiro` orders the hosts by sign-in method, regionalises only the `amazonaws.com` ones, tries the next host only on 401, 403 or 404, and reads the answer whole: a turn that ends on an ellipsis, on a promise to check something, or on a tool call a client cannot parse is asked **once** more with an instruction saying what was wrong, and a second failure is answered as it came. The `kiro` format is a codec with its own conversation canonicalizer (alternating turns, paired tool calls, a validated shape or a local 400), an alias fold by family and version, a stream reader that buffers tool fragments and restores names, and a bounded replay of each conversation's opening turn so the upstream's prompt cache keeps hitting.
 

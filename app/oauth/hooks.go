@@ -38,6 +38,9 @@ var hooks = map[string]hook{
 	"antigravity": antigravityAccount,
 	"kiro":        kiroAccount,
 	"kiroSocial":  kiroSocialAccount,
+	"zed":         zedAccount,
+	"freebuff":    freebuffAccount,
+	"qoder":       qoderAccount,
 }
 
 const (

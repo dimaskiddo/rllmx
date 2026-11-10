@@ -4,7 +4,7 @@ Deliberate differences from 9router and 9router-extended. **The detail lives in 
 
 Each row carries the number, what we do differently and why it is better, including the reference mechanism it replaces. Reference versions are pinned in `docs/PARITY.md`; framework choices are not divergences (`ARCHITECTURE.md`).
 
-**Numbers never change** — other docs cite them. Next free number: **267**. Add a row to the PRD of the area, then update the count here.
+**Numbers never change** — other docs cite them. Next free number: **279**. Add a row to the PRD of the area, then update the count here.
 
 | PRD | Area | Numbers | Link |
 |---|---|---|---|
@@ -15,7 +15,7 @@ Each row carries the number, what we do differently and why it is better, includ
 | 5 | Account Selection, Error Rules & Backoff | 4 | [05-…](prds/05-Account-Selection-and-Backoff.md) |
 | 6 | OAuth & Token Refresh | 33 | [06-…](prds/06-OAuth-and-Token-Refresh.md) |
 | 7 | Format Translation | 28 | [07-…](prds/07-Format-Translation.md) |
-| 8 | Executors | 37 | [08-…](prds/08-Executors.md) |
+| 8 | Executors | 45 | [08-…](prds/08-Executors.md) |
 | 9 | Streaming | 13 | [09-…](prds/09-Streaming.md) |
 | 10 | Token Savers | 2 | [10-…](prds/10-Token-Savers.md) |
 | 11 | Skills, Session & Auto Plan | 7 | [11-…](prds/11-Skills-Session-and-Auto-Plan.md) |
@@ -29,7 +29,7 @@ Each row carries the number, what we do differently and why it is better, includ
 | 21 | API Key Limits | 1 | [21-…](prds/21-API-Key-Limits.md) |
 | 22 | Deferred & Out of Scope | 3 | [22-…](prds/22-Deferred-and-Out-of-Scope.md) |
 | 23 | CLI | 4 | [23-…](prds/23-CLI.md) |
-| **Total** | | **266** | |
+| **Total** | | **278** | |
 
 ## Kinds
 
@@ -37,15 +37,15 @@ Each row's Why column says which kind it is. Every number is counted once, by th
 
 | Kind | Meaning | Count | Numbers |
 |---|---|---|---|
-| Improvement | Fixes a reference defect | 220 | Every row with no other marker |
+| Improvement | Fixes a reference defect | 231 | Every row with no other marker |
 | New feature | Something neither reference has | 3 | 24, 32, 148 |
 | Trade-off | A deliberate cost | 5 | 33, 81, 91, 138, 141 |
-| Scope cut | A reference feature not adopted | 19 | 3, 6, 9, 10, 11, 16, 48, 89, 105, 158, 159, 160, 161, 162, 202, 214, 250, 256, 260 |
+| Scope cut | A reference feature not adopted | 22 | 3, 6, 9, 10, 11, 16, 48, 89, 105, 158, 159, 160, 161, 162, 202, 214, 250, 256, 260, 273, 278 |
 | Planned | Names the step that resolves it | 4 | 7, 8, 25, 66, 102 |
 | Temporary | Stopgap until a named step | 2 | 93, 104 |
 | Retired | A framework choice or a rule that no longer applies, or a behavior now the reference's own; the number stays citable | 10 | 193, 196, 197, 198, 199, 201, 222, 236, 244, 245 |
 | Built as planned | Was only a schedule change and is now done | 1 | 216 |
-| **Total** | | **266** | |
+| **Total** | | **278** | |
 
 How a row is counted:
 - A row with no marker is an improvement. A row marked *partial* is one too, and so are 112-114 and 118, where only a sub-point waits for a later step.

@@ -18,8 +18,10 @@ const (
 	// CLI and Antigravity; FormatVertex is a Gemini body for Vertex AI.
 	FormatCloudCode = "gemini-cli"
 	FormatVertex    = "vertex"
-	// FormatKiro is CodeWhisperer's conversation body.
-	FormatKiro = "kiro"
+	// FormatKiro is CodeWhisperer's conversation body; FormatCommandCode is
+	// CommandCode's agent wrapper around an Anthropic-shaped conversation.
+	FormatKiro        = "kiro"
+	FormatCommandCode = "commandcode"
 )
 
 // GeminiFamily reports a format whose bodies and streams are Gemini's, with or

@@ -71,13 +71,13 @@ var (
 	// redirectHosts are the names a fixed redirect may use for this machine.
 	redirectHosts = map[string]bool{"": true, "localhost": true, "127.0.0.1": true}
 	encodings     = map[string]bool{EncodingJSON: true, EncodingForm: true}
-	hooks         = map[string]bool{"": true, "codex": true, "github": true, "muse": true, "nous": true, "kilocode": true, "grokCli": true, "gitlab": true, "xai": true, "google": true, "antigravity": true, "kiro": true, "kiroSocial": true}
+	hooks         = map[string]bool{"": true, "codex": true, "github": true, "muse": true, "nous": true, "kilocode": true, "grokCli": true, "gitlab": true, "xai": true, "google": true, "antigravity": true, "kiro": true, "kiroSocial": true, "zed": true, "freebuff": true, "qoder": true}
 	mints         = map[string]bool{"": true, MintCopilot: true}
 	// refreshHooks run after a token renewal; dialects replace the start and the
 	// poll of a device login that does not follow RFC 8628.
 	refreshHooks   = map[string]bool{"": true, "nous": true}
-	deviceDialects = map[string]bool{"kilocode": true, "codebuddy": true, "minimax": true, "zcode": true, "kiro": true}
-	codeDialects   = map[string]bool{"cline": true, "kiro-social": true}
+	deviceDialects = map[string]bool{"kilocode": true, "codebuddy": true, "minimax": true, "zcode": true, "kiro": true, "freebuff": true, "qoder": true}
+	codeDialects   = map[string]bool{"cline": true, "kiro-social": true, "zed": true}
 
 	paramName = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 	// ownParams are set by the login itself, so a data file cannot name them.

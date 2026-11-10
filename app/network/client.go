@@ -26,6 +26,10 @@ type Options struct {
 	TLS *tls.Config
 	// DisableKeepAlives leaves no idle connection behind, for a one-shot check.
 	DisableKeepAlives bool
+	// CipherSuites pins the TLS 1.2 suites a call offers, for a gateway that
+	// reads the offer itself. Empty takes the standard list; TLS 1.3 suites are
+	// not configurable and are always offered.
+	CipherSuites []uint16
 }
 
 func (o Options) connectTimeout() time.Duration {
@@ -60,6 +64,9 @@ func NewTransport(o Options) *nethttp.Transport {
 		if tlsConfig.MinVersion < tls.VersionTLS12 {
 			tlsConfig.MinVersion = tls.VersionTLS12
 		}
+	}
+	if len(o.CipherSuites) > 0 {
+		tlsConfig.CipherSuites = o.CipherSuites
 	}
 	guard := NewDialer(o.connectTimeout(), o.Allow)
 	return &nethttp.Transport{

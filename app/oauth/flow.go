@@ -162,7 +162,13 @@ func (f Flow) ListenerPort() int {
 // A dialect whose provider owns the redirect scheme builds its own address:
 // Kiro's provider only answers a custom scheme, so its parameters are not the
 // standard ones and cannot be reached by editing this list.
-func (f Flow) URL(redirect, state, challenge, nonce string) string {
+// SignedIn reports a login that makes its own key, whose address and verifier
+// therefore depend on each other.
+func (f Flow) SignedIn() bool { return f.Dialect == zedDialect }
+
+// URL is the address the browser is sent to. verifier carries what the login
+// made for itself, for a sign-in whose address depends on it.
+func (f Flow) URLWith(redirect, state, challenge, nonce, verifier string) string {
 	if f.Dialect == kiroSocialDialect {
 		return kiroSocialAuthorize(f, state, challenge)
 	}
@@ -196,4 +202,10 @@ func (f Flow) URL(redirect, state, challenge, nonce string) string {
 		b.WriteString(strings.ReplaceAll(url.QueryEscape(p[1]), "+", "%20"))
 	}
 	return b.String()
+}
+
+// URL is the address the browser is sent to, for a login that keeps nothing of
+// its own.
+func (f Flow) URL(redirect, state, challenge, nonce string) string {
+	return f.URLWith(redirect, state, challenge, nonce, "")
 }

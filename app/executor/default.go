@@ -73,8 +73,15 @@ func (d *Default) Execute(ctx context.Context, req Request) (Response, error) {
 	}
 }
 
+// authRequired reports whether the key is the credential. A block with no scheme
+// sets no credential from it: the request carries its own headers instead, as an
+// account-session cookie does.
 func authRequired(req Request) bool {
-	return req.Auth != nil || req.Entry.Auth != nil
+	auth := req.Auth
+	if auth == nil {
+		auth = req.Entry.Auth
+	}
+	return auth != nil && auth.Scheme != ""
 }
 
 func (d *Default) once(ctx context.Context, req Request) (Response, error) {

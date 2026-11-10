@@ -1,6 +1,6 @@
 # Builder Image
 # ---------------------------------------------------
-FROM golang:1.26.10-alpine AS go-builder
+FROM golang:1.26-alpine AS go-builder
 
 ARG VERSION=dev
 ARG COMMIT=none
@@ -44,7 +44,7 @@ RUN apk --no-cache --update upgrade \
     && chown -R ${SERVICE_NAME}:${SERVICE_NAME} .
 
 COPY --from=go-builder /usr/src/app/main ./rllmx
-COPY --from=go-builder /usr/src/app/.env.example ./.env.example
+COPY --from=go-builder /usr/src/app/.env.example ./.env
 
 USER ${SERVICE_NAME}
 

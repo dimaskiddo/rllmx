@@ -1,0 +1,33 @@
+{
+  "id": "zed",
+  "alias": "zd",
+  "category": "oauth",
+  "display": {
+    "name": "Zed"
+  },
+  "transport": {
+    "baseUrl": "https://cloud.zed.dev/completions",
+    "format": "claude"
+  },
+  "executor": "zed",
+  "forceStream": true,
+  "oauth": {
+    "flow": "code",
+    "authorizeUrl": "https://zed.dev/native_app_signin",
+    "tokenUrl": "https://cloud.zed.dev/client/llm_tokens",
+    "scope": "",
+    "redirect": "fixed",
+    "fixedPort": 58443,
+    "callbackPath": "/",
+    "dialect": "zed",
+    "hook": "zed",
+    "noClient": true,
+    "endpoints": {
+      "user": "https://cloud.zed.dev"
+    },
+    "refresh": {
+      "encoding": "json"
+    }
+  },
+  "models": []
+}
