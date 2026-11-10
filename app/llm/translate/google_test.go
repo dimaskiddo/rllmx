@@ -1,0 +1,192 @@
+package translate
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+
+	"github.com/tidwall/gjson"
+
+	"rllmx/app/llm/upstream"
+)
+
+func googleCtx(provider string) *Ctx {
+	c := NewCtx(FormatOpenAI, FormatCloudCode)
+	c.Provider = provider
+	c.Signature = "PLACEHOLDER"
+	return c
+}
+
+func toolTurn() *Request {
+	r := conversation()
+	r.Model = "gemini-3-pro-preview"
+	return r
+}
+
+func TestAGeminiCLIBodyIsWrappedInTheEnvelopeWithSafetyOff(t *testing.T) {
+	out, err := CloudCodeCodec{}.WriteRequest(toolTurn(), googleCtx("gemini-cli"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := gjson.ParseBytes(out)
+	if g.Get("userAgent").String() != "gemini-cli" || g.Get("model").String() != "gemini-3-pro-preview" || g.Get("project").String() != "" || g.Get("requestId").String() != "" {
+		t.Fatalf("%s", out)
+	}
+	if g.Get("request.contents").Array()[0].Get("role").String() != "user" || len(g.Get("request.safetySettings").Array()) != 5 {
+		t.Fatalf("%s", out)
+	}
+	if g.Get("request.safetySettings.0.threshold").String() != "OFF" {
+		t.Fatalf("%s", out)
+	}
+	if g.Get("request.tools.0.functionDeclarations.0.name").String() != "weather" {
+		t.Fatalf("%s", out)
+	}
+}
+
+func TestAnAntigravityBodyHasNoSafetySettingsAndNoRequestType(t *testing.T) {
+	out, err := CloudCodeCodec{}.WriteRequest(toolTurn(), googleCtx("antigravity"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := gjson.ParseBytes(out)
+	if g.Get("userAgent").String() != "antigravity" || g.Get("request.safetySettings").Exists() || g.Get("requestType").Exists() {
+		t.Fatalf("%s", out)
+	}
+	if g.Get("request.toolConfig.functionCallingConfig.mode").String() != "VALIDATED" {
+		t.Fatalf("tools without the validated mode: %s", out)
+	}
+}
+
+func TestAntigravityRewritesCompetingBrandingInTheSystemPrompt(t *testing.T) {
+	for in, want := range map[string]string{
+		"You are a Claude agent, built on Anthropic's Claude Agent SDK. Be brief.": " Be brief.",
+		"You are Hermes Agent, built by Nous Research. Help.":                      "You are an AI assistant. Help.",
+		"x-anthropic-billing-header: cc=1;\nReal prompt":                           "Real prompt",
+		"Use OpenCode, OPENCODE and opencode.":                                     "Use Antigravity, ANTIGRAVITY and antigravity.",
+		"A plain prompt.":                                                          "A plain prompt.",
+	} {
+		if got := RewriteBranding(in); got != want {
+			t.Errorf("%q\n got %q\nwant %q", in, got, want)
+		}
+	}
+	r := toolTurn()
+	r.Messages[0] = Message{Role: RoleSystem, Content: TextPart("You are Hermes. Go.")}
+	out, _ := CloudCodeCodec{}.WriteRequest(r, googleCtx("antigravity"))
+	if got := gjson.GetBytes(out, "request.systemInstruction.parts.0.text").String(); got != "You are an AI assistant. Go." {
+		t.Fatalf("%q", got)
+	}
+}
+
+func TestAntigravityCapsOutputAndDropsAnotherVendorsThinkingFields(t *testing.T) {
+	r := toolTurn()
+	big := 200000
+	r.Params.MaxTokens = &big
+	r.Extra = map[string]json.RawMessage{"thinking": []byte(`{"type":"enabled"}`), "reasoning_effort": []byte(`"high"`), "output_config": []byte(`{}`)}
+	out, _ := CloudCodeCodec{}.WriteRequest(r, googleCtx("antigravity"))
+	g := gjson.ParseBytes(out)
+	if g.Get("request.generationConfig.maxOutputTokens").Int() != antigravityMaxOutput {
+		t.Fatalf("%s", out)
+	}
+	for _, k := range antigravityBlacklist {
+		if g.Get("request." + k).Exists() {
+			t.Errorf("%s was sent: %s", k, out)
+		}
+	}
+}
+
+func TestThePlaceholderSignatureGoesOnTheFirstCallOnly(t *testing.T) {
+	r := &Request{Model: "m", Messages: []Message{
+		{Role: RoleUser, Content: TextPart("go")},
+		{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "a", Name: "f", Arguments: `{}`}, {ID: "b", Name: "g", Arguments: `{}`}, {ID: "c", Name: "h", Arguments: `{}`, Signature: "REAL"}}},
+		{Role: RoleTool, ToolCallID: "a", Name: "f", Content: TextPart("1")},
+		{Role: RoleTool, ToolCallID: "b", Name: "g", Content: TextPart("2")},
+		{Role: RoleTool, ToolCallID: "c", Name: "h", Content: TextPart("3")},
+	}}
+	out, _ := CloudCodeCodec{}.WriteRequest(r, googleCtx("antigravity"))
+	parts := gjson.GetBytes(out, "request.contents.1.parts").Array()
+	if len(parts) != 3 || parts[0].Get("thoughtSignature").String() != "PLACEHOLDER" || parts[1].Get("thoughtSignature").Exists() || parts[2].Get("thoughtSignature").String() != "REAL" {
+		t.Fatalf("%s", out)
+	}
+}
+
+func TestACloudCodeAnswerIsReadWrappedOrBare(t *testing.T) {
+	bare := `{"candidates":[{"content":{"role":"model","parts":[{"text":"hi"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":2}}`
+	for name, body := range map[string]string{"bare": bare, "wrapped": `{"response":` + bare + `,"traceId":"t"}`} {
+		resp, err := CloudCodeCodec{}.ReadResponse([]byte(body), NewCtx(FormatCloudCode, FormatOpenAI))
+		if err != nil || resp.Message.Text() != "hi" || resp.Usage.Prompt != 5 {
+			t.Errorf("%s: %+v %v", name, resp, err)
+		}
+	}
+}
+
+func TestACloudCodeStreamFrameIsReadThroughItsWrapper(t *testing.T) {
+	r := CloudCodeCodec{}.NewStreamReader(NewCtx(FormatCloudCode, FormatOpenAI))
+	chunks := r.Read("", []byte(`{"response":{"candidates":[{"content":{"parts":[{"text":"yo"}]}}],"responseId":"r1"},"traceId":"t"}`))
+	text := ""
+	for _, c := range chunks {
+		text += c.Text
+	}
+	if text != "yo" {
+		t.Fatalf("%+v", chunks)
+	}
+}
+
+func TestVertexTakesTheIdsOffAndUsesItsOwnSignature(t *testing.T) {
+	c := NewCtx(FormatOpenAI, FormatVertex)
+	c.Signature = "VERTEX-SIG"
+	r := &Request{Model: "m", Messages: []Message{
+		{Role: RoleUser, Content: TextPart("go")},
+		{Role: RoleAssistant, ToolCalls: []ToolCall{{ID: "a", Name: "f", Arguments: `{}`, Signature: "CLIENT-SIG"}}},
+		{Role: RoleTool, ToolCallID: "a", Name: "f", Content: TextPart("1")},
+	}}
+	out, err := VertexCodec{}.WriteRequest(r, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := gjson.ParseBytes(out)
+	if g.Get("contents.1.parts.0.functionCall.id").Exists() || g.Get("contents.2.parts.0.functionResponse.id").Exists() {
+		t.Fatalf("an id was sent: %s", out)
+	}
+	if g.Get("contents.1.parts.0.thoughtSignature").String() != "VERTEX-SIG" || g.Get("safetySettings").Exists() {
+		t.Fatalf("%s", out)
+	}
+	if strings.Contains(string(out), "CLIENT-SIG") {
+		t.Fatalf("a foreign signature was kept: %s", out)
+	}
+}
+
+func TestEveryGoogleFormatIsInTheFamilyAndNothingElseIs(t *testing.T) {
+	for _, f := range []string{FormatGemini, FormatCloudCode, FormatVertex} {
+		if !GeminiFamily(f) {
+			t.Errorf("%s", f)
+		}
+	}
+	for _, f := range []string{FormatOpenAI, FormatClaude, FormatResponses, FormatOllama, ""} {
+		if GeminiFamily(f) {
+			t.Errorf("%s", f)
+		}
+	}
+	for _, f := range []string{upstream.FormatCloudCode, upstream.FormatVertex} {
+		if _, ok := Lookup(f); !ok {
+			t.Errorf("the registry names %s but no codec is registered", f)
+		}
+	}
+}
+
+func FuzzCloudCodeEnvelope(f *testing.F) {
+	for _, s := range []string{`{}`, `{"contents":[{"role":"user","parts":[{"text":"x"}]}]}`, `[`, `{"systemInstruction":{"parts":[{"text":"OpenCode"}]}}`} {
+		f.Add([]byte(s))
+	}
+	f.Fuzz(func(t *testing.T, body []byte) {
+		req, err := GeminiCodec{}.ReadRequest(body, NewCtx(FormatGemini, FormatOpenAI))
+		if err != nil {
+			return
+		}
+		for _, p := range []string{"gemini-cli", "antigravity"} {
+			out, err := CloudCodeCodec{}.WriteRequest(req, googleCtx(p))
+			if err != nil || !gjson.ValidBytes(out) || !gjson.GetBytes(out, "request").IsObject() {
+				t.Fatalf("%s: %v %s", p, err, out)
+			}
+		}
+	})
+}

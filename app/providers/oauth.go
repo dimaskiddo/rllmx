@@ -5,16 +5,16 @@ import (
 	"strings"
 	"time"
 
-	"rllmx/app/network"
-	"rllmx/app/zed"
+	"rllmx/app/llm/zed"
+	"rllmx/app/platform/network"
 
 	"github.com/goravel/framework/contracts/foundation"
 
-	"rllmx/app/data"
-	"rllmx/app/oauth"
-	"rllmx/app/quota"
-	"rllmx/app/settings"
-	"rllmx/app/upstream"
+	"rllmx/app/llm/oauth"
+	"rllmx/app/llm/quota"
+	"rllmx/app/llm/upstream"
+	"rllmx/app/platform/settings"
+	"rllmx/app/store/data"
 )
 
 // newLogin builds the account login service and the refresher that keeps its
@@ -24,9 +24,11 @@ func newLogin(app foundation.Application, reg *upstream.Registry, cfg *settings.
 	sessions := oauth.NewSessions()
 	listeners := &oauth.Listeners{Host: cfg.CallbackHost, Sessions: sessions, Log: app.MakeLog()}
 	tokens := oauth.NewTokenClient(up.Allow)
+	dialects := oauth.DefaultDialects()
+	tokens.Dialects = dialects
 	svc := &oauth.Service{
 		Registry: reg, ClientID: cfg.ClientID, ClientSecret: cfg.ClientSecret, Sessions: sessions,
-		Tokens: tokens, Listeners: listeners, Log: app.MakeLog(), Now: time.Now,
+		Tokens: tokens, Listeners: listeners, Log: app.MakeLog(), Now: time.Now, Dialects: dialects,
 		Accounts: func() oauth.Accounts {
 			store := DataOf(app).Runner.Store()
 			if store == nil {
@@ -42,7 +44,7 @@ func newLogin(app foundation.Application, reg *upstream.Registry, cfg *settings.
 			return f, err == nil
 		},
 		Tokens: tokens, Cache: cacheOrNil(app), Log: app.MakeLog(), Now: time.Now,
-		SlowGap: cfg.RefreshGoogleDelay,
+		Dialects: dialects, SlowGap: cfg.RefreshGoogleDelay,
 		Store: func() oauth.Store {
 			store := DataOf(app).Runner.Store()
 			if store == nil {

@@ -7,7 +7,7 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 
 	apphttp "rllmx/app/http"
-	"rllmx/app/stream"
+	"rllmx/app/llm/stream"
 )
 
 const (

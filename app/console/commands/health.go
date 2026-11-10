@@ -5,7 +5,7 @@ import (
 	"github.com/goravel/framework/contracts/console/command"
 
 	apphttp "rllmx/app/http"
-	"rllmx/app/settings"
+	"rllmx/app/platform/settings"
 )
 
 // Health asks the local server's health route. It exits 0 only when the answer

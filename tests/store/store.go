@@ -12,8 +12,8 @@ import (
 	contractsschema "github.com/goravel/framework/contracts/database/schema"
 	"github.com/goravel/framework/database/migration"
 
-	"rllmx/app/repository"
-	"rllmx/app/sealer"
+	"rllmx/app/store/repository"
+	"rllmx/app/store/sealer"
 	"rllmx/tests"
 )
 

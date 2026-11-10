@@ -12,9 +12,10 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 	"github.com/tidwall/gjson"
 
-	"rllmx/app/document"
-	"rllmx/app/repository"
-	"rllmx/app/upstream"
+	"rllmx/app/llm/upstream"
+	"rllmx/app/platform/text"
+	"rllmx/app/store/document"
+	"rllmx/app/store/repository"
 )
 
 const (
@@ -186,7 +187,7 @@ func (c *ProvidersController) Create(ctx contractshttp.Context) contractshttp.Re
 	if hasControl(b.Name) || hasControl(b.DisplayName) || hasControl(b.Provider) {
 		return flat(ctx, nethttp.StatusBadRequest, "Invalid characters in the request")
 	}
-	name := strings.TrimSpace(firstNonEmpty(b.Name, b.DisplayName))
+	name := strings.TrimSpace(text.FirstNonEmpty(b.Name, b.DisplayName))
 	if name == "" {
 		if e, ok := c.Registry.ByID(provider); ok {
 			name = e.Display.Name
@@ -209,15 +210,15 @@ func (c *ProvidersController) Create(ctx contractshttp.Context) contractshttp.Re
 		psd = nodeFields(*node)
 	}
 
-	fields := map[string]string{"apiKey": quote(b.APIKey), "testStatus": `"unknown"`}
+	fields := map[string]string{"apiKey": document.Encode(b.APIKey), "testStatus": `"unknown"`}
 	if v := strings.TrimSpace(b.DisplayName); v != "" && len(v) <= maxNameBytes && !hasControl(v) {
-		fields["displayName"] = quote(v)
+		fields["displayName"] = document.Encode(v)
 	}
 	if b.GlobalPriority != nil {
-		fields["globalPriority"] = jsonInt(*b.GlobalPriority)
+		fields["globalPriority"] = strconv.FormatInt(*b.GlobalPriority, 10)
 	}
 	if b.DefaultModel != nil && len(*b.DefaultModel) <= maxNameBytes && !hasControl(*b.DefaultModel) {
-		fields["defaultModel"] = quote(*b.DefaultModel)
+		fields["defaultModel"] = document.Encode(*b.DefaultModel)
 	}
 	authType := "apikey"
 	if cookie {
@@ -329,7 +330,7 @@ func (c *ProvidersController) Update(ctx contractshttp.Context) contractshttp.Re
 			if v == nil {
 				patch.Fields[key] = "null"
 			} else {
-				patch.Fields[key] = jsonInt(*v)
+				patch.Fields[key] = strconv.FormatInt(*v, 10)
 			}
 		case "defaultModel", "displayName":
 			var v *string
@@ -339,7 +340,7 @@ func (c *ProvidersController) Update(ctx contractshttp.Context) contractshttp.Re
 			if v == nil {
 				patch.Fields[key] = "null"
 			} else {
-				patch.Fields[key] = quote(*v)
+				patch.Fields[key] = document.Encode(*v)
 			}
 		case "apiKey":
 			var v string
@@ -348,7 +349,7 @@ func (c *ProvidersController) Update(ctx contractshttp.Context) contractshttp.Re
 			}
 			// An empty key keeps the saved one: the edit form cannot read it back.
 			if v != "" && existing.AuthType == "apikey" {
-				patch.Fields["apiKey"] = quote(v)
+				patch.Fields["apiKey"] = document.Encode(v)
 			}
 		case "providerSpecificData":
 			set, remove, msg := splitPSD(val)
@@ -533,19 +534,6 @@ func safeName(n string) string {
 
 // hasControl reports any control character, C1 included.
 func hasControl(s string) bool { return strings.IndexFunc(s, unicode.IsControl) >= 0 }
-
-func firstNonEmpty(vals ...string) string {
-	for _, v := range vals {
-		if strings.TrimSpace(v) != "" {
-			return v
-		}
-	}
-	return ""
-}
-
-func quote(s string) string { return document.Encode(s) }
-
-func jsonInt(n int64) string { return strconv.FormatInt(n, 10) }
 
 // bindJSON decodes the request body into v, refusing one over 1 MiB.
 func bindJSON(ctx contractshttp.Context, v any) error {

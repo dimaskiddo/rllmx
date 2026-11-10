@@ -8,8 +8,8 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 	"github.com/goravel/framework/contracts/log"
 
-	"rllmx/app/failure"
-	"rllmx/app/text"
+	"rllmx/app/platform/failure"
+	"rllmx/app/platform/text"
 )
 
 const (
@@ -29,7 +29,7 @@ func Recover(l log.Log) func(ctx contractshttp.Context, err any) {
 		}
 		r := ctx.Request().Origin()
 		l.Errorf("panic serving %s %s %s: %s\n%s", r.Method, text.CutRunes(text.StripControl(r.URL.Path), maxLoggedPath),
-			RequestIdFrom(ctx), text.CutRunes(text.StripControl(fmt.Sprint(err)), maxPanicText), text.CutBytes(string(debug.Stack()), maxPanicStack))
+			RequestIDFrom(ctx), text.CutRunes(text.StripControl(fmt.Sprint(err)), maxPanicText), text.CutBytes(string(debug.Stack()), maxPanicStack))
 
 		if w, ok := ctx.Response().Writer().(interface{ Written() bool }); ok && w.Written() {
 			panic(nethttp.ErrAbortHandler)

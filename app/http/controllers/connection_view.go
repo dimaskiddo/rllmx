@@ -5,7 +5,7 @@ import (
 
 	"github.com/tidwall/gjson"
 
-	"rllmx/app/repository"
+	"rllmx/app/store/repository"
 )
 
 // viewFields are the stored data fields a dashboard may see, in the order they

@@ -13,14 +13,14 @@ import (
 	"github.com/goravel/framework/contracts/schedule"
 	"github.com/goravel/framework/database/migration"
 
-	"rllmx/app/analytics"
-	"rllmx/app/auth"
-	"rllmx/app/cache"
-	"rllmx/app/data"
-	"rllmx/app/identity"
-	"rllmx/app/oidc"
-	"rllmx/app/repository"
-	"rllmx/app/settings"
+	"rllmx/app/access/auth"
+	"rllmx/app/access/identity"
+	"rllmx/app/access/oidc"
+	"rllmx/app/platform/cache"
+	"rllmx/app/platform/settings"
+	"rllmx/app/store/analytics"
+	"rllmx/app/store/data"
+	"rllmx/app/store/repository"
 )
 
 // BindingData is the container key of the data pieces the data runner, the HTTP

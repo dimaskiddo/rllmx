@@ -7,8 +7,8 @@ import (
 	"github.com/goravel/framework/contracts/console"
 	frameworkhash "github.com/goravel/framework/contracts/hash"
 
-	"rllmx/app/auth"
-	"rllmx/app/data"
+	"rllmx/app/access/auth"
+	"rllmx/app/store/data"
 )
 
 // PasswordAttempts is how many tries a command gives for the dashboard

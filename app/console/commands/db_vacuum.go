@@ -3,7 +3,7 @@ package commands
 import (
 	"github.com/goravel/framework/contracts/console"
 	"github.com/goravel/framework/contracts/console/command"
-	"rllmx/app/data"
+	"rllmx/app/store/data"
 	"strings"
 )
 

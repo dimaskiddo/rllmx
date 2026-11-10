@@ -9,10 +9,10 @@ import (
 
 	contractshttp "github.com/goravel/framework/contracts/http"
 
-	"rllmx/app/catalog"
-	"rllmx/app/document"
-	"rllmx/app/oauth"
-	"rllmx/app/upstream"
+	"rllmx/app/gateway/catalog"
+	"rllmx/app/llm/oauth"
+	"rllmx/app/llm/upstream"
+	"rllmx/app/store/document"
 )
 
 // outcomeStatus is the HTTP status a failed model-list fetch answers with.
@@ -210,7 +210,7 @@ func (c *ProvidersController) ModelsList(ctx contractshttp.Context) contractshtt
 	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"provider": conn.Provider, "connectionId": conn.ID, "models": models})
 }
 
-// ValidateNode answers POST /api/provider-nodes/validate: does this address and
+// Validate answers POST /api/provider-nodes/validate: does this address and
 // key work, before a node exists. The address passes the same checks as a
 // node's, and the dial guard decides about private addresses at connect time.
 func (c *NodesController) Validate(ctx contractshttp.Context) contractshttp.Response {

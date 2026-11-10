@@ -7,9 +7,9 @@ import (
 
 	"github.com/goravel/framework/contracts/foundation"
 
-	"rllmx/app/catalog"
+	"rllmx/app/gateway/catalog"
 	"rllmx/app/http/controllers"
-	"rllmx/app/routing"
+	"rllmx/app/llm/routing"
 )
 
 // CatalogSource builds the model catalog on first use, for the same reason the

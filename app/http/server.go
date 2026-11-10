@@ -18,7 +18,7 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 	"github.com/goravel/framework/contracts/log"
 
-	"rllmx/app/settings"
+	"rllmx/app/platform/settings"
 )
 
 const (

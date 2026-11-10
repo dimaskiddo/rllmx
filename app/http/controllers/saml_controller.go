@@ -8,12 +8,12 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 	"github.com/goravel/framework/contracts/log"
 
-	"rllmx/app/auth"
+	"rllmx/app/access/auth"
+	"rllmx/app/access/saml"
+	"rllmx/app/access/sso"
 	apphttp "rllmx/app/http"
-	"rllmx/app/repository"
-	"rllmx/app/saml"
-	"rllmx/app/settings"
-	"rllmx/app/sso"
+	"rllmx/app/platform/settings"
+	"rllmx/app/store/repository"
 )
 
 // samlACS is the path the identity provider posts to. It is the one route the
@@ -58,7 +58,7 @@ func (c *SAMLController) Start(ctx contractshttp.Context) contractshttp.Response
 	}
 	secret := c.Auth.Secret()
 	if len(secret) == 0 {
-		return c.fail(ctx, base, sso.CodeIdPError)
+		return c.fail(ctx, base, sso.CodeIDPError)
 	}
 
 	entityID := set.EntityIDFor(base)
@@ -69,7 +69,7 @@ func (c *SAMLController) Start(ctx contractshttp.Context) contractshttp.Response
 
 	id, err := saml.NewRequestID()
 	if err != nil {
-		return c.fail(ctx, base, sso.CodeIdPError)
+		return c.fail(ctx, base, sso.CodeIDPError)
 	}
 	target, err := saml.AuthnRequest(set.EntryPoint, entityID, acsURL, id, time.Now().UTC().Format(time.RFC3339))
 	if err != nil {
@@ -77,7 +77,7 @@ func (c *SAMLController) Start(ctx contractshttp.Context) contractshttp.Response
 	}
 	// The flow state records what was in force when it started, so a settings
 	// change mid-flow cannot redirect it to another provider.
-	if err := c.Pending.PutKeyed(id, sso.State{Issuer: set.IdPEntityID, ClientID: entityID, Verifier: id, Owner: key}); err != nil {
+	if err := c.Pending.PutKeyed(id, sso.State{Issuer: set.IDPEntityID, ClientID: entityID, Verifier: id, Owner: key}); err != nil {
 		return c.fail(ctx, base, sso.CodeBusy)
 	}
 
@@ -129,7 +129,7 @@ func (c *SAMLController) ACS(ctx contractshttp.Context) contractshttp.Response {
 
 	set := c.settings(r.Context())
 	entityID := set.EntityIDFor(base)
-	if !set.Configured() || !c.Auth.Mode(r.Context()).SAML || set.IdPEntityID != state.Issuer || entityID != state.ClientID {
+	if !set.Configured() || !c.Auth.Mode(r.Context()).SAML || set.IDPEntityID != state.Issuer || entityID != state.ClientID {
 		c.countFailure(key)
 		return c.fail(ctx, base, sso.CodeNotConfigured)
 	}
@@ -140,7 +140,7 @@ func (c *SAMLController) ACS(ctx contractshttp.Context) contractshttp.Response {
 	}
 
 	assertion, err := saml.Verify(encoded, saml.Expect{
-		Issuer:      set.IdPEntityID,
+		Issuer:      set.IDPEntityID,
 		Audience:    entityID,
 		Destination: sso.CleanURL(base, samlACS),
 		RequestID:   state.Verifier,
@@ -153,7 +153,7 @@ func (c *SAMLController) ACS(ctx contractshttp.Context) contractshttp.Response {
 		sso.Debugf(c.Log, "saml response refused: %v", err)
 		return c.fail(ctx, base, sso.CodeInvalid)
 	}
-	sso.Debugf(c.Log, "saml sign-in for issuer %s assertion %s", saml.ShortHash(set.IdPEntityID), saml.ShortHash(assertion.ID))
+	sso.Debugf(c.Log, "saml sign-in for issuer %s assertion %s", sso.ShortHash(set.IDPEntityID), sso.ShortHash(assertion.ID))
 
 	email, exactOnly, ok := saml.Email(assertion, set)
 	if !ok {

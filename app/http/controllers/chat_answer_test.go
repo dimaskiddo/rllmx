@@ -9,9 +9,9 @@ import (
 
 	contractshttp "github.com/goravel/framework/contracts/http"
 
+	"rllmx/app/gateway/pipeline"
 	apphttp "rllmx/app/http"
 	"rllmx/app/http/middleware"
-	"rllmx/app/pipeline"
 	"rllmx/tests"
 )
 
@@ -31,7 +31,7 @@ func TestABufferedAnswerIsNotCopiedIntoTheDriversBuffer(t *testing.T) {
 	route := tests.NewRoute(t)
 	g := apphttp.NewGuard(keyed{}, true)
 	route.SetGlobalMiddleware([]contractshttp.Middleware{
-		&middleware.RequestId{}, bufferProbe{&kept}, &middleware.Guard{Guard: g},
+		&middleware.RequestID{}, bufferProbe{&kept}, &middleware.Guard{Guard: g},
 	})
 	c := &ChatController{Pipe: func() (*pipeline.Pipeline, error) { return r.pipe() }, Log: &tests.Log{}}
 	g.Handle(route, apphttp.ClassLLM, nethttp.MethodPost, "/v1/chat/completions", c.Serve)

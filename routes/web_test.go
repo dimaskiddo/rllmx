@@ -11,10 +11,10 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 	goravelgin "github.com/goravel/gin"
 
+	"rllmx/app/access/identity"
 	apphttp "rllmx/app/http"
 	"rllmx/app/http/controllers"
 	"rllmx/app/http/middleware"
-	"rllmx/app/identity"
 	"rllmx/tests"
 )
 
@@ -36,7 +36,7 @@ func buildWith(t *testing.T, auth apphttp.Authenticator) (*goravelgin.Route, *ap
 	t.Helper()
 	r := tests.NewRoute(t)
 	g := apphttp.NewGuard(auth, true)
-	r.SetGlobalMiddleware([]contractshttp.Middleware{&middleware.RequestId{}, &middleware.Guard{Guard: g}})
+	r.SetGlobalMiddleware([]contractshttp.Middleware{&middleware.RequestID{}, &middleware.Guard{Guard: g}})
 	Web(r, g, Base{Version: "1.2.3", Commit: "abc123", Connections: func(context.Context) (int64, error) { return 0, nil }})
 	return r, g
 }
@@ -172,7 +172,7 @@ func TestThereIsNoShutdownRoute(t *testing.T) {
 func TestEveryChatRouteIsAnLLMRouteThatNeedsAKey(t *testing.T) {
 	r := tests.NewRoute(t)
 	g := apphttp.NewGuard(nil, true)
-	r.SetGlobalMiddleware([]contractshttp.Middleware{&middleware.RequestId{}, &middleware.Guard{Guard: g}})
+	r.SetGlobalMiddleware([]contractshttp.Middleware{&middleware.RequestID{}, &middleware.Guard{Guard: g}})
 	Web(r, g, Base{Chat: &controllers.ChatController{}})
 	for _, p := range []string{
 		"/v1/chat/completions", "/v1/messages", "/v1/messages/count_tokens", "/v1/responses", "/v1/responses/compact",
@@ -202,7 +202,7 @@ func TestChatCompletionsIsLeftOutWithoutAController(t *testing.T) {
 func TestModelRoutesAreAnLLMGetAndSitBesideTheChatRoutes(t *testing.T) {
 	r := tests.NewRoute(t)
 	g := apphttp.NewGuard(nil, true)
-	r.SetGlobalMiddleware([]contractshttp.Middleware{&middleware.RequestId{}, &middleware.Guard{Guard: g}})
+	r.SetGlobalMiddleware([]contractshttp.Middleware{&middleware.RequestID{}, &middleware.Guard{Guard: g}})
 	Web(r, g, Base{Chat: &controllers.ChatController{}, Models: &controllers.ModelsController{}})
 	for _, p := range []string{"/v1/models", "/v1/models/*path", "/v1beta/models"} {
 		if class, ok := g.RouteClass("GET", p); !ok || class != apphttp.ClassLLM {
@@ -233,7 +233,7 @@ func oauthRoutes(t *testing.T) (*goravelgin.Route, *apphttp.Guard) {
 	t.Helper()
 	r := tests.NewRoute(t)
 	g := apphttp.NewGuard(nil, true)
-	r.SetGlobalMiddleware([]contractshttp.Middleware{&middleware.RequestId{}, &middleware.Guard{Guard: g}})
+	r.SetGlobalMiddleware([]contractshttp.Middleware{&middleware.RequestID{}, &middleware.Guard{Guard: g}})
 	Web(r, g, Base{OAuth: &controllers.OAuthController{}, Callback: &controllers.CallbackController{}})
 	return r, g
 }

@@ -1,8 +1,8 @@
-# PRD 07 — Format Translation (`app/translate/`)
+# PRD 07 — Format Translation (`app/llm/translate/`)
 
 **Status:** partial · **Steps:** 1.8, 1.10
 
-OpenAI Chat is the hub. Built in 1.8a: `app/translate`, whose hub is a typed Go value (`Request`, `Message`, `Part`, `Response`, `Chunk`), not a map. A codec per format reads a body into the hub and writes the hub back (`Codec`: `ReadRequest`, `WriteRequest`, `ReadResponse`, `WriteResponse`), registered by name; every conversion goes `source -> hub -> target`, direct pairs are not built, and a new format needs one codec. Each codec also has a stream half (1.8b): `NewStreamReader` turns the format's events into hub `Chunk`s and `NewStreamWriter` turns chunks into its frames (`StreamReader`, `StreamWriter`, `Frame`; `stream_<format>.go`). The transport that runs them is `app/stream` (PRD 9). The 1.8c pipeline is the caller; no route reaches it until 1.8d.
+OpenAI Chat is the hub. Built in 1.8a: `app/llm/translate`, whose hub is a typed Go value (`Request`, `Message`, `Part`, `Response`, `Chunk`), not a map. A codec per format reads a body into the hub and writes the hub back (`Codec`: `ReadRequest`, `WriteRequest`, `ReadResponse`, `WriteResponse`), registered by name; every conversion goes `source -> hub -> target`, direct pairs are not built, and a new format needs one codec. Each codec also has a stream half (1.8b): `NewStreamReader` turns the format's events into hub `Chunk`s and `NewStreamWriter` turns chunks into its frames (`StreamReader`, `StreamWriter`, `Frame`; `stream_<format>.go`). The transport that runs them is `app/llm/stream` (PRD 9). The 1.8c pipeline is the caller; no route reaches it until 1.8d.
 
 Formats: `openai`, `openai-responses`, `claude`, `gemini`, `gemini-cli`, `vertex`, `codex`, `antigravity`, `kiro`, `cursor`, `ollama`, `commandcode`.
 
@@ -31,7 +31,7 @@ The reference translators were compared with base 9router 0.5.112 and the improv
 | Usage | Normalized per provider into prompt, completion, cached, cache-creation and reasoning tokens |
 | Stream state | Each stream holds a state value (message id, tool calls by index, finish reason, usage, content block indices; Responses adds sequence numbers and text/argument buffers). A `nil` chunk means flush: translators close open blocks |
 
-### Capabilities (`app/upstream/capabilities.go`, planned)
+### Capabilities (`app/llm/upstream/capabilities.go`, planned)
 
 Nothing exists yet. The target shape is four embedded files under `data/capabilities/`: `capabilities.json`, `thinking.json`, `vision.json`, `params.json`, decoded strictly, size capped and validated at start.
 
@@ -52,7 +52,7 @@ The Claude and Gemini placeholder thinking signatures are data in `thinking.json
 
 A request is disguised when all of these hold: the upstream format is Claude, the connection is a login of a provider whose data sets `disguise`, its token begins `sk-ant-oat`, and the client is not Claude Code (a Claude Code client is native: its body is already right). Then, in this order, on the finished body:
 1. a billing block becomes `system[0]` (a string system becomes two blocks; nothing is added if `system[0]` already starts with the prefix). Its `cch` is the first five hex characters of SHA-256 over the body as it stood before this step, the build part is three random hex characters, and the version is `2.1.280`;
-2. `metadata.user_id` is added when the client sent none: `{"device_id":…,"account_uuid":…,"session_id":…}`, the ids derived from the token and the session from `app/conversation` with any `claude:` prefix removed;
+2. `metadata.user_id` is added when the client sent none: `{"device_id":…,"account_uuid":…,"session_id":…}`, the ids derived from the token and the session from `app/gateway/conversation` with any `claude:` prefix removed;
 3. every client tool without a `type` is renamed with the suffix `_ide`, in the tool list, in every `tool_use` of the history and in a forced `tool_choice` that names a renamed tool; twenty decoy tools follow. A body with no tools gets steps 1 and 2 only.
 
 | Item | Behavior |
@@ -67,7 +67,7 @@ A request is disguised when all of these hold: the upstream format is Claude, th
 
 ### Thinking Writers for OpenAI-Format Upstreams (1.10d)
 
-The OpenAI codec writes thinking by the model's `thinkingFormat` (`app/translate/openai.go`, `writeOpenAIThinking`). A format the data does not name keeps `reasoning_effort` with the level as the client asked.
+The OpenAI codec writes thinking by the model's `thinkingFormat` (`app/llm/translate/openai.go`, `writeOpenAIThinking`). A format the data does not name keeps `reasoning_effort` with the level as the client asked.
 
 | Format | Written (the reference's rule, `thinkingUnified.js`) | Levels |
 |---|---|---|
@@ -141,7 +141,7 @@ All go through the OpenAI hub; no direct pairs (PRD 7). References under `transl
 | openai to/from openai-responses | `request/openai-responses.js`, `response/openai-responses.js`, `formats/responsesApi.js` | todo (request, body, stream, both ways; D119-120) | 1.8 |
 | openai to/from ollama | `*/*ollama*.js` | todo (all four directions; D136) | 1.8 |
 | Concerns: thinking, tool calls, usage, finish reasons, images, modality, params | `concerns/*` | todo (also same-format, D138; param rules in `params.json`: claude temperature, groq, openai, GitHub; OpenAI-shaped bodies drop `developer`, foreign blocks, blank messages as `filterToOpenAIFormat`; audit 2 fixes D183-D188) | 1.8 |
-| Capability, thinking-level and vision tables | `providers/{capabilities,thinkingLevels,visionPatterns}.js` | todo (`app/upstream`, `data/capabilities/*.json`; catalog overlay 2.6, commandcode and kiro rules 1.10) | 1.8 |
+| Capability, thinking-level and vision tables | `providers/{capabilities,thinkingLevels,visionPatterns}.js` | todo (`app/llm/upstream`, `data/capabilities/*.json`; catalog overlay 2.6, commandcode and kiro rules 1.10) | 1.8 |
 | gemini-cli, antigravity (from openai, and the answer back) | `request/openai-to-gemini.js`, `response/gemini-to-openai.js` | done (1.10g; the Gemini codec wrapped in the Cloud Code envelope, divergence 256 for the inbound reader) | 1.10g |
 | openai to vertex | `request/openai-to-vertex.js` | done (1.10g) | 1.10g |
 | kiro (openai to kiro; the answer is read as events) | `request/openai-to-kiro.js`, `request/claude-to-kiro.js`, `concerns/kiroConversation.js`, `config/kiroConstants.js` | done | 1.10h |
@@ -156,9 +156,9 @@ All go through the OpenAI hub; no direct pairs (PRD 7). References under `transl
 - [x] The OpenAI hub and the OpenAI, Claude, Responses, Gemini and Ollama codecs for request and non-stream answer (1.8a)
 - [x] Claude preparation: cache markers (at most four, tool-call prefixes byte-stable), history repair, thinking-block signatures, `max_tokens` cap, tool-choice relaxing (1.8a)
 - [x] The concerns: tool-call ids and results, finish reasons, usage invariants, modality, thinking, parameter rules applied last (1.8a)
-- [x] The capability tables in `app/upstream` (1.8a)
+- [x] The capability tables in `app/llm/upstream` (1.8a)
 - [x] The stream direction of every codec: readers and writers for OpenAI, Claude, Responses, Gemini and Ollama; hold-for-usage; the `<think>` tag split for Responses; Claude `Read` tool argument repair (1.8b)
-- [x] Image prefetch (`app/prefetch`, 1.8d): Gemini and Ollama targets only, magic bytes decide the type
+- [x] Image prefetch (`app/gateway/prefetch`, 1.8d): Gemini and Ollama targets only, magic bytes decide the type
 - [x] Claude cloak: tool suffix, decoys, billing block, user id, restore on body and stream (1.9c)
 - [x] Step 1.10g: gemini-cli, antigravity and vertex (`CloudCodeCodec`, `VertexCodec`; the Gemini writer takes a placeholder signature and the safety settings through `Ctx`)
 - [x] 1.10h: the kiro format (`translate/kiro.go`, `kiro_wire.go`, `kiro_canon.go`, `kiro_stream.go`, `kiro_alias.go`) built in 1.10h
@@ -210,7 +210,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 
 **A decoder error can carry the input.** Go's JSON decoder names an unknown key in its message, and a key can be a secret pasted in the wrong place. Loader errors give a fixed reason only (this is true of the registry and the capability tables alike).
 
-**Streams meet at the hub chunk, and the writer owns the hold.** Every reader emits `Chunk`s whose first one carries the role, with at most one finish and usage as a separate report merged by maximum; every writer holds its closing event until usage arrives (`Held`, `Close`). That is what let one usage timer in `app/stream` serve five formats, and what makes the all-pair test (25 reader/writer pairs over one scripted turn) a real check rather than five unrelated ones.
+**Streams meet at the hub chunk, and the writer owns the hold.** Every reader emits `Chunk`s whose first one carries the role, with at most one finish and usage as a separate report merged by maximum; every writer holds its closing event until usage arrives (`Held`, `Close`). That is what let one usage timer in `app/llm/stream` serve five formats, and what makes the all-pair test (25 reader/writer pairs over one scripted turn) a real check rather than five unrelated ones.
 
 **A whole-call format cannot be fed fragments.** Gemini and Ollama carry a tool call in one part or line, so their writers collect fragments and send the call with the turn. The first version wrote each fragment and produced two calls for one.
 

@@ -11,13 +11,13 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 	"github.com/tidwall/gjson"
 
-	"rllmx/app/catalog"
+	"rllmx/app/access/identity"
+	"rllmx/app/gateway/catalog"
 	apphttp "rllmx/app/http"
 	"rllmx/app/http/middleware"
-	"rllmx/app/identity"
-	"rllmx/app/repository"
-	"rllmx/app/routing"
-	"rllmx/app/upstream"
+	"rllmx/app/llm/routing"
+	"rllmx/app/llm/upstream"
+	"rllmx/app/store/repository"
 	"rllmx/tests"
 	"rllmx/tests/store"
 )
@@ -56,7 +56,7 @@ func newModelsRig(t *testing.T, caller identity.Caller) *modelsRig {
 	r := &modelsRig{t: t, st: st, cat: func() (*catalog.Catalog, error) { return c, nil }}
 	route := tests.NewRoute(t)
 	g := apphttp.NewGuard(asCaller{caller}, true)
-	route.SetGlobalMiddleware([]contractshttp.Middleware{&middleware.RequestId{}, &middleware.Guard{Guard: g}})
+	route.SetGlobalMiddleware([]contractshttp.Middleware{&middleware.RequestID{}, &middleware.Guard{Guard: g}})
 	m := &ModelsController{Catalog: func() (*catalog.Catalog, error) { return r.cat() }, Log: &tests.Log{}}
 	g.Handle(route, apphttp.ClassLLM, nethttp.MethodGet, "/v1/models", m.List)
 	g.Handle(route, apphttp.ClassLLM, nethttp.MethodGet, "/v1/models/*path", m.Show)

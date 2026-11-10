@@ -3,7 +3,7 @@ package tests
 import (
 	"context"
 
-	"rllmx/app/document"
+	"rllmx/app/store/document"
 )
 
 // Settings is a settings reader over a fixed document, for a test that needs

@@ -11,8 +11,8 @@ import (
 	"testing/fstest"
 	"time"
 
-	"rllmx/app/oauth"
-	"rllmx/app/repository"
+	"rllmx/app/llm/oauth"
+	"rllmx/app/store/repository"
 )
 
 // nodeFor creates a node on a test server and returns the node id.

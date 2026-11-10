@@ -4,7 +4,7 @@ import (
 	"errors"
 	"github.com/goravel/framework/contracts/console"
 	"github.com/goravel/framework/contracts/console/command"
-	"rllmx/app/data"
+	"rllmx/app/store/data"
 )
 
 // DBCheck runs the integrity check and the schema comparison.

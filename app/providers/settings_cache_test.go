@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"rllmx/app/document"
+	"rllmx/app/store/document"
 	"rllmx/tests/store"
 )
 

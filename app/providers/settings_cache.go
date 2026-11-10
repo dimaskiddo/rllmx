@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"rllmx/app/document"
-	"rllmx/app/repository"
-	"rllmx/app/ttl"
+	"rllmx/app/platform/ttl"
+	"rllmx/app/store/document"
+	"rllmx/app/store/repository"
 )
 
 const (

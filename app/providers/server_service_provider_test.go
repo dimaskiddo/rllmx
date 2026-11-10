@@ -22,8 +22,8 @@ import (
 	"github.com/goravel/framework/contracts/route"
 	"github.com/goravel/framework/hash"
 
-	"rllmx/app/data"
-	"rllmx/app/oauth"
+	"rllmx/app/llm/oauth"
+	"rllmx/app/store/data"
 	"rllmx/tests"
 )
 

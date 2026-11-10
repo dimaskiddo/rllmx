@@ -6,7 +6,7 @@ import (
 	"github.com/goravel/framework/contracts/log"
 
 	"rllmx/app/facades"
-	"rllmx/app/redactor"
+	"rllmx/app/platform/redactor"
 )
 
 // Every file channel must go through the redactor. A channel that goes back to

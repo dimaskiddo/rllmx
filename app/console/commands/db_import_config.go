@@ -7,10 +7,10 @@ import (
 	"github.com/goravel/framework/contracts/console"
 	"github.com/goravel/framework/contracts/console/command"
 
-	"rllmx/app/data"
-	"rllmx/app/importer"
-	"rllmx/app/repository"
-	"rllmx/app/settings"
+	"rllmx/app/platform/settings"
+	"rllmx/app/store/data"
+	"rllmx/app/store/importer"
+	"rllmx/app/store/repository"
 )
 
 // DBImportConfig seeds an empty database from a legacy one.

@@ -6,7 +6,7 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 	"github.com/goravel/framework/contracts/log"
 
-	"rllmx/app/text"
+	"rllmx/app/platform/text"
 )
 
 const maxLoggedPath = 200
@@ -35,5 +35,5 @@ func (m *AccessLog) Handle(ctx contractshttp.Context) {
 		status, size = o.Status(), max(o.Size(), 0)
 	}
 	m.Log.Infof("%s %s %d %dB %s %s", r.Method, text.CutRunes(text.StripControl(r.URL.Path), maxLoggedPath),
-		status, size, time.Since(start).Round(time.Microsecond), RequestIdFrom(ctx))
+		status, size, time.Since(start).Round(time.Microsecond), RequestIDFrom(ctx))
 }

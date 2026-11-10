@@ -7,8 +7,8 @@ import (
 
 	"github.com/tidwall/gjson"
 
-	"rllmx/app/cache"
-	"rllmx/app/pipeline"
+	"rllmx/app/gateway/pipeline"
+	"rllmx/app/platform/cache"
 	"rllmx/tests"
 )
 

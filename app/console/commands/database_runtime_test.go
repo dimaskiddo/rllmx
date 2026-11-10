@@ -10,7 +10,7 @@ import (
 	contractsdb "github.com/goravel/framework/contracts/database/db"
 	contractsschema "github.com/goravel/framework/contracts/database/schema"
 
-	"rllmx/app/data"
+	"rllmx/app/store/data"
 	"rllmx/tests"
 	"rllmx/tests/store"
 )

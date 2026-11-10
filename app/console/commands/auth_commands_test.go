@@ -12,10 +12,10 @@ import (
 
 	frameworkhash "github.com/goravel/framework/contracts/hash"
 
-	"rllmx/app/auth"
-	"rllmx/app/data"
-	"rllmx/app/identity"
-	"rllmx/app/repository"
+	"rllmx/app/access/auth"
+	"rllmx/app/access/identity"
+	"rllmx/app/store/data"
+	"rllmx/app/store/repository"
 	"rllmx/tests"
 	"rllmx/tests/store"
 )

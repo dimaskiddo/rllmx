@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"rllmx/app/settings"
+	"rllmx/app/platform/settings"
 	"rllmx/tests"
 )
 

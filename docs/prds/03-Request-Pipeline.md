@@ -1,8 +1,8 @@
-# PRD 03 — Request Pipeline (`app/pipeline/`)
+# PRD 03 — Request Pipeline (`app/gateway/pipeline/`)
 
 **Status:** partial · **Steps:** 1.8c, 1.8d, 1.8e, 1.8f, 1.8g
 
-Built in 1.8c as a library, reached since 1.8d by `POST /v1/chat/completions`: `app/pipeline` has no HTTP types. `Pipeline.Handle(ctx, Input, Opener) Output` parses the body through the client codec, resolves the model, translates once, walks the provider's accounts, answers (relay a stream, collect a forced stream into JSON, or translate a buffered body) and enqueues exactly one usage row on every path. The 1.8d controller turns a request into an `Input`, supplies an `Opener` that starts the client's stream, and writes an `Output` that is not `Streamed`. The stream is opened by its first frame, so an upstream that fails before sending anything is still answered with a plain error and the next account is tried.
+Built in 1.8c as a library, reached since 1.8d by `POST /v1/chat/completions`: `app/gateway/pipeline` has no HTTP types. `Pipeline.Handle(ctx, Input, Opener) Output` parses the body through the client codec, resolves the model, translates once, walks the provider's accounts, answers (relay a stream, collect a forced stream into JSON, or translate a buffered body) and enqueues exactly one usage row on every path. The 1.8d controller turns a request into an `Input`, supplies an `Opener` that starts the client's stream, and writes an `Output` that is not `Streamed`. The stream is opened by its first frame, so an upstream that fails before sending anything is still answered with a plain error and the next account is tried.
 
 The per-request engine. One call walks these stages; each is a package or a function in one.
 
@@ -53,19 +53,19 @@ flowchart TD
 | Endpoint | Package | Status | Step |
 |---|---|---|---|
 | `POST /v1/chat/completions` | `app/http/controllers` | done (1.8d) | 1.8d |
-| `X-Rllm-Cache` header: request `use`/`bypass`, response `hit`/`miss` | `app/pipeline`, `app/http/controllers` | done (1.8g; D24, D148) | 1.8g |
+| `X-Rllm-Cache` header: request `use`/`bypass`, response `hit`/`miss` | `app/gateway/pipeline`, `app/http/controllers` | done (1.8g; D24, D148) | 1.8g |
 | `POST /v1/messages` | `app/http/controllers` | done (1.8e) | 1.8e |
-| `POST /v1/messages/count_tokens` | `app/http/controllers`, `app/translate` | done (1.8e: local estimate, runes over four, no upstream, no row; D117) | 1.8e |
+| `POST /v1/messages/count_tokens` | `app/http/controllers`, `app/llm/translate` | done (1.8e: local estimate, runes over four, no upstream, no row; D117) | 1.8e |
 | `POST /v1/responses`, `/v1/responses/compact` | `app/http/controllers` | done (1.8e: compact is a plain Responses call for every provider but Codex; 1.10b: a Codex call goes to the upstream `/compact` path and the JSON answer is forwarded as sent, D120) | 1.8e, 1.10b |
 | `POST /v1beta/models/{m}:generateContent`, `:streamGenerateContent` | `app/http/controllers` | done (1.8e; D224) | 1.8e |
-| `GET /v1/models`, `/v1/models/info`, `/v1/models/{m}`, `GET /v1beta/models` | `app/http/controllers`, `app/catalog` | done (1.8f; D225, D226) | 1.8f |
+| `GET /v1/models`, `/v1/models/info`, `/v1/models/{m}`, `GET /v1beta/models` | `app/http/controllers`, `app/gateway/catalog` | done (1.8f; D225, D226) | 1.8f |
 | `POST /v1/api/chat` (Ollama) | `app/http/controllers` | done (1.8e: NDJSON by default, JSON for `stream:false` or `Accept: application/json`; D136) | 1.8e |
-| `POST /v1/embeddings` | `app/media` | todo | 1.11 |
-| `POST /v1/images/generations` | `app/media` | todo | 1.11 |
-| `POST /v1/audio/speech`, `/transcriptions`, `GET /v1/audio/voices` | `app/media` | todo | 1.11 |
-| `POST /v1/videos/*`, `GET /v1/videos/{id}` | `app/media` | todo | 1.11 |
-| `POST /v1/search`, `POST /v1/web/fetch` | `app/media` | todo | 1.11 |
-| `POST /v1/systemone` | `app/combo` | todo | 2.4 |
+| `POST /v1/embeddings` | `app/gateway` | todo | 1.11 |
+| `POST /v1/images/generations` | `app/gateway` | todo | 1.11 |
+| `POST /v1/audio/speech`, `/transcriptions`, `GET /v1/audio/voices` | `app/gateway` | todo | 1.11 |
+| `POST /v1/videos/*`, `GET /v1/videos/{id}` | `app/gateway` | todo | 1.11 |
+| `POST /v1/search`, `POST /v1/web/fetch` | `app/gateway` | todo | 1.11 |
+| `POST /v1/systemone` | `app/gateway` | todo | 2.4 |
 | URL rewrites (`/codex/*`, `/responses`, `/v1/v1/*`, `/systemone`; ref `next.config.mjs`) | `app/http` | done (pre-guard; non-canonical paths refused) | 1.5 |
 
 ---
@@ -74,31 +74,31 @@ flowchart TD
 
 | Stage | Reference | Package | Status | Step |
 |---|---|---|---|---|
-| Guard (key, session, loopback) | `dashboardGuard.js`, `sse/services/auth.js` | `app/http`, `app/auth` | partial (class table, locality, deny-all authenticator; key lookup and session 1.6; restricted-key check 2.2) | 1.6 |
+| Guard (key, session, loopback) | `dashboardGuard.js`, `sse/services/auth.js` | `app/http`, `app/access/auth` | partial (class table, locality, deny-all authenticator; key lookup and session 1.6; restricted-key check 2.2) | 1.6 |
 | Key access restriction | `sse/services/keyAccess.js` | `app/access` | todo | 2.2 |
-| Session identity | `utils/sessionManager.js` | `app/conversation` | built in 1.8c (client-named id by reference priority, else opening assistant text, else per connection, two-hour life; `Bound` keyed hash; the pipeline reads it since 1.9c, once an account is chosen: the Claude user id and session header, and a keyed hash for Codex's `session_id`; continuity store 3.2) | 1.8c |
-| Bypass (warmup, title) | `utils/bypassHandler.js` | `app/pipeline` | done (1.8d: runs after parse and before model resolution, so it works for a combo name and with no account; D143 one row, D223 the client's own codec writes the reply) | 1.8d |
-| Capability detection (current-turn needs: vision, pdf, audio, video) | `services/combo.js` (`detectRequiredCapabilities`) | `app/translate` | todo (`DetectNeeds`, `Needs.Met`; combo step calls it) | 1.8 |
-| Capacity adapter (fallback pools per capability) | `services/capacityAdapter.js` | `app/combo` | todo | 2.4 |
-| Model resolution, aliases, nodes, inference | `services/model.js`, `sse/services/model.js` | `app/routing` | done (resolver, snapshot; D80-81; a combo name is answered 404 until 2.4) | 1.7 |
-| Combos: fallback, round-robin, smart (System One), fusion | `services/combo.js`, `services/systemoneRouter.js` | `app/combo` | todo | 2.4 |
-| Empty-stream failover | `services/emptyFailover.js` | `app/stream` | todo | 2.4 |
-| Request-scoped 4xx combo advance | `services/combo.js` | `app/combo` | todo | 2.4 |
-| Account selection and strategies | `sse/services/auth.js` | `app/account` | done (selector; D82-83, D212; called by the pipeline loop since 1.8c) | 1.8c |
-| Error rules and backoff | `config/errorConfig.js`, `services/accountFallback.js` | `app/account` | done (D84-85; called by the pipeline loop since 1.8c) | 1.8c |
-| Per-model locks (`modelLock_*`) | `sse/services/auth.js` | `app/account`, `app/repository` | done (write and clear in `app/repository`, read by the selector since 1.7b) | 1.7 |
-| Token refresh: proactive, reactive, background, dedup | `services/tokenRefresh*`, `sse/services/backgroundTokenRefresh.js` | `app/oauth` | done (1.9b: proactive before a request, reactive on 401 and 403 with one retry, background loop, the connection test; D155-157) | 1.9b |
-| Format detection, transport, target format | `services/provider.js` | `app/pipeline` | built in 1.8c (endpoint decides the client format; a model's `targetFormat`, else the transport format; nodes by type and `apiType`) | 1.8c |
-| Native passthrough | `utils/clientDetector.js` | `app/pipeline` | partial (the stream layer passes through when client and upstream formats are equal, whatever the client tool; client tool detection from headers since 1.9c, from an allow-listed header set (`pipeline.PickHeaders`); a Claude Code client is never disguised; Claude normalization in `app/translate`, D142; the Codex and Gemini CLI body shapes 1.10) | 1.8, 1.9c |
-| Claude request preparation (`prepareClaudeRequest`) | `translator/formats/claude.js` | `app/translate` | todo (D118) | 1.8 |
-| Tool-name cloaking | `utils/claudeCloaking.js` | `app/translate`, `app/pipeline` | done (1.9c: tool suffix, decoys, billing block, user id, restore on the body and on both stream paths, the suffix stripped on every Claude answer as the reference does; D185, D216; D193 retired) | 1.9c |
-| Executor base, retry, URL fallback | `executors/base.js` | `app/executor` | built in 1.8c (in-place retry by status, data overrides, 2 s default delay; `baseUrls` fallback never tried: no shipped provider needs it, D102; a 401 or 403 on a login renews its token and retries once since 1.9b, D222 retired) | 1.8c |
-| Streaming: SSE parse and emit, usage, timers | `utils/stream.js`, `streamHandler.js` | `app/stream` | done (1.8b; run by the pipeline since 1.8c) | 1.8b |
-| Forced SSE to JSON, non-stream translation | `handlers/chatCore/*` | `app/stream`, `app/pipeline` | built in 1.8c (`Collect` for a stream-only provider; a buffered body through the codecs) | 1.8c |
-| Usage save, daily aggregate, cost | `src/lib/db/repos/usageRepo.js` | `app/analytics`, `app/pipeline` | partial (one row per request on every path with price and error class, built in 1.8c; the writer is wired in 1.8d; `app/usage` query surface unbuilt) | 1.8c |
-| Response cache (opt-in, per key and global, no streams or tool-call answers) | none in the references | `app/pipeline`, `app/providers` | done (1.8g: lookup after resolution and before translation, store in `deliver` after the account accepted; a hit selects no account and its row is `cached` at cost 0; D24, D148) | 1.8g |
+| Session identity | `utils/sessionManager.js` | `app/gateway/conversation` | built in 1.8c (client-named id by reference priority, else opening assistant text, else per connection, two-hour life; `Bound` keyed hash; the pipeline reads it since 1.9c, once an account is chosen: the Claude user id and session header, and a keyed hash for Codex's `session_id`; continuity store 3.2) | 1.8c |
+| Bypass (warmup, title) | `utils/bypassHandler.js` | `app/gateway/pipeline` | done (1.8d: runs after parse and before model resolution, so it works for a combo name and with no account; D143 one row, D223 the client's own codec writes the reply) | 1.8d |
+| Capability detection (current-turn needs: vision, pdf, audio, video) | `services/combo.js` (`detectRequiredCapabilities`) | `app/llm/translate` | todo (`DetectNeeds`, `Needs.Met`; combo step calls it) | 1.8 |
+| Capacity adapter (fallback pools per capability) | `services/capacityAdapter.js` | `app/gateway` | todo | 2.4 |
+| Model resolution, aliases, nodes, inference | `services/model.js`, `sse/services/model.js` | `app/llm/routing` | done (resolver, snapshot; D80-81; a combo name is answered 404 until 2.4) | 1.7 |
+| Combos: fallback, round-robin, smart (System One), fusion | `services/combo.js`, `services/systemoneRouter.js` | `app/gateway` | todo | 2.4 |
+| Empty-stream failover | `services/emptyFailover.js` | `app/llm/stream` | todo | 2.4 |
+| Request-scoped 4xx combo advance | `services/combo.js` | `app/gateway` | todo | 2.4 |
+| Account selection and strategies | `sse/services/auth.js` | `app/gateway/account` | done (selector; D82-83, D212; called by the pipeline loop since 1.8c) | 1.8c |
+| Error rules and backoff | `config/errorConfig.js`, `services/accountFallback.js` | `app/gateway/account` | done (D84-85; called by the pipeline loop since 1.8c) | 1.8c |
+| Per-model locks (`modelLock_*`) | `sse/services/auth.js` | `app/gateway/account`, `app/store/repository` | done (write and clear in `app/store/repository`, read by the selector since 1.7b) | 1.7 |
+| Token refresh: proactive, reactive, background, dedup | `services/tokenRefresh*`, `sse/services/backgroundTokenRefresh.js` | `app/llm/oauth` | done (1.9b: proactive before a request, reactive on 401 and 403 with one retry, background loop, the connection test; D155-157) | 1.9b |
+| Format detection, transport, target format | `services/provider.js` | `app/gateway/pipeline` | built in 1.8c (endpoint decides the client format; a model's `targetFormat`, else the transport format; nodes by type and `apiType`) | 1.8c |
+| Native passthrough | `utils/clientDetector.js` | `app/gateway/pipeline` | partial (the stream layer passes through when client and upstream formats are equal, whatever the client tool; client tool detection from headers since 1.9c, from an allow-listed header set (`pipeline.PickHeaders`); a Claude Code client is never disguised; Claude normalization in `app/llm/translate`, D142; the Codex and Gemini CLI body shapes 1.10) | 1.8, 1.9c |
+| Claude request preparation (`prepareClaudeRequest`) | `translator/formats/claude.js` | `app/llm/translate` | todo (D118) | 1.8 |
+| Tool-name cloaking | `utils/claudeCloaking.js` | `app/llm/translate`, `app/gateway/pipeline` | done (1.9c: tool suffix, decoys, billing block, user id, restore on the body and on both stream paths, the suffix stripped on every Claude answer as the reference does; D185, D216; D193 retired) | 1.9c |
+| Executor base, retry, URL fallback | `executors/base.js` | `app/llm/executor` | built in 1.8c (in-place retry by status, data overrides, 2 s default delay; `baseUrls` fallback never tried: no shipped provider needs it, D102; a 401 or 403 on a login renews its token and retries once since 1.9b, D222 retired) | 1.8c |
+| Streaming: SSE parse and emit, usage, timers | `utils/stream.js`, `streamHandler.js` | `app/llm/stream` | done (1.8b; run by the pipeline since 1.8c) | 1.8b |
+| Forced SSE to JSON, non-stream translation | `handlers/chatCore/*` | `app/llm/stream`, `app/gateway/pipeline` | built in 1.8c (`Collect` for a stream-only provider; a buffered body through the codecs) | 1.8c |
+| Usage save, daily aggregate, cost | `src/lib/db/repos/usageRepo.js` | `app/store/analytics`, `app/gateway/pipeline` | partial (one row per request on every path with price and error class, built in 1.8c; the writer is wired in 1.8d; `app/store` query surface unbuilt) | 1.8c |
+| Response cache (opt-in, per key and global, no streams or tool-call answers) | none in the references | `app/gateway/pipeline`, `app/providers` | done (1.8g: lookup after resolution and before translation, store in `deliver` after the account accepted; a hit selects no account and its row is `cached` at cost 0; D24, D148) | 1.8g |
 | Request details (body dumps) | `src/lib/db/repos/requestDetailsRepo.js` | none | out | - |
-| Live-catalog guards: kiro, codex, cursor, kimchi, qoder (extended) | `handlers/chatCore.js` | `app/catalog` | todo | 1.10 |
+| Live-catalog guards: kiro, codex, cursor, kimchi, qoder (extended) | `handlers/chatCore.js` | `app/gateway/catalog` | todo | 1.10 |
 
 ---
 

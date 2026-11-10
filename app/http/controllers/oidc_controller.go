@@ -10,13 +10,13 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 	"github.com/goravel/framework/contracts/log"
 
-	"rllmx/app/auth"
-	"rllmx/app/cache"
+	"rllmx/app/access/auth"
+	"rllmx/app/access/oidc"
+	"rllmx/app/access/sso"
 	apphttp "rllmx/app/http"
-	"rllmx/app/oidc"
-	"rllmx/app/repository"
-	"rllmx/app/settings"
-	"rllmx/app/sso"
+	"rllmx/app/platform/cache"
+	"rllmx/app/platform/settings"
+	"rllmx/app/store/repository"
 )
 
 // OIDCController answers the two single sign-on routes. Every failure is a
@@ -60,22 +60,22 @@ func (c *OIDCController) Start(ctx contractshttp.Context) contractshttp.Response
 		return c.fail(ctx, base, sso.CodeBusy)
 	}
 	if len(c.Auth.Secret()) == 0 {
-		return c.fail(ctx, base, sso.CodeIdPError)
+		return c.fail(ctx, base, sso.CodeIDPError)
 	}
 
 	doc, err := oidc.Discover(r.Context(), c.Client, c.Cache, set.Issuer)
 	if err != nil {
 		sso.Debugf(c.Log, "oidc discovery failed: %v", err)
-		return c.fail(ctx, base, sso.CodeIdPError)
+		return c.fail(ctx, base, sso.CodeIDPError)
 	}
 
 	verifier, err := oidc.Verifier()
 	if err != nil {
-		return c.fail(ctx, base, sso.CodeIdPError)
+		return c.fail(ctx, base, sso.CodeIDPError)
 	}
 	nonce, err := sso.Nonce()
 	if err != nil {
-		return c.fail(ctx, base, sso.CodeIdPError)
+		return c.fail(ctx, base, sso.CodeIDPError)
 	}
 
 	state, err := c.Pending.Put(sso.State{
@@ -123,7 +123,7 @@ func (c *OIDCController) Callback(ctx contractshttp.Context) contractshttp.Respo
 	// A provider that reports its own failure is passed through as one code.
 	if r.URL.Query().Get("error") != "" {
 		sso.Debugf(c.Log, "oidc provider reported an error: %s", r.URL.Query().Get("error"))
-		return c.fail(ctx, base, sso.CodeIdPError)
+		return c.fail(ctx, base, sso.CodeIDPError)
 	}
 	code, state := r.URL.Query().Get("code"), r.URL.Query().Get("state")
 	if code == "" || state == "" {
@@ -152,7 +152,7 @@ func (c *OIDCController) Callback(ctx contractshttp.Context) contractshttp.Respo
 	if err != nil {
 		c.countFailure(key)
 		sso.Debugf(c.Log, "oidc discovery failed on the callback: %v", err)
-		return c.fail(ctx, base, sso.CodeIdPError)
+		return c.fail(ctx, base, sso.CodeIDPError)
 	}
 
 	form := url.Values{}
@@ -170,13 +170,13 @@ func (c *OIDCController) Callback(ctx contractshttp.Context) contractshttp.Respo
 	if err := c.Client.PostForm(r.Context(), doc.TokenEndpoint, form, &tokens); err != nil {
 		c.countFailure(key)
 		sso.Debugf(c.Log, "oidc token exchange failed: %v", err)
-		return c.fail(ctx, base, sso.CodeIdPError)
+		return c.fail(ctx, base, sso.CodeIDPError)
 	}
 
 	set2, err := c.jwks(r.Context(), doc)
 	if err != nil {
 		c.countFailure(key)
-		return c.fail(ctx, base, sso.CodeIdPError)
+		return c.fail(ctx, base, sso.CodeIDPError)
 	}
 	claims, err := oidc.VerifyIDToken(tokens.IDToken, set2, doc.Issuer, oidc.Expect{
 		ClientID: set.ClientID, Nonce: pending.Nonce, AccessToken: tokens.AccessToken, Now: c.Auth.Now(),
@@ -189,7 +189,7 @@ func (c *OIDCController) Callback(ctx contractshttp.Context) contractshttp.Respo
 		}
 		return c.fail(ctx, base, sso.CodeInvalid)
 	}
-	sso.Debugf(c.Log, "oidc sign-in for issuer %s subject %s", oidc.ShortHash(claims.Issuer), oidc.ShortHash(claims.Subject))
+	sso.Debugf(c.Log, "oidc sign-in for issuer %s subject %s", sso.ShortHash(claims.Issuer), sso.ShortHash(claims.Subject))
 
 	email, exactOnly, ok := oidc.Email(claims)
 	if !ok {

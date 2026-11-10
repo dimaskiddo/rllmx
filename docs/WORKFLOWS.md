@@ -94,7 +94,7 @@ sequenceDiagram
 | 9 | Maintenance once | `PRAGMA optimize` and WAL checkpoint on both SQLite files, incremental vacuum on analytics, `ANALYZE` on PostgreSQL analytics |
 | 10 | Cache | Memory, or Redis when configured. Unreachable Redis logs once; every lookup misses |
 | 11 | Registry, settings (**1.7**) | Load and validate embedded provider data (unique ids, known executors); read settings row, merge defaults, keep unknown keys. `ServerServiceProvider` loads the registry (`upstream.Default`) when it binds, so a bad data file stops the start with the file and field named; a test also fails the build on bad data |
-| 12 | Background | Today only the maintenance jobs (`app/data`). Planned: token refresh (1.9, `OAUTH_BACKGROUND_REFRESH`), quota auto-ping, catalog sync (2.6, `CATALOG_SYNC`) |
+| 12 | Background | Today only the maintenance jobs (`app/store/data`). Planned: token refresh (1.9, `OAUTH_BACKGROUND_REFRESH`), quota auto-ping, catalog sync (2.6, `CATALOG_SYNC`) |
 | 13 | Serve | Route table checked first: route outside guarded group fails the start |
 | 14 | `rllmx artisan health` | `GET /api/health` on configured host (wildcard dialled as loopback): 3 s, no proxy, at most three redirects inside those 3 s, exit 0 only for `200` with `{"ok":true}` |
 
@@ -140,7 +140,7 @@ Details: ARCHITECTURE.md (Terminal Commands). Password change, allow-list change
 7. **Response.** Non-stream body translated back with finish-reason fixes, `object`, `created`, usage.
 8. **Record.** Enqueue one usage row (stage 12).
 
-**Not built.** `app/pipeline` arrives in 1.8. Then: body not one JSON object, repeated top-level key, missing model: 400; restricted key 403; combo or non-OpenAI format 400 until 2.2, 2.4 and the 1.8 API work; locked account skipped, rate-limited one locked and next tried, all-locked 503 with `Retry-After` and `retryAfter`, no connection 404; upstream request from registry and connection only; every request ends in exactly one usage row (refusals, aborted streams included), unreported counts estimated, row marked `estimated`.
+**Not built.** `app/gateway/pipeline` arrives in 1.8. Then: body not one JSON object, repeated top-level key, missing model: 400; restricted key 403; combo or non-OpenAI format 400 until 2.2, 2.4 and the 1.8 API work; locked account skipped, rate-limited one locked and next tried, all-locked 503 with `Retry-After` and `retryAfter`, no connection 404; upstream request from registry and connection only; every request ends in exactly one usage row (refusals, aborted streams included), unreported counts estimated, row marked `estimated`.
 
 ### 5. Chat Completion, Streaming
 
@@ -265,7 +265,7 @@ Run after `references/` changes, before touching code.
 
 ### 17. `db:import-config`
 
-Seeds an empty SQLite file or PostgreSQL database for a new deployment: `rllmx artisan db:import-config --from <file or data dir> [--dry-run] [--yes] [--with-sso]`. Code: `app/importer`.
+Seeds an empty SQLite file or PostgreSQL database for a new deployment: `rllmx artisan db:import-config --from <file or data dir> [--dry-run] [--yes] [--with-sso]`. Code: `app/store/importer`.
 
 1. `--from` names a 9router `data.sqlite` or its data directory (`db/data.sqlite` tried first). Source copied with any `-wal` and `-shm` into `DATA_DIR/db/import-tmp`, opened read-only (`repository.OpenSnapshot`). Copy and any directory the command created removed whatever the outcome.
 2. Plan: counts, settings keys skipped as login policy, keys this version does not know. Counts and key names only, never a value.
@@ -302,9 +302,9 @@ Source row whose JSON does not parse: skipped and counted.
 | Secrets (planned, 1.6) | `DATA_DIR/jwt-secret`, `DATA_DIR/machine-id` (`0600`) |
 | Skills (planned, 3.2) | `DATA_DIR/skills/<id>/manifest.json`, `prompt.txt` or `prompt.md`, `rules.json`; ECC catalog in `skills/ecc-imported/` |
 | Catalog cache (planned, 2.6) | `DATA_DIR/model-catalog.json` |
-| Provider data | `app/upstream/data/<providerId>.json`; capabilities in `data/capabilities/`, prices in `data/pricing/` |
-| Translators (planned) | `app/translate/<format>_*.go`, one file group per format (request, response, stream) |
-| Executors (planned) | `app/executor/default.go`; specialized ones in `app/executor/<provider_id>.go` |
+| Provider data | `app/llm/upstream/data/<providerId>.json`; capabilities in `data/capabilities/`, prices in `data/pricing/` |
+| Translators (planned) | `app/llm/translate/<format>_*.go`, one file group per format (request, response, stream) |
+| Executors (planned) | `app/llm/executor/default.go`; specialized ones in `app/llm/executor/<provider_id>.go` |
 | Dashboard (planned) | `web/static/<page>.html`, `web/static/js/<module>.js`, `web/static/i18n/<locale>.json` |
 | API key | `sk-{machineId}-{keyId}-{crc8}` |
 | Model lock field | `modelLock_<model>` and `modelLock___all` in `providerConnections.data` |

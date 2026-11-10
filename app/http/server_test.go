@@ -16,7 +16,7 @@ import (
 
 	contractshttp "github.com/goravel/framework/contracts/http"
 
-	"rllmx/app/settings"
+	"rllmx/app/platform/settings"
 	"rllmx/tests"
 )
 

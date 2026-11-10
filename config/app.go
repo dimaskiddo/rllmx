@@ -10,7 +10,7 @@ import (
 	"github.com/goravel/framework/support/path"
 
 	"rllmx/app/facades"
-	"rllmx/app/settings"
+	"rllmx/app/platform/settings"
 )
 
 // Boot is the WithConfig hook. It runs after the framework has read the .env

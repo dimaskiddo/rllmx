@@ -11,7 +11,7 @@ import (
 	contractsschema "github.com/goravel/framework/contracts/database/schema"
 	"github.com/goravel/sqlite"
 
-	"rllmx/app/file"
+	"rllmx/app/platform/file"
 )
 
 var connectionSeq atomic.Int64

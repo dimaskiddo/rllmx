@@ -14,8 +14,8 @@ import (
 	"github.com/goravel/sqlite"
 	sqlitefacades "github.com/goravel/sqlite/facades"
 
-	"rllmx/app/file"
-	"rllmx/app/repository"
+	"rllmx/app/platform/file"
+	"rllmx/app/store/repository"
 )
 
 var openerSeq atomic.Int64

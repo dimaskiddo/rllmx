@@ -23,7 +23,7 @@ type Options struct {
 // and would cut a stream, and the CORS one reads a config block nothing writes.
 func Stack(m configuration.Middleware, o Options) {
 	m.Use(
-		&RequestId{},
+		&RequestID{},
 		&AccessLog{Log: o.Log},
 		&SecurityHeaders{Trust: o.Trust},
 		&CORS{},

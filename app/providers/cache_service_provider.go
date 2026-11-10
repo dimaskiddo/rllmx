@@ -6,8 +6,8 @@ import (
 	"github.com/goravel/framework/contracts/binding"
 	"github.com/goravel/framework/contracts/foundation"
 
-	"rllmx/app/cache"
-	"rllmx/app/settings"
+	"rllmx/app/platform/cache"
+	"rllmx/app/platform/settings"
 )
 
 // BindingCache is the container key of the grouped cache the request path reads.

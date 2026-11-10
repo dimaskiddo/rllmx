@@ -35,14 +35,14 @@ Formats shared with 9router. **Changing any needs user approval.** Additive only
 
 | Surface | Owner |
 |---|---|
-| Tables, columns, indexes, `_meta`, `schemaVersion`, `kv` scopes | `app/repository`, `PRD 15` |
-| Analytics schema | `app/analytics`, `PRD 15` |
-| JSON `data` columns, `settings` row | `app/document`, `PRD 15` |
-| Timestamps and stored values | `app/dialect`, `PRD 15` |
-| Sealed values (`enc:v1:`) | `app/sealer`, `PRD 15` |
-| Per-model locks in `providerConnections.data` | `app/account`, `PRD 5` |
-| API key, machine id | `app/identity`, `PRD 2` |
-| Dashboard session, password hash | `app/auth`, `PRD 2` |
+| Tables, columns, indexes, `_meta`, `schemaVersion`, `kv` scopes | `app/store/repository`, `PRD 15` |
+| Analytics schema | `app/store/analytics`, `PRD 15` |
+| JSON `data` columns, `settings` row | `app/store/document`, `PRD 15` |
+| Timestamps and stored values | `app/store/dialect`, `PRD 15` |
+| Sealed values (`enc:v1:`) | `app/store/sealer`, `PRD 15` |
+| Per-model locks in `providerConnections.data` | `app/gateway/account`, `PRD 5` |
+| API key, machine id | `app/access/identity`, `PRD 2` |
+| Dashboard session, password hash | `app/access/auth`, `PRD 2` |
 
 A database written by real 9router must open, read, round-trip untouched, and keep unmodified rows byte-identical. Test key, machine-id and JWT code with independently computed vectors. The fixture holds real credentials: git-ignored, test on a copy, skip when absent, never print row values.
 
@@ -68,7 +68,7 @@ Full wording and reasons for the Go rules: `docs/ARCHITECTURE.md`, Go Convention
 - No `Orm`, models, `database/sql` handle or migration runner of ours; official drivers; additive schema only; destructive commands stay behind `WithCommandsFilter` and the `Artisan` wrapper, new ones on `bootstrap.CommandsAllowlist` (`PRD 15`).
 - Config in `config/*.go` via `config.Env("NAME", default)`; add a variable in the change that reads it (`PRD 17`).
 - Gin engine untouched; streams only via `stream.NewSSE`/`stream.NewNDJSON`, never `*gin.BodyWriter`; the guard reads `Request.RemoteAddr`, never `Ip()` (`PRD 1`).
-- Cache only via the `Cache()` facade and `app/cache`, failing open (`PRD 20`). Usage rows hold metadata only (`PRD 16`). A request-scoped 4xx never locks an account (`PRD 5`).
+- Cache only via the `Cache()` facade and `app/platform/cache`, failing open (`PRD 20`). Usage rows hold metadata only (`PRD 16`). A request-scoped 4xx never locks an account (`PRD 5`).
 
 ### Context & Concurrency
 - `ctx` first on anything that blocks or does I/O. Request work derives from the request context; no `context.Background()` on a request path. Never store a `Context` in a struct except a runner's lifetime context.
@@ -104,7 +104,10 @@ Full wording and reasons for the Go rules: `docs/ARCHITECTURE.md`, Go Convention
 - Tests: stdlib `testing`, table-driven, beside the code; a fuzz target per parser; golden tests for formats; `tools/mutant.sh` on trust-boundary code.
 
 ### Naming & Layout
-- Flat `app/`: every product package is a direct child (only Goravel's `app/http/*`, `app/console/commands`, `app/providers`, `app/facades` nest). Package: one lower-case noun, no `util`/`common`/`helpers`, never a Goravel name reused (`app/providers` is Goravel's; upstream LLM code is `app/upstream`).
+- `app/` is grouped into **domain folders**: `platform` (cache network settings file text ttl redactor failure), `protocol` (sigv4 eventstream cosy), `store` (repository data importer analytics sealer dialect document lock), `access` (auth identity oidc saml sso), `llm` (upstream routing stream quota zed, and the large translate, executor and oauth), `gateway` (pipeline catalog conversation prefetch account). Goravel's `app/http`, `app/console`, `app/providers`, `app/facades` stay where the framework puts them. A domain folder holds packages; a package holds sub-packages only when its provider-specific code separates cleanly from a shared framework (about 25 source files and a framework plus independent families). `llm/oauth` is the exception: its provider steps call the engine they sit in, so they stay in the package as one injected `Dialects` table.
+- **Dependency direction is down only:** `platform`, then `protocol`, then `store`, then `access`, then `llm`, then `gateway`. A package imports its own domain's packages and the domains before it, never one after. A sub-package imports its parent's framework and never a sibling; a parent never imports a sub-package except in the one wiring package (`executor/mux`). `tests/imports_test.go` fails an upward or sibling import.
+- Package: one lower-case noun, no `util`/`common`/`helpers`/`shared`, never a Goravel name reused (`app/providers` is Goravel's; upstream LLM code is `app/llm/upstream`). The folder path is the domain, the package clause is the noun.
+- No package-level mutable registry. Provider sub-packages are wired by explicit construction in one place per domain, not by `init()`. The one exception stays: a `translate` codec may register itself in `init()`, and `bootstrap` blank-imports it.
 - Files `snake_case.go` for the type or topic, one word per segment: `call_headers.go`, `device_login_test.go`, never `callheaders.go`. A single English word needs no underscore (`pipeline.go`). A provider file is `<provider_id>.go`. Exported names `StudlyCase`, not repeating the package (`auth.Login`); `…Controller`, `…ServiceProvider`; Artisan signature `group:action`.
 - `pkg/` only if it imports no `app/` package, takes no product types, and has an outside consumer; there: documented exports, safe zero values, sentinel errors, golden tests, a fuzz target per parser. A format owner documents the format beside the code; a change is breaking.
 - Renaming a package or file updates the docs in the same change. Audits cover `app/`, `bootstrap/`, `config/`, `routes/`, `pkg/` and `web/`.
@@ -129,7 +132,7 @@ Full wording and reasons for the Go rules: `docs/ARCHITECTURE.md`, Go Convention
 
 | Path | Holds |
 |---|---|
-| `app/` | Product code, one flat package per concern (`Naming & Layout`) |
+| `app/` | Product code in domain folders, one package per concern (`Naming & Layout`) |
 | `bootstrap/`, `config/`, `routes/` | Goravel wiring; one config file per concern; the guarded route table |
 | `pkg/` | Importable packages (none yet) |
 | `web/` | Embedded dashboard files |

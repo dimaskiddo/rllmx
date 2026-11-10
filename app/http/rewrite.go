@@ -5,7 +5,7 @@ import (
 	"path"
 	"strings"
 
-	"rllmx/app/failure"
+	"rllmx/app/platform/failure"
 )
 
 // Rewrite maps client alias paths onto router routes before routing and refuses

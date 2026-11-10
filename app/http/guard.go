@@ -12,8 +12,8 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 	"github.com/goravel/framework/contracts/route"
 
-	"rllmx/app/failure"
-	"rllmx/app/identity"
+	"rllmx/app/access/identity"
+	"rllmx/app/platform/failure"
 )
 
 type callerKey struct{}

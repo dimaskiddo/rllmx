@@ -9,45 +9,37 @@ This file holds what cuts across every area: the module map, the decisions behin
 ```mermaid
 graph LR
     subgraph cmd["app/console/commands/"]
-        Main["db:*, health, version"]
+        Main["db:*, keys:*, health, version"]
     end
 
     subgraph internal["app/"]
         App["providers"]
-        Config["settings, redactor"]
+        GW["gateway/ pipeline catalog conversation prefetch account"]
+        LLM["llm/ upstream routing translate executor oauth stream quota zed"]
+        ACC["access/ auth identity oidc saml sso"]
+        ST["store/ repository data importer analytics sealer dialect document lock"]
+        PROT["protocol/ sigv4 eventstream cosy"]
+        PLAT["platform/ cache network settings file text ttl redactor failure"]
         API["http, routes/"]
-        Auth["identity (auth, sso, oidc, saml planned)"]
-        Pipe["pipeline (planned)"]
-        Model["routing, upstream, account"]
-        Trans["translate"]
-        Exec["executor, network"]
-        Stream["stream"]
-        Usage["analytics"]
-        Cache["cache"]
-        Sched["Schedule facade jobs (app/data)"]
-        Store["repository, data, dialect, document"]
     end
 
     Main --> App
-    App --> Config
     App --> API
-    App --> Sched
-    API --> Auth
-    API --> Pipe
-    Auth --> Cache
-    Auth --> Store
-    Pipe --> Model
-    Pipe --> Trans
-    Pipe --> Exec
-    Pipe --> Stream
-    Pipe --> Cache
-    Model --> Store
-    Stream --> Usage
-    Sched --> Store
-    Sched --> Usage
+    App --> PLAT
+    App --> ST
+    API --> ACC
+    API --> GW
+    GW --> LLM
+    LLM --> ST
+    LLM --> PROT
+    LLM --> PLAT
+    ACC --> ST
+    ST --> PROT
+    ST --> PLAT
+    PROT --> PLAT
 ```
 
-Applied today: `providers` boots the framework, `http` serves the guarded routes, `data` owns the stores and the maintenance jobs, `cache` sits over the `Cache` facade, `analytics` holds the usage store, `stream` holds the SSE and NDJSON writers, the upstream readers, the pump with its timers, the usage tracker and the client buffer, and `failure` the error shapes; `translate` holds the typed hub, the five codecs (request, answer and stream) and the concerns around them. `executor` sends one request to one account and returns the answer unread, `conversation` names the session a request belongs to, and `pipeline` walks a request through parse, resolve, translate, the account loop and the usage row. Nothing reaches `pipeline` until the 1.8d route. The `Auth`, `Pipe`, `Model`, `Trans` and `Exec` nodes are the target wiring; each arrives with its step.
+Every node is built. `providers` boots the framework, `http` serves the guarded routes, `store/data` owns the stores and the maintenance jobs, `platform/cache` sits over the `Cache` facade, `store/analytics` holds the usage store, `llm/stream` holds the SSE and NDJSON writers, the upstream readers, the pump with its timers, the usage tracker and the client buffer, and `platform/failure` the error shapes; `llm/translate` holds the typed hub, the five client codecs (request, answer and stream), the `kiro` and `commandcode` codecs in their own packages, and the concerns around them. `llm/executor` sends one request to one account and returns the answer unread, with the provider families in sub-packages and `executor/mux` building the table; `gateway/conversation` names the session a request belongs to, and `gateway/pipeline` walks a request through parse, resolve, translate, the account loop and the usage row.
 
 Packages not drawn in the graph: `failure` (error bodies per client format), `sealer` (sealed values), `file` (atomic writes and the capped read), `text` (control characters, rune-safe cuts, markup stripping), `ttl` (a cached read that takes no lock to serve and shares one load), `lock` (the data-directory lock), `identity` (caller and key status), `importer` (legacy seeding), `settings` (typed config), `redactor` (log scrubbing), `upstream` (provider registry and price table), `routing` (model name to provider, model or combo) `account` (account selection, error rules, backoff, locks) and `translate` (the typed hub and the format codecs), all three called by `pipeline` since 1.8c; `prefetch` (remote image URLs to inline data for Gemini and Ollama targets, on a guarded client, called by `pipeline` since 1.8d); the chat controller serves `POST /v1/chat/completions` and gets the pipeline from `providers.PipelineSource`, which builds it on the first request because the stores open after the routes are declared; the registry and the capability tables are loaded at start. The `response` cache group holds non-stream answers for the opt-in response cache; `pipeline` looks it up after the model is resolved and `cache.Budget` bounds it in process. Shared test helpers live in `tests/`: the root package (connections, the fake upstream, route, config, log and cache doubles, `Settings`, `TimeoutError`, `Box`, `Engine`) may import only packages whose own tests do not import it back, and `tests/imports_test.go` fails when it does; a helper that needs `repository` or `analytics` lives in a sub-package (`tests/store` builds a `repository.Store`, `tests/usage` collects usage rows).
 
@@ -55,7 +47,7 @@ Packages not drawn in the graph: `failure` (error bodies per client format), `se
 
 `oauth` (account logins: the authorize address, the in-process login store, the token client, the paste parser and the fixed-port callback listener; no HTTP types) is called by the OAuth controller and reuses the guarded dialer, the PKCE helpers of `oidc` and the binding of `sso`; `web` holds the embedded static files (only the callback page until Phase 4). `oauth` also renews tokens (`Refresher`: before a request, after a refusal, in a background loop run by the `rllmx.oauth` runner, and for the connection test); `pipeline` asks it through a small interface and sends a login's token as a bearer token. The headers a login's token carries are computed in `pipeline` from the provider's data, and `translate.Cloak` disguises a Claude request from another client (1.9c).
 
-`combo`, `health`, `access`, `media`, `saver`, `skill`, `plan` and `probe` do not exist yet; each arrives with its step (`TASKS.md`).
+`combo`, `media`, `saver`, `skill`, `plan` and the health probe do not exist yet; each arrives with its step (`TASKS.md`).
 
 ---
 
@@ -96,7 +88,7 @@ Every module here is CGO-free, on the `TASKS.md` Dependency gates table, and nam
 | `go-jose/go-jose/v4` | Parse an OIDC ID token and select its key from the provider's JWKS by `kid`, algorithm and use. JWS verification itself is unambiguous — the signed bytes are the raw string — but key selection is where a lenient check accepts a token signed by the provider's **encryption** key, and that is the piece worth a reviewed implementation. Every claim rule stays ours. `PRD 2` |
 | `russellhaering/goxmldsig` | Verify a SAML signature. Canonical XML 1.0 has namespace-propagation and attribute-ordering rules that a hand-written implementation gets wrong in the *accepting* direction, which is a signature bypass rather than a rejection. The parsing, the claim checks and the reuse defence stay ours. `PRD 2` |
 | `golang.org/x/sync`, `golang.org/x/term` | Framework requirements used directly: `singleflight` for one cache load, and the hidden terminal prompt. |
-| `google/uuid` | Version 4 ids for connections, nodes and rows (`app/dialect.NewID`, the node id in the nodes controller). The framework already requires it, so it adds nothing to the build; the stored id format is the 9router one, a lower-case v4 UUID. |
+| `google/uuid` | Version 4 ids for connections, nodes and rows (`app/store/dialect.NewID`, the node id in the nodes controller). The framework already requires it, so it adds nothing to the build; the stored id format is the 9router one, a lower-case v4 UUID. |
 
 The session cookie's HS256 is our own `crypto/hmac`, not a JWT module.
 
@@ -108,11 +100,11 @@ The session cookie's HS256 is our own `crypto/hmac`, not a JWT module.
 
 **Context.** Pass `ctx` first. A request path derives from the request context, so a client that leaves cancels the work it started, including the upstream call. `context.Background()` is for start-up and shutdown only. A runner may keep its lifetime context in a field (`analytics.Writer`, the OAuth runner); a handler or a pipeline step never does.
 
-**Goroutines.** One owner starts it, one `ctx` stops it, and a test proves it exits. Bounded fan-out uses `errgroup.Group` with `SetLimit`. The two goroutines on the hot path are the stream reader (`app/stream/pull.go`) and the Codex peek (`app/executor/peek.go`); each reads one body and ends when the body closes or the context is cancelled.
+**Goroutines.** One owner starts it, one `ctx` stops it, and a test proves it exits. Bounded fan-out uses `errgroup.Group` with `SetLimit`. The two goroutines on the hot path are the stream reader (`app/llm/stream/pull.go`) and the Codex peek (`app/llm/executor/peek.go`); each reads one body and ends when the body closes or the context is cancelled.
 
 **Timers.** `time.After` allocates a timer that lives until it fires, so inside a loop use `time.NewTimer` and `Stop` it. A single bounded wait (a retry delay, a start-up offset) may use `time.After`.
 
-**Locks.** Hold one only around memory, never around a network call, a channel send or a callback. State that is read on every request and written on a reload is built whole and swapped with `atomic.Pointer`, so readers take no lock. `app/ttl` is that pattern for a cached read: `ttl.Value[T]` serves a fresh value without a lock, shares one load between callers (a caller that leaves does not fail the others), and never keeps a failed load; the routing snapshot, the account settings, the auth settings and the request-path settings read use it.
+**Locks.** Hold one only around memory, never around a network call, a channel send or a callback. State that is read on every request and written on a reload is built whole and swapped with `atomic.Pointer`, so readers take no lock. `app/platform/ttl` is that pattern for a cached read: `ttl.Value[T]` serves a fresh value without a lock, shares one load between callers (a caller that leaves does not fail the others), and never keeps a failed load; the routing snapshot, the account settings, the auth settings and the request-path settings read use it.
 
 **Memory.** The cheapest allocation is the one not made. In order: stream instead of buffering; bound anything that grows from input; preallocate when the size is known; reuse a hot buffer with `sync.Pool`, resetting it on Get and dropping an oversized one on Put; never pool a secret. A body from outside is read with `file.ReadCapped`, which reads one byte past the cap to tell "exactly at it" from "over it", so no read site restates that rule. A stream frame is built in a scratch buffer the writer keeps (dropped when one frame made it large) and an event is read once, with `gjson.GetBytes`, which scans in place where `ParseBytes` copies the event. Bodies are read and patched with `gjson`/`sjson` because a `map[string]any` round trip copies the document, reorders keys and loses number precision. Compile a regexp once. Reuse the `http.Client` and `Transport` so connections stay alive, and always drain and close a response body.
 
@@ -122,7 +114,7 @@ The session cookie's HS256 is our own `crypto/hmac`, not a JWT module.
 
 **Interfaces.** Define one where it is used, with the methods that caller needs. Do not add one for a single implementation, except to give a test a fake for a facade (`cache.Driver`, `log.Log`, `db.DB`).
 
-**Layout.** Every product package is a direct child of `app/`. Goravel owns `app/http`, `app/console`, `app/providers`, `app/facades`, `app/models`, `bootstrap`, `config`, `routes`, `database`, `tests`, `storage` and `resources`; none is reused for another purpose. A package that is importable by other programs lives in `pkg/` only if it imports no `app/` package, takes no product types in its API, and has a plausible outside consumer. A package that encodes a persisted or wire format documents it beside the code, and a change to it is breaking.
+**Layout.** `app/` holds six domain folders, each holding packages: `platform` (infrastructure every other domain uses), `protocol` (wire-protocol code that imports nothing in `app/`), `store` (persistence and its formats), `access` (who may call in), `llm` (everything about talking to a model provider), `gateway` (request handling that joins them). Imports run down only, in that order, and a test fails an upward edge. A package that outgrows about 25 files into a shared framework plus independent provider families splits into sub-packages (`translate/kiro`, `executor/qoder`); a sub-package imports its parent's framework and never a sibling, and one wiring package per domain (`executor/mux`) builds the table of providers by explicit construction. `oauth` keeps its provider steps in one table injected through `Dialects` rather than in sub-packages, because every step calls the engine it sits in. Goravel owns `app/http`, `app/console`, `app/providers`, `app/facades`, `app/models`, `bootstrap`, `config`, `routes`, `database`, `tests`, `storage` and `resources`; none is reused for another purpose. A package that is importable by other programs lives in `pkg/` only if it imports no `app/` package, takes no product types in its API, and has a plausible outside consumer. A package that encodes a persisted or wire format documents it beside the code, and a change to it is breaking.
 
 **Commands.** A new Artisan command goes on `bootstrap.CommandsAllowlist` or it does not exist; the destructive framework commands stay unreachable behind that list and the `Artisan` wrapper in `app/providers.CommandsServiceProvider` (`PRD 15`, `PRD 23`).
 

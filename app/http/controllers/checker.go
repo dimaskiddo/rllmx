@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"rllmx/app/file"
-	"rllmx/app/network"
-	"rllmx/app/upstream"
+	"rllmx/app/llm/upstream"
+	"rllmx/app/platform/file"
+	"rllmx/app/platform/network"
 )
 
 // Outcome is the closed set of answers a key check can give. Each has one fixed

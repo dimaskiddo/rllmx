@@ -1,4 +1,4 @@
-# PRD 14 — Outbound Network (`app/network/`)
+# PRD 14 — Outbound Network (`app/platform/network/`)
 
 **Status:** partial · **Steps:** 1.6b, 1.10
 
@@ -66,7 +66,7 @@ One `Checker` (built in 1.7d), built once in the provider wiring (`app/providers
 - [x] The key `Checker` (1.7d)
 - [ ] The provider executors and the web fetch move onto `network.NewClient`
 - [ ] The image prefetch gets the operator's allow list (built in 1.8d on a guarded client with three redirects and a 20 s timeout; it is stricter than the target)
-- [ ] `UPSTREAM_CONNECT_TIMEOUT` governs the executors, which do not exist yet
+- [ ] `UPSTREAM_CONNECT_TIMEOUT` governs the executors
 
 ---
 

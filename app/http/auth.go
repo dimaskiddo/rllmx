@@ -5,7 +5,7 @@ import (
 	nethttp "net/http"
 	"time"
 
-	"rllmx/app/identity"
+	"rllmx/app/access/identity"
 )
 
 // Authenticator judges who is calling and which checks apply. The guard asks

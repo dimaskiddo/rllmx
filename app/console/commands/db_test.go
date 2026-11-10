@@ -5,16 +5,16 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"rllmx/app/dialect"
+	"rllmx/app/store/dialect"
 	"strings"
 	"testing"
 
 	"github.com/goravel/framework/contracts/console"
 	"github.com/goravel/framework/contracts/console/command"
 
-	"rllmx/app/data"
-	"rllmx/app/lock"
-	"rllmx/app/repository"
+	"rllmx/app/store/data"
+	"rllmx/app/store/lock"
+	"rllmx/app/store/repository"
 	"rllmx/tests/store"
 )
 

@@ -1,4 +1,4 @@
-# PRD 17 — Configuration (`config/`, `app/settings/`)
+# PRD 17 — Configuration (`config/`, `app/platform/settings/`)
 
 **Status:** partial · **Steps:** 1.0, 1.3, 1.5, 1.6, 1.8
 
@@ -12,7 +12,7 @@ Environment variables and an optional `.env` in the working directory, read by t
 flowchart LR
     A[".env checked by config.Boot (size cap, BOM, unknown names), then read by the framework"] --> B[Process environment layered on top]
     B --> C["config/*.go: config.Env(name, default) per key"]
-    C --> D["app/settings builds one typed struct, validation, fixed error text"]
+    C --> D["app/platform/settings builds one typed struct, validation, fixed error text"]
 ```
 
 | Rule | Detail |
@@ -21,7 +21,7 @@ flowchart LR
 | Errors | Never quote a value: `APP_PORT: invalid value`. Our checks (unknown name, size cap, range) exit non-zero naming the variable. A `.env` syntax error or a missing or short `APP_KEY` is reported by the framework, in its words |
 | Unknown names | A `.env` entry in an owned group (`SERVER_`, `HTTP_`, `AUTH_`, `DB_`, `ANALYTICS_`, `CACHE_`, `LOG_`, `STREAM_`, `UPSTREAM_`, `OAUTH_`, `MEDIA_`, `SAVER_`, `CATALOG_`, `TRANSLATOR_`, `PROVIDER_`) that the code does not read fails startup, as does a lower-case spelling of a real name. The process environment is never scanned. `TEST_*` and Windows `=C:` are ignored |
 | Data dir | Accepts `~` and a relative path; made absolute |
-| Secrets | No secret reaches the `Log` facade; what slips through a URL, header or error text is scrubbed by `app/redactor`, in front of every file channel. There is no `Secret` string type |
+| Secrets | No secret reaches the `Log` facade; what slips through a URL, header or error text is scrubbed by `app/platform/redactor`, in front of every file channel. There is no `Secret` string type |
 | Expansion | `$NAME` and `${NAME}` in unquoted and double-quoted values, from names defined earlier in the same file (unknown becomes empty; the process environment is not consulted). A value with `$` must be single-quoted; single-quoted values are literal |
 | `.env.example` | Lists exactly what the code reads. A test checks both directions, that each name matches `^[A-Z]+(_[A-Z0-9]+)+$` and that none collides after case folding. A variable is added by the step that reads it |
 | Raw key names | The framework exposes no key list, so `config.Boot` reads `support.EnvFilePath` with `subosito/gotenv`, the parser the loader already uses. It supplies key names, the size cap and the BOM check only |

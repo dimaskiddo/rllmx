@@ -1,8 +1,8 @@
-# PRD 13 — Media Endpoints (`app/media/`)
+# PRD 13 — Media Endpoints (`app/gateway/`)
 
 **Status:** todo · **Steps:** 1.11
 
-`app/media` does not exist. Each endpoint resolves model and account as chat does, then calls a per-provider adapter registered by provider id and modality. Usage rows carry the modality in `endpoint`.
+No media adapter exists. Each endpoint resolves model and account as chat does, then calls a per-provider adapter registered by provider id and modality. Usage rows carry the modality in `endpoint`.
 
 | Endpoint | Notes |
 |---|---|
@@ -36,7 +36,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | # | What we do differently | Why it is better |
 |---|---|---|
 | 137 | Gemini audio request (`responseModalities` AUDIO or `speechConfig`) to non-Gemini target: 400; only `image/*` blobs become images | No text where speech asked |
-| 128 | Max 16 images, 20 MiB per request, 10 MiB each, duplicates fetched once; stops when cancelled **(enforced by `app/prefetch` since 1.8d)** | One request cannot exhaust memory |
+| 128 | Max 16 images, 20 MiB per request, 10 MiB each, duplicates fetched once; stops when cancelled **(enforced by `app/gateway/prefetch` since 1.8d)** | One request cannot exhaust memory |
 | 161 | Moved to step 1.11 with media providers | Media providers, not chat providers (scope cut) |
 
 ---

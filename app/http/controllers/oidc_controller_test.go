@@ -15,15 +15,15 @@ import (
 	"github.com/go-jose/go-jose/v4"
 	"github.com/go-jose/go-jose/v4/jwt"
 
-	"rllmx/app/auth"
-	"rllmx/app/cache"
+	"rllmx/app/access/auth"
+	"rllmx/app/access/identity"
+	"rllmx/app/access/oidc"
+	"rllmx/app/access/sso"
 	apphttp "rllmx/app/http"
-	"rllmx/app/identity"
-	"rllmx/app/network"
-	"rllmx/app/oidc"
-	"rllmx/app/repository"
-	"rllmx/app/settings"
-	"rllmx/app/sso"
+	"rllmx/app/platform/cache"
+	"rllmx/app/platform/network"
+	"rllmx/app/platform/settings"
+	"rllmx/app/store/repository"
 	"rllmx/tests"
 	"rllmx/tests/store"
 )
@@ -260,7 +260,7 @@ func TestAProviderErrorIsPassedThroughAsOneCode(t *testing.T) {
 	if strings.Contains(location(rec), "provider-detail") {
 		t.Fatalf("the location repeats provider text: %q", location(rec))
 	}
-	if !strings.HasSuffix(location(rec), "error="+sso.CodeIdPError) {
+	if !strings.HasSuffix(location(rec), "error="+sso.CodeIDPError) {
 		t.Fatalf("location %q", location(rec))
 	}
 }

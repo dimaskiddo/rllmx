@@ -9,11 +9,11 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 	goravelgin "github.com/goravel/gin"
 
-	"rllmx/app/auth"
+	"rllmx/app/access/auth"
+	"rllmx/app/access/identity"
 	apphttp "rllmx/app/http"
 	"rllmx/app/http/middleware"
-	"rllmx/app/identity"
-	"rllmx/app/repository"
+	"rllmx/app/store/repository"
 	"rllmx/tests"
 	"rllmx/tests/store"
 )
@@ -39,7 +39,7 @@ func newAuthRig(t *testing.T) *authRig {
 	r := tests.NewRoute(t)
 	g := apphttp.NewGuard(a, true)
 	r.SetGlobalMiddleware([]contractshttp.Middleware{
-		&middleware.RequestId{}, &middleware.SecurityHeaders{Trust: trust},
+		&middleware.RequestID{}, &middleware.SecurityHeaders{Trust: trust},
 		&middleware.SameOrigin{}, &middleware.Guard{Guard: g},
 	})
 	c := NewAuthController(a, trust)

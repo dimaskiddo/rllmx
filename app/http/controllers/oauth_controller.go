@@ -9,11 +9,11 @@ import (
 
 	contractshttp "github.com/goravel/framework/contracts/http"
 
-	"rllmx/app/auth"
+	"rllmx/app/access/auth"
+	"rllmx/app/access/sso"
 	apphttp "rllmx/app/http"
-	"rllmx/app/oauth"
-	"rllmx/app/settings"
-	"rllmx/app/sso"
+	"rllmx/app/llm/oauth"
+	"rllmx/app/platform/settings"
 )
 
 // bindName keeps this binding apart from the sign-in cookies' own.

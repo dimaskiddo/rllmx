@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"rllmx/app/pipeline"
+	"rllmx/app/gateway/pipeline"
 )
 
 func TestPipelineSourceBuildsOnceAndRetriesAfterAFailure(t *testing.T) {

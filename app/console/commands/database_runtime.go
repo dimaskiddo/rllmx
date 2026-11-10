@@ -12,9 +12,9 @@ import (
 	"github.com/goravel/framework/contracts/log"
 	"golang.org/x/term"
 
-	"rllmx/app/data"
-	"rllmx/app/repository"
-	"rllmx/app/settings"
+	"rllmx/app/platform/settings"
+	"rllmx/app/store/data"
+	"rllmx/app/store/repository"
 )
 
 // Facades are the framework pieces a db command opens the database with, as

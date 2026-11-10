@@ -1,4 +1,4 @@
-# PRD 15 — Storage (`app/repository/`, `app/dialect/`, `app/document/`)
+# PRD 15 — Storage (`app/store/repository/`, `app/store/dialect/`, `app/store/document/`)
 
 **Status:** partial · **Steps:** 1.4, 1.7, 1.8
 
@@ -27,10 +27,10 @@ SQLite at `${DATA_DIR}/db/data.sqlite` (`storage/app/db/data.sqlite`), or Postgr
 | Lookups | A one-struct `Select` finding no row returns `sql.ErrNoRows` and logs an error holding the bound arguments. A lookup by secret (an API key) selects into a slice and checks its length |
 | Row types | Plain structs, never models, every table including analytics. A timestamp is a `string` (`TEXT`, `2006-01-02T15:04:05.000Z` UTC); a boolean binds as 0 or 1. No mapper converts anything |
 | No implicit DDL | Nothing creates, alters or drops a shared table by itself. Additive changes are migrations registered with `WithMigrations`, planned first with `Schema().HasTable`, `Schema().GetIndexes` and a column read through the `DB` facade (`pragma_table_info` on SQLite, `information_schema.columns` on PostgreSQL, because `Schema().GetColumns` fails on a composite key). `HasColumn` and `HasIndex` are not used. When nothing is missing nothing is written. The plan runs `SELECT 1` first, because a `Schema` check returns false on a query error |
-| Helpers | Sealing at the storage boundary, `kv` scopes with exact key formats, unknown JSON keys kept, NUL bytes stripped and the timestamp format are thin wrappers in `app/repository` and `app/sealer` around the facade call |
+| Helpers | Sealing at the storage boundary, `kv` scopes with exact key formats, unknown JSON keys kept, NUL bytes stripped and the timestamp format are thin wrappers in `app/store/repository` and `app/store/sealer` around the facade call |
 | Tests | One suite, one engine per run: SQLite by default, PostgreSQL when `TEST_PG_DSN` names a server (`make test-pg`). `tests.UsingPostgres` selects, `tests.OpenAny` opens; PostgreSQL gets one schema per test, created and dropped by the helper. A test green on SQLite and broken on PostgreSQL stays invisible until the variable is set |
 | Tests that stay SQLite | `tests.RequireSQLite` skips a test whose subject only exists in a file: `VACUUM INTO` backups and `OpenSnapshot`, `ExportPlain`, `Vacuum`, the WAL checkpoint, the pragma reads (`integrity_check`, `auto_vacuum`), the byte-for-byte `dumpTables` comparisons, and reopen-by-file. Each call site states why. Everything else, including the schema plan, migration, sealing, every repository, `Tx` and its advisory lock, `Check` and the analytics store, runs on both |
-| Fixture | `app/repository/fixture_test.go` opens a copy of a real 9router database from `references/data.sqlite` (or `RLLMX_FIXTURE`). Skips when absent; never writes the original and checks its size and mtime after. Proves the additive plan is empty, that reading writes nothing, that a written row keeps every column but `updatedAt`, and that migration seals every plain secret |
+| Fixture | `app/store/repository/fixture_test.go` opens a copy of a real 9router database from `references/data.sqlite` (or `RLLMX_FIXTURE`). Skips when absent; never writes the original and checks its size and mtime after. Proves the additive plan is empty, that reading writes nothing, that a written row keeps every column but `updatedAt`, and that migration seals every plain secret |
 | Dependencies | `tidwall/gjson` and `sjson` (row editing, below), `gofrs/flock` (the data lock), `subosito/gotenv`; gates in `TASKS.md`, reasons in `docs/ARCHITECTURE.md` (Approved Modules) |
 
 ### Tables
@@ -76,7 +76,7 @@ DDL follows the reference (`src/lib/db/schema.js`, pinned in `PARITY.md`). Every
 | Atomic helpers | `MarkUnavailable`, `ClearLocks`, `TouchUsage`, `UpdateCredentials` each read and write in one transaction. This closes four reference races: backoff level read outside the write, lost counter increments, clearing from a stale snapshot, replacing `providerSpecificData` from the caller's copy |
 | Corrupt rows | A list returns a corrupt connection flagged `Corrupt` with raw text; every write refuses it (`ErrCorruptRow`); refresh, lock and backoff skip it. A restricted key whose `accessAllow` does not parse allows nothing; an unrestricted one stays unrestricted |
 
-### Sealed Secrets (`app/sealer`, format owner; divergences 139 to 141)
+### Sealed Secrets (`app/store/sealer`, format owner; divergences 139 to 141)
 
 | Item | Detail |
 |---|---|
@@ -87,7 +87,7 @@ DDL follows the reference (`src/lib/db/schema.js`, pinned in `PARITY.md`). Every
 | Binding | Additional data names the place: `rllm/v1/apiKeys/key`, `rllm/v1/providerConnections/<id>/<path>`, `rllm/v1/settings/<field>`, `rllm/v1/check`. A ciphertext moved to another row or field does not open |
 | Sealed | `apiKeys.key`; connection `data`: `apiKey`, `accessToken`, `refreshToken`, `idToken`, `sessionToken`, `copilotToken`; `providerSpecificData`: `apiKey`, `sessionToken`, `copilotToken`, `accessKeyId`, `secretAccessKey`, `mimoPassToken`, `cookie`, `clientSecret`; `settings.oidcClientSecret` |
 | Not sealed | `password` (bcrypt hash), `mitmSudoEncrypted` (never read) |
-| Boundary | Sealing happens in `app/repository` only. A write keeps the stored ciphertext of an unchanged value, so untouched rows stay byte-identical. A field that does not open marks a connection `Corrupt` or a key `Unreadable` |
+| Boundary | Sealing happens in `app/store/repository` only. A write keeps the stored ciphertext of an unchanged value, so untouched rows stay byte-identical. A field that does not open marks a connection `Corrupt` or a key `Unreadable` |
 
 ```mermaid
 flowchart TD
@@ -124,14 +124,14 @@ flowchart TD
 
 **Files in `DATA_DIR`:** `jwt-secret`, `machine-id`, `db/data.sqlite`, `db/analytics.sqlite`, `db/backups/`, `db/analytics-backups/`, `skills/`, `model-catalog.json`, `rllmx.lock`. Directories `0700`, files `0600`. `DATA_DIR` defaults to `storage/app`; logs sit in `storage/logs` (`rllmx.log`), so `storage/` is the one volume to keep. The main store holds only router configuration.
 
-**Seeding and import.** `rllmx artisan db:import-config` seeds an empty store from a 9router database (`app/importer`); `rllmx artisan db:import-analytics` moves old usage history. Steps and rules: `docs/WORKFLOWS.md`.
+**Seeding and import.** `rllmx artisan db:import-config` seeds an empty store from a 9router database (`app/store/importer`); `rllmx artisan db:import-analytics` moves old usage history. Steps and rules: `docs/WORKFLOWS.md`.
 
-### 15.2 Analytics Store (`app/analytics/`)
+### 15.2 Analytics Store (`app/store/analytics/`)
 
 | Item | Detail |
 |---|---|
 | Location | SQLite `${DATA_DIR}/db/analytics.sqlite`, created with `auto_vacuum=INCREMENTAL` (verified on open, warning if another mode). PostgreSQL: schema `rllmx_analytics` on the main server or the database named by `DB_DATABASE_ANALYTICS`, created before its tables (`Schema` has no create-schema call, so `CREATE SCHEMA IF NOT EXISTS` goes through `Statement`; `HasTable` looks in every schema, so PostgreSQL names are schema-qualified) |
-| Planning | The analytics tables are planned and created by their own idempotent pass in `app/analytics`, not through the framework's `migrations` table. A migration that runs on another connection is recorded in the default connection's table, and this file can be deleted and recreated on its own |
+| Planning | The analytics tables are planned and created by their own idempotent pass in `app/store/analytics`, not through the framework's `migrations` table. A migration that runs on another connection is recorded in the default connection's table, and this file can be deleted and recreated on its own |
 | Privacy | The row type has no field for a body, header, prompt or upstream message; a test fails if one is added. Writing is unconditional |
 | `errorClass` | One of `none`, `auth`, `access_denied`, `key_quota`, `rate_limit`, `quota`, `invalid_request`, `not_found`, `no_account`, `upstream_5xx`, `network`, `timeout`, `stream_stall`, `client_closed`, `unknown`; anything else is stored as `unknown` |
 | API key | Stored by id and `apiKeyName` (copied at write time, 64 characters, control characters removed; the only free text), never the secret |
@@ -185,10 +185,10 @@ A failing job never blocks start. The main file never switches `auto_vacuum`.
 | `settings` single row with `CHECK (id = 1)` | `src/lib/db/schema.js` | done | 1.4 |
 | `_meta` keys and backup-before-change rule (`schemaVersion` 1 = migration level) | `src/lib/db/migrate.js` | done | 1.4 |
 | `_meta.totalRequestsLifetime` bump | `src/lib/db/repos/usageRepo.js` | diverged (counter in the analytics store; importer seeds from this key once) | done |
-| `modelLock_<model>` fields | `src/sse/services/auth.js` | done (written and cleared by `app/repository`, read by `app/account` since 1.7b) | 1.7 |
+| `modelLock_<model>` fields | `src/sse/services/auth.js` | done (written and cleared by `app/store/repository`, read by `app/gateway/account` since 1.7b) | 1.7 |
 | `kv` scope `rllmResponseCache` (per-key response-cache flag) | none | done: the reader `KVRepo.ResponseCacheEnabled` (1.8g); the writer comes with the key API (2.1) | 1.8g, 2.1 |
 | `kv` scopes and key formats | `src/lib/db/repos/*` | done (the four shared scopes; Go-only scopes arrive with their step) | 1.4 |
-| API key, machine id, JWT and bcrypt formats | `src/shared/utils/apiKey.js`, `machineId.js`, `src/lib/auth/dashboardSession.js` | done (1.6a: `app/identity` golden vectors, `app/auth` `iss`, `method`, `pv`) | 1.6 |
+| API key, machine id, JWT and bcrypt formats | `src/shared/utils/apiKey.js`, `machineId.js`, `src/lib/auth/dashboardSession.js` | done (1.6a: `app/access/identity` golden vectors, `app/access/auth` `iss`, `method`, `pv`) | 1.6 |
 | `proxyPools`, `proxyPoolFitness` tables | `schema.js`, extended `proxyPoolFitnessRepo.js` | out (not created, read or dropped; left alone if present, divergences 202, 214) | - |
 | Legacy `db.json`, `usage.json`, `disabledModels.json`, `request-details.json` import | `src/lib/db/migrate.js` | out | - |
 
@@ -202,7 +202,7 @@ No reference counterpart.
 
 | Item | Status | Step |
 |---|---|---|
-| Analytics store (`requests`, rollups, `meta`), writer, retention, legacy importer | done on SQLite; PostgreSQL paths written, not run (`app/analytics`; file-only cases in PRD 15) | 1.4 |
+| Analytics store (`requests`, rollups, `meta`), writer, retention, legacy importer | done on SQLite; PostgreSQL paths written, not run (`app/store/analytics`; file-only cases in PRD 15) | 1.4 |
 | PostgreSQL mapping | written, not run (needs `TEST_PG_DSN` and a server; see `TASKS.md` Open items) | 1.4 |
 | Sealed secrets: `enc:v1:` values in `apiKeys.key`, connection `data`, `settings.oidcClientSecret`; check row in kv scope `rllmCrypto` | done (converted after a full backup; no plain secret left in the file or its WAL) | 1.4 |
 | Pre-encryption backup (never pruned), `rllmx artisan db:export-plain` | partial (`ExportPlain` store function built and tested; the command arrives with `keys:*` in 1.6; SQLite only) | 1.4, 1.6 |

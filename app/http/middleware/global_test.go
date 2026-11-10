@@ -39,7 +39,7 @@ func get(r *goravelgin.Route, target string, hdr map[string]string) *httptest.Re
 var hex32 = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
 func TestRequestIdIsGeneratedAndReturned(t *testing.T) {
-	r := newRoute(t, &RequestId{})
+	r := newRoute(t, &RequestID{})
 	r.Get("/rid/a", reached)
 	id := get(r, "/rid/a", nil).Header().Get("X-Request-Id")
 	if !hex32.MatchString(id) {
@@ -51,7 +51,7 @@ func TestRequestIdIsGeneratedAndReturned(t *testing.T) {
 }
 
 func TestRequestIdAcceptsOnlySafeValues(t *testing.T) {
-	r := newRoute(t, &RequestId{})
+	r := newRoute(t, &RequestID{})
 	r.Get("/rid/b", reached)
 	for _, ok := range []string{"abc-123", "A.b_c-9", strings.Repeat("a", 64)} {
 		if got := get(r, "/rid/b", map[string]string{"X-Request-Id": ok}).Header().Get("X-Request-Id"); got != ok {
@@ -68,23 +68,23 @@ func TestRequestIdAcceptsOnlySafeValues(t *testing.T) {
 
 func TestRequestIdReachesTheHandlerAndTheErrorResponses(t *testing.T) {
 	var seen string
-	r := newRoute(t, &RequestId{})
+	r := newRoute(t, &RequestID{})
 	r.Get("/rid/c", func(ctx contractshttp.Context) contractshttp.Response {
-		seen = RequestIdFrom(ctx)
+		seen = RequestIDFrom(ctx)
 		return ctx.Response().String(200, "ok")
 	})
 	rec := get(r, "/rid/c", map[string]string{"X-Request-Id": "trace-7"})
 	if seen != "trace-7" || rec.Header().Get("X-Request-Id") != "trace-7" {
 		t.Fatalf("handler saw %q, header %q", seen, rec.Header().Get("X-Request-Id"))
 	}
-	if RequestIdFrom(nil) != "" {
+	if RequestIDFrom(nil) != "" {
 		t.Fatal("no context must give no id")
 	}
 }
 
 func TestAccessLogHasPathStatusAndIdButNeverTheQueryOrSecrets(t *testing.T) {
 	log := &tests.Log{}
-	r := newRoute(t, &RequestId{}, &AccessLog{Log: log})
+	r := newRoute(t, &RequestID{}, &AccessLog{Log: log})
 	r.Get("/log/a", reached)
 	get(r, "/log/a?key=sk-secret-key&x=1", map[string]string{
 		"Authorization": "Bearer sk-secret-token", "Cookie": "auth_token=cookie-secret", "X-Request-Id": "req-1",
@@ -142,7 +142,7 @@ func TestAccessLogBoundsALongPath(t *testing.T) {
 func TestAccessLogSeesTheStatusAGuardDenialWrote(t *testing.T) {
 	log := &tests.Log{}
 	g := apphttp.NewGuard(nil, true)
-	r := newRoute(t, &RequestId{}, &AccessLog{Log: log}, &Guard{Guard: g})
+	r := newRoute(t, &RequestID{}, &AccessLog{Log: log}, &Guard{Guard: g})
 	r.Fallback(g.Fallback(r.GetRoutes))
 	g.Handle(r, apphttp.ClassProtected, "GET", "/api/log-denied", reached)
 	rec := get(r, "/api/log-denied", nil)
@@ -171,7 +171,7 @@ func TestGuardMiddlewareStopsTheChainOnADenial(t *testing.T) {
 func TestSignaturesAreDistinct(t *testing.T) {
 	seen := map[string]bool{}
 	for _, m := range []contractshttp.Middleware{
-		&RequestId{}, &AccessLog{}, &SecurityHeaders{}, &CORS{},
+		&RequestID{}, &AccessLog{}, &SecurityHeaders{}, &CORS{},
 		&Deadlines{}, &BodyLimit{}, &SameOrigin{}, &Guard{},
 	} {
 		if m.Signature() == "" || seen[m.Signature()] {

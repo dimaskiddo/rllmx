@@ -12,12 +12,12 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 	goravelgin "github.com/goravel/gin"
 
-	"rllmx/app/auth"
+	"rllmx/app/access/auth"
+	"rllmx/app/access/identity"
 	apphttp "rllmx/app/http"
-	"rllmx/app/identity"
-	"rllmx/app/network"
-	"rllmx/app/repository"
-	"rllmx/app/upstream"
+	"rllmx/app/llm/upstream"
+	"rllmx/app/platform/network"
+	"rllmx/app/store/repository"
 	"rllmx/tests"
 	"rllmx/tests/store"
 )

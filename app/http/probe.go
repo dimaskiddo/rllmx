@@ -12,8 +12,8 @@ import (
 	"strconv"
 	"time"
 
-	"rllmx/app/network"
-	"rllmx/app/settings"
+	"rllmx/app/platform/network"
+	"rllmx/app/platform/settings"
 )
 
 const (

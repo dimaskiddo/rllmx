@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"rllmx/app/zed"
+	"rllmx/app/llm/zed"
 	"strings"
 	"sync"
 
@@ -15,19 +15,19 @@ import (
 	"github.com/goravel/framework/contracts/config"
 	"github.com/goravel/framework/contracts/foundation"
 
-	"rllmx/app/auth"
-	"rllmx/app/cache"
-	"rllmx/app/file"
+	"rllmx/app/access/auth"
+	"rllmx/app/access/identity"
+	"rllmx/app/access/oidc"
+	"rllmx/app/access/saml"
+	"rllmx/app/access/sso"
 	apphttp "rllmx/app/http"
 	"rllmx/app/http/controllers"
-	"rllmx/app/identity"
-	"rllmx/app/oauth"
-	"rllmx/app/oidc"
-	"rllmx/app/repository"
-	"rllmx/app/saml"
-	"rllmx/app/settings"
-	"rllmx/app/sso"
-	"rllmx/app/upstream"
+	"rllmx/app/llm/oauth"
+	"rllmx/app/llm/upstream"
+	"rllmx/app/platform/cache"
+	"rllmx/app/platform/file"
+	"rllmx/app/platform/settings"
+	"rllmx/app/store/repository"
 )
 
 // jwtFile holds the generated session secret when JWT_SECRET is unset.
@@ -157,7 +157,7 @@ func (r *ServerServiceProvider) Register(app foundation.Application) {
 			return oidc.Settings{Issuer: issuer, ClientID: clientID, ClientSecret: secret}.Configured()
 		}
 		a.SAMLUsable = func(entryPoint, cert, idpEntity string) bool {
-			s := saml.Settings{EntryPoint: entryPoint, Cert: cert, IdPEntityID: idpEntity}
+			s := saml.Settings{EntryPoint: entryPoint, Cert: cert, IDPEntityID: idpEntity}
 			if !s.Configured() || idpEntity == "" {
 				return false
 			}

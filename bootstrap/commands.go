@@ -9,8 +9,8 @@ import (
 
 	"rllmx/app/console/commands"
 	"rllmx/app/facades"
+	"rllmx/app/platform/settings"
 	"rllmx/app/providers"
-	"rllmx/app/settings"
 )
 
 // Commands lists the Artisan commands. version and commit come from main.

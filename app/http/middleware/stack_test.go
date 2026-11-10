@@ -22,7 +22,7 @@ func TestStackReplacesTheStockMiddlewareInOrder(t *testing.T) {
 		got = append(got, mw.Signature())
 	}
 	want := []string{
-		"RequestId", "AccessLog", "SecurityHeaders", "CORS",
+		"RequestID", "AccessLog", "SecurityHeaders", "CORS",
 		"Deadlines", "BodyLimit", "SameOrigin", "Guard",
 	}
 	if len(got) != len(want) {

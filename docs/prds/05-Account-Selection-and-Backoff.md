@@ -1,8 +1,8 @@
-# PRD 05 — Account Selection, Error Rules & Backoff (`app/account/`)
+# PRD 05 — Account Selection, Error Rules & Backoff (`app/gateway/account/`)
 
 **Status:** partial · **Steps:** 1.7
 
-Built in 1.7b: `app/account` (the selector, the error rules, the backoff arithmetic and the reporter) over the `modelLock_*` fields `app/repository` writes and clears. Called by the account loop in `app/pipeline` since 1.8c. The selector, rules and reporter below describe what is built.
+Built in 1.7b: `app/gateway/account` (the selector, the error rules, the backoff arithmetic and the reporter) over the `modelLock_*` fields `app/store/repository` writes and clears. Called by the account loop in `app/gateway/pipeline` since 1.8c. The selector, rules and reporter below describe what is built.
 
 ### Selection (`Selector.Select`)
 
@@ -26,7 +26,7 @@ Serialized per provider by a mutex, so the usage counters it writes cannot race 
 
 **No candidate left:** if every candidate is locked, the error is `*AllLockedError` with the earliest lock end that applies to the model, "reset after 2m 30s" text, and the first such connection's last error and code. It becomes a 503 with `retryAfter`. No candidates, or locks without a future end, is `ErrNoConnections`.
 
-**Not in the selector:** credential-less providers (a virtual connection), the Freebuff model-assignment hook and the circuit-breaker skip (PRD 12). The step that needs each adds it. The Antigravity quota gate is built (1.10g): a request carries `Request.Hold`, a function that names a connection spent for the model and the moment it frees up; a held connection counts as locked until then, and `AllLockedError` reports the earliest such moment, lock or hold. The selector reads memory only and `app/account` does not import `app/quota`.
+**Not in the selector:** credential-less providers (a virtual connection), the Freebuff model-assignment hook and the circuit-breaker skip (PRD 12). The step that needs each adds it. The Antigravity quota gate is built (1.10g): a request carries `Request.Hold`, a function that names a connection spent for the model and the moment it frees up; a held connection counts as locked until then, and `AllLockedError` reports the earliest such moment, lock or hold. The selector reads memory only and `app/gateway/account` does not import `app/llm/quota`.
 
 ### Error Classification (`account.Classify`)
 
@@ -72,7 +72,7 @@ flowchart TD
 ## Remaining work
 **Step 1.7b is built and the 1.8c pipeline calls it.**
 
-- [x] `app/account` `Selector`: per-provider mutex, persisted counters, `Exclude`, `Prefer`
+- [x] `app/gateway/account` `Selector`: per-provider mutex, persisted counters, `Exclude`, `Prefer`
 - [x] Error rules as data, then backoff and lock arithmetic on top of the existing `modelLock_*` fields
 - [x] `Reporter`: `Fail` and `Succeed`
 - [x] Called from the account loop (1.8c)

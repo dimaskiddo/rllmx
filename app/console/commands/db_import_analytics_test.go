@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"rllmx/app/lock"
-	"rllmx/app/repository"
+	"rllmx/app/store/lock"
+	"rllmx/app/store/repository"
 	"rllmx/tests"
 )
 

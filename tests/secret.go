@@ -4,7 +4,7 @@ import (
 	"encoding/hex"
 	"testing"
 
-	"rllmx/app/sealer"
+	"rllmx/app/store/sealer"
 )
 
 // DBSecret and OtherDBSecret are two different 64-hex sealing secrets for

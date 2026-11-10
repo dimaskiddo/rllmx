@@ -6,7 +6,7 @@ package usage
 import (
 	"sync"
 
-	"rllmx/app/analytics"
+	"rllmx/app/store/analytics"
 )
 
 // Sink collects enqueued rows. It is safe for concurrent use.

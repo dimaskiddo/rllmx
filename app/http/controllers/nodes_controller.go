@@ -11,8 +11,9 @@ import (
 	"github.com/google/uuid"
 	contractshttp "github.com/goravel/framework/contracts/http"
 
-	"rllmx/app/repository"
-	"rllmx/app/upstream"
+	"rllmx/app/llm/upstream"
+	"rllmx/app/store/document"
+	"rllmx/app/store/repository"
 )
 
 const maxBaseURL = 2048
@@ -157,7 +158,7 @@ func (c *NodesController) Update(ctx contractshttp.Context) contractshttp.Respon
 		return flat(ctx, nethttp.StatusBadRequest, msg)
 	}
 
-	q := func(s string) string { return quote(s) }
+	q := func(s string) string { return document.Encode(s) }
 	patch := map[string]string{"name": q(name), "prefix": q(prefix), "baseUrl": q(base)}
 	copied := map[string]string{"prefix": q(prefix), "baseUrl": q(base), "nodeName": q(name)}
 	if node.Type == upstream.NodeTypeOpenAI {

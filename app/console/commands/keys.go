@@ -10,10 +10,10 @@ import (
 	"github.com/goravel/framework/contracts/console"
 	"github.com/goravel/framework/contracts/console/command"
 
-	"rllmx/app/auth"
-	"rllmx/app/data"
-	"rllmx/app/identity"
-	"rllmx/app/repository"
+	"rllmx/app/access/auth"
+	"rllmx/app/access/identity"
+	"rllmx/app/store/data"
+	"rllmx/app/store/repository"
 )
 
 // errNoTerminal and errWrongPassword are the two refusals the auth commands

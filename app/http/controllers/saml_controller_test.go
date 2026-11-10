@@ -10,13 +10,13 @@ import (
 	"testing"
 	"time"
 
-	"rllmx/app/auth"
+	"rllmx/app/access/auth"
+	"rllmx/app/access/identity"
+	"rllmx/app/access/saml"
+	"rllmx/app/access/sso"
 	apphttp "rllmx/app/http"
-	"rllmx/app/identity"
-	"rllmx/app/repository"
-	"rllmx/app/saml"
-	"rllmx/app/settings"
-	"rllmx/app/sso"
+	"rllmx/app/platform/settings"
+	"rllmx/app/store/repository"
 	"rllmx/tests"
 	"rllmx/tests/store"
 )
@@ -56,7 +56,7 @@ func newSAMLRig(t *testing.T) *samlRig {
 	a := auth.NewAuthenticator(auth.NewStore(db), codec, bcryptOnly{}, "", func() []byte { return secret }, true, false)
 	a.OIDCUsable = func(string, string, string) bool { return false }
 	a.SAMLUsable = func(entryPoint, cert, idpEntity string) bool {
-		s := saml.Settings{EntryPoint: entryPoint, Cert: cert, IdPEntityID: idpEntity}
+		s := saml.Settings{EntryPoint: entryPoint, Cert: cert, IDPEntityID: idpEntity}
 		if !s.Configured() || idpEntity == "" {
 			return false
 		}

@@ -2,14 +2,14 @@ package config
 
 import (
 	"path/filepath"
-	"rllmx/app/dialect"
+	"rllmx/app/store/dialect"
 
 	"github.com/goravel/framework/contracts/database/driver"
 	postgresfacades "github.com/goravel/postgres/facades"
 	sqlitefacades "github.com/goravel/sqlite/facades"
 
 	"rllmx/app/facades"
-	"rllmx/app/file"
+	"rllmx/app/platform/file"
 )
 
 // sqliteDSN builds a file URI for a writable database with the settings the

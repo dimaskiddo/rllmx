@@ -1,12 +1,12 @@
-# PRD 09 — Streaming (`app/stream/`)
+# PRD 09 — Streaming (`app/llm/stream/`)
 
 **Status:** partial · **Steps:** 1.0, 1.8, 2.4
 
-Built in 1.8b, as a library: the 1.8c pipeline calls it; the chat routes reach it since 1.8d and 1.8e. `app/stream` holds the writers (`NewSSE`, `NewNDJSON`, `WriterOf`), the upstream readers (`Reader` for SSE, `Lines` for NDJSON), `Run` (the pump with its three timers, translate and passthrough modes), `Collect` (forced SSE to JSON), `Tracker`, `AddClientBuffer` and the content-type helpers. The stream half of each format lives in `app/translate` (`StreamReader`, `StreamWriter`, `Frame`; `stream_<format>.go`). The empty-stream peek is combo failover and belongs to 2.4.
+Built in 1.8b, as a library: the 1.8c pipeline calls it; the chat routes reach it since 1.8d and 1.8e. `app/llm/stream` holds the writers (`NewSSE`, `NewNDJSON`, `WriterOf`), the upstream readers (`Reader` for SSE, `Lines` for NDJSON), `Run` (the pump with its three timers, translate and passthrough modes), `Collect` (forced SSE to JSON), `Tracker`, `AddClientBuffer` and the content-type helpers. The stream half of each format lives in `app/llm/translate` (`StreamReader`, `StreamWriter`, `Frame`; `stream_<format>.go`). The empty-stream peek is combo failover and belongs to 2.4.
 
 | Item | Behavior |
 |---|---|
-| Parse | Upstream SSE is parsed by our own reader in `app/stream` (event limit 1 MiB, also over a single unterminated line; strips a BOM, accepts `\n`, `\r`, `\r\n`; joins multi-line `data`; drops comments, `id`, `retry`; a last event with no blank line still counts). Bare JSON lines (Ollama, commandcode) are not SSE events and go through `Lines`, which takes JSON objects only. The `event:` line is kept for Claude and Responses framing. `tmaxmax/go-sse` is not a dependency here |
+| Parse | Upstream SSE is parsed by our own reader in `app/llm/stream` (event limit 1 MiB, also over a single unterminated line; strips a BOM, accepts `\n`, `\r`, `\r\n`; joins multi-line `data`; drops comments, `id`, `retry`; a last event with no blank line still counts). Bare JSON lines (Ollama, commandcode) are not SSE events and go through `Lines`, which takes JSON objects only. The `event:` line is kept for Claude and Responses framing. `tmaxmax/go-sse` is not a dependency here |
 | Modes | *Translate* when source and target formats differ; *passthrough* otherwise (fix ids, add `object` and `created`, drop empty `tool_calls`, drop non-JSON lines) |
 | Emit | Claude: `event: <type>` + `data:`. Responses: `event: <name>` + `data:`. Ollama clients: one JSON line each through `NewNDJSON` (divergence 219). Everything else: `data:`. `[DONE]` closes OpenAI-style streams and Responses passthrough; Claude, Gemini and Ollama clients never get one |
 | Hold for usage | Every writer holds the closing event of a turn (OpenAI finish chunk, Claude `message_delta` + `message_stop`, Responses `response.completed`, Gemini closing chunk, the Ollama `done` line) until the usage report arrives or `STREAM_USAGE_WAIT` (3 s) passes, then closes without it (divergence 217) |

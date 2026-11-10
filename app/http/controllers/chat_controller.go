@@ -9,12 +9,12 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 	"github.com/goravel/framework/contracts/log"
 
-	"rllmx/app/failure"
+	"rllmx/app/gateway/pipeline"
 	apphttp "rllmx/app/http"
 	"rllmx/app/http/middleware"
-	"rllmx/app/pipeline"
-	"rllmx/app/stream"
-	"rllmx/app/translate"
+	"rllmx/app/llm/stream"
+	"rllmx/app/llm/translate"
+	"rllmx/app/platform/failure"
 )
 
 // ChatController serves the client chat endpoints through the pipeline.
@@ -58,7 +58,7 @@ func (c *ChatController) Serve(ctx contractshttp.Context) contractshttp.Response
 	}
 	out := p.Handle(r.Context(), pipeline.Input{
 		Path: r.URL.Path, Body: body, Caller: caller,
-		RequestID: middleware.RequestIdFrom(ctx), UserAgent: r.UserAgent(), Header: pipeline.PickHeaders(r.Header),
+		RequestID: middleware.RequestIDFrom(ctx), UserAgent: r.UserAgent(), Header: pipeline.PickHeaders(r.Header),
 		AcceptJSON: wantsJSON(r.Header.Get("Accept")),
 		Cache:      cacheMode(r.Header.Get(pipeline.CacheHeader)),
 	}, open)

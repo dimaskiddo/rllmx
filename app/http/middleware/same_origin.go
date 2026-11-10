@@ -6,8 +6,8 @@ import (
 
 	contractshttp "github.com/goravel/framework/contracts/http"
 
-	"rllmx/app/failure"
 	apphttp "rllmx/app/http"
+	"rllmx/app/platform/failure"
 )
 
 // samlACS is the one cross-site POST the product answers, so the only path the

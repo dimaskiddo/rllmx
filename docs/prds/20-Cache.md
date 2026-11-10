@@ -1,17 +1,17 @@
-# PRD 20 — Cache (`app/cache/`)
+# PRD 20 — Cache (`app/platform/cache/`)
 
 **Status:** partial · **Steps:** 1.3, 1.8f, 1.8g, 2.1, 2.6
 
-`Cache` is the cache. `app/cache` adds only what it lacks and defines no store or client: grouped, generational keys (`<group>:<generation>:<key>`, since the facade cannot purge a group), credential groups pinned to memory, a read-through `Load` that runs the loader once per key, and fail-open. It takes the facade as an argument, so a test passes a fake.
+`Cache` is the cache. `app/platform/cache` adds only what it lacks and defines no store or client: grouped, generational keys (`<group>:<generation>:<key>`, since the facade cannot purge a group), credential groups pinned to memory, a read-through `Load` that runs the loader once per key, and fail-open. It takes the facade as an argument, so a test passes a fake.
 
 | Store | Selected by | Notes |
 |---|---|---|
 | Memory | `default`: `memory` in `config/cache.go` | A `sync.Map` where each `Put` starts an expiry timer. No entry or byte cap, and `Get` returns the stored value, not a copy — so every key gets a TTL, values stay small and read-only, and unbounded groups (`limiter`, `response`) are bounded by key design |
-| Redis | `redis` store in `config/cache.go`, used by shared groups only when `REDIS_HOST` is set; otherwise `app/cache` is built `WithoutShared`. `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_DB`; no username, no `*tls.Config`, so the driver builds a plain host:port | `goravel/redis` over go-redis. Also Valkey (never run against a real server). TLS only if `config/database.go` set a `*tls.Config`, which it does not, so `rediss://` is not a supported spelling today. Other timeouts and retries are go-redis defaults |
+| Redis | `redis` store in `config/cache.go`, used by shared groups only when `REDIS_HOST` is set; otherwise `app/platform/cache` is built `WithoutShared`. `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_DB`; no username, no `*tls.Config`, so the driver builds a plain host:port | `goravel/redis` over go-redis. Also Valkey (never run against a real server). TLS only if `config/database.go` set a `*tls.Config`, which it does not, so `rediss://` is not a supported spelling today. Other timeouts and retries are go-redis defaults |
 
 ### Fail Open
 
-- `Put` returns an error and `Get` returns the default on a failure. Our wrapper in `app/cache` turns every error into a miss and every failed write into a no-op, so a request never fails because of the cache.
+- `Put` returns an error and `Get` returns the default on a failure. Our wrapper in `app/platform/cache` turns every error into a miss and every failed write into a no-op, so a request never fails because of the cache.
 - The Redis driver is built with no client when the first connection fails (its constructor returns `nil, nil` after a failed ping), and the facade keeps that driver, so every later call on it panics instead of returning an error. The wrapper recovers the panic and treats it as a miss. A store the facade cannot build at all is the same miss.
 - The first failure of the process is logged once, with no value and no panic text; later ones are silent. A breaker that skips a down store, and a measurement of how long a stopped Redis delays each call, are not built: they need a real Redis, and `TASKS.md` lists them in Open items.
 
@@ -19,7 +19,7 @@
 
 | Item | Behavior |
 |---|---|
-| Load | `app/cache`'s `Load(ctx, group, key, ttl, fn)` is the read-through load, built on `golang.org/x/sync/singleflight` so concurrent callers of one key share a single load. The facade's `Remember` is not used: it does not collapse concurrent loads. The load runs on a context detached from the callers, so one that leaves does not fail the rest |
+| Load | `app/platform/cache`'s `Load(ctx, group, key, ttl, fn)` is the read-through load, built on `golang.org/x/sync/singleflight` so concurrent callers of one key share a single load. The facade's `Remember` is not used: it does not collapse concurrent loads. The load runs on a context detached from the callers, so one that leaves does not fail the rest |
 | Purge | The facade has no purge by group. A group's keys carry a generation number (`<group>:<generation>:<key>`) read from a counter key; a purge calls `Increment` on the counter, so older keys are never read again and expire by TTL. `Flush` clears a whole store and is not used for this |
 
 ### What Is Cached
@@ -40,7 +40,7 @@ Built in 1.8f (the node model list) and 1.8g (the response-cache switch and the 
 
 ### Namespaces
 
-Only `settings`, `apikeys`, `models`, `limiter`, `response` and `toolcalls` may use the configured store. **Every other group, including one nobody listed yet, is read and written through `Cache().Store("memory")` only**, so a new credential-bearing group is safe by default. The allow-list lives in one unexported function in `app/cache`, which picks the store itself; product code names a group and never a store.
+Only `settings`, `apikeys`, `models`, `limiter`, `response` and `toolcalls` may use the configured store. **Every other group, including one nobody listed yet, is read and written through `Cache().Store("memory")` only**, so a new credential-bearing group is safe by default. The allow-list lives in one unexported function in `app/platform/cache`, which picks the store itself; product code names a group and never a store.
 
 | Namespace | Holds | Backend |
 |---|---|---|
@@ -50,12 +50,12 @@ Only `settings`, `apikeys`, `models`, `limiter`, `response` and `toolcalls` may 
 | `overrides` | Provider override headers | Memory only (not on the Redis list) |
 | `limiter` | Login failure counters | The memory store always applies (the in-process floor), plus the configured store when it is Redis. Counters are small and expire by TTL, so the store's missing size cap does not matter |
 | `response` | Cached completions | Configured driver |
-| `toolcalls` | Gemini thought signatures by tool call, so a client that drops one does not break the next turn, owned by the Gemini codec in `app/translate`. Key: SHA-256 of the API key id and the call id, never the bare id; value: model family and signature; 1 hour; a signature is never offered to a model of another family | Configured driver |
+| `toolcalls` | Gemini thought signatures by tool call, so a client that drops one does not break the next turn, owned by the Gemini codec in `app/llm/translate`. Key: SHA-256 of the API key id and the call id, never the bare id; value: model family and signature; 1 hour; a signature is never offered to a model of another family | Configured driver |
 | `connections` | The Copilot token a GitHub account's requests carry, for 10 s after it is minted so concurrent requests share one mint (`oauth.Minter`); the account's own copy lives sealed in its provider data | Memory only |
 | `refresh` | Refreshed credentials (10 s result cache) | Memory only |
 | `oauth` | Login sessions with PKCE verifiers or private keys (reserved: the 1.9a store is an in-process map, because `Begin` has to be one atomic step) | Memory only |
 | `discovery` | One identity provider's OpenID metadata and signing keys, 1 h, dropped when the settings row is written | Memory only: it holds no credential, but a sign-in must finish on the instance that started it, so sharing it buys nothing |
-| SSO stores (not a group) | Pending sign-ins (`app/sso`, 10,000, ten minutes) and the SAML assertion replay set (`app/saml`, 100,000, until the assertion's own expiry, a day at most) | Dedicated in-process maps with their own caps, never Redis: a sign-in must finish on the instance that started it, and a shared replay set would put a lock on the request path for nothing |
+| SSO stores (not a group) | Pending sign-ins (`app/access/sso`, 10,000, ten minutes) and the SAML assertion replay set (`app/access/saml`, 100,000, until the assertion's own expiry, a day at most) | Dedicated in-process maps with their own caps, never Redis: a sign-in must finish on the instance that started it, and a shared replay set would put a lock on the request path for nothing |
 
 - `config/database.go` passes `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` and `REDIS_DB` to `goravel/redis`, which builds a plain `host:port`; there is no TLS toggle and no `rediss://` spelling. A non-loopback `REDIS_HOST` logs one start-up warning at WARN: the connection is not encrypted. The choice of a trusted network is the operator's.
 - Someone who can write to Redis can lock people out of the dashboard but cannot lift a lock, because the in-process floor holds.
@@ -63,7 +63,7 @@ Only `settings`, `apikeys`, `models`, `limiter`, `response` and `toolcalls` may 
 
 ### Response Cache
 
-Off by default. Built in 1.8g: `app/pipeline/response_cache.go` (switches, key, lookup, store), `app/pipeline/canonical.go` (the canonical body), `cache.Budget` (the in-process bound) and `repository.KVRepo.ResponseCacheEnabled`. No reference has a response cache, so there is no reference behavior to follow or diverge from.
+Off by default. Built in 1.8g: `app/gateway/pipeline/response_cache.go` (switches, key, lookup, store), `app/gateway/pipeline/canonical.go` (the canonical body), `cache.Budget` (the in-process bound) and `repository.KVRepo.ResponseCacheEnabled`. No reference has a response cache, so there is no reference behavior to follow or diverge from.
 
 | Item | Behavior |
 |---|---|
@@ -96,7 +96,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 
 ## Remaining work
 
-Built and tested: `app/cache` (groups, generational purge, the memory-only credential groups, `Load` with singleflight, fail-open, `Budget`), the node model list in the `models` group (1.8f) and the response cache (1.8g).
+Built and tested: `app/platform/cache` (groups, generational purge, the memory-only credential groups, `Load` with singleflight, fail-open, `Budget`), the node model list in the `models` group (1.8f) and the response cache (1.8g).
 
 - [x] The response cache: switches, key, lookup, store, header, budget, the kv reader, the purge on a settings write (1.8g)
 - [x] The first readers of the cache: the node model list (1.8f), the response-cache projection and the per-key flag (1.8g)
@@ -108,7 +108,7 @@ Built and tested: `app/cache` (groups, generational purge, the memory-only crede
 
 ## Findings
 
-`app/cache` and its provider are built and tested. The facade's `Remember` does not collapse concurrent loads, so `app/cache.Load` adds singleflight.
+`app/platform/cache` and its provider are built and tested. The facade's `Remember` does not collapse concurrent loads, so `app/platform/cache.Load` adds singleflight.
 
 **The framework's memory store has no size cap**, and arms one timer per `Put` (an earlier timer can drop a later value stored under the same key, which only costs a miss). An entry count alone does not bound memory, since one entry may be 4 MiB, so `Budget` counts both entries and bytes.
 

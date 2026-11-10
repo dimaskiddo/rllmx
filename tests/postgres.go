@@ -10,7 +10,7 @@ import (
 	contractsdriver "github.com/goravel/framework/contracts/database/driver"
 	"github.com/goravel/postgres"
 
-	"rllmx/app/dialect"
+	"rllmx/app/store/dialect"
 )
 
 // PGDSN names the PostgreSQL server the storage suite runs against. It is read

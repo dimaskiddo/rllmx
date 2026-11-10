@@ -12,16 +12,16 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 	"github.com/tidwall/gjson"
 
-	"rllmx/app/account"
-	"rllmx/app/executor"
+	"rllmx/app/access/identity"
+	"rllmx/app/gateway/account"
+	"rllmx/app/gateway/pipeline"
 	apphttp "rllmx/app/http"
 	"rllmx/app/http/middleware"
-	"rllmx/app/identity"
-	"rllmx/app/pipeline"
-	"rllmx/app/repository"
-	"rllmx/app/routing"
-	"rllmx/app/stream"
-	"rllmx/app/upstream"
+	"rllmx/app/llm/executor"
+	"rllmx/app/llm/routing"
+	"rllmx/app/llm/stream"
+	"rllmx/app/llm/upstream"
+	"rllmx/app/store/repository"
 	"rllmx/tests"
 	"rllmx/tests/store"
 	"rllmx/tests/usage"
@@ -109,7 +109,7 @@ func (r *chatRig) mount(limit int64) {
 	route := tests.NewRoute(r.t)
 	g := apphttp.NewGuard(keyed{}, true)
 	route.SetGlobalMiddleware([]contractshttp.Middleware{
-		&middleware.RequestId{}, &middleware.BodyLimit{ClientMax: limit}, &middleware.Guard{Guard: g},
+		&middleware.RequestID{}, &middleware.BodyLimit{ClientMax: limit}, &middleware.Guard{Guard: g},
 	})
 	c := &ChatController{Pipe: func() (*pipeline.Pipeline, error) { return r.pipe() }, Log: &tests.Log{}}
 	for _, path := range []string{"/v1/chat/completions", "/v1/messages", "/v1/responses", "/v1/responses/compact", "/v1beta/models/*path", "/v1/api/chat"} {

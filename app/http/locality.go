@@ -5,7 +5,7 @@ import (
 	"net/netip"
 	"strings"
 
-	"rllmx/app/network"
+	"rllmx/app/platform/network"
 )
 
 // proxyHeaders mark a request that passed through something other than the

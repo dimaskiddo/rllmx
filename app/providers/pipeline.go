@@ -5,22 +5,24 @@ import (
 
 	"context"
 	"errors"
-	"rllmx/app/cosy"
-	"rllmx/app/zed"
+	"rllmx/app/llm/zed"
+	"rllmx/app/protocol/cosy"
 
 	"github.com/goravel/framework/contracts/foundation"
 
-	"rllmx/app/account"
-	"rllmx/app/cache"
-	"rllmx/app/executor"
-	"rllmx/app/network"
-	"rllmx/app/pipeline"
-	"rllmx/app/prefetch"
-	"rllmx/app/repository"
-	"rllmx/app/routing"
-	"rllmx/app/settings"
-	"rllmx/app/stream"
-	"rllmx/app/upstream"
+	"rllmx/app/gateway/account"
+	"rllmx/app/gateway/pipeline"
+	"rllmx/app/gateway/prefetch"
+	"rllmx/app/llm/executor"
+	"rllmx/app/llm/executor/mux"
+	"rllmx/app/llm/executor/opencode"
+	"rllmx/app/llm/routing"
+	"rllmx/app/llm/stream"
+	"rllmx/app/llm/upstream"
+	"rllmx/app/platform/cache"
+	"rllmx/app/platform/network"
+	"rllmx/app/platform/settings"
+	"rllmx/app/store/repository"
 )
 
 // ErrStoreNotOpen means a request arrived before the data runner opened the stores.
@@ -67,13 +69,13 @@ func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.P
 	// through a client that lists the suites the tool's own client lists.
 	freeLane := network.NewClient(network.Options{
 		ConnectTimeout: h.Upstream.ConnectTimeout, MaxRedirects: -1, Allow: h.Upstream.Allow, BodyCap: -1,
-		CipherSuites: executor.OpenCodeCipherSuites,
+		CipherSuites: opencode.OpenCodeCipherSuites,
 	})
 	return pipeline.New(pipeline.Deps{
 		Resolver: &routing.Resolver{Registry: h.Registry, Snapshot: routing.NewSnapshot(routing.NewRepositorySource(store), nil)},
 		Selector: account.NewSelector(account.SelectorOptions{Conns: store.Connections(), Settings: store.Settings(), Log: log}),
 		Reporter: account.NewReporter(store.Connections(), log, nil),
-		Executor: executor.NewMux(&executor.Default{Client: client}, executor.Options{
+		Executor: mux.New(&executor.Default{Client: client}, mux.Options{
 			PeekIdle: h.Stream.Stall, VertexTokens: h.Google.Vertex, MimoCookies: h.Google.Mimo, OpenCodeClient: freeLane,
 			ZedTokens: h.Zed, FreebuffSessions: h.Freebuff, QoderKey: qoderKey(h.Registry), Cache: cacheOrNil(app),
 		}),

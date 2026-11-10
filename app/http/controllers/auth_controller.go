@@ -8,7 +8,7 @@ import (
 
 	contractshttp "github.com/goravel/framework/contracts/http"
 
-	"rllmx/app/auth"
+	"rllmx/app/access/auth"
 	apphttp "rllmx/app/http"
 )
 

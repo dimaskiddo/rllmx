@@ -12,7 +12,7 @@ import (
 	"github.com/goravel/framework/contracts/log"
 	"github.com/goravel/framework/contracts/schedule"
 
-	"rllmx/app/data"
+	"rllmx/app/store/data"
 	"rllmx/tests"
 )
 

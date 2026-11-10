@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"rllmx/app/upstream"
+	"rllmx/app/llm/upstream"
 )
 
 func nodeID(t *testing.T, out map[string]any) string {

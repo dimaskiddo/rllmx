@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"rllmx/app/lock"
+	"rllmx/app/store/lock"
 	"rllmx/tests"
 )
 

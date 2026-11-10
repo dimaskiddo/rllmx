@@ -4,6 +4,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -112,7 +113,7 @@ func TestTheImportScanSeesTheFilesItShouldCover(t *testing.T) {
 // so it may import only packages whose tests do not import it back. A helper
 // that needs one of those lives in a sub-package (tests/store, tests/usage).
 func TestRootTestsPackageImportsOnlyCycleFreePackages(t *testing.T) {
-	allowed := map[string]bool{"rllmx/app/dialect": true, "rllmx/app/document": true, "rllmx/app/file": true, "rllmx/app/sealer": true}
+	allowed := map[string]bool{"rllmx/app/store/dialect": true, "rllmx/app/store/document": true, "rllmx/app/platform/file": true, "rllmx/app/store/sealer": true}
 	for name, path := range goFiles(t) {
 		if filepath.ToSlash(filepath.Dir(name)) != "tests" || strings.HasSuffix(name, "_test.go") {
 			continue
@@ -123,4 +124,100 @@ func TestRootTestsPackageImportsOnlyCycleFreePackages(t *testing.T) {
 			}
 		}
 	}
+}
+
+// domainRank orders the domain folders of app/: a package may import its own
+// domain and the ones before it, never one after. Folders that are not a domain
+// (the Goravel ones: http, providers, console, facades) sit above every domain
+// and may import any of them.
+var domainRank = map[string]int{"platform": 0, "protocol": 1, "store": 2, "access": 3, "llm": 4, "gateway": 5}
+
+// domainOf names the domain folder of an app/ import path, or "" for a path
+// that is not a domain package.
+func domainOf(importPath string) string {
+	rest, ok := strings.CutPrefix(importPath, "rllmx/app/")
+	if !ok {
+		return ""
+	}
+	top, _, _ := strings.Cut(rest, "/")
+	if _, isDomain := domainRank[top]; isDomain {
+		return top
+	}
+	return ""
+}
+
+func TestNoPackageImportsADomainAfterItsOwn(t *testing.T) {
+	for name, path := range goFiles(t) {
+		if !strings.HasPrefix(name, "app/") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		from := domainOf("rllmx/" + filepath.ToSlash(filepath.Dir(name)))
+		if from == "" {
+			continue
+		}
+		for _, imp := range importsOf(t, path) {
+			if to := domainOf(imp); to != "" && domainRank[to] > domainRank[from] {
+				t.Errorf("%s (%s) imports %s (%s): imports run down the domains, not up", name, from, imp, to)
+			}
+		}
+	}
+}
+
+// protocol packages are wire-format code with no knowledge of the program, so
+// they may import only the standard library and platform packages.
+func TestProtocolPackagesImportNothingOfTheProgram(t *testing.T) {
+	for name, path := range goFiles(t) {
+		if !strings.HasPrefix(name, "app/protocol/") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		for _, imp := range importsOf(t, path) {
+			if strings.HasPrefix(imp, "rllmx/") {
+				t.Errorf("%s imports %s; a protocol package imports nothing of the program", name, imp)
+			}
+		}
+	}
+}
+
+// A sub-package may use its parent's framework, never a sibling: what two
+// siblings share belongs in the parent as an exported type, and the wiring that
+// needs every sibling is one package of its own.
+func TestNoSubPackageImportsASibling(t *testing.T) {
+	wiring := map[string]bool{"app/llm/executor/mux": true}
+	for name, path := range goFiles(t) {
+		dir := filepath.ToSlash(filepath.Dir(name))
+		if !strings.HasPrefix(name, "app/") || strings.HasSuffix(name, "_test.go") || wiring[dir] || isGoravelFolder(dir) {
+			continue
+		}
+		parent := filepath.ToSlash(filepath.Dir(dir))
+		if !hasGoFiles(t, filepath.Join("..", parent)) {
+			continue
+		}
+		for _, imp := range importsOf(t, path) {
+			if strings.HasPrefix(imp, "rllmx/"+parent+"/") {
+				t.Errorf("%s imports %s: a sub-package imports its parent, never a sibling package", name, imp)
+			}
+		}
+	}
+}
+
+// isGoravelFolder reports a folder the framework scaffold owns, whose shape is
+// its own: controllers beside the guard they use, providers beside their wiring.
+func isGoravelFolder(dir string) bool {
+	top, _, _ := strings.Cut(strings.TrimPrefix(dir, "app/"), "/")
+	return top == "http" || top == "providers" || top == "console" || top == "facades"
+}
+
+// hasGoFiles reports a directory holding a go file of its own package.
+func hasGoFiles(t *testing.T, dir string) bool {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".go") {
+			return true
+		}
+	}
+	return false
 }

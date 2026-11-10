@@ -1,4 +1,4 @@
-# PRD 11 — Skills, Session & Auto Plan (`app/skill/`, `app/conversation/`, `app/plan/`)
+# PRD 11 — Skills, Session & Auto Plan (`app/skill/`, `app/gateway/conversation/`, `app/plan/`)
 
 **Status:** todo · **Steps:** 3.2 to 3.4
 
@@ -60,7 +60,7 @@ Each rule has a `stage` (`pre-route` or `pre-request`), a `when` and a `then`:
 
 Matched skills are not stored with the usage row (metadata only); a later phase may add a nullable column.
 
-### Session Id (`app/conversation/`, built in 1.8c)
+### Session Id (`app/gateway/conversation/`, built in 1.8c)
 
 `Store.Resolve` returns the id a request belongs to. First match wins; every candidate is trimmed and dropped above 256 characters.
 
@@ -75,7 +75,7 @@ Matched skills are not stored with the usage row (metadata only); a later phase 
 
 Made-up ids are a random UUID plus the time in milliseconds and expire after two hours. The pipeline holds one store (`Deps.Sessions`, made when none is given) and resolves the id once an account is chosen, because the last fallback is one id per account. Since 1.9c the Claude user id and `x-claude-code-session-id` carry the id without its `claude:` prefix, and Codex's `session_id` carries `Bound`, the keyed hash, never the client's value. The helper names an earlier draft listed here (`ClaudePrefix`, `TrimClaudePrefix`, `UserIDSession`, `IsAnthropicNode`, `SpeaksAnthropic`) were never written: `translate.SessionOf` reads the session out of a user id, and the disguise needs nothing else.
 
-**Session cache** (planned, `app/conversation/`). In-memory LRU, 2000 entries, 4 hours, keyed by `x-session-id` or `session-id`. On repeat turns a skill already injected becomes a one-line reminder. After an account failover every later turn of that session gets a short continuity notice.
+**Session cache** (planned, `app/gateway/conversation/`). In-memory LRU, 2000 entries, 4 hours, keyed by `x-session-id` or `session-id`. On repeat turns a skill already injected becomes a one-line reminder. After an account failover every later turn of that session gets a short continuity notice.
 
 ### Auto Plan-Then-Code (`app/plan/`)
 
@@ -104,17 +104,17 @@ An error at any step fails open. Bypass: `x-9router-auto-plan: off`. The outcome
 
 | Feature | Reference (extended) | Package | Status | Step |
 |---|---|---|---|---|
-| Freebuff provider and OAuth device login | `executors/freebuff.js`, `src/lib/oauth/providers/freebuff.js` | `app/executor/freebuff.go`, `app/oauth` | todo | 1.10 |
-| Freebuff strict model assignment | `src/sse/services/auth.js` | `app/account` | todo | 1.10 |
+| Freebuff provider and OAuth device login | `executors/freebuff.js`, `src/lib/oauth/providers/freebuff.js` | `app/llm/executor/freebuff.go`, `app/llm/oauth` | todo | 1.10 |
+| Freebuff strict model assignment | `src/sse/services/auth.js` | `app/gateway/account` | todo | 1.10 |
 | Health EMA, circuit breaker | `src/lib/routing/health.js` | `app/health` | diverged (breaker used in routing) | 2.5 |
 | Model probe | `src/lib/routing/modelProbe.js` | `app/probe` | todo | 2.5 |
-| Model ranking, combo suggestion | `src/lib/routing/modelRanking.js`, `/api/combos/suggest` | `app/combo` | todo | 2.5 |
+| Model ranking, combo suggestion | `src/lib/routing/modelRanking.js`, `/api/combos/suggest` | `app/gateway` | todo | 2.5 |
 | Latency SSE | `/api/health/latency-stream` | `app/health` | todo | 2.5 |
-| OpenRouter live model sync | `src/app/api/v1/models/route.js` | `app/catalog` | todo | 2.6 |
+| OpenRouter live model sync | `src/app/api/v1/models/route.js` | `app/gateway/catalog` | todo | 2.6 |
 | Skills registry (system-prompt hooks) | `src/lib/skillsRegistry.js` | `app/skill` | todo | 3.2 |
 | ECC auto skill router | `src/skills/autoRouter.js` | `app/skill` | todo | 3.2 |
 | Local skill router | `src/skills/localSkillRouter.js` | `app/skill` | todo | 3.2 |
-| Session LRU and continuity notice | `src/lib/session/cache.js` | `app/conversation` | todo | 3.2 |
+| Session LRU and continuity notice | `src/lib/session/cache.js` | `app/gateway/conversation` | todo | 3.2 |
 | Skills Studio | `src/app/api/skills`, dashboard skills page | `app/skill`, `web` | diverged (declarative rules, no scripts) | 3.3 |
 | Auto Plan-Then-Code | `src/lib/autoPlanRouter.js` | `app/plan` | todo | 3.4 |
 | Setup wizard | `src/app/setup/page.js` | `web` | todo | 4.1 |
@@ -155,4 +155,4 @@ Deliberate differences from the references in this area. Numbers are stable and 
 
 ## Findings
 
-Nothing built. `app/skill`, `app/conversation` and `app/plan` do not exist.
+Nothing built. `app/skill`, `app/gateway/conversation` and `app/plan` do not exist.

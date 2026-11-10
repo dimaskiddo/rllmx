@@ -8,9 +8,9 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 	"github.com/goravel/framework/contracts/log"
 
-	"rllmx/app/catalog"
-	"rllmx/app/failure"
+	"rllmx/app/gateway/catalog"
 	apphttp "rllmx/app/http"
+	"rllmx/app/platform/failure"
 )
 
 // ModelsController serves the model catalog to API clients.

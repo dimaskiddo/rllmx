@@ -2,7 +2,7 @@
 
 **Status:** todo · **Steps:** 3.1
 
-`app/saver` does not exist. Everything below is the 3.1 target.
+The token saver does not exist. Everything below is the 3.1 target.
 
 All savers run after translation and **fail open**: an error leaves the body unchanged. The request header `x-9router-token-saver: off` bypasses all of them.
 
@@ -31,7 +31,7 @@ All savers run after translation and **fail open**: an error leaves the body unc
 ---
 
 ## Remaining work
-**Step 3.1.** `app/saver` does not exist.
+**Step 3.1.** The token saver does not exist.
 
 - [ ] `app/saver` with the savers in this PRD and the parity table below, applied after translation, failing open
 

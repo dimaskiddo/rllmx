@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"rllmx/app/network"
-	"rllmx/app/upstream"
+	"rllmx/app/llm/upstream"
+	"rllmx/app/platform/network"
 
 	"rllmx/tests"
 )

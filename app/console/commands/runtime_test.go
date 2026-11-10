@@ -13,7 +13,7 @@ import (
 
 	"github.com/goravel/framework/contracts/console"
 
-	"rllmx/app/settings"
+	"rllmx/app/platform/settings"
 	"rllmx/tests"
 )
 

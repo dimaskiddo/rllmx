@@ -5,7 +5,7 @@ import (
 	"github.com/goravel/framework/log/logger"
 
 	"rllmx/app/facades"
-	"rllmx/app/redactor"
+	"rllmx/app/platform/redactor"
 )
 
 // logFile is relative to the project root: the single and daily drivers join

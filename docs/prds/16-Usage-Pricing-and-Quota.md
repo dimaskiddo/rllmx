@@ -1,8 +1,8 @@
-# PRD 16 — Usage, Pricing & Quota (`app/analytics/`, `app/usage/`)
+# PRD 16 — Usage, Pricing & Quota (`app/store/analytics/`, `app/store/analytics/`)
 
 **Status:** partial · **Steps:** 1.4, 1.8, 2.3
 
-Built today: `app/analytics` (the usage store, writer, rollups, retention and the legacy importer). `app/usage` — the query surface, pricing and quota — does not exist. The pipeline enqueues one row per request on every path since 1.8c (price from `upstream.Table`, error class, attempt, estimate flag); the writer is wired since 1.8d, and a Claude CLI bypass reply ends in one row (status 200, no provider, zero tokens).
+Built today: `app/store/analytics` (the usage store, writer, rollups, retention and the legacy importer). `app/store` — the query surface, pricing and quota — does not exist. The pipeline enqueues one row per request on every path since 1.8c (price from `upstream.Table`, error class, attempt, estimate flag); the writer is wired since 1.8d, and a Claude CLI bypass reply ends in one row (status 200, no provider, zero tokens).
 
 ### Usage
 
@@ -10,7 +10,7 @@ When a request completes, the pipeline enqueues one row to the analytics writer.
 
 `/api/usage/*` (stats, charts, history, per key, per connection) reads only `requests` and the rollups. History pages use a keyset cursor. A bounded in-memory ring and an SSE emitter feed `/api/usage/stream`; active requests are tracked in memory.
 
-### Pricing (`app/upstream/pricing.go`, data `app/upstream/data/pricing/prices.json`; built in 1.7a)
+### Pricing (`app/llm/upstream/pricing.go`, data `app/llm/upstream/data/pricing/prices.json`; built in 1.7a)
 
 Rates are dollars per million tokens: input, output, cached, reasoning, cache creation. A missing cached or cache-creation rate means the input rate; a missing reasoning rate means the output rate.
 
@@ -30,7 +30,7 @@ Rates are dollars per million tokens: input, output, cached, reasoning, cache cr
 
 ### Quota
 
-The Antigravity limits are already read by `app/quota` (1.10g) for the selector; `/api/usage/{connectionId}` (step 2.3) will show the same readings. Per-provider fetchers report live limits through `/api/usage/{connectionId}` (GitHub, Gemini CLI, Antigravity, Claude, Codex, Kiro, Qoder, iFlow, GLM, MiniMax, Kimi, DeepSeek, OpenCode, Zed, Cursor and others). API key quota limits are a separate feature (PRD 21).
+The Antigravity limits are already read by `app/llm/quota` (1.10g) for the selector; `/api/usage/{connectionId}` (step 2.3) will show the same readings. Per-provider fetchers report live limits through `/api/usage/{connectionId}` (GitHub, Gemini CLI, Antigravity, Claude, Codex, Kiro, Qoder, iFlow, GLM, MiniMax, Kimi, DeepSeek, OpenCode, Zed, Cursor and others). API key quota limits are a separate feature (PRD 21).
 
 ---
 
@@ -39,13 +39,13 @@ The Antigravity limits are already read by `app/quota` (1.10g) for the selector;
 | Endpoint | Package | Status | Step |
 |---|---|---|---|
 | `/api/usage/*` (stats, chart, history, providers, stream, per-connection quota) | `app/http/controllers` | diverged | 2.6 |
-| `/api/usage/{connectionId}/claude-reset`, `codex-reset-credits` | `app/usage` | todo (quota fetchers) | 2.6 |
+| `/api/usage/{connectionId}/claude-reset`, `codex-reset-credits` | `app/store` | todo (quota fetchers) | 2.6 |
 | `/api/usage/request-details`, `request-logs` | none | out | - |
 
 ---
 
 ## Remaining work
-**Steps 1.8 and 2.3.** The analytics store writes usage rows; `app/usage` is unbuilt.
+**Steps 1.8 and 2.3.** The analytics store writes usage rows; `app/store` is unbuilt.
 
 - [ ] `/api/usage/*` query surface over `requests` and the rollups, with the keyset cursor and the SSE stream
 - [x] Pricing lookup over the embedded baseline and the `pricing` overrides (1.7a); the pipeline's usage hook calls it (1.8c)
@@ -73,6 +73,6 @@ Deliberate differences from the references in this area. Numbers are stable and 
 
 ## Findings
 
-The analytics store writes usage rows. The price table is built (`upstream.Table`: `Lookup`, `Cost`, `ParseOverrides`); the pipeline prices every row with it since 1.8c. `app/usage` — the query surface and quota — is unbuilt.
+The analytics store writes usage rows. The price table is built (`upstream.Table`: `Lookup`, `Cost`, `ParseOverrides`); the pipeline prices every row with it since 1.8c. `app/store` — the query surface and quota — is unbuilt.
 
 **An unknown model is not a free model.** `Table.Cost` returns `known=false` when nothing matches, and an administrator override of `{}` is the only way to say a model costs nothing. Rates left out of a card fall back to the input or output rate, but an explicit `0` stays `0`.

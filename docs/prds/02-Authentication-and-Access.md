@@ -1,12 +1,12 @@
-# PRD 02 — Authentication & Access (`app/auth/`, `app/sso/`, `app/oidc/`, `app/saml/`, `app/identity/`)
+# PRD 02 — Authentication & Access (`app/access/auth/`, `app/access/sso/`, `app/access/oidc/`, `app/access/saml/`, `app/access/identity/`)
 
 **Status:** partial · **Steps:** 1.6
 
-Built in 1.6a: `app/identity` (key format, machine id, key extraction), `app/auth` (session, password rules, login limiter, sign-in mode, settings snapshot, key lookup, the authenticator), the five `/api/auth/*` and `/api/settings/require-login` routes, the five commands, and the authenticator the guard now asks.
+Built in 1.6a: `app/access/identity` (key format, machine id, key extraction), `app/access/auth` (session, password rules, login limiter, sign-in mode, settings snapshot, key lookup, the authenticator), the five `/api/auth/*` and `/api/settings/require-login` routes, the five commands, and the authenticator the guard now asks.
 
-Built in 1.6b: `app/sso` (public base, guarded IdP client, single-use flow state, allow list, bind cookie, error codes), `app/oidc` (settings, discovery, JWKS, PKCE, ID-token verification, identity), the two `/api/auth/oidc/*` routes, `AUTH_SSO_ALLOW`, and the real `Mode`.
+Built in 1.6b: `app/access/sso` (public base, guarded IdP client, single-use flow state, allow list, bind cookie, error codes), `app/access/oidc` (settings, discovery, JWKS, PKCE, ID-token verification, identity), the two `/api/auth/oidc/*` routes, `AUTH_SSO_ALLOW`, and the real `Mode`.
 
-Built in 1.6c: `app/saml` (settings, response parsing, XML-DSig verification over `goxmldsig`, the replay set, identity extraction, the AuthnRequest and the metadata document) and the three `/api/auth/saml/*` routes. Both sign-in types are done; `ResolveMode` now receives a real `samlUsable`, so a `saml` mode turns the password form off once its provider is configured.
+Built in 1.6c: `app/access/saml` (settings, response parsing, XML-DSig verification over `goxmldsig`, the replay set, identity extraction, the AuthnRequest and the metadata document) and the three `/api/auth/saml/*` routes. Both sign-in types are done; `ResolveMode` now receives a real `samlUsable`, so a `saml` mode turns the password form off once its provider is configured.
 
 **The allow list is optional.** An empty `AUTH_SSO_ALLOW` admits every account the configured provider accepts. That is a deliberate change from this PRD's first draft, which required a non-empty list before SSO became usable: on a company IdP the list is noise, and a half-configured IdP is already refused by `Configured()`. The trade-off is blunt and belongs here in full — **with an empty list, the dashboard is as open as the provider's own registration.** Point `oidcIssuerUrl` and `oidcClientId` at a public provider and every account there can sign in. Set `AUTH_SSO_ALLOW` to exact addresses or `@domain` entries to close that.
 
@@ -101,7 +101,7 @@ flowchart TD
 | Key | Client address (`X-Forwarded-For` only from a trusted proxy; IPv6 counts as its /64) |
 | Counting | Every attempt is counted **before** the compare, so parallel guesses cannot all see the old count |
 | Steps | Five free attempts, then locks of 30 s, 2 m, 10 m, 30 m. One hour of quiet starts over |
-| Lifetime | Entries live 2 h (longer than the longest lock plus the quiet hour); constants are in `app/auth/limiter.go` |
+| Lifetime | Entries live 2 h (longer than the longest lock plus the quiet hour); constants are in `app/access/auth/limiter.go` |
 | Local store | A dedicated, separately capped in-process store, because the shared cache evicts across namespaces |
 | Redis | With the Redis store as default, counters are also kept there under the SHA-256 of the client key. Each attempt loads both copies, takes the stricter value per field and writes both back. A Redis outage never lifts a lock. The read-modify-write is not atomic: instances racing on one address can let a few extra guesses through |
 
@@ -111,7 +111,7 @@ Change-password shares this counter. SSO counts differently (below).
 
 `auth.ResolveMode` turns `authMode` (`password`, `oidc`, `saml`, `sso`, `both`) and `ssoType` into one decision. SSO is usable only when its type is fully configured **and** `AUTH_SSO_ALLOW` names at least one entry. Password login is off only when the mode is SSO-only **and** SSO is usable, so half-configured SSO never locks the administrator out. SSO sessions are re-checked on every request against the current mode and allow-list.
 
-### Single Sign-On (`app/oidc`, `app/saml`, `app/sso`)
+### Single Sign-On (`app/access/oidc`, `app/access/saml`, `app/access/sso`)
 
 Shared by both types:
 
@@ -119,7 +119,7 @@ Shared by both types:
 |---|---|
 | Gate | Public routes refuse unless their type is the one in force. A locked address gets `sso_busy`. Only a **failed** callback counts, under the limiter prefix `sso:` so SSO and password attempts never share a count (divergence 130). Built: the prefix is `sso:` + `auth.Key(address)` |
 | URL base | Built from `APP_URL` (`sso.PublicBase`, `sso.CleanURL`). Without it only a local request may use its own loopback `Host`; otherwise start fails and asks for the variable. Forwarded headers never build a URL |
-| IdP client | One client (`app/sso/client.go`) on `network.NewClient`: no proxy, verified TLS, 10 s, 3 redirects, never https to http, 1 MiB response cap, the SSRF dialer guard (a private-network IdP needs an `UPSTREAM_ALLOW_PRIVATE` entry) |
+| IdP client | One client (`app/access/sso/client.go`) on `network.NewClient`: no proxy, verified TLS, 10 s, 3 redirects, never https to http, 1 MiB response cap, the SSRF dialer guard (a private-network IdP needs an `UPSTREAM_ALLOW_PRIVATE` entry) |
 | Flow state | Pending sign-ins and the SAML replay set live in dedicated in-process stores (10,000 pending, 100,000 replay), never Redis. A sign-in must finish on the instance that started it. Single use, 10 minutes. Built: `sso.Pending`, capped and expiring |
 | Errors | Every failure redirects to `/login?error=<code>`: `sso_disabled`, `sso_not_configured`, `sso_busy`, `sso_expired`, `sso_invalid`, `sso_not_allowed`, `sso_no_email`, `sso_unverified`, `sso_idp_error`. Provider or library text goes to the debug log only |
 | Session | Success sets the normal cookie and redirects to `/`. `Authenticator.IssueSSO` refuses unless that type is still in force **and** the allow list still permits the address; `Session` re-checks a provider session on every request, so switching the mode off or narrowing the list ends it at the next request rather than at the next expiry |
@@ -159,7 +159,7 @@ Routes `GET /api/auth/saml/start`, `POST /api/auth/saml/acs`, `GET /api/auth/sam
 | Metadata | `SPSSODescriptor`, one POST ACS, assertions required signed, requests not signed. Served only while SAML is in force. The entity id is `<APP_URL>/api/auth/saml/metadata` unless `samlIssuer` overrides it (divergence 211) |
 | Not built | Signed requests, artifact binding, single logout, encrypted assertions, the `saml/test` route |
 
-### Files & Compatibility Formats (`app/identity/`)
+### Files & Compatibility Formats (`app/access/identity/`)
 
 | Item | Format |
 |---|---|
@@ -178,10 +178,10 @@ Anything the dashboard asks the router to do against its own endpoints (model te
 
 | Endpoint | Package | Status | Step |
 |---|---|---|---|
-| `/api/auth/*` (login, logout, status, change-password; reset-password = `rllmx artisan password:reset`) | `app/http/controllers`, `app/auth` | done (1.6a; D52-58) | 1.6 |
-| `/api/auth/oidc/{start,callback}` | `app/oidc`, `app/sso`, `app/http/controllers` | done (1.6b; D59-66) | 1.6 |
-| `/api/auth/saml/{start,acs,metadata}` | `app/saml`, `app/http/controllers` | done (1.6c; D67-74) | 1.6 |
-| `keys:create`, `keys:list`, `keys:revoke`, `password:reset`, `db:export-plain` | `app/console/commands`, `app/identity` | done (1.6a) | 1.6 |
+| `/api/auth/*` (login, logout, status, change-password; reset-password = `rllmx artisan password:reset`) | `app/http/controllers`, `app/access/auth` | done (1.6a; D52-58) | 1.6 |
+| `/api/auth/oidc/{start,callback}` | `app/access/oidc`, `app/access/sso`, `app/http/controllers` | done (1.6b; D59-66) | 1.6 |
+| `/api/auth/saml/{start,acs,metadata}` | `app/access/saml`, `app/http/controllers` | done (1.6c; D67-74) | 1.6 |
+| `keys:create`, `keys:list`, `keys:revoke`, `password:reset`, `db:export-plain` | `app/console/commands`, `app/access/identity` | done (1.6a) | 1.6 |
 | `/api/auth/oidc/test`, `/api/auth/saml/test` | none | deferred (guarded client since 1.7; routes with the settings API) | 2.6 |
 | `/api/settings` (database export/import, the other settings) | `app/http/controllers` | todo (require-login is built) | 2.6 |
 | `/api/keys/*` | `app/http/controllers` | todo | 2.1 |
@@ -241,4 +241,4 @@ Deliberate differences from the references in this area. Numbers are stable and 
 
 **The certificate is parsed once per stored value.** `saml.ParseCertificate` caches one `*x509.Certificate` keyed by the stored text, because the ACS parses on every sign-in and the value changes only when the row does.
 
-Nothing else recorded. `app/identity` holds only the `Caller` and `KeyStatus` types the guard needs.
+Nothing else recorded. `app/access/identity` holds only the `Caller` and `KeyStatus` types the guard needs.

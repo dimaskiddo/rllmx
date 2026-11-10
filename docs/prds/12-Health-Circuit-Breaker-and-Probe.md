@@ -2,9 +2,9 @@
 
 **Status:** todo · **Steps:** 2.5
 
-`app/health` and `app/probe` do not exist.
+The health probe and the circuit breaker do not exist; each arrives with its step.
 
-The breaker lives in `app/health` (open after repeated failures, half-open after a pause) because the framework has none; `app/cache` reuses it if the Redis measurement in `PRD 20` needs one.
+The breaker lives in `app/health` (open after repeated failures, half-open after a pause) because the framework has none; `app/platform/cache` reuses it if the Redis measurement in `PRD 20` needs one.
 
 | Part | Behavior |
 |---|---|
@@ -20,7 +20,7 @@ The breaker lives in `app/health` (open after repeated failures, half-open after
 
 | Endpoint | Package | Status | Step |
 |---|---|---|---|
-| `/api/combos/suggest`, `/suggest/accept`, `/api/health/latency-stream`, `/api/usage/active-providers` | `app/combo`, `app/health` | todo | 2.5 |
+| `/api/combos/suggest`, `/suggest/accept`, `/api/health/latency-stream`, `/api/usage/active-providers` | `app/gateway`, `app/health` | todo | 2.5 |
 | `/api/headroom/*` (status, proxy) | `app/saver` | todo | 3.1 |
 | `/api/skills`, `/api/skills/sync-ecc` (dashboard action, not CLI) | `app/skill` | todo | 3.2 |
 | `/api/auto-plan/settings` | `app/plan` | todo | 3.4 |

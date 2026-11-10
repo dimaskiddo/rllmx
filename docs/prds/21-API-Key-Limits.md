@@ -19,7 +19,7 @@
 ## Remaining work
 **Steps 2.2 and 2.3.** Nothing built.
 
-- [x] The model list filtered by the allow-list (1.8f, `app/catalog`: each entry resolved through the resolver, exact comparison); 2.2 reuses that matching for the per-request check
+- [x] The model list filtered by the allow-list (1.8f, `app/gateway/catalog`: each entry resolved through the resolver, exact comparison); 2.2 reuses that matching for the per-request check
 - [ ] Per-key model allow-list, enforced per request; a reroute is re-checked against it. The response cache looks up before account selection, so the check must run before the lookup, or a restricted key could read an answer for a model it may not call
 - [ ] Per-key quota: request and token budgets, reset window, 429 `insufficient_quota`
 

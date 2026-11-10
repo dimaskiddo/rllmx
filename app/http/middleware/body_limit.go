@@ -5,8 +5,8 @@ import (
 
 	contractshttp "github.com/goravel/framework/contracts/http"
 
-	"rllmx/app/failure"
 	apphttp "rllmx/app/http"
+	"rllmx/app/platform/failure"
 )
 
 // apiBodyBytes is the cap on every body that is not a client API call. A

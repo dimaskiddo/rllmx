@@ -11,7 +11,7 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 	goravelgin "github.com/goravel/gin"
 
-	"rllmx/app/identity"
+	"rllmx/app/access/identity"
 	"rllmx/tests"
 )
 

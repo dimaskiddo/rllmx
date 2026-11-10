@@ -11,8 +11,8 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 	goravelgin "github.com/goravel/gin"
 
-	"rllmx/app/failure"
 	apphttp "rllmx/app/http"
+	"rllmx/app/platform/failure"
 )
 
 // send issues one request with an optional body and socket peer and returns the
