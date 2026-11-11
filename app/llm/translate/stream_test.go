@@ -250,38 +250,9 @@ func TestAToolFragmentOpeningAnIndexWithoutAnIDGetsOne(t *testing.T) {
 	}
 }
 
-func TestARepeatedToolIDOpensNoSecondCall(t *testing.T) {
-	c, _ := Lookup(FormatOpenAI)
-	r := c.NewStreamReader(NewCtx("", FormatOpenAI))
-	first := r.Read("", []byte(`{"id":"x","choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"f","arguments":"{"}}]}}]}`))
-	again := r.Read("", []byte(`{"id":"x","choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"arguments":"}"}}]}}]}`))
-	if first[0].ToolCalls[0].ID != "c1" || again[0].ToolCalls[0].ID != "" {
-		t.Fatalf("%+v %+v", first, again)
-	}
-	var out []Frame
-	w := (ClaudeCodec{}).NewStreamWriter(NewCtx("", FormatClaude))
-	for _, ch := range []Chunk{
-		{ID: "m", Model: "m", Role: RoleAssistant, ToolCalls: []ToolCallDelta{{Index: 0, ID: "c1", Name: "f", Arguments: "{"}}},
-		{ToolCalls: []ToolCallDelta{{Index: 0, ID: "c1", Arguments: "}"}}},
-		{FinishReason: FinishToolCalls, Usage: &Usage{Prompt: 1, Completion: 1}},
-	} {
-		f := w.Write(ch)
-		out = append(out, f...)
-	}
-	starts := 0
-	for _, f := range out {
-		if f.Event == "content_block_start" {
-			starts++
-		}
-	}
-	if starts != 1 {
-		t.Fatalf("%d tool blocks opened for one call", starts)
-	}
-}
-
 func TestTheOpenAIWriterOpensACallOnceWithItsIDAndName(t *testing.T) {
 	var out []Frame
-	w := (OpenAICodec{}).NewStreamWriter(NewCtx("", FormatOpenAI))
+	w := openAICodec(t).NewStreamWriter(NewCtx("", FormatOpenAI))
 	for _, ch := range []Chunk{
 		{ID: "chatcmpl-abcdef12", Model: "m", Role: RoleAssistant, ToolCalls: []ToolCallDelta{{Index: 0, ID: "c1", Name: "f", Arguments: "{"}}},
 		{ToolCalls: []ToolCallDelta{{Index: 0, ID: "c1", Name: "f", Arguments: "}"}}},
@@ -327,7 +298,7 @@ func TestResponsesAcceptsDoneAndCompletedOnce(t *testing.T) {
 func TestTheResponsesWriterNamesCustomToolCalls(t *testing.T) {
 	ctx := NewCtx("", FormatResponses)
 	ctx.CustomTools["patch"] = true
-	w := (ResponsesCodec{}).NewStreamWriter(ctx)
+	w := responsesCodec(t).NewStreamWriter(ctx)
 	var out []Frame
 	for _, ch := range []Chunk{
 		{ID: "r1", Model: "m", Role: RoleAssistant, ToolCalls: []ToolCallDelta{{Index: 0, ID: "c1", Name: "patch", Arguments: `{"input":"diff"}`}}},
@@ -350,7 +321,7 @@ func TestTheResponsesWriterNamesCustomToolCalls(t *testing.T) {
 }
 
 func TestTheGeminiWriterHoldsACallUntilTheTurnEnds(t *testing.T) {
-	w := (GeminiCodec{}).NewStreamWriter(NewCtx("", FormatGemini))
+	w := geminiCodec(t).NewStreamWriter(NewCtx("", FormatGemini))
 	f1 := w.Write(Chunk{ID: "r", Model: "m", Role: RoleAssistant, ToolCalls: []ToolCallDelta{{Index: 0, ID: "c", Name: "f", Arguments: `{"a":`}}})
 	f2 := w.Write(Chunk{ToolCalls: []ToolCallDelta{{Index: 0, Arguments: `1}`}}})
 	if len(f1)+len(f2) != 0 {
@@ -363,43 +334,22 @@ func TestTheGeminiWriterHoldsACallUntilTheTurnEnds(t *testing.T) {
 }
 
 func TestThinkTagsSplitAcrossPieces(t *testing.T) {
-	var s thinkSplitter
-	var segs []segment
+	var s ThinkSplitter
+	var segs []Segment
 	for _, in := range []string{"pre <thi", "nk>idea</th", "ink> post", " tail <"} {
-		segs = append(segs, s.split(in)...)
+		segs = append(segs, s.Split(in)...)
 	}
-	segs = append(segs, s.drain()...)
+	segs = append(segs, s.Drain()...)
 	var text, reason string
 	for _, sg := range segs {
-		if sg.reasoning {
-			reason += sg.text
+		if sg.Reasoning {
+			reason += sg.Text
 		} else {
-			text += sg.text
+			text += sg.Text
 		}
 	}
 	if text != "pre  post tail <" || reason != "idea" {
 		t.Fatalf("text %q reason %q", text, reason)
-	}
-}
-
-func TestReadToolArgumentsAreRepaired(t *testing.T) {
-	cases := map[string]string{
-		`{"file_path":"/a","limit":"50","offset":"-3"}`: `{"file_path":"/a","limit":50,"offset":0}`,
-		`{"file_path":"/a","limit":99999}`:              `{"file_path":"/a","limit":2000}`,
-		`{"file_path":"/a","limit":0}`:                  `{"file_path":"/a"}`,
-		`{"file_path":"/a.pdf","pages":"1-3"}`:          `{"file_path":"/a.pdf","pages":"1-3"}`,
-		`{"file_path":"/a.txt","pages":"1-3"}`:          `{"file_path":"/a.txt"}`,
-		`{"file_path":"/a.pdf","pages":"all"}`:          `{"file_path":"/a.pdf"}`,
-		``:                                              `{}`,
-		`not json`:                                      `not json`,
-	}
-	for in, want := range cases {
-		if got := repairToolArgs("Read", in); got != want {
-			t.Errorf("%q: %q, want %q", in, got, want)
-		}
-	}
-	if got := repairToolArgs("Bash", `{"limit":"5"}`); got != `{"limit":"5"}` {
-		t.Fatalf("another tool was touched: %q", got)
 	}
 }
 

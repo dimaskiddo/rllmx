@@ -160,7 +160,10 @@ func (c *call) build(ctx context.Context, d destination) (Output, bool) {
 		c.p.d.Prefetch.Inline(ctx, c.req)
 	}
 	body, err := codec.WriteRequest(c.req, c.tctx)
-	if err != nil {
+	switch {
+	case errors.Is(err, translate.ErrImages):
+		return c.fail(http.StatusBadRequest, "invalid_request", "This model does not accept images"), false
+	case err != nil:
 		return c.fail(http.StatusBadRequest, "invalid_request", "Invalid request body"), false
 	}
 	c.body = translate.Finish(body, c.p.d.Caps.ParamRules(d.provider, d.model))

@@ -7,18 +7,18 @@ import "rllmx/app/llm/upstream"
 // never sends any.
 const reasoningPlaceholder = " "
 
-// reasoningScope is the injection scope for this request: the provider's own
+// ReasoningScope is the injection scope for this request: the provider's own
 // setting, else the one the model family needs.
-func reasoningScope(c *Ctx) string {
+func ReasoningScope(c *Ctx) string {
 	if s := c.Entry.Transport.ReasoningInject; s != "" {
 		return s
 	}
 	return upstream.ModelReasoningScope(c.Model)
 }
 
-// injectReasoning puts the placeholder on an assistant message that has no
+// InjectReasoning puts the placeholder on an assistant message that has no
 // reasoning text. "toolCalls" limits it to turns that called a tool.
-func injectReasoning(w Obj, m Message, scope string) {
+func InjectReasoning(w Obj, m Message, scope string) {
 	if scope == "" || m.Role != RoleAssistant || m.Reasoning != "" {
 		return
 	}

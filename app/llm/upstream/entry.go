@@ -29,6 +29,9 @@ const (
 	// FormatOllama is Ollama's own chat body, for the cloud service and a local
 	// daemon alike.
 	FormatOllama = "ollama"
+	// FormatCursor is the OpenAI-shaped body the Cursor agent service is given;
+	// its answer is OpenAI chat chunks.
+	FormatCursor = "cursor"
 )
 
 // ExecutorDefault is the registry-driven executor every provider uses until a
@@ -81,11 +84,16 @@ const (
 	ExecutorFreebuff = "freebuff"
 	// ExecutorQoder encodes and signs a request for the gateway's own protocol.
 	ExecutorQoder = "qoder"
+	// ExecutorCursor speaks the agent service's Connect-framed protobuf.
+	ExecutorCursor = "cursor"
+	// ExecutorKimchi strips a body down to what its gateway accepts behind an
+	// Anthropic-shaped model.
+	ExecutorKimchi = "kimchi"
 )
 
 var (
 	categories = map[string]bool{CategoryAPIKey: true, CategoryOAuth: true, CategoryFree: true, CategoryFreeTier: true, CategoryCookie: true}
-	formats    = map[string]bool{FormatOpenAI: true, FormatResponses: true, FormatClaude: true, FormatGemini: true, FormatCloudCode: true, FormatVertex: true, FormatKiro: true, FormatOllama: true, FormatCommandCode: true}
+	formats    = map[string]bool{FormatOpenAI: true, FormatResponses: true, FormatClaude: true, FormatGemini: true, FormatCloudCode: true, FormatVertex: true, FormatKiro: true, FormatOllama: true, FormatCommandCode: true, FormatCursor: true}
 	executors  = map[string]bool{
 		ExecutorDefault: true, ExecutorAzure: true, ExecutorCodex: true, ExecutorGrokCLI: true, ExecutorGitHub: true,
 		ExecutorCodeBuddyCN: true, ExecutorCodeBuddyIntl: true, ExecutorMinimaxCode: true,
@@ -93,6 +101,7 @@ var (
 		ExecutorBedrock: true, ExecutorBedrockXAI: true, ExecutorKiro: true,
 		ExecutorOllamaLocal: true, ExecutorXiaomiTokenPlan: true, ExecutorXiaomiMimo: true, ExecutorCommandCode: true,
 		ExecutorOpenCode: true, ExecutorOpenCodeGo: true, ExecutorOpenCodeZen: true, ExecutorZed: true, ExecutorFreebuff: true, ExecutorQoder: true,
+		ExecutorCursor: true, ExecutorKimchi: true,
 	}
 )
 

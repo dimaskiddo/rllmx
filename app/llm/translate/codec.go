@@ -19,9 +19,11 @@ const (
 	FormatCloudCode = "gemini-cli"
 	FormatVertex    = "vertex"
 	// FormatKiro is CodeWhisperer's conversation body; FormatCommandCode is
-	// CommandCode's agent wrapper around an Anthropic-shaped conversation.
+	// CommandCode's agent wrapper around an Anthropic-shaped conversation;
+	// FormatCursor is the flattened OpenAI body its agent service is given.
 	FormatKiro        = "kiro"
 	FormatCommandCode = "commandcode"
+	FormatCursor      = "cursor"
 )
 
 // GeminiFamily reports a format whose bodies and streams are Gemini's, with or
@@ -33,6 +35,11 @@ func GeminiFamily(format string) bool {
 // ErrBadBody means a body is not the shape its endpoint promises. The message
 // never repeats body content.
 var ErrBadBody = errors.New("translate: the body is not valid for this format")
+
+// ErrImages means a request carries an image the destination cannot take. A
+// writer returns it so the call is refused in the client's own words instead of
+// the picture disappearing silently.
+var ErrImages = errors.New("translate: the destination takes no images")
 
 // Codec joins one wire format to the hub.
 type Codec interface {
@@ -101,9 +108,9 @@ func Formats() []string {
 	return out
 }
 
-// convert reads a body in from and writes it in to, through the hub. A same
+// Convert reads a body in from and writes it in to, through the hub. A same
 // format conversion still goes through the hub so the concerns apply.
-func convert(from, to string, body []byte, c *Ctx) ([]byte, *Request, error) {
+func Convert(from, to string, body []byte, c *Ctx) ([]byte, *Request, error) {
 	src, ok := Lookup(from)
 	if !ok {
 		return nil, nil, fmt.Errorf("translate: no codec for %q", from)

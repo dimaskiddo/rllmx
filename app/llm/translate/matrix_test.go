@@ -57,7 +57,7 @@ func TestEveryPairPreservesTheConversation(t *testing.T) {
 		}
 		for _, to := range formats {
 			c := NewCtx(from, to)
-			out, req, err := convert(from, to, body, c)
+			out, req, err := Convert(from, to, body, c)
 			if err != nil {
 				t.Errorf("%s -> %s: %v", from, to, err)
 				continue
@@ -155,14 +155,58 @@ func TestEveryResponseCarriesTheSameAnswerThroughAnyPair(t *testing.T) {
 	}
 }
 
-func FuzzOpenAIReadRequest(f *testing.F)    { fuzzReader(f, OpenAICodec{}) }
-func FuzzClaudeReadRequest(f *testing.F)    { fuzzReader(f, ClaudeCodec{}) }
-func FuzzResponsesReadRequest(f *testing.F) { fuzzReader(f, ResponsesCodec{}) }
-func FuzzGeminiReadRequest(f *testing.F)    { fuzzReader(f, GeminiCodec{}) }
-func FuzzOllamaReadRequest(f *testing.F)    { fuzzReader(f, OllamaCodec{}) }
+func FuzzOpenAIReadRequest(f *testing.F)    { fuzzReader(f, openAICodec(f)) }
+func FuzzClaudeReadRequest(f *testing.F)    { fuzzReader(f, claudeCodec(f)) }
+func FuzzResponsesReadRequest(f *testing.F) { fuzzReader(f, responsesCodec(f)) }
+func FuzzGeminiReadRequest(f *testing.F)    { fuzzReader(f, geminiCodec(f)) }
+func FuzzOllamaReadRequest(f *testing.F) {
+	c, _ := Lookup(FormatOllama)
+	fuzzReader(f, c)
+}
 
 // fuzzReader feeds arbitrary bytes to a reader and, when one is accepted, to
 // every writer: no body may panic a codec.
+// geminiCodec is the Gemini codec through the registry.
+func geminiCodec(t testing.TB) Codec {
+	t.Helper()
+	c, ok := Lookup(FormatGemini)
+	if !ok {
+		t.Fatal("the gemini codec is not registered")
+	}
+	return c
+}
+
+// responsesCodec is the Responses codec through the registry.
+func responsesCodec(t testing.TB) Codec {
+	t.Helper()
+	c, ok := Lookup(FormatResponses)
+	if !ok {
+		t.Fatal("the responses codec is not registered")
+	}
+	return c
+}
+
+// openAICodec is the OpenAI codec through the registry.
+func openAICodec(t testing.TB) Codec {
+	t.Helper()
+	c, ok := Lookup(FormatOpenAI)
+	if !ok {
+		t.Fatal("the openai codec is not registered")
+	}
+	return c
+}
+
+// claudeCodec is the Claude codec through the registry: the format lives in its
+// own package, so no test constructs it.
+func claudeCodec(t testing.TB) Codec {
+	t.Helper()
+	c, ok := Lookup(FormatClaude)
+	if !ok {
+		t.Fatal("the claude codec is not registered")
+	}
+	return c
+}
+
 func fuzzReader(f *testing.F, c Codec) {
 	seeds := []string{
 		``, `{}`, `[]`, `null`, `{"messages":[]}`, `{"messages":[{"role":"user","content":"x"}]}`,

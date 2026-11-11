@@ -30,13 +30,13 @@ func toolID(id string, msg, call int, name string) string {
 		return b.String()
 	}
 	suffix := ""
-	if clean := cleanName(name); clean != "" {
+	if clean := CleanName(name); clean != "" {
 		suffix = "_" + clean
 	}
 	return fmt.Sprintf("call_msg%d_tc%d%s", msg, call, suffix)
 }
 
-func cleanName(n string) string {
+func CleanName(n string) string {
 	var b strings.Builder
 	for _, r := range n {
 		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-' {

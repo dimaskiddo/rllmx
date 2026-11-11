@@ -109,6 +109,37 @@ func (c *OAuthController) ConnectToken(ctx contractshttp.Context) contractshttp.
 	return flat(ctx, nethttp.StatusInternalServerError, "The token could not be saved")
 }
 
+// ImportRequest is what POST /api/oauth/{provider}/import takes: the token the
+// provider's own client holds and the values its data names beside it.
+type ImportRequest map[string]string
+
+// Import answers POST /api/oauth/{provider}/import: a token copied from the
+// provider's own client, for a login that happens outside this router.
+func (c *OAuthController) Import(ctx contractshttp.Context) contractshttp.Response {
+	r := ctx.Request().Origin()
+	if c.bind(r) == "" {
+		return flat(ctx, nethttp.StatusUnauthorized, "Sign in to the dashboard first")
+	}
+	var b ImportRequest
+	if err := bindJSON(ctx, &b); err != nil {
+		return flat(ctx, nethttp.StatusBadRequest, "Invalid request body")
+	}
+	id, err := c.Service.ImportToken(r.Context(), ctx.Request().Route("provider"), b)
+	switch {
+	case err == nil:
+		return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"success": true, "connectionId": id})
+	case errors.Is(err, oauth.ErrUnsupported):
+		return flat(ctx, nethttp.StatusNotFound, "This provider takes no pasted token")
+	case errors.Is(err, oauth.ErrToken):
+		return flat(ctx, nethttp.StatusBadRequest, "That token is not one this provider issues")
+	case errors.Is(err, oauth.ErrImportField):
+		return flat(ctx, nethttp.StatusBadRequest, "A value this provider needs beside the token is missing")
+	case errors.Is(err, oauth.ErrStorage):
+		return flat(ctx, nethttp.StatusServiceUnavailable, "Storage is not available")
+	}
+	return flat(ctx, nethttp.StatusInternalServerError, "The token could not be saved")
+}
+
 func (c *OAuthController) start(ctx contractshttp.Context, app *oauth.App) contractshttp.Response {
 	r := ctx.Request().Origin()
 	bind := c.bind(r)

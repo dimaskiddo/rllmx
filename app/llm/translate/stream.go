@@ -28,33 +28,38 @@ type StreamWriter interface {
 	Close() []Frame
 }
 
-// gate holds the finish of a turn until its usage arrives.
-type gate struct {
-	finish   string
-	hasFin   bool
-	released bool
-	usage    Usage
-	hasUsage bool
+// Gate holds the finish of a turn until its usage arrives.
+type Gate struct {
+	// Finish is the turn's finish reason once a chunk carried one.
+	Finish string
+	// HasFinish reports that Finish was seen.
+	HasFinish bool
+	// Released reports that the finish was already handed over.
+	Released bool
+	// Usage is what the turn reported, merged field by field.
+	Usage Usage
+	// HasUsage reports that a usage report arrived.
+	HasUsage bool
 }
 
-// see records what a chunk carries and reports whether the finish may be
+// See records what a chunk carries and reports whether the finish may be
 // released now: it is known, and so is the usage or the chunk is the usage.
-func (g *gate) see(c Chunk) bool {
+func (g *Gate) See(c Chunk) bool {
 	if c.Usage != nil {
-		g.usage = MergeUsage(g.usage, *c.Usage)
-		g.hasUsage = true
+		g.Usage = MergeUsage(g.Usage, *c.Usage)
+		g.HasUsage = true
 	}
-	if c.FinishReason != "" && !g.hasFin {
-		g.finish, g.hasFin = c.FinishReason, true
+	if c.FinishReason != "" && !g.HasFinish {
+		g.Finish, g.HasFinish = c.FinishReason, true
 	}
-	if g.released || !g.hasFin || !g.hasUsage {
+	if g.Released || !g.HasFinish || !g.HasUsage {
 		return false
 	}
-	g.released = true
+	g.Released = true
 	return true
 }
 
-func (g *gate) held() bool { return g.hasFin && !g.released }
+func (g *Gate) Held() bool { return g.HasFinish && !g.Released }
 
 // MergeUsage combines two partial reports field by field by maximum, the way
 // an upstream that splits its counts over several events needs.

@@ -67,8 +67,9 @@ type source struct{ combos []string }
 
 func (s source) Aliases(context.Context) (map[string]string, error) {
 	return map[string]string{
-		"m":  `"` + nodeID + `/gpt-x"`,
-		"cm": `"` + claudeID + `/claude-x"`,
+		"m":   `"` + nodeID + `/gpt-x"`,
+		"cm":  `"` + claudeID + `/claude-x"`,
+		"cur": `"cur/claude-4.5-sonnet"`,
 	}, nil
 }
 func (s source) Nodes(context.Context) ([]routing.Node, error) { return nil, nil }
@@ -156,7 +157,11 @@ func newRig(t *testing.T, steps ...tests.Reply) *rig {
 		`"auth":{"scheme":"raw","header":"x-api-key"},` +
 		`"oauth":{"flow":"device","deviceUrl":"https://a.example/device","tokenUrl":"https://a.example/token","scope":"s","headers":{"X-Login":"1"}},` +
 		`"models":[{"id":"m1"}]}`
+	cur := `{"id":"cur","category":"oauth","display":{"name":"CU"},"executor":"cursor","forceStream":true,` +
+		`"transport":{"baseUrl":"` + up.URL + `/agent.v1.AgentService/Run","format":"cursor"},` +
+		`"models":[{"id":"claude-4.5-sonnet"}]}`
 	reg, err := upstream.Load(fstest.MapFS{
+		"data/cur.json": {Data: []byte(cur)},
 		"data/kim.json": {Data: []byte(kim)}, "data/mus.json": {Data: []byte(mus)}, "data/kc.json": {Data: []byte(kc)}, "data/lane.json": {Data: []byte(lane)},
 		"data/cop.json": {Data: []byte(cop)}, "data/cln.json": {Data: []byte(cln)}, "data/glb.json": {Data: []byte(glb)},
 		"data/gcl.json": {Data: []byte(gcl)}, "data/antigravity.json": {Data: []byte(agy)}, "data/cbn.json": {Data: []byte(cbn)}, "data/mmx.json": {Data: []byte(mmx)},

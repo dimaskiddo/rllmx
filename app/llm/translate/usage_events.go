@@ -15,30 +15,30 @@ func ReadUsageEvent(format string, data []byte) (Usage, bool) {
 	switch format {
 	case FormatOpenAI:
 		if u := get("usage"); u.IsObject() && u.Get("prompt_tokens").Exists() {
-			return readOpenAIUsage(u), true
+			return ReadOpenAIUsage(u), true
 		}
 	case FormatClaude:
 		switch get("type").String() {
 		case "message_start":
 			if u := get("message.usage"); u.IsObject() {
-				return readClaudeUsage(u), true
+				return ReadClaudeUsage(u), true
 			}
 		case "message_delta":
 			if u := get("usage"); u.IsObject() {
-				return readClaudeUsage(u), true
+				return ReadClaudeUsage(u), true
 			}
 		}
 	case FormatResponses:
 		if u := get("response.usage"); u.IsObject() {
-			return readResponsesUsage(u), true
+			return ReadResponsesUsage(u), true
 		}
 		if u := get("usage"); u.IsObject() && get("type").String() != "" {
-			return readResponsesUsage(u), true
+			return ReadResponsesUsage(u), true
 		}
 	case FormatGemini, FormatCloudCode, FormatVertex:
 		for _, p := range []string{"usageMetadata", "response.usageMetadata"} {
 			if u := get(p); u.IsObject() {
-				return readGeminiUsage(u), true
+				return ReadGeminiUsage(u), true
 			}
 		}
 	case FormatOllama:
@@ -63,4 +63,70 @@ func IsObject(data []byte) bool {
 		return c == '{'
 	}
 	return false
+}
+
+// ReadClaudeUsage reads Claude's usage, whose input count excludes the cache:
+// the prompt is the input plus what was read from and written to the cache.
+func ReadClaudeUsage(u gjson.Result) Usage {
+	if !u.Exists() {
+		return Usage{}
+	}
+	cached := u.Get("cache_read_input_tokens").Int()
+	write := u.Get("cache_creation_input_tokens").Int()
+	return NormalizeUsage(Usage{
+		Prompt:     u.Get("input_tokens").Int() + cached + write,
+		Completion: u.Get("output_tokens").Int(),
+		Cached:     cached,
+		CacheWrite: write,
+	})
+}
+
+// ReadGeminiUsage reads Gemini's usage, where the prompt already includes the
+// cached tokens and the completion is the candidates plus the thought tokens.
+func ReadGeminiUsage(u gjson.Result) Usage {
+	if !u.Exists() {
+		return Usage{}
+	}
+	thoughts := u.Get("thoughtsTokenCount").Int()
+	cand := u.Get("candidatesTokenCount").Int()
+	if !u.Get("candidatesTokenCount").Exists() && u.Get("totalTokenCount").Exists() {
+		cand = max(u.Get("totalTokenCount").Int()-u.Get("promptTokenCount").Int()-thoughts, 0)
+	}
+	return NormalizeUsage(Usage{
+		Prompt: u.Get("promptTokenCount").Int(), Completion: cand + thoughts,
+		Cached: u.Get("cachedContentTokenCount").Int(), Reasoning: thoughts,
+	})
+}
+
+func ReadResponsesUsage(u gjson.Result) Usage {
+	if !u.Exists() {
+		return Usage{}
+	}
+	return NormalizeUsage(Usage{
+		Prompt: u.Get("input_tokens").Int(), Completion: u.Get("output_tokens").Int(),
+		Cached:    u.Get("input_tokens_details.cached_tokens").Int(),
+		Reasoning: u.Get("output_tokens_details.reasoning_tokens").Int(),
+	})
+}
+
+func ReadOpenAIUsage(u gjson.Result) Usage {
+	if !u.Exists() {
+		return Usage{}
+	}
+	out := Usage{
+		Prompt: u.Get("prompt_tokens").Int(), Completion: u.Get("completion_tokens").Int(),
+		Reasoning:  u.Get("completion_tokens_details.reasoning_tokens").Int(),
+		Cached:     FirstPositive(u.Get("prompt_tokens_details.cached_tokens").Int(), u.Get("prompt_cache_hit_tokens").Int()),
+		CacheWrite: u.Get("prompt_tokens_details.cache_creation_tokens").Int(),
+	}
+	return NormalizeUsage(out)
+}
+
+func FirstPositive(vals ...int64) int64 {
+	for _, v := range vals {
+		if v > 0 {
+			return v
+		}
+	}
+	return 0
 }

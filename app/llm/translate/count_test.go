@@ -5,7 +5,7 @@ import "testing"
 func TestCountTokens(t *testing.T) {
 	read := func(body string) *Request {
 		t.Helper()
-		req, err := (ClaudeCodec{}).ReadRequest([]byte(body), NewCtx(FormatClaude, FormatClaude))
+		req, err := claudeCodec(t).ReadRequest([]byte(body), NewCtx(FormatClaude, FormatClaude))
 		if err != nil {
 			t.Fatal(err)
 		}

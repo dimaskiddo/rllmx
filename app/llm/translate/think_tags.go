@@ -7,24 +7,24 @@ const (
 	thinkClose = "</think>"
 )
 
-// segment is a stretch of streamed content and where it belongs.
-type segment struct {
-	text      string
-	reasoning bool
+// Segment is a stretch of streamed content and where it belongs.
+type Segment struct {
+	Text      string
+	Reasoning bool
 }
 
-// thinkSplitter splits <think>...</think> blocks out of streamed content. A tag
+// ThinkSplitter splits <think>...</think> blocks out of streamed content. A tag
 // can arrive in two pieces, so a tail that could still become one is held back
 // until the next piece settles it.
-type thinkSplitter struct {
+type ThinkSplitter struct {
 	inside bool
 	hold   string
 }
 
-func (s *thinkSplitter) split(in string) []segment {
+func (s *ThinkSplitter) Split(in string) []Segment {
 	in = s.hold + in
 	s.hold = ""
-	var out []segment
+	var out []Segment
 	for in != "" {
 		tag := thinkOpen
 		if s.inside {
@@ -32,7 +32,7 @@ func (s *thinkSplitter) split(in string) []segment {
 		}
 		if i := strings.Index(in, tag); i >= 0 {
 			if i > 0 {
-				out = append(out, segment{text: in[:i], reasoning: s.inside})
+				out = append(out, Segment{Text: in[:i], Reasoning: s.inside})
 			}
 			s.inside = !s.inside
 			in = in[i+len(tag):]
@@ -40,7 +40,7 @@ func (s *thinkSplitter) split(in string) []segment {
 		}
 		keep := partialTag(in, tag)
 		if keep < len(in) {
-			out = append(out, segment{text: in[:len(in)-keep], reasoning: s.inside})
+			out = append(out, Segment{Text: in[:len(in)-keep], Reasoning: s.inside})
 		}
 		s.hold = in[len(in)-keep:]
 		break
@@ -48,14 +48,14 @@ func (s *thinkSplitter) split(in string) []segment {
 	return out
 }
 
-// drain releases a held tail at the end of the stream.
-func (s *thinkSplitter) drain() []segment {
+// Drain releases a held tail at the end of the stream.
+func (s *ThinkSplitter) Drain() []Segment {
 	if s.hold == "" {
 		return nil
 	}
 	t := s.hold
 	s.hold = ""
-	return []segment{{text: t, reasoning: s.inside}}
+	return []Segment{{Text: t, Reasoning: s.inside}}
 }
 
 // partialTag is how many bytes at the end of in are a proper prefix of tag.

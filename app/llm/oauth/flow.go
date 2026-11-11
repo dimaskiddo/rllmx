@@ -119,7 +119,7 @@ func NewFlow(e upstream.Entry, clientID string) (Flow, error) {
 	if e.OAuth == nil {
 		return Flow{}, ErrUnsupported
 	}
-	if clientID == "" && !e.OAuth.NoClient && !e.OAuth.AppFromAccount {
+	if clientID == "" && !e.OAuth.NoClient && !e.OAuth.AppFromAccount && e.OAuth.Flow != upstream.FlowImport {
 		return Flow{}, ErrDisabled
 	}
 	return Flow{Provider: e.ID, ClientID: clientID, OAuth: *e.OAuth}, nil

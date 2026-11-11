@@ -329,7 +329,7 @@ func TestApplyParamsLeavesAnUnreadableBodyAndNoRulesAlone(t *testing.T) {
 
 func TestParamsRunLastSoTheyDropWhatAnInjectionAdded(t *testing.T) {
 	r := &Request{Model: "o3", Messages: []Message{user("x")}, Extra: map[string]json.RawMessage{"temperature": json.RawMessage("0.9")}}
-	out, err := OpenAICodec{}.WriteRequest(r, ctx())
+	out, err := openAICodec(t).WriteRequest(r, NewCtx(FormatOpenAI, FormatOpenAI))
 	if err != nil {
 		t.Fatal(err)
 	}

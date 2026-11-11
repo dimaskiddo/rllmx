@@ -16,6 +16,10 @@ const (
 	// its own, the shape the provider's own extension uses.
 	FlowCode   = "code"
 	FlowDevice = "device"
+	// FlowImport is a login a user completes outside this router: the provider
+	// hands over its own token, which is pasted with whatever else a request
+	// needs. Nothing is called and nothing is renewed.
+	FlowImport = "import"
 
 	// Variants a login may be started with, for a provider that signs in more
 	// than one way. Kiro reaches the same service through AWS SSO or through an
@@ -31,6 +35,9 @@ const (
 	EndpointKey          = "key"
 	EndpointAgentKey     = "agentKey"
 	EndpointProfile      = "profile"
+	// EndpointValidate is where a login whose callback carries the token itself
+	// asks whether the service will serve it.
+	EndpointValidate = "validate"
 	// EndpointLoadCodeAssist and EndpointOnboardUser are the Cloud Code calls that
 	// find an account's project and enable it.
 	EndpointLoadCodeAssist = "loadCodeAssist"
@@ -71,13 +78,13 @@ var (
 	// redirectHosts are the names a fixed redirect may use for this machine.
 	redirectHosts = map[string]bool{"": true, "localhost": true, "127.0.0.1": true}
 	encodings     = map[string]bool{EncodingJSON: true, EncodingForm: true}
-	hooks         = map[string]bool{"": true, "codex": true, "github": true, "muse": true, "nous": true, "kilocode": true, "grokCli": true, "gitlab": true, "xai": true, "google": true, "antigravity": true, "kiro": true, "kiroSocial": true, "zed": true, "freebuff": true, "qoder": true}
+	hooks         = map[string]bool{"": true, "codex": true, "github": true, "muse": true, "nous": true, "kilocode": true, "grokCli": true, "gitlab": true, "xai": true, "google": true, "antigravity": true, "kiro": true, "kiroSocial": true, "zed": true, "freebuff": true, "qoder": true, "kimchi": true}
 	mints         = map[string]bool{"": true, MintCopilot: true}
 	// refreshHooks run after a token renewal; dialects replace the start and the
 	// poll of a device login that does not follow RFC 8628.
 	refreshHooks   = map[string]bool{"": true, "nous": true}
 	deviceDialects = map[string]bool{"kilocode": true, "codebuddy": true, "minimax": true, "zcode": true, "kiro": true, "freebuff": true, "qoder": true}
-	codeDialects   = map[string]bool{"cline": true, "kiro-social": true, "zed": true}
+	codeDialects   = map[string]bool{"cline": true, "kiro-social": true, "zed": true, "kimchi": true}
 
 	paramName = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 	// ownParams are set by the login itself, so a data file cannot name them.
@@ -101,6 +108,7 @@ const (
 	maxOAuthHeaders = 8
 	maxCallHeaders  = 8
 	maxEndpoints    = 8
+	maxImportFields = 4
 )
 
 // OAuth is how an account is connected by logging in. The client id is not
@@ -152,6 +160,9 @@ type OAuth struct {
 	Dialect string `json:"dialect,omitempty"`
 	// NoClient marks a login the provider runs without a client id.
 	NoClient bool `json:"noClient,omitempty"`
+	// Fields are the extra values an import login stores beside its token, each
+	// a plain name a request or a login step reads.
+	Fields []string `json:"fields,omitempty"`
 	// CallHeaders go on the calls the router makes to the provider while logging
 	// in and renewing: the device start, the poll, the renewal and a hook. The
 	// value may hold the device id placeholder.
@@ -229,6 +240,9 @@ type Param struct {
 }
 
 func (o *OAuth) validate() error {
+	if o.Flow == FlowImport {
+		return o.validateImport()
+	}
 	first := o.AuthorizeURL
 	switch o.Flow {
 	case FlowCodePKCE, FlowCode:
@@ -375,6 +389,36 @@ func (o *OAuth) validateCode() error {
 		return errors.New("a code login needs a dialect")
 	}
 	return nil
+}
+
+// validateImport checks a login the user completes elsewhere: it starts no
+// address and trades nothing, so it has no authorize or device address and no
+// renewal, and it may hold the extra values a request needs.
+func (o *OAuth) validateImport() error {
+	if o.AuthorizeURL != "" || o.DeviceURL != "" || o.Redirect != "" || o.FixedPort != 0 || o.CallbackPath != "" ||
+		o.Exchange != "" || o.EchoState || o.Dialect != "" || o.Hook != "" || o.Mint != "" || o.NoClient || o.NoPKCE {
+		return errors.New("an import login has no authorize, device, redirect or exchange block")
+	}
+	if o.TokenURL == "" || httpsURL(o.TokenURL) != nil {
+		return errors.New("an import login needs a plain https token address")
+	}
+	if strings.TrimSpace(o.Scope) != "" {
+		return errors.New("an import login has no scope")
+	}
+	if !o.Refresh.empty() {
+		return errors.New("an import login is never renewed")
+	}
+	if len(o.Fields) > maxImportFields {
+		return errors.New("oauth.fields has too many entries")
+	}
+	seen := map[string]bool{}
+	for _, f := range o.Fields {
+		if !fieldName.MatchString(f) || seen[f] {
+			return errors.New("an oauth.fields entry is not a plain name")
+		}
+		seen[f] = true
+	}
+	return o.validateRest()
 }
 
 // validateMint checks the endpoints and the mint they serve.

@@ -420,7 +420,8 @@ func TestCollectAddsAStreamUpIntoOneAnswer(t *testing.T) {
 	if got.Finish != "tool_calls" || got.Usage.Prompt != 9 || got.Response.ID != "chatcmpl-abc12345" {
 		t.Fatalf("%+v", got)
 	}
-	enc, err := (translate.ClaudeCodec{}).WriteResponse(&got.Response, translate.NewCtx("claude", "openai"))
+	codec, _ := translate.Lookup(translate.FormatClaude)
+	enc, err := codec.WriteResponse(&got.Response, translate.NewCtx("claude", "openai"))
 	if err != nil || !strings.Contains(string(enc), `"tool_use"`) {
 		t.Fatalf("%s %v", enc, err)
 	}

@@ -7,9 +7,9 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-// extraOf collects the top-level fields of a body that are not in known, so the
+// ExtraOf collects the top-level fields of a body that are not in known, so the
 // rest can ride in Extra.
-func extraOf(body []byte, known map[string]bool) map[string]json.RawMessage {
+func ExtraOf(body []byte, known map[string]bool) map[string]json.RawMessage {
 	var out map[string]json.RawMessage
 	gjson.ParseBytes(body).ForEach(func(k, v gjson.Result) bool {
 		if known[k.String()] {
@@ -24,7 +24,7 @@ func extraOf(body []byte, known map[string]bool) map[string]json.RawMessage {
 	return out
 }
 
-func set(names ...string) map[string]bool {
+func Set(names ...string) map[string]bool {
 	m := make(map[string]bool, len(names))
 	for _, n := range names {
 		m[n] = true
@@ -60,11 +60,11 @@ func (o Obj) MarshalJSON() ([]byte, error) {
 	return append(buf, '}'), nil
 }
 
-// frameData encodes the object a stream writer built. Its values are strings,
+// FrameData encodes the object a stream writer built. Its values are strings,
 // numbers, booleans and objects built here, which json.Marshal cannot refuse;
 // the one failure it has (an unsupported value) cannot be reached from a chunk,
 // so there is no error to return.
-func frameData(o Obj) []byte {
+func FrameData(o Obj) []byte {
 	b, err := json.Marshal(o)
 	if err != nil {
 		return []byte("{}")
@@ -72,8 +72,8 @@ func frameData(o Obj) []byte {
 	return b
 }
 
-// withExtra merges unmodelled fields into o without overriding a modelled one.
-func withExtra(o Obj, extra map[string]json.RawMessage) Obj {
+// WithExtra merges unmodelled fields into o without overriding a modelled one.
+func WithExtra(o Obj, extra map[string]json.RawMessage) Obj {
 	for k, v := range extra {
 		if _, taken := o[k]; !taken {
 			o[k] = v
@@ -82,7 +82,7 @@ func withExtra(o Obj, extra map[string]json.RawMessage) Obj {
 	return o
 }
 
-func intPtr(r gjson.Result) *int {
+func IntPtr(r gjson.Result) *int {
 	if !r.Exists() || r.Type != gjson.Number {
 		return nil
 	}
@@ -90,7 +90,7 @@ func intPtr(r gjson.Result) *int {
 	return &n
 }
 
-func floatPtr(r gjson.Result) *float64 {
+func FloatPtr(r gjson.Result) *float64 {
 	if !r.Exists() || r.Type != gjson.Number {
 		return nil
 	}
@@ -98,7 +98,7 @@ func floatPtr(r gjson.Result) *float64 {
 	return &f
 }
 
-func int64Ptr(r gjson.Result) *int64 {
+func Int64Ptr(r gjson.Result) *int64 {
 	if !r.Exists() || r.Type != gjson.Number {
 		return nil
 	}
@@ -106,7 +106,7 @@ func int64Ptr(r gjson.Result) *int64 {
 	return &n
 }
 
-func strList(r gjson.Result) []string {
+func StrList(r gjson.Result) []string {
 	switch {
 	case r.Type == gjson.String:
 		return []string{r.String()}
@@ -122,6 +122,6 @@ func strList(r gjson.Result) []string {
 	return nil
 }
 
-func validObject(body []byte) bool {
+func ValidObject(body []byte) bool {
 	return gjson.ValidBytes(body) && gjson.ParseBytes(body).IsObject()
 }

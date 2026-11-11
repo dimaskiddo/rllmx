@@ -19,8 +19,14 @@ import (
 
 	// Each of these registers its codec in init(); a binary that runs requests
 	// needs them all, and the pipeline is what runs them.
+	_ "rllmx/app/llm/translate/claude"
 	_ "rllmx/app/llm/translate/commandcode"
+	_ "rllmx/app/llm/translate/cursor"
+	_ "rllmx/app/llm/translate/gemini"
 	_ "rllmx/app/llm/translate/kiro"
+	_ "rllmx/app/llm/translate/ollama"
+	_ "rllmx/app/llm/translate/openai"
+	_ "rllmx/app/llm/translate/responses"
 )
 
 var (

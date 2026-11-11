@@ -8,7 +8,7 @@ function read() {
   const params = new URLSearchParams(location.search);
   const frag = new URLSearchParams(location.hash.replace(/^#/, ""));
   const pick = (name) => params.get(name) || frag.get(name) || "";
-  return { state: pick("state"), code: pick("code"), error: pick("error") };
+  return { state: pick("state"), code: pick("code") || pick("token"), error: pick("error") };
 }
 
 async function finish() {

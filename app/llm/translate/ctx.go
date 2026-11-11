@@ -40,7 +40,7 @@ type Ctx struct {
 	// BudgetOf maps a thinking level to its token budget. May be nil.
 	BudgetOf func(level string) int
 	// ToolName gives a tool name the upstream returned back to the client. It is
-	// set only while the attempt was disguised (see Cloak) and nil otherwise, so
+	// Set only while the attempt was disguised (see Cloak) and nil otherwise, so
 	// a name is never changed on an attempt that renamed nothing.
 	ToolName func(name string) string
 	// Signature is the placeholder thought signature a Gemini-family writer puts

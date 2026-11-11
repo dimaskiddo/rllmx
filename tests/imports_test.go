@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -220,4 +221,25 @@ func hasGoFiles(t *testing.T, dir string) bool {
 		}
 	}
 	return false
+}
+
+// A translate format package may be imported only by the pipeline that
+// registers it, by the tests that exercise it, and by a test-only registration
+// file. No format reaches another: what two share belongs in the hub.
+func TestNoTranslateFormatImportsAnother(t *testing.T) {
+	formats := []string{"ollama", "claude", "openai", "responses", "gemini", "kiro", "commandcode", "cursor"}
+	for _, f := range formats {
+		dir := "app/llm/translate/" + f
+		for name, path := range goFiles(t) {
+			if filepath.ToSlash(filepath.Dir(name)) != dir || strings.HasSuffix(name, "_test.go") {
+				continue
+			}
+			for _, imp := range importsOf(t, path) {
+				rest, ok := strings.CutPrefix(imp, "rllmx/app/llm/translate/")
+				if ok && slices.Contains(formats, rest) {
+					t.Errorf("%s imports the %s format: a format package imports the hub, never a sibling", name, rest)
+				}
+			}
+		}
+	}
 }

@@ -67,7 +67,7 @@ A request is disguised when all of these hold: the upstream format is Claude, th
 
 ### Thinking Writers for OpenAI-Format Upstreams (1.10d)
 
-The OpenAI codec writes thinking by the model's `thinkingFormat` (`app/llm/translate/openai.go`, `writeOpenAIThinking`). A format the data does not name keeps `reasoning_effort` with the level as the client asked.
+The OpenAI codec writes thinking by the model's `thinkingFormat` (`app/llm/translate/openai`, `WriteOpenAIThinking`). A format the data does not name keeps `reasoning_effort` with the level as the client asked.
 
 | Format | Written (the reference's rule, `thinkingUnified.js`) | Levels |
 |---|---|---|
@@ -145,7 +145,7 @@ All go through the OpenAI hub; no direct pairs (PRD 7). References under `transl
 | gemini-cli, antigravity (from openai, and the answer back) | `request/openai-to-gemini.js`, `response/gemini-to-openai.js` | done (1.10g; the Gemini codec wrapped in the Cloud Code envelope, divergence 256 for the inbound reader) | 1.10g |
 | openai to vertex | `request/openai-to-vertex.js` | done (1.10g) | 1.10g |
 | kiro (openai to kiro; the answer is read as events) | `request/openai-to-kiro.js`, `request/claude-to-kiro.js`, `concerns/kiroConversation.js`, `config/kiroConstants.js` | done | 1.10h |
-| cursor, commandcode (to and from openai) | `*cursor*.js`, `*commandcode*.js` | todo | 1.10 |
+| cursor, commandcode (to and from openai) | `*cursor*.js`, `*commandcode*.js` | done (1.10i; `translate/cursor` flattens the conversation, `translate/commandcode` wraps it; D273 refuses an image with the client's 400) | 1.10i |
 | Webtools translators for web providers | `*webTools*` | deferred | - |
 
 ---
@@ -162,7 +162,8 @@ All go through the OpenAI hub; no direct pairs (PRD 7). References under `transl
 - [x] Claude cloak: tool suffix, decoys, billing block, user id, restore on body and stream (1.9c)
 - [x] Step 1.10g: gemini-cli, antigravity and vertex (`CloudCodeCodec`, `VertexCodec`; the Gemini writer takes a placeholder signature and the safety settings through `Ctx`)
 - [x] 1.10h: the kiro format (`translate/kiro.go`, `kiro_wire.go`, `kiro_canon.go`, `kiro_stream.go`, `kiro_alias.go`) built in 1.10h
-- [ ] Step 1.10: cursor and commandcode translators
+- [x] 1.10i: the cursor and commandcode codecs (`app/llm/translate/cursor`, `.../commandcode`), both upstream-only and blank-imported by the pipeline
+- [x] Layout: one package per client format (`translate/openai`, `claude`, `gemini`, `responses`, `ollama`), beside the upstream-only `kiro`, `commandcode` and `cursor`. The root keeps the hub, the registry, `Ctx`, the frames and the concerns; the helpers two formats share are exported there rather than copied, and the per-format usage readers stay in the root's `usage_events.go` because they need nothing from a codec
 
 ---
 

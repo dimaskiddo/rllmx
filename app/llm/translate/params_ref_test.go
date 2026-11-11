@@ -41,7 +41,7 @@ func applyParamsReference(body []byte, rules []upstream.ParamRule) []byte {
 			}
 		}
 	}
-	out, err := json.Marshal(sortedRaw(top))
+	out, err := json.Marshal(SortedRaw(top))
 	if err != nil {
 		return body
 	}
@@ -83,7 +83,7 @@ func rewriteMessagesReference(top map[string]json.RawMessage, rule upstream.Para
 	}
 	list := make([]Obj, len(msgs))
 	for i, m := range msgs {
-		list[i] = sortedRaw(m)
+		list[i] = SortedRaw(m)
 	}
 	top["messages"], _ = json.Marshal(list)
 	return top

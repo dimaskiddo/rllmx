@@ -18,14 +18,14 @@ func ctxWith(client, target, model string, tr upstream.Transport) *Ctx {
 
 func writeOpenAI(t *testing.T, in string, c *Ctx) string {
 	t.Helper()
-	req, err := ClaudeCodec{}.ReadRequest([]byte(in), c)
+	req, err := claudeCodec(t).ReadRequest([]byte(in), c)
 	if c.ClientFormat == FormatOpenAI {
-		req, err = OpenAICodec{}.ReadRequest([]byte(in), c)
+		req, err = openAICodec(t).ReadRequest([]byte(in), c)
 	}
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, err := OpenAICodec{}.WriteRequest(req, c)
+	out, err := openAICodec(t).WriteRequest(req, c)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,8 +65,8 @@ const toolReq = `{"model":"m","max_tokens":9,"messages":[{"role":"user","content
 
 func TestTypelessClaudeToolsGetTypeCustomOnlyForProvidersThatRequireIt(t *testing.T) {
 	need := ctxWith(FormatClaude, FormatClaude, "m", upstream.Transport{Quirks: upstream.Quirks{RequireClaudeToolType: true}})
-	req, _ := ClaudeCodec{}.ReadRequest([]byte(toolReq), need)
-	out, _ := ClaudeCodec{}.WriteRequest(req, need)
+	req, _ := claudeCodec(t).ReadRequest([]byte(toolReq), need)
+	out, _ := claudeCodec(t).WriteRequest(req, need)
 	if gjson.GetBytes(out, "tools.0.type").String() != "custom" {
 		t.Fatalf("%s", gjson.GetBytes(out, "tools").Raw)
 	}
@@ -74,8 +74,8 @@ func TestTypelessClaudeToolsGetTypeCustomOnlyForProvidersThatRequireIt(t *testin
 		t.Fatalf("a typed tool changed: %s", gjson.GetBytes(out, "tools.1").Raw)
 	}
 	other := ctxWith(FormatClaude, FormatClaude, "m", upstream.Transport{})
-	req, _ = ClaudeCodec{}.ReadRequest([]byte(toolReq), other)
-	out, _ = ClaudeCodec{}.WriteRequest(req, other)
+	req, _ = claudeCodec(t).ReadRequest([]byte(toolReq), other)
+	out, _ = claudeCodec(t).WriteRequest(req, other)
 	if gjson.GetBytes(out, "tools.0.type").Exists() {
 		t.Fatalf("a provider that does not require a type got one: %s", gjson.GetBytes(out, "tools.0").Raw)
 	}

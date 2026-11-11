@@ -34,11 +34,11 @@ Registered by provider id; aliases in parentheses.
 | github | The pipeline picks the wire format from the model data (`targetFormat` for Claude and Codex models) and the executor picks the address of that format; the GitHub token is exchanged for a Copilot token (one mint per account for any number of requests, kept in the memory-only `connections` cache group and sealed with the account, replaced 5 minutes before expiry, replaced once on a 401, a refused token never sent again); a chat body is fitted to Copilot (text and image parts, `max_completion_tokens`, no `reasoning_effort: none`). Built in 1.10c: the executor sends the minted token, one `x-request-id` per request and the data's fixed identity headers (`copilot-integration-id`, `editor-version`, `editor-plugin-version`, `user-agent`, `openai-intent`, `x-github-api-version`, `x-vscode-user-agent-library-version`, `X-Initiator: user`, `anthropic-version`) on all three endpoints; the chat body fit applies only to `/chat/completions`. The parameter rules (`max_tokens` to `max_completion_tokens` for `gpt-5*` and `o1`, `o3` and `o4`, no `temperature` on `gpt-5.4*`) are data in `params.json` |
 | grok-cli | Responses body shaped to the proxy's allowlist, native item ids only, tool outputs without a call dropped; identity and session headers from the account and the derived session; `prompt_cache_key` is always the derived session, never the client's; a bounded per-account turn counter; the agent id is the stored one or derived from the connection, never from the machine |
 | kiro | AWS headers, host ordering, the integrity gate (`executor/kiro.go`), `translate/kiro*.go` |
-| cursor (`cu`) | Connect protobuf over HTTP/2, agent service for auto/agent models |
+| cursor (`cu`) | Connect protobuf over HTTP/2 to the agent service: a fresh session per turn, the current turn and its history, the offered tools, the requested model with its effort, the service's own requests acknowledged on the open stream, and the answer as chat chunks. Built in 1.10i; the picker's `default`/`auto` resolved through the account's model list (five minutes in the memory-only cache), one empty-turn retry with the conversation's tail (D280), the machine id required (D267), and an image refused with the client's 400 (D273) |
 | bedrock (`br`), bedrock-xai (`brx`) | SigV4 (`app/protocol/sigv4`), region validation, event-stream framing (`app/protocol/eventstream`) |
 | vertex, vertex-partner | Project-scoped URLs, service-account JWT minting |
 | azure | Deployment URL, `api-key` header |
-| iflow | Signed headers |
+| iflow | Not built (D279) |
 | freebuff | The backend envelope (`codebuff_metadata` at the top level, a run opened and closed, the assistant marker, the closing tool), a session claimed once per account and model, and a login status poll (`app/llm/oauth/dialect_freebuff.go`) |
 | zed | `app/llm/zed`: the token exchange (one mint per account, 50 minutes, replaced once on a 401), the live catalog with a one-hour cache, the provider envelope, and the native sign-in (`app/llm/oauth/dialect_zed.go`) |
 | commandcode | The agent wrapper (`codec` `commandcode`), the API SDK stream read as events, and an error the upstream carries inside a 200 turned back into its status |
@@ -65,7 +65,7 @@ A model entry may carry two settings in the grammar of a name suffix (`none`, `a
 | AWS event streams | `app/protocol/eventstream`: the frame prelude and message CRC both checked, every header value type read, bounds and duplicate names refused, `stream.NewFrames` lifts a frame into an `Event`. No AWS SDK: `aws-sdk-go-v2` is not approved or in `go.mod` (divergence 261) |
 | AWS request signing | `app/protocol/sigv4`: both of the reference's pinned vectors reproduced byte for byte, a query string refused rather than signed, the session token sent and signed. No AWS SDK for the same reason |
 | Cloud credentials | `app/llm/upstream/cloud_key.go`: one `CloudKey` for every provider that hands out a structured credential (an account, a project or tenant, and the parts a token is minted from), so no provider's name owns the type. `ValidProject`, `ValidLocation` and `ValidRegion` live beside it, because each one lands in a request path or a hostname |
-| Connect and gRPC-web envelope | A small helper inside the Cursor and Windsurf executors; the Connect library has no standalone envelope API |
+| Connect framing | `app/llm/executor/cursor/wire.go`: the flags byte and length, a payload limit, gzip then zlib then raw deflate, and the end-stream trailer. The reference's `cursorProtobuf.js` is a hand-written encoder over a decoded message map; here the fields are `protowire` calls in `agent.go` |
 | NDJSON | `bufio.Scanner` with a 1 MiB cap |
 | Protobuf fields | `google.golang.org/protobuf/encoding/protowire` |
 
@@ -120,13 +120,14 @@ sequenceDiagram
 | opencode, opencode-go, opencode-zen | done (1.10i) | 1.10i |
 | zed | done (1.10i) | 1.10i |
 | qoder, qoder-cn | done (1.10i) | 1.10i |
-| iflow, cursor | todo | 1.10 |
+| cursor | done (1.10i) | 1.10i |
+| iflow (hidden in the reference, free tier ended; D279) | out | - |
 | kiro | done | 1.10h |
 | windsurf, trae (reference loads neither, D158) | out | - |
 | vertex and vertex-partner (three key kinds, project and location, token from a service account or user credentials) | done | 1.10g |
 | bedrock and bedrock-xai | done | 1.10h |
 | freebuff (extended) | done (1.10i) | 1.10i |
-| kimchi | todo | 1.10 |
+| kimchi | done (1.10i) | 1.10i |
 | cookie web providers (paste only) | todo | 1.10 |
 | devin-cli (spawns a process) | out | - |
 | web providers needing a TLS-fingerprint client (checked per provider) | deferred | - |
@@ -181,7 +182,7 @@ Every provider the references ship, with executor kind, status and delivering st
 | default | done (1.10i) | ollama |
 | default | done | gemini, openrouter |
 | default | todo 1.11 | coqui, edge-tts, google-tts, local-device, searxng, tortoise |
-| specialized | todo 1.10 | kimchi, vertex |
+| specialized | done (1.10i) | kimchi, vertex |
 
 ## OAuth Providers (`oauth`)
 
@@ -196,7 +197,8 @@ Every provider the references ship, with executor kind, status and delivering st
 | specialized | done (1.10f) | codebuddy-cn, codebuddy-intl, minimax-code, minimax-code-global |
 | specialized | done (1.10i) | xiaomi-mimo, zed |
 | specialized | done (1.10i) | qoder, qoder-cn |
-| specialized | todo 1.10 | antigravity, cursor, iflow |
+| specialized | done (1.10g antigravity, 1.10i cursor) | antigravity, cursor |
+| specialized | out (D279) | iflow |
 | specialized | out | trae, windsurf |
 
 ## Cookie Web Providers (`webCookie`)
@@ -234,7 +236,8 @@ Auth: pasted cookie over a plain HTTP client. Browser or TLS-fingerprint clients
 - [x] 1.10f: `executor.CodeBuddy` (both gateways), `executor.MinimaxCode`, five data files, the transport `thinkingFormat`, the `zai` thinking writer and the capability and level rows of the reference (divergences 249, 250)
 - [x] 1.10g: `executor.CloudCode` (Gemini CLI and Antigravity), `executor.Vertex` (and partner), `app/llm/quota` and the selector hold, four data files, the capability rows (divergences 252 to 258, 259)
 - [x] 1.10h: `app/protocol/sigv4` and `app/protocol/eventstream`, the `bedrock`, `bedrock-xai` and `kiro` executors, the `kiro` format (codec, alias fold, conversation canonicalizer, stream reader, bounded session replay), the Kiro device dialect and hook, three data files, `transport.region` and `baseUrls` (divergences 159, 261 to 266)
-- [ ] 1.10i to 1.10k: the rest of the parity table (signed and session protocols; cookie providers; live-catalog guards and probes)
+- [x] 1.10i: the signed and session protocols (commandcode, qoder, zed, freebuff, xiaomi, cursor, kimchi, the opencode family, tokenrouter, ollama), the cursor codec and paste login, with iflow, mimo-free and mmf out (D279, D278)
+- [ ] 1.10j to 1.10k: the rest of the parity table (cookie providers; live-catalog guards and probes)
 - [ ] Still missing from the base: `regions` and `defaultRegion`, `baseUrls` fallback (D102), `stallTimeoutMs`/`timeoutMs` per provider, the JSON-schema to `json_object` fallback for compatible nodes. No 1.10a provider needs them; each lands with the first provider that does
 - [ ] Live-catalog guards for kiro, codex, cursor, kimchi, qoder: account model list (5-minute cache) before dispatch; unknown model 400; a fetch failure lets the request through
 - **Done when:** every provider in the parity table has an executor; each passes its fake-upstream tests; live checks are in `TASKS.md` Open items.
@@ -285,19 +288,22 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 270 | Qoder's RSA public key is a literal in the reference's code. Here it is a PEM field in `qoder.json` and `qoder-cn.json`, parsed and checked at load (RSA, at least 1024 bits). **Built in 1.10i** | It is vendor data about a protocol, not a fact about this program; a data file is where vendor data lives, and it fails the load rather than a request when wrong |
 | 271 | The reference reads `QODER_CONTEXT_TIER` and `QODER_MODEL_QUEUE_MAX_WAIT_MS` from the environment. This router reads neither: the context tier comes from its own token estimate, and the queue wait is a fixed ten minutes | Configuration is this program's own variables and settings row, never another program's environment (same reason as D263) |
 | 272 | Freebuff's sessions and cooldowns, and the gateway's other per-account state, live in the bounded memory-only cache with a TTL, and one claim in flight per account and model. The reference keeps them in a `globalThis` map with a sweep | Every structure that grows from input has a bound and a TTL (`PRD 20`), and a credential never leaves the process |
-| 273 | Cursor's legacy ChatService path is not built. Its AgentService path is the one every translated request takes; the reference reaches the legacy path only with an empty message list | Dead code for a path no request reaches |
+| 273 | Cursor's legacy ChatService path is not built. Its AgentService path is the one every translated request takes. The reference sends a request there only when it carries an image part; here such a request is refused with the client's own 400, because the second path needs a second protobuf schema (scope cut) | A conversation body built for one path cannot be sent down the other, and the image case is rare enough that a clear refusal beats a parallel encoder nobody else uses |
 | 274 | A Cursor refusal carried in the Connect end-stream trailer is read and answered with its status. The reference drops trailer frames, so the same refusal arrives as an empty turn | An error the service reported is still an error |
 | 275 | The opencode and commandcode session ids are derived from the keyed session the pipeline binds to the account, so one conversation keeps one id across restarts. The reference mints a fresh id per process, or from the clock with a memo | A conversation's identity survives a restart, and no client can choose another conversation's id |
 | 276 | A local Ollama daemon with no key gets no `Authorization` header. The reference sends `Bearer undefined` | An empty credential is not a credential |
-| 277 | iflow's key is read again after a renewal, in the same hook that reads it at login. The reference renews the token and keeps the old key | The key is what a request carries, so a stale one is a request that fails after a renewal that looked successful |
+| 277 | **Retired.** iflow is not built (D279), so the stale-key defect this row described cannot occur here | Recorded so the number stays citable |
 | 278 | mimo-free and mmf are not built. The reference hides both, and its own registry says the free service has ended | An executor for an endpoint the vendor has closed is dead code |
+| 279 | iflow is not built: no executor, no login, no cookie import. The reference hides it and its own README records that the free tier became paid in 2026. The 24h-lead renewal and the stale-key row (D277) go with it | A provider the reference hides behind a flag is not one this router should spend a signed request path, a code login and a cookie mint on (scope cut) |
+| 280 | A Cursor turn that ends with no text is asked once more 400 ms later with the last turns of the history only. The waits and the cut are fixed here; the reference reads `CURSOR_EMPTY_TURN_MAX_RETRIES`, `_THRESHOLD` and `_DELAY_MS` from the environment | Configuration is this program's own variables and settings row, never another program's environment (same reason as D263 and D271) |
+| 281 | An imported Cursor token's expiry is the JWT `exp` claim, or none when the token is not a JWT. The reference stamps a guessed 24 hours | A guess that lands early marks a working token expired and drops the account; one that lands late sends a dead token and takes the 401 anyway |
 | 162 | Not read; endpoint, version, deployment from account only | Configuration is product's own variables and settings row, never another program's names (scope cut) |
 
 ---
 
 ## Findings
 
-**1.10i built so far: the plain-quirk providers, the two agent protocols and the hosted ones.** `tokenrouter`, `ollama` and `ollama-local`, `xiaomi-tokenplan` and `xiaomi-mimo` (cloud and account routes, with the session cookie in `app/llm/oauth/mimo.go`), `commandcode` (codec and executor), the three `opencode` lanes (the free gate's identity, its two tool definitions, the marker, the session id, a TLS offer of its own; the keyed lanes' Responses fit), `zed` (`app/llm/zed` and `app/llm/oauth/dialect_zed.go`) and `freebuff` (`app/llm/oauth/dialect_freebuff.go`). `qoder` and `qoder-cn` (`app/protocol/cosy`, the live model list, the envelope reader and the queue wait). Cursor is next.
+**1.10i built: the plain-quirk providers, the three agent protocols and the hosted ones.** `tokenrouter`, `ollama` and `ollama-local`, `xiaomi-tokenplan` and `xiaomi-mimo` (cloud and account routes, with the session cookie in `app/llm/oauth/mimo.go`), `commandcode` (codec and executor), the three `opencode` lanes (the free gate's identity, its two tool definitions, the marker, the session id, a TLS offer of its own; the keyed lanes' Responses fit), `zed` (`app/llm/zed` and `app/llm/oauth/dialect_zed.go`) and `freebuff` (`app/llm/oauth/dialect_freebuff.go`). `qoder` and `qoder-cn` (`app/protocol/cosy`, the live model list, the envelope reader and the queue wait), `cursor` (`app/llm/executor/cursor`: the Connect frame reader, the run request as protobuf, the pull reader that answers the service's own calls, the checksum and identity headers, and the picker's alias resolved through the model list) and `kimchi` (`executor/openai/kimchi.go`: the body stripped to what its Anthropic-backed rows read). The cursor paste login is `POST /api/oauth/cursor/import`, and 1.10i is complete: iflow is out (D279).
 
 **1.10h built: the two AWS protocol packages and the three AWS providers.** `app/protocol/sigv4` signs one POST with both of the reference's pinned vectors reproduced byte for byte; a query string is refused rather than signed, the path is double-encoded, and a session token is sent and signed. `app/protocol/eventstream` reads the frame's prelude and message CRC, every header value type, and refuses out-of-bounds and duplicate headers; `stream.NewFrames` lifts a frame into the `Event` the pump already reads, so no part of the pipeline learns the binary format. `executor.Bedrock` (two variants) builds the signed address from the account's keys and region, drops what the address already carries, pins `anthropic_version` last, refuses an id from the wrong model family, and never follows a redirect. `executor.Kiro` orders the hosts by sign-in method, regionalises only the `amazonaws.com` ones, tries the next host only on 401, 403 or 404, and reads the answer whole: a turn that ends on an ellipsis, on a promise to check something, or on a tool call a client cannot parse is asked **once** more with an instruction saying what was wrong, and a second failure is answered as it came. The `kiro` format is a codec with its own conversation canonicalizer (alternating turns, paired tool calls, a validated shape or a local 400), an alias fold by family and version, a stream reader that buffers tool fragments and restores names, and a bounded replay of each conversation's opening turn so the upstream's prompt cache keeps hitting.
 

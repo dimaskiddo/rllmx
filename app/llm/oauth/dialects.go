@@ -22,6 +22,7 @@ func DefaultDialects() Dialects {
 			"cline":       {exchange: clineExchange, refresh: clineRefresh},
 			"kiro-social": {exchange: kiroSocialExchange, refresh: kiroSocialRefresh},
 			"zed":         {exchange: zedExchange, refresh: zedNoRefresh},
+			"kimchi":      {exchange: kimchiExchange, refresh: kimchiNoRefresh},
 		},
 		Device: map[string]DeviceDialect{
 			"freebuff": {start: freebuffStart, poll: freebuffPoll},

@@ -52,8 +52,8 @@ func ApplyParams(body []byte, rules []upstream.ParamRule) []byte {
 	return body
 }
 
-// sortedRaw wraps raw fields so they encode with sorted keys.
-func sortedRaw(m map[string]json.RawMessage) Obj {
+// SortedRaw wraps raw fields so they encode with sorted keys.
+func SortedRaw(m map[string]json.RawMessage) Obj {
 	o := make(Obj, len(m))
 	for k, v := range m {
 		o[k] = v

@@ -111,7 +111,12 @@ func (c *ChatController) CountTokens(ctx contractshttp.Context) contractshttp.Re
 		failure.Write(w, format, failure.ReadStatus(err), "")
 		return nil
 	}
-	req, err := (translate.ClaudeCodec{}).ReadRequest(body, translate.NewCtx(translate.FormatClaude, translate.FormatClaude))
+	codec, ok := translate.Lookup(translate.FormatClaude)
+	if !ok {
+		failure.Write(w, format, nethttp.StatusInternalServerError, "")
+		return nil
+	}
+	req, err := codec.ReadRequest(body, translate.NewCtx(translate.FormatClaude, translate.FormatClaude))
 	if err != nil {
 		failure.Write(w, format, nethttp.StatusBadRequest, "Invalid request body")
 		return nil

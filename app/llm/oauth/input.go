@@ -54,9 +54,13 @@ func ParseInput(raw string) (Input, error) {
 // fromValues reads a decoded query. Decoding turns the plus sign of a base64
 // code into a space and no code holds a real space, so a space is put back as
 // the plus sign. Pasted text that was never decoded keeps its spaces and is
-// refused.
+// refused. A login whose callback carries the credential itself names the
+// parameter `token`; it is read only when no `code` was sent.
 func fromValues(v url.Values) Input {
 	code := strings.ReplaceAll(v.Get("code"), " ", "+")
+	if code == "" {
+		code = strings.ReplaceAll(v.Get("token"), " ", "+")
+	}
 	return Input{Code: code, State: v.Get("state"), Failed: v.Get("error") != ""}
 }
 

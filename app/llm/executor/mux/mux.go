@@ -11,6 +11,7 @@ import (
 	"rllmx/app/llm/executor/aws"
 	"rllmx/app/llm/executor/codebuddy"
 	"rllmx/app/llm/executor/commandcode"
+	"rllmx/app/llm/executor/cursor"
 	"rllmx/app/llm/executor/freebuff"
 	"rllmx/app/llm/executor/google"
 	"rllmx/app/llm/executor/openai"
@@ -91,6 +92,8 @@ func New(d *executor.Default, o Options) *Mux {
 		upstream.ExecutorZed:             &zed.Executor{Default: d, Tokens: o.ZedTokens},
 		upstream.ExecutorFreebuff:        &freebuff.Freebuff{Default: d, Sessions: o.FreebuffSessions},
 		upstream.ExecutorQoder:           &qoder.Qoder{Default: d, PeekIdle: o.PeekIdle, Cache: o.Cache, Public: o.QoderKey},
+		upstream.ExecutorCursor:          &cursor.Cursor{Default: d, PeekIdle: o.PeekIdle, Cache: o.Cache},
+		upstream.ExecutorKimchi:          &openai.Kimchi{Default: d},
 	}}
 }
 

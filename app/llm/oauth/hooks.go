@@ -43,6 +43,7 @@ func defaultHooks() map[string]Hook {
 		"zed":         zedAccount,
 		"freebuff":    freebuffAccount,
 		"qoder":       qoderAccount,
+		"kimchi":      kimchiAccount,
 	}
 }
 
