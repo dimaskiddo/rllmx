@@ -14,6 +14,7 @@
   },
   "oauth": {
     "flow": "code-pkce",
+    "bulk": true,
     "authorizeUrl": "https://auth.openai.com/oauth/authorize",
     "tokenUrl": "https://auth.openai.com/oauth/token",
     "scope": "openid profile email offline_access",

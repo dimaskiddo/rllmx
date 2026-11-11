@@ -243,7 +243,7 @@ Run after `references/` changes, before touching code.
 7. **Update parity rows** in the topic file and add a row to the sync log (date, step, change, divergences, not copied, new unverified values; see `TASKS.md`, Sync log); a pin that moves is recorded in the same place.
 8. **Fixture refresh.** If schema or settings changed, regenerate the fixture database from a real run of the new reference, rerun compatibility tests.
 9. **Bump the pins** last, same change.
-10. 9router-extended: repeat with its own pin; compare its fork base too, so upstream features it lacks are not read as removals.
+10. 9router-extended: repeat with its own pin. The fork now shares the baseline release, so a disagreement is a fork addition, not a missing upstream feature.
 
 ### 16. `db:import-analytics`
 

@@ -139,12 +139,17 @@ func flatText(content gjson.Result) string {
 }
 
 // rebuildMessages gives the conversation the shape the international gateway
-// accepts: its own system prompt first, no other system or developer turn, and a
-// user string as a typed block.
+// accepts: one system turn first (the client's own, scrubbed when it names an
+// agent, else the gateway's), no other system or developer turn, and a user
+// string as a typed block.
 func rebuildMessages(body []byte) []byte {
 	msgs := gjson.GetBytes(body, "messages")
+	system := clientSystemPrompt(msgs)
+	if system == "" {
+		system = codebuddyPrompt
+	}
 	var out strings.Builder
-	out.WriteString(`[{"role":"system","content":` + document.Encode(codebuddyPrompt) + `}`)
+	out.WriteString(`[{"role":"system","content":` + document.Encode(system) + `}`)
 	if msgs.IsArray() {
 		for _, m := range msgs.Array() {
 			if !m.IsObject() {
@@ -173,6 +178,25 @@ func rebuildMessages(body []byte) []byte {
 		return body
 	}
 	return next
+}
+
+// clientSystemPrompt joins the client's system and developer turns, and replaces
+// a prompt that names a coding agent with the neutral one the gateway accepts.
+func clientSystemPrompt(msgs gjson.Result) string {
+	var parts []string
+	for _, m := range msgs.Array() {
+		switch m.Get("role").String() {
+		case "system", "developer":
+			if t := strings.TrimSpace(flatText(m.Get("content"))); t != "" {
+				parts = append(parts, t)
+			}
+		}
+	}
+	system := strings.Join(parts, "\n\n")
+	if system != "" && agentPrompt.MatchString(system) {
+		return neutralPrompt
+	}
+	return system
 }
 
 // limited reads a rate-limit refusal: the code or the words of the message. It

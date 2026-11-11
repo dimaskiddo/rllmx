@@ -94,6 +94,19 @@ func openCodeConcealTools(body []byte, flat bool) ([]byte, map[string]string) {
 			continue
 		}
 		name := openCodeToolName(t)
+		// The free tier answers a tool named for a terminal with a 429, so such a
+		// declaration goes out under a name it accepts and comes back as the
+		// caller's own.
+		if strings.Contains(strings.ToLower(name), "terminal") {
+			alias := "run_command"
+			for i := 2; taken[alias]; i++ {
+				alias = "run_command" + strconv.Itoa(i)
+			}
+			taken[alias] = true
+			renames[alias] = name
+			out = append(out, openCodeWithName(t.Raw, flat, alias))
+			continue
+		}
 		key := openCodeFingerprintKey(name)
 		if key == "" {
 			out = append(out, t.Raw)

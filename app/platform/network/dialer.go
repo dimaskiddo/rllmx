@@ -9,6 +9,12 @@ import (
 	"time"
 )
 
+// fallbackDelay is how long the first address gets before the guard starts the
+// next one alongside it (RFC 6555 fast fallback). It matches the reference's
+// 250 ms; net.Dialer's own delay is never reached, because the guard dials the
+// addresses it checked rather than handing a host name back to it.
+const fallbackDelay = 250 * time.Millisecond
+
 // NewDialer is the SSRF guard. It resolves a name itself, keeps only permitted
 // addresses and connects to the address it checked, so the checked address is
 // the connected address: there is no window between the check and the dial in
@@ -24,6 +30,16 @@ type Guard struct {
 	allow  *Allow
 	// lookup replaces the system resolver in tests.
 	lookup func(ctx context.Context, host string) ([]netip.Addr, error)
+	// dial replaces the socket dial in tests; nil uses the net.Dialer.
+	dial func(ctx context.Context, network, addr string) (net.Conn, error)
+}
+
+// dialContext is the socket dial the guard uses.
+func (g *Guard) dialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	if g.dial != nil {
+		return g.dial(ctx, network, addr)
+	}
+	return g.dialer.DialContext(ctx, network, addr)
 }
 
 func (g *Guard) resolve(ctx context.Context, host string) ([]netip.Addr, error) {
@@ -87,26 +103,63 @@ func permitted(ip netip.Addr, allow *Allow) bool {
 }
 
 // DialContext checks the target, then dials the literal it checked. A name that
-// resolves to several permitted addresses is tried in turn, so a host with both
-// an IPv6 and an IPv4 answer works when only one of them listens.
+// resolves to several permitted addresses races them the way RFC 6555 says: the
+// first address gets a head start, and the next joins while it is still pending,
+// so a host whose IPv6 path is reset is served over IPv4 without waiting out
+// that address's full timeout.
 func (g *Guard) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	original, targets, err := g.targets(ctx, addr)
 	if err != nil {
 		return nil, err
 	}
 	if len(targets) == 1 && targets[0] == original {
-		return g.dialer.DialContext(ctx, network, targets[0])
+		return g.dialContext(ctx, network, targets[0])
+	}
+	return g.race(ctx, network, targets)
+}
+
+// race dials the targets with fast fallback: each one starts fallbackDelay after
+// the one before it unless an earlier one has answered, the first success wins,
+// and every loser is cancelled. The last error is returned when all fail. No
+// goroutine outlives the call: the derived context is cancelled on return.
+func (g *Guard) race(ctx context.Context, network string, targets []string) (net.Conn, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	type outcome struct {
+		conn net.Conn
+		err  error
+	}
+	results := make(chan outcome, len(targets))
+	for i, target := range targets {
+		go func(i int, target string) {
+			if i > 0 {
+				t := time.NewTimer(time.Duration(i) * fallbackDelay)
+				defer t.Stop()
+				select {
+				case <-t.C:
+				case <-ctx.Done():
+					results <- outcome{err: ctx.Err()}
+					return
+				}
+			}
+			conn, err := g.dialContext(ctx, network, target)
+			results <- outcome{conn, err}
+		}(i, target)
 	}
 	var last error
-	for _, target := range targets {
-		conn, err := g.dialer.DialContext(ctx, network, target)
-		if err == nil {
-			return conn, nil
+	for range targets {
+		select {
+		case r := <-results:
+			if r.err == nil {
+				return r.conn, nil
+			}
+			if errors.Is(r.err, ErrBlocked) {
+				return nil, r.err
+			}
+			last = r.err
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		}
-		if errors.Is(err, ErrBlocked) {
-			return nil, err
-		}
-		last = err
 	}
 	return nil, last
 }

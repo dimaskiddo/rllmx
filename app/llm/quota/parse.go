@@ -53,6 +53,8 @@ var groupFamilies = []struct {
 	session string
 	weekly  string
 }{
+	// Argon must match before "gemini": its group name carries both words.
+	{"argon", ArgonSession, ArgonWeekly},
 	{"gemini", GeminiSession, GeminiWeekly},
 	{"claude", ClaudeGPTSession, ClaudeGPTWeekly},
 	{"gpt", ClaudeGPTSession, ClaudeGPTWeekly},
@@ -164,12 +166,21 @@ func unix(n int64) time.Time {
 // spent, even though the summary still shows room: the per-model answer is the
 // fresher one. The reset it takes is the latest among the spent models.
 func Reconcile(models, summary Snapshot) Snapshot {
-	for _, fam := range []struct{ prefix, session string }{{"gemini-", GeminiSession}, {"claude-", ClaudeGPTSession}} {
+	for _, fam := range []struct {
+		prefix, session string
+		argon           bool
+	}{{"gemini-", ArgonSession, true}, {"gemini-", GeminiSession, false}, {"claude-", ClaudeGPTSession, false}} {
 		var count int
 		var latest time.Time
 		all := true
 		for name, b := range models {
-			if !strings.HasPrefix(name, fam.prefix) || (fam.prefix == "gemini-" && strings.Contains(name, "image")) {
+			if !strings.HasPrefix(name, fam.prefix) {
+				continue
+			}
+			// A Gemini model belongs to exactly one family here: Argon's models
+			// are counted only for Argon, and an image model for neither.
+			argon := strings.Contains(name, "argon")
+			if argon != fam.argon || (!argon && strings.Contains(name, "image")) {
 				continue
 			}
 			count++

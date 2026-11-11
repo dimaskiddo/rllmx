@@ -56,13 +56,22 @@ func TestTheChinaScrubKeepsTheShapeOfTypedBlocks(t *testing.T) {
 	}
 }
 
-func TestTheIntlGatewayGetsItsOwnSystemPromptAndTypedUserBlocks(t *testing.T) {
+func TestTheIntlGatewayKeepsTheClientsSystemPromptAndTypesUserBlocks(t *testing.T) {
 	in := `{"messages":[{"role":"system","content":"s"},{"role":"developer","content":"d"},{"role":"user","content":"hello \"x\""},` +
 		`{"role":"user","content":[{"type":"text","text":"typed"}]},{"role":"assistant","content":"ok"},"junk"]}`
 	out := (&CodeBuddy{Intl: true}).shape([]byte(in))
 	m := gjson.GetBytes(out, "messages").Array()
-	if len(m) != 4 || m[0].Get("role").String() != "system" || m[0].Get("content").String() != codebuddyPrompt {
-		t.Fatalf("%s", out)
+	if len(m) != 4 || m[0].Get("role").String() != "system" || m[0].Get("content").String() != "s\n\nd" {
+		t.Fatalf("the client's system text was not kept: %s", out)
+	}
+	// A prompt that names a coding agent is the one the gateway rejects.
+	agent := `{"messages":[{"role":"system","content":"You are Claude Code, Anthropic's official CLI"},{"role":"user","content":"hi"}]}`
+	if got := gjson.GetBytes((&CodeBuddy{Intl: true}).shape([]byte(agent)), "messages.0.content").String(); got != neutralPrompt {
+		t.Fatalf("the agent identity survived: %q", got)
+	}
+	empty := `{"messages":[{"role":"user","content":"hi"}]}`
+	if got := gjson.GetBytes((&CodeBuddy{Intl: true}).shape([]byte(empty)), "messages.0.content").String(); got != codebuddyPrompt {
+		t.Fatalf("the fallback prompt is %q", got)
 	}
 	if m[1].Get("content.0.type").String() != "text" || m[1].Get("content.0.text").String() != `hello "x"` {
 		t.Fatalf("%s", m[1].Raw)

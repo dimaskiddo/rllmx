@@ -1,5 +1,11 @@
 {
   "providers": {
+    "opencode-go": {
+      "claude-haiku-5-5": {
+        "reasoning": true,
+        "thinkingFormat": "claude-adaptive"
+      }
+    },
     "github": {
       "claude-opus-4.8": {
         "vision": true,

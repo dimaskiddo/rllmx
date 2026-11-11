@@ -373,6 +373,11 @@ func TestReadUsageEventPerFormat(t *testing.T) {
 	if _, ok := ReadUsageEvent(FormatClaude, []byte(`{"type":"ping"}`)); ok {
 		t.Fatal("an event with no usage reported one")
 	}
+	// A gateway that spells the cache counts the way an SDK does.
+	u, ok := ReadUsageEvent(FormatOpenAI, []byte(`{"usage":{"prompt_tokens":20,"completion_tokens":2,"inputTokenDetails":{"cacheReadTokens":6,"cacheWriteTokens":3}}}`))
+	if !ok || u.Cached != 6 || u.CacheWrite != 3 {
+		t.Fatalf("inputTokenDetails = %+v %v", u, ok)
+	}
 }
 
 func FuzzStreamReaders(f *testing.F) {

@@ -19,7 +19,7 @@ Formats: `openai`, `openai-responses`, `claude`, `gemini`, `gemini-cli`, `vertex
 
 ### Audit 2 Alignment
 
-The reference translators were compared with base 9router 0.5.112 and the improvements recorded as divergences 183 to 189. These are the rules step 1.8 must implement: a history that ends on a function call is answered with a `functionResponse`; a system-only Gemini request becomes a user turn; Responses streams send a finish chunk on close and accept `response.done`; `thinking` is dropped when the last message is not the user's; the Claude system prefix is data (`thinking.claudeSystemPrefix`); OpenAI-shaped bodies lose the `developer` role, blocks of other APIs and blank messages; an empty Ollama answer has `content: ""`; `metadata.user_id` follows the reference key order; an all-zero `usage` object does not block the estimate.
+The reference translators were compared with base 9router 0.5.116 and the improvements recorded as divergences 183 to 189. These are the rules step 1.8 must implement: a history that ends on a function call is answered with a `functionResponse`; a system-only Gemini request becomes a user turn; Responses streams send a finish chunk on close and accept `response.done`; `thinking` is dropped when the last message is not the user's; the Claude system prefix is data (`thinking.claudeSystemPrefix`); OpenAI-shaped bodies lose the `developer` role, blocks of other APIs and blank messages; an empty Ollama answer has `content: ""`; `metadata.user_id` follows the reference key order; an all-zero `usage` object does not block the estimate.
 
 ### Semantics to Preserve
 
@@ -48,7 +48,7 @@ The Claude and Gemini placeholder thinking signatures are data in `thinking.json
 
 **Built in 1.9c (divergence 216).** `translate.Cloak` shapes a finished Claude body and `pipeline` decides when and with which headers. Claude *preparation* below is separate and was built in 1.8a, because an Anthropic API key needs it.
 
-**Follow the reference.** Add no gate or opt-out: a deployer who does not want the disguise does not connect a Claude login. The registry's `oauth.disguise` flag says which provider asks for it (only `claude`). Client headers never reach the upstream raw; the pipeline passes derived values. Cloaking, like the rest of the core translation, follows 9router 0.5.112 (`AGENTS.md`, Clean-Room): no disguise change is made until a step says so, even where a divergence row once suggested one, and the only rows kept are the ones a security rule or a router improvement requires.
+**Follow the reference.** Add no gate or opt-out: a deployer who does not want the disguise does not connect a Claude login. The registry's `oauth.disguise` flag says which provider asks for it (only `claude`). Client headers never reach the upstream raw; the pipeline passes derived values. Cloaking, like the rest of the core translation, follows 9router 0.5.116 (`AGENTS.md`, Clean-Room): no disguise change is made until a step says so, even where a divergence row once suggested one, and the only rows kept are the ones a security rule or a router improvement requires.
 
 A request is disguised when all of these hold: the upstream format is Claude, the connection is a login of a provider whose data sets `disguise`, its token begins `sk-ant-oat`, and the client is not Claude Code (a Claude Code client is native: its body is already right). Then, in this order, on the finished body:
 1. a billing block becomes `system[0]` (a string system becomes two blocks; nothing is added if `system[0]` already starts with the prefix). Its `cch` is the first five hex characters of SHA-256 over the body as it stood before this step, the build part is three random hex characters, and the version is `2.1.280`;
@@ -196,6 +196,8 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 218 | An upstream error event (Claude `error`, Responses `response.failed`, Gemini or Ollama error body, an OpenAI `error` object) fails the stream with the client's own error frame | The reference dropped it and the stream ended with no finish and no error |
 
 ---
+
+**The 0.5.116 sync.** A remote image part now carries a concrete MIME in `fileData`, read from its address (`.jpg`/`.jpeg` → `image/jpeg`, `.webp`, `.gif`, `.bmp`, else `image/png`); the upstream refuses a wildcard. The compatibility-node effort is clamped to the values such a node reads (`auto` → `high`, `minimal` → `low`, an unknown level dropped) and its budget is sent as an explicit `thinking` object. Pinned by tests, already true here: the DashScope family keeps a Claude client's cache markers under its quirk, a Gemini turn keeps every parallel tool result ahead of its co-located text, and a tool-result turn keeps its thinking request.
 
 ## Findings
 

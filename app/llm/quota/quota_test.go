@@ -335,3 +335,72 @@ func FuzzQuotaParse(f *testing.F) {
 		}
 	})
 }
+
+func TestArgonIsItsOwnFamily(t *testing.T) {
+	for model, want := range map[string]string{
+		"gemini-4-argon-high": "argon", "gemini-4-argon-medium(medium)": "argon",
+		"ag/gemini-4-argon-low": "argon", "gemini-3.8-flash-medium": "gemini", "gemini-4-argon-image": "argon",
+	} {
+		if got := Family(model); got != want {
+			t.Errorf("%q: %q, want %q", model, got, want)
+		}
+	}
+}
+
+func TestAnArgonModelDrawsOnlyOnTheArgonBuckets(t *testing.T) {
+	s := Snapshot{
+		"gemini-4-argon-high": {Remaining: 100},
+		ArgonSession:          {Remaining: 40},
+		ArgonWeekly:           {Remaining: 90},
+		GeminiSession:         spent(t0.Add(time.Hour)),
+		GeminiWeekly:          spent(t0.Add(time.Hour)),
+	}
+	if b, ok := s.Of("gemini-4-argon-high", t0); !ok || b.Remaining != 40 {
+		t.Fatalf("argon drew on the wrong pool: %+v %v", b, ok)
+	}
+	s[ArgonSession] = spent(t0.Add(2 * time.Hour))
+	if b, ok := s.Of("gemini-4-argon-high", t0); !ok || b.Remaining != 0 {
+		t.Fatalf("a spent argon window did not spend the model: %+v %v", b, ok)
+	}
+}
+
+func TestReconcileKeepsArgonAndGeminiApart(t *testing.T) {
+	later := t0.Add(4 * time.Hour)
+	models := Snapshot{
+		"gemini-4-argon-high": spent(later), "gemini-4-argon-low": spent(t0.Add(time.Hour)),
+		"gemini-3.8-flash-high": room(80),
+	}
+	out := Reconcile(models, Snapshot{ArgonSession: room(70), GeminiSession: room(60)})
+	if b := out[ArgonSession]; b.Remaining != 0 || !b.ResetAt.Equal(later) {
+		t.Fatalf("argon window = %+v", b)
+	}
+	if out[GeminiSession].Remaining != 60 {
+		t.Fatalf("the gemini window was spent by argon models: %+v", out[GeminiSession])
+	}
+	models["gemini-3.8-flash-high"] = spent(later)
+	models["gemini-4-argon-high"] = room(10)
+	out = Reconcile(models, Snapshot{ArgonSession: room(70), GeminiSession: room(60)})
+	if out[ArgonSession].Remaining != 70 {
+		t.Fatalf("the argon window was spent by gemini models: %+v", out[ArgonSession])
+	}
+	if out[GeminiSession].Remaining != 0 {
+		t.Fatalf("gemini window = %+v", out[GeminiSession])
+	}
+}
+
+func TestTheArgonGroupIsReadBeforeTheGeminiGroup(t *testing.T) {
+	raw := []byte(`{"groups":[{"displayName":"Gemini 4 Argon","buckets":[
+		{"window":"weekly","remainingFraction":0.5,"resetTime":"2026-01-02T00:00:00Z"},
+		{"window":"5h","remainingFraction":0.25,"resetTime":"2026-01-01T06:00:00Z"}]},
+		{"displayName":"Gemini","buckets":[{"window":"weekly","remainingFraction":0.9}]}]}`)
+	out := ParseSummary(raw)
+	if b := out[ArgonWeekly]; b.Remaining != 50 {
+		t.Fatalf("argon weekly = %+v", b)
+	}
+	if b := out[ArgonSession]; b.Remaining != 25 {
+		t.Fatalf("argon session = %+v", b)
+	}
+	if b := out[GeminiWeekly]; b.Remaining != 90 {
+		t.Fatalf("gemini weekly = %+v", b)
+	}
+}

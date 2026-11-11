@@ -1,7 +1,12 @@
 package executor
 
 import (
+	"context"
+	"crypto/tls"
+	"errors"
 	"io"
+	"net"
+	"syscall"
 	"time"
 
 	"github.com/tidwall/gjson"
@@ -69,4 +74,43 @@ func resetAt(g gjson.Result) time.Time {
 		return time.Now().Add(time.Duration(v.Int()) * time.Second)
 	}
 	return time.Time{}
+}
+
+// errStaleSocket marks a failure to use a pooled connection the far end dropped
+// without telling anyone. The request was never written, so it may be sent once
+// more at once; no other failure is replayed, because the upstream may already
+// have it.
+var errStaleSocket = errors.New("executor: the pooled connection was gone")
+
+// isStaleSocketError reports a connection that died between pooling and use: a
+// reset, a broken pipe, a closed or prematurely ended socket. A name that does
+// not resolve, a refusal, an unreachable host, a timeout, a certificate the TLS
+// check refused and a cancelled request are all something else, so they are left
+// to the retry table.
+func isStaleSocketError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	var dns *net.DNSError
+	if errors.As(err, &dns) {
+		return false
+	}
+	var cert *tls.CertificateVerificationError
+	if errors.As(err, &cert) {
+		return false
+	}
+	for _, code := range []syscall.Errno{syscall.ECONNRESET, syscall.EPIPE} {
+		if errors.Is(err, code) {
+			return true
+		}
+	}
+	for _, code := range []syscall.Errno{syscall.ECONNREFUSED, syscall.EHOSTUNREACH, syscall.ENETUNREACH} {
+		if errors.Is(err, code) {
+			return false
+		}
+	}
+	return errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
 }

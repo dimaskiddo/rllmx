@@ -251,6 +251,26 @@ func WriteOpenAIThinking(o translate.Obj, th translate.Thinking, c *translate.Ct
 		th, none = translate.Thinking{Mode: "level", Level: "minimal"}, false
 	}
 	level := th.Level
+	// A compatible node is a gateway that forwards an OpenAI-shaped thinking
+	// object rather than an effort word: it keeps an explicit thinking budget,
+	// and its effort is clamped to the levels it reads.
+	if isCompatNode(c) {
+		switch th.Mode {
+		case "budget":
+			if th.Budget > 0 {
+				o["thinking"] = translate.Obj{"type": "enabled", "budget_tokens": th.Budget}
+				return
+			}
+		case "auto":
+			o["reasoning_effort"] = "high"
+			return
+		case "level":
+			if effort := compatEffort(th.Level); effort != "" {
+				o["reasoning_effort"] = effort
+			}
+			return
+		}
+	}
 	switch th.Mode {
 	case "budget":
 		level = budgetLevel(th.Budget)
@@ -312,6 +332,26 @@ func WriteOpenAIThinking(o translate.Obj, th translate.Thinking, c *translate.Ct
 	case "level":
 		o["reasoning_effort"] = th.Level
 	}
+}
+
+// isCompatNode reports a user node of the OpenAI-compatible kind, which is the
+// gateway the reference clamps an effort for.
+func isCompatNode(c *translate.Ctx) bool {
+	return c != nil && strings.HasPrefix(c.Provider, upstream.NodeTypeOpenAI)
+}
+
+// compatEffort maps a level to what a compatible node reads, or "" for a value
+// it does not know.
+func compatEffort(level string) string {
+	switch level {
+	case "auto":
+		return "high"
+	case "minimal":
+		return "low"
+	case "off", "low", "medium", "high", "xhigh", "max":
+		return level
+	}
+	return ""
 }
 
 // zaiLevel maps a level to the three Z.ai reads: low, high and max.

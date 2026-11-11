@@ -5,14 +5,16 @@
     "name": "OpenCode Go"
   },
   "transport": {
-    "baseUrl": "https://opencode.ai/zen/go/v1/chat/completions",
+    "baseUrl": "https://opencode.ai/inference/go/openai/v1/chat/completions",
+    "responsesUrl": "https://opencode.ai/inference/go/openai/v1/responses",
+    "messagesUrl": "https://opencode.ai/inference/go/anthropic/v1/messages",
     "format": "openai"
   },
   "executor": "opencode-go",
   "auth": {
     "scheme": "bearer",
     "header": "Authorization",
-    "validateUrl": "https://opencode.ai/zen/go/v1/models"
+    "validateUrl": "https://opencode.ai/inference/go/v1/models"
   },
   "models": [
     { "id": "deepseek-v4-pro", "name": "DeepSeek V4 Pro" },

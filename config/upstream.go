@@ -14,5 +14,9 @@ func init() {
 		// public: loopback, the private ranges, carrier-grade NAT. Link-local and
 		// the cloud metadata addresses are refused whatever this says.
 		"allow_private": config.Env("UPSTREAM_ALLOW_PRIVATE", ""),
+		// The TLS key-exchange group an outbound call offers: x25519 (default) or
+		// default for the standard list. One group changes the ClientHello enough
+		// for a network that resets the standard offer.
+		"tls_curve": config.Env("UPSTREAM_TLS_CURVE", "x25519"),
 	})
 }

@@ -381,11 +381,36 @@ func geminiContent(parts []translate.Part) []any {
 			if data != "" {
 				out = append(out, translate.Obj{"inlineData": translate.Obj{"mimeType": mt, "data": data}})
 			} else if p.URL != "" {
+				// A remote image must name a concrete type: the upstream refuses a
+				// wildcard, so the URL's own suffix decides.
+				if p.Type == translate.PartImage && (mt == "" || mt == "image/*") {
+					mt = remoteImageMimeType(p.URL)
+				}
 				out = append(out, translate.Obj{"fileData": translate.Obj{"mimeType": mt, "fileUri": p.URL}})
 			}
 		}
 	}
 	return out
+}
+
+// remoteImageMimeType reads an image's type from its address, with PNG as the
+// fallback the reference uses.
+func remoteImageMimeType(raw string) string {
+	path := raw
+	if i := strings.IndexAny(path, "?#"); i >= 0 {
+		path = path[:i]
+	}
+	switch strings.ToLower(path[strings.LastIndexByte(path, '.')+1:]) {
+	case "jpg", "jpeg":
+		return "image/jpeg"
+	case "webp":
+		return "image/webp"
+	case "gif":
+		return "image/gif"
+	case "bmp":
+		return "image/bmp"
+	}
+	return "image/png"
 }
 
 func geminiGenerationConfig(r *translate.Request, c *translate.Ctx) translate.Obj {

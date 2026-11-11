@@ -49,9 +49,14 @@ func claims(jwt string) (gjson.Result, bool) {
 	return r, r.IsObject()
 }
 
-// codexAccount reads the email, the ChatGPT account id and the plan from the
-// ID token, then the email alone from the access token.
-func codexAccount(t Tokens) Account {
+// codexAccount is the Codex login step: what the tokens themselves say about
+// the account.
+func codexAccount(t Tokens) Account { return claimsAccount(t) }
+
+// claimsAccount reads the email, the ChatGPT account id and the plan from the
+// ID token, then the email alone from the access token. It makes no call, so a
+// pasted list can use it too.
+func claimsAccount(t Tokens) Account {
 	var acc Account
 	var id, plan string
 	if c, ok := claims(t.ID); ok {

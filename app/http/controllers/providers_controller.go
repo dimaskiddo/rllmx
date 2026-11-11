@@ -141,7 +141,37 @@ func (c *ProvidersController) Create(ctx contractshttp.Context) contractshttp.Re
 	if err := bindJSON(ctx, &b); err != nil {
 		return flat(ctx, nethttp.StatusBadRequest, "Invalid request body")
 	}
-	rc := ctx.Request().Origin().Context()
+	conn, cerr := c.createConn(ctx.Request().Origin().Context(), st, b)
+	if cerr != nil {
+		return c.createFailure(ctx, cerr)
+	}
+	return ctx.Response().Json(nethttp.StatusCreated, contractshttp.Json{"connection": connectionView(conn)})
+}
+
+// createFailure answers a failed create: a name conflict in its own shape, any
+// other failure as a plain error.
+func (c *ProvidersController) createFailure(ctx contractshttp.Context, cerr *createErr) contractshttp.Response {
+	if cerr.conflict != nil {
+		return ctx.Response().Json(nethttp.StatusConflict, contractshttp.Json{
+			"error": cerr.msg, "code": "PROVIDER_NAME_CONFLICT",
+			"existingId": cerr.conflict.ExistingID, "existingName": cerr.conflict.ExistingName,
+		})
+	}
+	return flat(ctx, cerr.status, cerr.msg)
+}
+
+// createErr is a create that failed: the status the caller answers with, or the
+// name conflict it reports in its own shape.
+type createErr struct {
+	status   int
+	msg      string
+	conflict *repository.ErrNameConflict
+}
+
+// createConn runs one create after the request is bound and the store is known.
+// Both the single add and the bulk add go through it, so a line of a pasted list
+// is created exactly the way a filled form is.
+func (c *ProvidersController) createConn(rc context.Context, st *repository.Store, b createBody) (repository.Connection, *createErr) {
 
 	provider := strings.TrimSpace(b.Provider)
 	if id, ok := c.Registry.Resolve(provider); ok {
@@ -153,23 +183,23 @@ func (c *ProvidersController) Create(ctx contractshttp.Context) contractshttp.Re
 	case upstream.NodeKind(provider) != "":
 		n, found, err := st.Nodes().Get(rc, provider)
 		if err != nil {
-			return storageDown(ctx)
+			return repository.Connection{}, &createErr{status: nethttp.StatusServiceUnavailable, msg: "Storage is not available"}
 		}
 		if !found {
-			return flat(ctx, nethttp.StatusNotFound, "Provider node not found")
+			return repository.Connection{}, &createErr{status: nethttp.StatusNotFound, msg: "Provider node not found"}
 		}
 		node = &n
 	default:
 		e, ok := c.Registry.ByID(provider)
 		if !ok {
-			return flat(ctx, nethttp.StatusBadRequest, "Invalid provider")
+			return repository.Connection{}, &createErr{status: nethttp.StatusBadRequest, msg: "Invalid provider"}
 		}
 		switch e.Category {
 		case upstream.CategoryAPIKey, upstream.CategoryFreeTier:
 		case upstream.CategoryCookie:
 			cookie = true
 		default:
-			return flat(ctx, nethttp.StatusBadRequest, "Invalid provider")
+			return repository.Connection{}, &createErr{status: nethttp.StatusBadRequest, msg: "Invalid provider"}
 		}
 	}
 
@@ -178,14 +208,24 @@ func (c *ProvidersController) Create(ctx contractshttp.Context) contractshttp.Re
 		secretName = "Cookie value"
 	}
 	if strings.TrimSpace(b.APIKey) == "" {
-		return flat(ctx, nethttp.StatusBadRequest, secretName+" is required")
+		return repository.Connection{}, &createErr{status: nethttp.StatusBadRequest, msg: secretName + " is required"}
 	}
 	if len(b.APIKey) > maxSecretBytes || hasControl(b.APIKey) {
-		return flat(ctx, nethttp.StatusBadRequest, "Invalid "+strings.ToLower(secretName))
+		return repository.Connection{}, &createErr{status: nethttp.StatusBadRequest, msg: "Invalid " + strings.ToLower(secretName)}
+	}
+	secret := b.APIKey
+	if cookie {
+		// A pasted web credential is normalized before it is sealed: a bare
+		// token stays as it is, a cookie header loses its spare spacing.
+		parsed, ok := upstream.ParseWebCredential(secret)
+		if !ok {
+			return repository.Connection{}, &createErr{status: nethttp.StatusBadRequest, msg: "Invalid cookie value"}
+		}
+		secret = parsed
 	}
 
 	if hasControl(b.Name) || hasControl(b.DisplayName) || hasControl(b.Provider) {
-		return flat(ctx, nethttp.StatusBadRequest, "Invalid characters in the request")
+		return repository.Connection{}, &createErr{status: nethttp.StatusBadRequest, msg: "Invalid characters in the request"}
 	}
 	name := strings.TrimSpace(text.FirstNonEmpty(b.Name, b.DisplayName))
 	if name == "" {
@@ -196,21 +236,21 @@ func (c *ProvidersController) Create(ctx contractshttp.Context) contractshttp.Re
 		}
 	}
 	if name == "" {
-		return flat(ctx, nethttp.StatusBadRequest, "Name is required")
+		return repository.Connection{}, &createErr{status: nethttp.StatusBadRequest, msg: "Name is required"}
 	}
 	if len(name) > maxNameBytes || hasControl(name) {
-		return flat(ctx, nethttp.StatusBadRequest, "Invalid name")
+		return repository.Connection{}, &createErr{status: nethttp.StatusBadRequest, msg: "Invalid name"}
 	}
 
 	psd, perr := cleanPSD(b.ProviderSpecificData)
 	if perr != "" {
-		return flat(ctx, nethttp.StatusBadRequest, perr)
+		return repository.Connection{}, &createErr{status: nethttp.StatusBadRequest, msg: perr}
 	}
 	if node != nil {
 		psd = nodeFields(*node)
 	}
 
-	fields := map[string]string{"apiKey": document.Encode(b.APIKey), "testStatus": `"unknown"`}
+	fields := map[string]string{"apiKey": document.Encode(secret), "testStatus": `"unknown"`}
 	if v := strings.TrimSpace(b.DisplayName); v != "" && len(v) <= maxNameBytes && !hasControl(v) {
 		fields["displayName"] = document.Encode(v)
 	}
@@ -231,14 +271,77 @@ func (c *ProvidersController) Create(ctx contractshttp.Context) contractshttp.Re
 	if err != nil {
 		var conflict *repository.ErrNameConflict
 		if errors.As(err, &conflict) {
-			return ctx.Response().Json(nethttp.StatusConflict, contractshttp.Json{
-				"error": "A connection with this name already exists", "code": "PROVIDER_NAME_CONFLICT",
-				"existingId": conflict.ExistingID, "existingName": conflict.ExistingName,
-			})
+			return repository.Connection{}, &createErr{status: nethttp.StatusConflict, msg: "A connection with this name already exists", conflict: conflict}
 		}
-		return flat(ctx, nethttp.StatusInternalServerError, "Failed to create provider")
+		return repository.Connection{}, &createErr{status: nethttp.StatusInternalServerError, msg: "Failed to create provider"}
 	}
-	return ctx.Response().Json(nethttp.StatusCreated, contractshttp.Json{"connection": connectionView(conn)})
+	return conn, nil
+}
+
+// maxBulkAdd bounds one pasted list.
+const maxBulkAdd = 100
+
+// bulkAddBody is one pasted list: a provider and one credential per line,
+// written as "name|secret" or as a bare secret named after its place.
+type bulkAddBody struct {
+	Provider string `json:"provider"`
+	Entries  string `json:"entries"`
+}
+
+// BulkCreate answers POST /api/providers/bulk: every line runs the same create
+// a filled form runs, and the answer is one result per line. A failed line does
+// not stop the others.
+func (c *ProvidersController) BulkCreate(ctx contractshttp.Context) contractshttp.Response {
+	st := c.store()
+	if st == nil {
+		return storageDown(ctx)
+	}
+	var b bulkAddBody
+	if err := bindJSON(ctx, &b); err != nil {
+		return flat(ctx, nethttp.StatusBadRequest, "Invalid request body")
+	}
+	provider := strings.TrimSpace(b.Provider)
+	if provider == "" {
+		return flat(ctx, nethttp.StatusBadRequest, "Provider is required")
+	}
+	lines := strings.Split(b.Entries, "\n")
+	results := make([]contractshttp.Json, 0, len(lines))
+	rc := ctx.Request().Origin().Context()
+	llmKeys := 0
+	for i, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if len(results) >= maxBulkAdd {
+			return flat(ctx, nethttp.StatusBadRequest, "Too many entries")
+		}
+		// A key of the `LLM|id|secret` shape is one opaque credential, not a
+		// `name|key` pair: it keeps every segment and is named for its kind.
+		name, secret := "", line
+		if strings.HasPrefix(strings.ToLower(line), "llm|") {
+			llmKeys++
+			name = "LLM " + strconv.Itoa(llmKeys)
+		} else if n, s, ok := strings.Cut(line, "|"); ok {
+			name, secret = strings.TrimSpace(n), strings.TrimSpace(s)
+		}
+		if name == "" {
+			name = "Key " + strconv.Itoa(i+1)
+		}
+		entry := contractshttp.Json{"line": i + 1, "name": name}
+		conn, cerr := c.createConn(rc, st, createBody{Provider: provider, Name: name, APIKey: secret})
+		switch {
+		case cerr != nil:
+			entry["error"] = cerr.msg
+			if cerr.conflict != nil {
+				entry["existingId"] = cerr.conflict.ExistingID
+			}
+		default:
+			entry["connectionId"] = conn.ID
+		}
+		results = append(results, entry)
+	}
+	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"results": results})
 }
 
 // nodeFields are the node values a connection copies, as a JSON object.
@@ -348,7 +451,16 @@ func (c *ProvidersController) Update(ctx contractshttp.Context) contractshttp.Re
 				return flat(ctx, nethttp.StatusBadRequest, "Invalid api key")
 			}
 			// An empty key keeps the saved one: the edit form cannot read it back.
-			if v != "" && existing.AuthType == "apikey" {
+			// A cookie row rotates like a key row; its value is normalized the same
+			// way a new one is.
+			if v != "" && (existing.AuthType == "apikey" || existing.AuthType == "cookie") {
+				if existing.AuthType == "cookie" {
+					parsed, ok := upstream.ParseWebCredential(v)
+					if !ok {
+						return flat(ctx, nethttp.StatusBadRequest, "Invalid cookie value")
+					}
+					v = parsed
+				}
 				patch.Fields["apiKey"] = document.Encode(v)
 			}
 		case "providerSpecificData":

@@ -217,3 +217,50 @@ func TestZaiTurnsThinkingOnWithItsOwnObjectAndOffWithItsOwnSwitch(t *testing.T) 
 		})
 	}
 }
+
+func TestACompatibleNodeKeepsItsThinkingBudgetAndClampsAnEffort(t *testing.T) {
+	node := translate.NewCtx(translate.FormatOpenAI, translate.FormatOpenAI)
+	node.Provider = upstream.NodeTypeOpenAI + "-t1"
+	o := translate.Obj{}
+	WriteOpenAIThinking(o, translate.Thinking{Mode: "budget", Budget: 4096}, node)
+	budget, ok := o["thinking"].(translate.Obj)
+	if !ok || budget["type"] != "enabled" || budget["budget_tokens"] != 4096 {
+		t.Fatalf("budget = %v", o)
+	}
+	o = translate.Obj{}
+	WriteOpenAIThinking(o, translate.Thinking{Mode: "level", Level: "minimal"}, node)
+	if o["reasoning_effort"] != "low" {
+		t.Fatalf("minimal = %v", o["reasoning_effort"])
+	}
+	o = translate.Obj{}
+	WriteOpenAIThinking(o, translate.Thinking{Mode: "level", Level: "turbo"}, node)
+	if _, set := o["reasoning_effort"]; set {
+		t.Fatalf("an unknown level was written: %v", o)
+	}
+	o = translate.Obj{}
+	WriteOpenAIThinking(o, translate.Thinking{Mode: "auto"}, node)
+	if o["reasoning_effort"] != "high" {
+		t.Fatalf("auto = %v", o["reasoning_effort"])
+	}
+}
+
+func TestAToolResultTurnKeepsItsThinkingRequest(t *testing.T) {
+	// The client asked for thinking and answered a tool call; the config must
+	// still go out on that turn.
+	body := `{"model":"m","reasoning_effort":"high","messages":[
+		{"role":"user","content":"go"},
+		{"role":"assistant","content":"","tool_calls":[{"id":"c1","type":"function","function":{"name":"f","arguments":"{}"}}]},
+		{"role":"tool","tool_call_id":"c1","content":"ok"}]}`
+	c := translate.NewCtx(translate.FormatOpenAI, translate.FormatOpenAI)
+	c.Caps = upstream.Capability{Reasoning: true}
+	req, err := OpenAICodec{}.ReadRequest([]byte(body), c)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if req.Thinking.Mode != "level" || req.Thinking.Level != "high" {
+		t.Fatalf("the reader dropped the thinking: %+v", req.Thinking)
+	}
+	if got := gjson.GetBytes(writeWith(t, req.Thinking, c.Caps), "reasoning_effort").String(); got != "high" {
+		t.Fatalf("the tool-result turn lost its thinking")
+	}
+}

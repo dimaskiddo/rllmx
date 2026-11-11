@@ -2,6 +2,7 @@ package network
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"net"
 	nethttp "net/http"
@@ -225,4 +226,98 @@ func TestTheGuardDescriptionNamesNoTarget(t *testing.T) {
 	if got := NewDialer(time.Second, nil).String(); !strings.Contains(got, "refused") {
 		t.Fatalf("description %q", got)
 	}
+}
+
+func TestTheGuardRacesItsAddressesWithFastFallback(t *testing.T) {
+	// The first address never answers; the second is reached after one
+	// fallback delay rather than after the first one's whole timeout.
+	var dialed []string
+	g := NewDialer(10*time.Second, nil)
+	g.allow = mustAllow(t, "public.example")
+	g.lookup = func(context.Context, string) ([]netip.Addr, error) {
+		return []netip.Addr{netip.MustParseAddr("10.0.0.1"), netip.MustParseAddr("10.0.0.2")}, nil
+	}
+	reached := make(chan time.Duration, 1)
+	start := time.Now()
+	g.dial = func(ctx context.Context, _, addr string) (net.Conn, error) {
+		dialed = append(dialed, addr)
+		if strings.HasPrefix(addr, "10.0.0.1:") {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}
+		client, server := net.Pipe()
+		defer server.Close()
+		reached <- time.Since(start)
+		return client, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	conn, err := g.DialContext(ctx, "tcp", "public.example:443")
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	_ = conn.Close()
+	elapsed := <-reached
+	if elapsed < fallbackDelay/2 || elapsed > fallbackDelay*3 {
+		t.Fatalf("the second address was reached after %s, want about %s", elapsed, fallbackDelay)
+	}
+	if len(dialed) != 2 {
+		t.Fatalf("dialed %v", dialed)
+	}
+}
+
+func TestTheGuardReturnsTheLastErrorWhenEveryAddressFails(t *testing.T) {
+	g := NewDialer(time.Second, nil)
+	g.allow = mustAllow(t, "public.example")
+	g.lookup = func(context.Context, string) ([]netip.Addr, error) {
+		return []netip.Addr{netip.MustParseAddr("10.0.0.1"), netip.MustParseAddr("10.0.0.2")}, nil
+	}
+	g.dial = func(_ context.Context, _, addr string) (net.Conn, error) {
+		return nil, errors.New("refused " + addr)
+	}
+	_, err := g.DialContext(context.Background(), "tcp", "public.example:443")
+	if err == nil || !strings.Contains(err.Error(), "10.0.0.") {
+		t.Fatalf("err = %v, want the last dial's error", err)
+	}
+}
+
+func TestACancelledRaceEndsPromptly(t *testing.T) {
+	g := NewDialer(time.Minute, nil)
+	g.allow = mustAllow(t, "public.example")
+	g.lookup = func(context.Context, string) ([]netip.Addr, error) {
+		return []netip.Addr{netip.MustParseAddr("10.0.0.1"), netip.MustParseAddr("10.0.0.2")}, nil
+	}
+	g.dial = func(ctx context.Context, _, _ string) (net.Conn, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	if _, err := g.DialContext(ctx, "tcp", "public.example:443"); err == nil {
+		t.Fatal("a cancelled dial succeeded")
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("a cancelled race took %s", elapsed)
+	}
+}
+
+func TestTheTransportOffersOnlyTheCurveItWasGiven(t *testing.T) {
+	tr := NewTransport(Options{Curves: []tls.CurveID{tls.X25519}})
+	if got := tr.TLSClientConfig.CurvePreferences; len(got) != 1 || got[0] != tls.X25519 {
+		t.Fatalf("curves %v", got)
+	}
+	if got := NewTransport(Options{}).TLSClientConfig.CurvePreferences; len(got) != 0 {
+		t.Fatalf("the default offer was narrowed: %v", got)
+	}
+}
+
+// mustAllow is the allow list a race test uses to reach a private literal.
+func mustAllow(t *testing.T, hosts ...string) *Allow {
+	t.Helper()
+	a, err := ParseAllow(strings.Join(hosts, ","))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return a
 }

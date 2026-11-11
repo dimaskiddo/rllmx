@@ -25,8 +25,12 @@ func (b Bucket) Exhausted(now time.Time) bool {
 // Keys of the shared buckets beside the per-model ones. A family has a short
 // window and a weekly one.
 const (
-	GeminiSession    = "gemini_session"
-	GeminiWeekly     = "gemini_weekly"
+	GeminiSession = "gemini_session"
+	GeminiWeekly  = "gemini_weekly"
+	// The Argon family is measured apart from the rest of the Gemini models and
+	// checked before them.
+	ArgonSession     = "gemini_argon_session"
+	ArgonWeekly      = "gemini_argon_weekly"
 	ClaudeGPTSession = "claude_gpt_session"
 	ClaudeGPTWeekly  = "claude_gpt_weekly"
 )
@@ -34,13 +38,16 @@ const (
 // Snapshot is the buckets of one account by name: a model id or a family key.
 type Snapshot map[string]Bucket
 
-// Family says which pool a model draws on: "claude_gpt", "gemini", or "" for a
-// model that draws on neither (an image model has its own limit).
+// Family says which pool a model draws on: "claude_gpt", "argon", "gemini", or
+// "" for a model that draws on neither (an image model has its own limit).
+// Argon is checked first: its models are Gemini models with their own buckets.
 func Family(model string) string {
 	m := strings.ToLower(cleanModel(model))
 	switch {
 	case strings.HasPrefix(m, "claude-"), strings.HasPrefix(m, "gpt-"), m == "claude":
 		return "claude_gpt"
+	case strings.HasPrefix(m, "gemini-") && strings.Contains(m, "argon"):
+		return "argon"
 	case strings.HasPrefix(m, "gemini-") && !strings.Contains(m, "image"), m == "gemini":
 		return "gemini"
 	}
@@ -90,6 +97,9 @@ func (s Snapshot) Of(model string, now time.Time) (Bucket, bool) {
 	case "claude_gpt":
 		add(ClaudeGPTSession)
 		add(ClaudeGPTWeekly)
+	case "argon":
+		add(ArgonSession)
+		add(ArgonWeekly)
 	case "gemini":
 		add(GeminiSession)
 		add(GeminiWeekly)

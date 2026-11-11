@@ -30,6 +30,10 @@ type Options struct {
 	// reads the offer itself. Empty takes the standard list; TLS 1.3 suites are
 	// not configurable and are always offered.
 	CipherSuites []uint16
+	// Curves pins the key-exchange group a call offers. Empty takes the standard
+	// list; one entry offers only that group, which changes the ClientHello
+	// enough for a network that resets the default one.
+	Curves []tls.CurveID
 }
 
 func (o Options) connectTimeout() time.Duration {
@@ -68,6 +72,9 @@ func NewTransport(o Options) *nethttp.Transport {
 	if len(o.CipherSuites) > 0 {
 		tlsConfig.CipherSuites = o.CipherSuites
 	}
+	if len(o.Curves) > 0 {
+		tlsConfig.CurvePreferences = o.Curves
+	}
 	guard := NewDialer(o.connectTimeout(), o.Allow)
 	return &nethttp.Transport{
 		Proxy:                 nil,
@@ -79,7 +86,10 @@ func NewTransport(o Options) *nethttp.Transport {
 		DisableKeepAlives:     o.DisableKeepAlives,
 		MaxIdleConns:          100,
 		MaxIdleConnsPerHost:   10,
-		IdleConnTimeout:       90 * time.Second,
+		// Long on purpose: a dropped idle socket costs one immediate replay
+		// (executor.Default), and Go keeps no TLS session here, so a short pool
+		// would pay a full handshake after every pause.
+		IdleConnTimeout: 90 * time.Second,
 	}
 }
 

@@ -34,6 +34,7 @@
   },
   "oauth": {
     "flow": "device",
+    "bulk": true,
     "deviceUrl": "https://auth.x.ai/oauth2/device/code",
     "tokenUrl": "https://auth.x.ai/oauth2/token",
     "scope": "openid profile email offline_access grok-cli:access api:access conversations:read conversations:write",

@@ -3,6 +3,9 @@ package gemini
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/tidwall/gjson"
+
 	"rllmx/app/llm/translate"
 	"strings"
 	"testing"
@@ -350,5 +353,54 @@ func TestAnEnumIsAlwaysAStringWhateverOtherTypeWasDeclared(t *testing.T) {
 		if props["n"].(map[string]any)["enum"].([]any)[0] != "1" || props["b"].(map[string]any)["enum"].([]any)[0] != "true" {
 			t.Fatalf("enum values must be strings: %v", props)
 		}
+	}
+}
+
+func TestARemoteImageCarriesItsOwnType(t *testing.T) {
+	cases := map[string]string{
+		"https://x.example/a.jpg":        "image/jpeg",
+		"https://x.example/a.JPEG?w=1":   "image/jpeg",
+		"https://x.example/b.webp":       "image/webp",
+		"https://x.example/c.gif":        "image/gif",
+		"https://x.example/d.bmp":        "image/bmp",
+		"https://x.example/e.png":        "image/png",
+		"https://x.example/no-extension": "image/png",
+	}
+	for raw, want := range cases {
+		if got := remoteImageMimeType(raw); got != want {
+			t.Errorf("%q: %q, want %q", raw, got, want)
+		}
+	}
+	req := &translate.Request{Model: "gemini-3.1-pro-high", Messages: []translate.Message{
+		{Role: translate.RoleUser, Content: []translate.Part{{Type: translate.PartImage, URL: "https://x.example/a.jpg"}}},
+	}}
+	body, err := GeminiCodec{}.WriteRequest(req, gctx())
+	if err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if got := gjson.GetBytes(body, "contents.0.parts.0.fileData.mimeType").String(); got != "image/jpeg" {
+		t.Fatalf("mimeType = %q: %s", got, body)
+	}
+}
+
+func TestAParallelToolTurnKeepsEveryResultBeforeItsText(t *testing.T) {
+	body := []byte(`{"contents":[{"role":"user","parts":[
+		{"functionResponse":{"name":"a","response":{"result":"one"}}},
+		{"functionResponse":{"name":"b","response":{"result":"two"}}},
+		{"text":"and a note"}]}]}`)
+	req, err := GeminiCodec{}.ReadRequest(body, gctx())
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if len(req.Messages) != 3 {
+		t.Fatalf("messages = %+v", req.Messages)
+	}
+	for i, want := range []string{"one", "two"} {
+		if req.Messages[i].Role != translate.RoleTool || !strings.Contains(req.Messages[i].Text(), want) {
+			t.Fatalf("message %d = %+v", i, req.Messages[i])
+		}
+	}
+	if req.Messages[2].Role != translate.RoleUser || req.Messages[2].Text() != "and a note" {
+		t.Fatalf("the note came last? %+v", req.Messages[2])
 	}
 }

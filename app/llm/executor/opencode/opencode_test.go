@@ -198,3 +198,22 @@ func TestOpenCodeZenAddsItsStubTools(t *testing.T) {
 		t.Errorf("user agent %q", got)
 	}
 }
+
+func TestOpenCodeATerminalToolGoesOutUnderAnotherName(t *testing.T) {
+	body := []byte(`{"tools":[
+		{"type":"function","function":{"name":"terminal","parameters":{"type":"object"}}},
+		{"type":"function","function":{"name":"my-Terminal-2","parameters":{"type":"object"}}}],
+		"messages":[{"role":"user","content":"hi"}]}`)
+	out := openCodeFingerprint(body, false)
+	renames := openCodeRenames(out)
+	if renames["run_command"] != "terminal" || renames["run_command2"] != "my-Terminal-2" {
+		t.Fatalf("aliases = %v", renames)
+	}
+	var names []string
+	for _, tool := range gjson.GetBytes(openCodeWithoutRenames(out), "tools").Array() {
+		names = append(names, tool.Get("function.name").String())
+	}
+	if strings.Contains(strings.Join(names, ","), "terminal") || strings.Contains(strings.Join(names, ","), "Terminal") {
+		t.Fatalf("a terminal name reached the wire: %v", names)
+	}
+}

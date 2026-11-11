@@ -16,7 +16,7 @@ import (
 // happens to run in, the host's platform and the host's user; this router names
 // fixed ones instead, so nothing about the machine leaves it.
 const (
-	commandCodeDefaultMaxTokens = 32000
+	commandCodeDefaultMaxTokens = 64000
 	commandCodeTemperature      = 0.3
 	commandCodeWorkingDir       = "/workspace"
 	commandCodeEnvironment      = "linux"
@@ -86,9 +86,17 @@ func (c Codec) WriteRequest(r *translate.Request, ctx *translate.Ctx) ([]byte, e
 	if tools := commandCodeTools(r.Tools); tools != nil {
 		params["tools"] = tools
 	}
+	// The upstream takes the client's own effort word, which the hub kept as the
+	// resolved level; a budget is not an effort and sends nothing.
+	if r.Thinking.Mode == "level" && r.Thinking.Level != "" {
+		params["reasoning_effort"] = r.Thinking.Level
+	}
 	body := translate.Obj{
-		"threadId": commandCodeThread(r, ctx),
-		"memory":   "",
+		"threadId":       commandCodeThread(r, ctx),
+		"memory":         nil,
+		"taste":          nil,
+		"skills":         nil,
+		"permissionMode": "standard",
 		"config": translate.Obj{
 			"workingDir": commandCodeWorkingDir, "date": time.Now().UTC().Format("2006-01-02"),
 			"environment": commandCodeEnvironment, "structure": []any{},
@@ -131,27 +139,33 @@ func commandCodeSystem(msgs []translate.Message) string {
 // tool result is its own role, and an assistant turn that thought or called a
 // tool opens with a reasoning block because the upstream expects one.
 func commandCodeMessages(msgs []translate.Message) []any {
+	names := commandCodeCallNames(msgs)
 	out := make([]any, 0, len(msgs))
 	for _, m := range msgs {
 		switch m.Role {
 		case translate.RoleSystem:
 			continue
 		case translate.RoleTool:
-			out = append(out, translate.Obj{
-				"role": "tool",
-				"content": []any{translate.Obj{
-					"type": "tool-result", "toolCallId": m.ToolCallID, "toolName": m.Name,
-					"output": translate.Obj{"type": "text", "value": m.Text()},
-				}},
-			})
+			// A tool turn usually carries no name; the upstream refuses an empty
+			// one, so the call's own name stands in.
+			name := m.Name
+			if name == "" {
+				name = names[m.ToolCallID]
+			}
+			if name == "" {
+				name = "unknown"
+			}
+			result := translate.Obj{"type": "tool-result", "toolCallId": m.ToolCallID, "toolName": name,
+				"output": translate.Obj{"type": "text", "value": m.Text()}}
+			if m.Error {
+				result["output"] = translate.Obj{"type": "error-text", "value": m.Text()}
+			}
+			out = append(out, translate.Obj{"role": "tool", "content": []any{result}})
+			continue
 		case translate.RoleAssistant:
 			blocks := []any{}
-			reasoning := m.Reasoning
-			if reasoning == "" && len(m.ToolCalls) > 0 {
-				reasoning = " "
-			}
-			if reasoning != "" {
-				blocks = append(blocks, translate.Obj{"type": "reasoning", "text": reasoning})
+			if reasoning := strings.TrimSpace(m.Reasoning); reasoning != "" {
+				blocks = append(blocks, translate.Obj{"type": "reasoning", "text": m.Reasoning})
 			}
 			if t := m.Text(); t != "" {
 				blocks = append(blocks, translate.Obj{"type": "text", "text": t})
@@ -159,7 +173,7 @@ func commandCodeMessages(msgs []translate.Message) []any {
 			for _, tc := range m.ToolCalls {
 				blocks = append(blocks, translate.Obj{
 					"type": "tool-call", "toolCallId": tc.ID, "toolName": tc.Name,
-					"input": commandCodeInput(tc.Arguments),
+					"input": commandCodeJSON(tc.Arguments),
 				})
 			}
 			if len(blocks) == 0 {
@@ -217,16 +231,43 @@ func imageMedia(p translate.Part) string {
 	return "image/png"
 }
 
-// commandCodeInput is a tool call's arguments as the object the upstream reads.
-func commandCodeInput(args string) any {
-	if strings.TrimSpace(args) == "" {
+// commandCodeJSON reads a tool call's arguments the way the upstream does: an
+// object or array passes through, another JSON value becomes {value}, and text
+// that is not JSON becomes {raw} rather than disappearing.
+func commandCodeJSON(args string) any {
+	trimmed := strings.TrimSpace(args)
+	if trimmed == "" {
 		return translate.Obj{}
 	}
 	var v any
-	if json.Unmarshal([]byte(args), &v) == nil {
+	if json.Unmarshal([]byte(trimmed), &v) != nil {
+		return translate.Obj{"raw": args}
+	}
+	if v == nil {
+		return translate.Obj{}
+	}
+	switch v.(type) {
+	case map[string]any, []any:
 		return v
 	}
-	return translate.Obj{}
+	return translate.Obj{"value": v}
+}
+
+// commandCodeCallNames maps a call id to the tool it asked for, so a tool turn
+// that carries no name still names its call.
+func commandCodeCallNames(msgs []translate.Message) map[string]string {
+	names := map[string]string{}
+	for _, m := range msgs {
+		if m.Role != translate.RoleAssistant {
+			continue
+		}
+		for _, tc := range m.ToolCalls {
+			if tc.ID != "" && tc.Name != "" {
+				names[tc.ID] = tc.Name
+			}
+		}
+	}
+	return names
 }
 
 // commandCodeTools maps the tool specs to the plain Anthropic shape.

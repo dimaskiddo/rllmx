@@ -115,9 +115,13 @@ func ReadOpenAIUsage(u gjson.Result) Usage {
 	}
 	out := Usage{
 		Prompt: u.Get("prompt_tokens").Int(), Completion: u.Get("completion_tokens").Int(),
-		Reasoning:  u.Get("completion_tokens_details.reasoning_tokens").Int(),
-		Cached:     FirstPositive(u.Get("prompt_tokens_details.cached_tokens").Int(), u.Get("prompt_cache_hit_tokens").Int()),
-		CacheWrite: u.Get("prompt_tokens_details.cache_creation_tokens").Int(),
+		Reasoning: u.Get("completion_tokens_details.reasoning_tokens").Int(),
+		Cached: FirstPositive(
+			u.Get("prompt_tokens_details.cached_tokens").Int(), u.Get("prompt_cache_hit_tokens").Int(),
+			u.Get("inputTokenDetails.cacheReadTokens").Int()),
+		CacheWrite: FirstPositive(
+			u.Get("prompt_tokens_details.cache_creation_tokens").Int(),
+			u.Get("inputTokenDetails.cacheWriteTokens").Int()),
 	}
 	return NormalizeUsage(out)
 }

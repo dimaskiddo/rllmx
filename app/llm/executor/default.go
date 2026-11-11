@@ -44,8 +44,17 @@ func (d *Default) Execute(ctx context.Context, req Request) (Response, error) {
 	}
 	req.URL = target
 	tries := map[int]int{}
+	replayed := false
 	for {
 		resp, err := d.Send(ctx, req)
+		// A pooled socket the far end dropped silently costs one immediate
+		// replay on a fresh connection, before any wait: the request was never
+		// written, so sending it again sends it once.
+		if err != nil && !replayed && ctx.Err() == nil && errors.Is(err, errStaleSocket) {
+			replayed = true
+			d.Client.CloseIdleConnections()
+			resp, err = d.Send(ctx, req)
+		}
 		status := resp.Status
 		if err != nil {
 			if ctx.Err() != nil {
@@ -63,6 +72,11 @@ func (d *Default) Execute(ctx context.Context, req Request) (Response, error) {
 		tries[status]++
 		if err == nil {
 			Drain(resp.Body)
+		}
+		if status == http.StatusBadGateway {
+			// A 502 may be an edge that killed the connection it handed us; the
+			// next attempt must not reuse a pooled one.
+			d.Client.CloseIdleConnections()
 		}
 		if werr := Wait(ctx, rule.Backoff(), d.Sleep); werr != nil {
 			return Response{}, werr
@@ -124,6 +138,9 @@ func (d *Default) Send(ctx context.Context, req Request) (Response, error) {
 	}
 	resp, err := client.Do(hr)
 	if err != nil {
+		if isStaleSocketError(err) {
+			return Response{}, fmt.Errorf("%w: %w", ErrUnreachable, errStaleSocket)
+		}
 		return Response{}, ErrUnreachable
 	}
 	return Response{Status: resp.StatusCode, Header: resp.Header, Body: resp.Body}, nil

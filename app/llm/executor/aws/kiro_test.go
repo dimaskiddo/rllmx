@@ -103,17 +103,25 @@ func TestKiroHostOrderPutsTheAmazonQHostFirstForAnAPIKey(t *testing.T) {
 	}
 }
 
-func TestKiroHostsMoveToTheAccountsRegion(t *testing.T) {
+func TestKiroHostsMoveOnlyToRegionsTheServiceServes(t *testing.T) {
 	e := upstream.Entry{Transport: upstream.Transport{BaseURLs: []string{
 		"https://q.us-east-1.amazonaws.com/generateAssistantResponse",
 		"https://runtime.us-east-1.kiro.dev/generateAssistantResponse",
 	}}}
-	got := strings.Join(kiroHosts(e, "builder-id", "eu-west-1"), " ")
-	if !strings.Contains(got, "https://q.eu-west-1.amazonaws.com") {
-		t.Errorf("the amazon host was not regionalised: %s", got)
+	got := strings.Join(kiroHosts(e, "builder-id", "eu-central-1"), " ")
+	if !strings.Contains(got, "https://q.eu-central-1.amazonaws.com") {
+		t.Errorf("a served region was not used: %s", got)
 	}
 	if !strings.Contains(got, "https://runtime.us-east-1.kiro.dev") {
 		t.Errorf("the kiro.dev host was regionalised: %s", got)
+	}
+	got = strings.Join(kiroHosts(e, "builder-id", "eu-west-1"), " ")
+	if !strings.Contains(got, "https://q.us-east-1.amazonaws.com") {
+		t.Errorf("an unserved region was spliced in: %s", got)
+	}
+	e.Transport.BaseURLs = []string{"https://codewhisperer.us-east-1.amazonaws.com/x"}
+	if got := kiroRegional("https://codewhisperer.us-east-1.amazonaws.com/x", "eu-central-1"); !strings.Contains(got, "us-east-1") {
+		t.Errorf("codewhisperer moved to a region it is not served in: %s", got)
 	}
 }
 

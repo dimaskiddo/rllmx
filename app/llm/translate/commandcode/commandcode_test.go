@@ -2,6 +2,7 @@ package commandcode
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/tidwall/gjson"
@@ -199,4 +200,83 @@ func TestCommandCodeFlushClosesATurnTheUpstreamLeftOpen(t *testing.T) {
 
 func user(text string) translate.Message {
 	return translate.Message{Role: translate.RoleUser, Content: translate.TextPart(text)}
+}
+
+func TestTheCommandCodeEnvelopeCarriesTheNewFields(t *testing.T) {
+	g := commandCodeBody(t, &translate.Request{Model: "m", Messages: []translate.Message{user("hi")}}, commandCodeCtx())
+	for _, path := range []string{"memory", "taste", "skills"} {
+		if v := g.Get(path); v.Type != gjson.Null {
+			t.Errorf("%s = %s, want null", path, v.Raw)
+		}
+	}
+	if got := g.Get("permissionMode").String(); got != "standard" {
+		t.Errorf("permissionMode %q", got)
+	}
+	if got := g.Get("params.max_tokens").Int(); got != 64000 {
+		t.Errorf("max_tokens %d, want 64000", got)
+	}
+}
+
+func TestACommandCodeToolResultNamesItsCallAndFlagsAnError(t *testing.T) {
+	r := &translate.Request{Model: "m", Messages: []translate.Message{
+		{Role: translate.RoleAssistant, ToolCalls: []translate.ToolCall{{ID: "c1", Name: "read", Arguments: `{}`}}},
+		{Role: translate.RoleTool, ToolCallID: "c1", Content: translate.TextPart("boom"), Error: true},
+		{Role: translate.RoleTool, ToolCallID: "gone", Content: translate.TextPart("x")},
+	}}
+	g := commandCodeBody(t, r, commandCodeCtx())
+	first := g.Get("params.messages.1")
+	if got := first.Get("content.0.toolName").String(); got != "read" {
+		t.Errorf("tool name %q, want the call's", got)
+	}
+	if got := first.Get("content.0.output.type").String(); got != "error-text" {
+		t.Errorf("output type %q, want error-text", got)
+	}
+	if got := g.Get("params.messages.2.content.0.toolName").String(); got != "unknown" {
+		t.Errorf("a nameless result got %q, want unknown", got)
+	}
+}
+
+func TestACommandCodeAssistantTurnKeepsNoPlaceholderReasoning(t *testing.T) {
+	r := &translate.Request{Model: "m", Messages: []translate.Message{
+		{Role: translate.RoleAssistant, ToolCalls: []translate.ToolCall{{ID: "c1", Name: "read", Arguments: `{"a":`}}},
+	}}
+	g := commandCodeBody(t, r, commandCodeCtx())
+	blocks := g.Get("params.messages.0.content").Array()
+	if len(blocks) == 0 || blocks[0].Get("type").String() == "reasoning" {
+		t.Fatalf("a placeholder reasoning block was written: %s", g.Get("params.messages.0.content").Raw)
+	}
+	// The argument text is not JSON, so it rides as {raw: ...} instead of vanishing.
+	if got := blocks[0].Get("input").Raw; !strings.Contains(got, `"raw"`) {
+		t.Errorf("the unparseable arguments were dropped: %s", got)
+	}
+}
+
+func TestTheCommandCodeReasoningEffortComesFromTheHub(t *testing.T) {
+	r := &translate.Request{Model: "m", Messages: []translate.Message{user("hi")},
+		Thinking: translate.Thinking{Mode: "level", Level: "high"}}
+	if got := commandCodeBody(t, r, commandCodeCtx()).Get("params.reasoning_effort").String(); got != "high" {
+		t.Errorf("effort %q", got)
+	}
+	r.Thinking = translate.Thinking{Mode: "budget", Budget: 4096}
+	if v := commandCodeBody(t, r, commandCodeCtx()).Get("params.reasoning_effort"); v.Exists() {
+		t.Errorf("a budget became an effort: %s", v.Raw)
+	}
+}
+
+func TestCommandCodeJSONFollowsTheUpstreamShapes(t *testing.T) {
+	cases := map[string]string{
+		"":         `{}`,
+		"  ":       `{}`,
+		`{"a":1}`:  `{"a":1}`,
+		`[1]`:      `[1]`,
+		`"x"`:      `{"value":"x"}`,
+		`5`:        `{"value":5}`,
+		`not json`: `{"raw":"not json"}`,
+	}
+	for in, want := range cases {
+		raw, _ := json.Marshal(commandCodeJSON(in))
+		if string(raw) != want {
+			t.Errorf("commandCodeJSON(%q) = %s, want %s", in, raw, want)
+		}
+	}
 }

@@ -8,12 +8,12 @@ How closely Router-LLM follows its references. References read-only, never copie
 
 | Reference | Path | Version | Commit | Commit date | Role |
 |---|---|---|---|---|---|
-| 9router | `references/9router` | 0.5.112 | `1fe586bb` | 2026-10-28 | Baseline behavior |
-| 9router-extended | `references/9router-extended` | 0.5.104-extended | `8ba9e7c8` | 2026-10-16 | Extended additions only |
+| 9router | `references/9router` | 0.5.116 | `1339107e` | 2026-11-08 | Baseline behavior |
+| 9router-extended | `references/9router-extended` | 0.5.116-extended | `6315cb00` | 2026-11-09 | Extended additions only |
 
 `../rllm` is a second reference, like 9router: an earlier Go implementation written without a framework. Read it for behavior only — its code, package layout, stdlib choices and filenames are never carried over (Clean-Room Rule), and rllmx's shape follows `AGENTS.md`, not that repo. Behavior and `docs/DIVERGENCES.md`: judged against 9router and 9router-extended only.
 
-9router-extended forked from upstream 9router v0.5.104 (upstream commit `87a74e1b`, 2026-10-15), lacks upstream's 0.5.109 to 0.5.112 work: on disagreement the baseline wins, only the fork's own additions adopted.
+9router-extended is based on the same upstream release as the baseline: on disagreement the baseline wins, and only the fork's own additions are adopted.
 
 ---
 

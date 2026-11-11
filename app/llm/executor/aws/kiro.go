@@ -3,6 +3,7 @@ package aws
 import (
 	"context"
 	"regexp"
+	"slices"
 	"strings"
 
 	"rllmx/app/llm/executor"
@@ -162,7 +163,7 @@ func kiroHosts(e upstream.Entry, method, region string) []string {
 		other = append(other, u)
 	}
 	if len(amazon) == 0 && len(other) == 0 {
-		return []string{"https://q." + region + ".amazonaws.com"}
+		return []string{"https://q." + kiroServedRegion(region, "q") + ".amazonaws.com"}
 	}
 	var q, rest []string
 	for _, u := range amazon {
@@ -178,9 +179,32 @@ func kiroHosts(e upstream.Entry, method, region string) []string {
 	return append(append(rest, other...), q...)
 }
 
-// kiroRegional moves an Amazon host onto the account's own region.
+// kiroServiceRegions are the regions each Amazon service is served in. The
+// reference splices a region into an Amazon host only when the pair is listed:
+// a host that is not served there would only fail.
+var kiroServiceRegions = map[string][]string{
+	"q":             {"us-east-1", "eu-central-1"},
+	"runtime":       {"us-east-1", "eu-central-1"},
+	"codewhisperer": {"us-east-1"},
+}
+
+// kiroServedRegion returns region when the service is served there, else the
+// default.
+func kiroServedRegion(region, service string) string {
+	if slices.Contains(kiroServiceRegions[service], region) {
+		return region
+	}
+	return kiroDefaultReg
+}
+
+// kiroRegional moves an Amazon host onto the account's own region, for the
+// service and region pairs the provider serves.
 func kiroRegional(u, region string) string {
 	if region == "" || region == kiroDefaultReg {
+		return u
+	}
+	parts := kiroRegion.FindStringSubmatch(u)
+	if parts == nil || !slices.Contains(kiroServiceRegions[parts[1]], region) {
 		return u
 	}
 	return kiroRegion.ReplaceAllString(u, "${1}."+region+".amazonaws.com")

@@ -165,7 +165,7 @@ func readClaudeMessage(m gjson.Result) []translate.Message {
 			calls = append(calls, translate.ToolCall{ID: b.Get("id").String(), Name: b.Get("name").String(), Arguments: args})
 		case "tool_result":
 			text, images := claudeResultContent(b.Get("content"))
-			results = append(results, translate.Message{Role: translate.RoleTool, ToolCallID: b.Get("tool_use_id").String(), Content: translate.TextPart(text)})
+			results = append(results, translate.Message{Role: translate.RoleTool, ToolCallID: b.Get("tool_use_id").String(), Error: b.Get("is_error").Bool(), Content: translate.TextPart(text)})
 			if len(images) > 0 {
 				// The tool role is text only, so an image a tool returned would vanish.
 				// It goes in the user turn that follows, tagged with its call.

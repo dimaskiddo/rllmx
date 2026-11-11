@@ -13,6 +13,7 @@ import (
 	"github.com/tidwall/gjson"
 
 	"rllmx/app/llm/executor"
+	"rllmx/app/llm/upstream"
 	"rllmx/app/platform/cache"
 	"rllmx/app/store/dialect"
 )
@@ -182,22 +183,9 @@ func absorb(jar map[string]string, h http.Header) {
 	for _, line := range h.Values("Set-Cookie") {
 		name, value, _ := strings.Cut(line, "=")
 		value, _, _ = strings.Cut(value, ";")
-		if !cookieName(name) || value == "" || strings.IndexFunc(value, func(r rune) bool { return r <= ' ' || r == '"' || r == ',' || r == ';' }) >= 0 {
+		if !upstream.CookieName(name) || value == "" || strings.IndexFunc(value, func(r rune) bool { return r <= ' ' || r == '"' || r == ',' || r == ';' }) >= 0 {
 			continue
 		}
 		jar[name] = value
 	}
-}
-
-func cookieName(s string) bool {
-	if s == "" || len(s) > 128 {
-		return false
-	}
-	for _, r := range s {
-		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '-' || r == '.' {
-			continue
-		}
-		return false
-	}
-	return true
 }

@@ -89,6 +89,9 @@ const (
 	// ExecutorKimchi strips a body down to what its gateway accepts behind an
 	// Anthropic-shaped model.
 	ExecutorKimchi = "kimchi"
+	// ExecutorDeepseekWeb trades a pasted user token for an access token and
+	// guards the completion with a proof of work.
+	ExecutorDeepseekWeb = "deepseek-web"
 )
 
 var (
@@ -101,7 +104,7 @@ var (
 		ExecutorBedrock: true, ExecutorBedrockXAI: true, ExecutorKiro: true,
 		ExecutorOllamaLocal: true, ExecutorXiaomiTokenPlan: true, ExecutorXiaomiMimo: true, ExecutorCommandCode: true,
 		ExecutorOpenCode: true, ExecutorOpenCodeGo: true, ExecutorOpenCodeZen: true, ExecutorZed: true, ExecutorFreebuff: true, ExecutorQoder: true,
-		ExecutorCursor: true, ExecutorKimchi: true,
+		ExecutorCursor: true, ExecutorKimchi: true, ExecutorDeepseekWeb: true,
 	}
 )
 

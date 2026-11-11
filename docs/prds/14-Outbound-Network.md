@@ -15,9 +15,10 @@ One configuration for every upstream call (`network.NewTransport`, `network.NewC
 
 | Item | Behavior |
 |---|---|
-| TLS | Always verified, 1.2 or newer |
+| TLS | Always verified, 1.2 or newer. The key-exchange group is `UPSTREAM_TLS_CURVE`: `x25519` (the default) offers only that group, `default` offers the standard list. Go can restrict the set, not its order, so one group is the faithful equivalent of the reference's `ecdhCurve` |
 | Response headers | Bounded by `UPSTREAM_CONNECT_TIMEOUT` |
 | HTTP/2 | Where the provider supports it. Every client is stdlib `net/http`; `golang.org/x/net/http2` only where stdlib cannot (h2c for Cursor) |
+| DPI-shaped networks | Adopted in Go terms (D289). The SSRF guard dials its own permitted addresses, so it races them itself: the first address gets 250 ms and the next joins while it is still pending (RFC 6555 fast fallback), and the first success wins. A pooled connection the far end dropped silently costs one immediate replay on a fresh connection before any wait; the classifier covers a reset, a broken pipe, a closed socket and an early end, and deliberately excludes a name that does not resolve, a refusal, an unreachable host, a timeout, a TLS refusal and a cancelled request. The idle pool stays at 90 s because the replay absorbs a dead socket and Go keeps no TLS session here |
 | Proxy | None. `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY` and `NO_PROXY` are not read |
 | Redirects | `MaxRedirects` 0 means the default of 5, a negative value follows none, a caller may lower it. Never https to http. Image prefetch, probes and the SSO client use 3; the key `Checker` refuses any redirect to another host, port or scheme |
 | Body cap | 1 MiB by default; a negative value turns the cap and the overall timeout off for streamed answers |
@@ -80,6 +81,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 209 | The probe follows at most three redirects, and its own host is the one entry on the allow list it uses | A load balancer's relocation to `/api/health` works; a redirect anywhere else is refused by the same guard, so a compromised local answer cannot steer the probe |
 | 214 | The outbound proxy and proxy pool feature is removed, not deferred: no `proxyPools` table is created, no `outboundProxy*` default is merged, no route or setting takes a proxy field. On a database imported from 9router the table, `proxyPoolFitness` and every stored proxy key stay exactly as stored, and `db:import-config` still skips the three `outboundProxy*` names | A router that dials direct has nothing to configure; leaving foreign data alone keeps the file openable by 9router (scope cut) |
 | 215 | A key check stores and returns only its own fixed message (`Invalid API key`, `could not connect`, ...), never the provider's text, status or address. A `Checker` pass does not erase a cooldown and a failing check creates none | The reference stores the provider's error text in the connection, where a key, an address or a prompt fragment can land; a probe is not a request and must not hide or invent a lock (improvement) |
+| 289 | The reference's transport tuning reads three environment names (`NINEROUTER_TLS_ECDH_CURVE`, `FETCH_KEEPALIVE_TIMEOUT_MS`, `FETCH_FRESH_RETRY`) and keeps a kill switch for its stale-socket replay. Here the curve is this program's own `UPSTREAM_TLS_CURVE` with two values, the idle pool is fixed at 90 s, and the replay always runs once. The reference's browser-identical handshake path stays disabled, as it does in the reference | Configuration is this program's own variables and settings row, never another program's environment (same reason as D263 and D271); a replay whose whole point is to be invisible should not depend on an operator remembering it exists (trade-off) |
 | 230 | A host name on the operator's allow list is still refused when it resolves to a link-local or metadata address (`169.254/16`, `fe80::/10`, `fd00:ec2::254`, also through the mapped, compatible and NAT64 forms). The list lifts the Internal class only; the Never class has no entry that lifts it. `64:ff9b:1::/48` is Internal | Whoever controls DNS for a listed name could otherwise point it at the cloud metadata service; the dialer already held this rule for an address literal and the name path did not (improvement) |
 | 4 | Loopback calls only. **(partial)** no compose file ships | No exposed sidecar |
 | 146 | One rule in `network`: `localhost`, loopback address, brackets, trailing dot, IPv4-mapped form; zoned address never local | Guard, URL checks, provider checks cannot disagree |
@@ -88,6 +90,8 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 126 | The key `Checker` follows no redirect, and when the shared client follows one it refuses any hop that downgrades to plain HTTP | Credential never reaches another host or crosses to clear text |
 
 ---
+
+**0.5.116 carried a transport change, not only a Node one.** "The Claude provider survives DPI-shaped networks" (`736be957`) names the network that motivated it; nothing in the reference branches on the provider. Its three parts map onto this router as a fast-fallback race in the guard, one restricted TLS key-exchange group behind `UPSTREAM_TLS_CURVE`, and one immediate stale-socket replay in `executor.Default`, with the reference's own exclusion list. The keep-alive cap it pairs with (4 s) is not copied: the replay makes a dead socket cheap, so the pool stays long and no handshake is paid on every pause. A browser-identical handshake (uTLS/JA3) is what the reference disables too, so it stays out.
 
 ## Findings
 

@@ -64,6 +64,8 @@ type Message struct {
 	Name       string
 	ToolCalls  []ToolCall
 	ToolCallID string
+	// Error marks a tool result the client reported as a failure.
+	Error bool
 	// Reasoning is the model's visible thinking text, kept apart from Content.
 	Reasoning string
 	// ReasoningSignature signs Reasoning for providers that check it.

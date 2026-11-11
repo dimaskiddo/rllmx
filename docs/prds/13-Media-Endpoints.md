@@ -19,7 +19,7 @@ No media adapter exists. Each endpoint resolves model and account as chat does, 
 **Step 1.11.** Nothing built.
 
 - [ ] Embeddings (`/v1/embeddings`, custom embedding nodes)
-- [ ] Images (`/v1/images/generations`; image models never stream)
+- [ ] Images (`/v1/images/generations`; image models never stream). Codex's own image path arrives here: the `gpt-image-2.6-flare` and `gpt-image-2.6-sunburst` models, the `imageConfig` address, native OAuth generation gated to a plain prompt, `reasoning` omitted, and a stream error surfaced instead of a generic refusal (0.5.116)
 - [ ] TTS (`/v1/audio/speech`, `/v1/audio/voices`), STT (`/v1/audio/transcriptions`, bounded uploads)
 - [ ] Video (`/v1/videos/generations|edits|extensions`, `GET /v1/videos/{id}` polling)
 - [ ] Search (`/v1/search`) and fetch (`/v1/web/fetch`, URL to markdown, SSRF guard every hop); the HTML-to-markdown library is an open decision

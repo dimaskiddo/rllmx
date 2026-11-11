@@ -1,11 +1,13 @@
 package controllers
 
 import (
+	"encoding/json"
 	"errors"
 	nethttp "net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
 
@@ -107,6 +109,120 @@ func (c *OAuthController) ConnectToken(ctx contractshttp.Context) contractshttp.
 		return flat(ctx, nethttp.StatusServiceUnavailable, "Storage is not available")
 	}
 	return flat(ctx, nethttp.StatusInternalServerError, "The token could not be saved")
+}
+
+// bulkItemBody is one account of a pasted list. Both spellings are read,
+// because both appear in the references' own exports.
+type bulkItemBody struct {
+	AccessToken    string `json:"accessToken"`
+	AccessTokenAlt string `json:"access_token"`
+	RefreshToken   string `json:"refreshToken"`
+	RefreshAlt     string `json:"refresh_token"`
+	IDToken        string `json:"idToken"`
+	IDTokenAlt     string `json:"id_token"`
+	Email          string `json:"email"`
+	ExpiresIn      int64  `json:"expiresIn"`
+	ExpiresAt      string `json:"expiresAt"`
+}
+
+// bulkAccounts is the {accounts: [...]} shape a list may arrive in.
+type bulkAccounts struct {
+	Accounts []bulkItemBody `json:"accounts"`
+}
+
+// BulkImport answers POST /api/oauth/{provider}/bulk-import: a pasted list of
+// token accounts, one result per account. No route returns a token.
+func (c *OAuthController) BulkImport(ctx contractshttp.Context) contractshttp.Response {
+	r := ctx.Request().Origin()
+	if c.bind(r) == "" {
+		return flat(ctx, nethttp.StatusUnauthorized, "Sign in to the dashboard first")
+	}
+	var raw json.RawMessage
+	if err := bindJSON(ctx, &raw); err != nil {
+		return flat(ctx, nethttp.StatusBadRequest, "Invalid request body")
+	}
+	items, msg := parseBulk(raw)
+	if msg != "" {
+		return flat(ctx, nethttp.StatusBadRequest, msg)
+	}
+	outcomes, err := c.Service.BulkImport(r.Context(), ctx.Request().Route("provider"), items)
+	switch {
+	case err == nil:
+		results := make([]contractshttp.Json, 0, len(outcomes))
+		for i, o := range outcomes {
+			entry := contractshttp.Json{"index": i + 1}
+			if o.ID != "" {
+				entry["connectionId"] = o.ID
+			} else {
+				entry["error"] = o.Failure
+			}
+			results = append(results, entry)
+		}
+		return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"results": results})
+	case errors.Is(err, oauth.ErrBulk), errors.Is(err, oauth.ErrUnsupported):
+		return flat(ctx, nethttp.StatusNotFound, "This provider takes no bulk token import")
+	case errors.Is(err, oauth.ErrDisabled):
+		return flat(ctx, nethttp.StatusBadRequest, "This login is switched off")
+	case errors.Is(err, oauth.ErrStorage):
+		return flat(ctx, nethttp.StatusServiceUnavailable, "Storage is not available")
+	}
+	return flat(ctx, nethttp.StatusInternalServerError, "The accounts could not be saved")
+}
+
+// parseBulk reads the three accepted shapes into items.
+func parseBulk(raw json.RawMessage) ([]oauth.BulkItem, string) {
+	var bodies []bulkItemBody
+	switch {
+	case len(strings.TrimSpace(string(raw))) == 0:
+		return nil, "The list is empty"
+	case strings.HasPrefix(strings.TrimSpace(string(raw)), "["):
+		if json.Unmarshal(raw, &bodies) != nil {
+			return nil, "Invalid account list"
+		}
+	case strings.HasPrefix(strings.TrimSpace(string(raw)), "{"):
+		var envelope bulkAccounts
+		if json.Unmarshal(raw, &envelope) == nil && envelope.Accounts != nil {
+			bodies = envelope.Accounts
+		} else {
+			var one bulkItemBody
+			if json.Unmarshal(raw, &one) != nil {
+				return nil, "Invalid account"
+			}
+			bodies = []bulkItemBody{one}
+		}
+	default:
+		return nil, "Invalid request body"
+	}
+	if len(bodies) == 0 {
+		return nil, "The list is empty"
+	}
+	if len(bodies) > oauth.BulkLimit {
+		return nil, "Too many accounts"
+	}
+	out := make([]oauth.BulkItem, 0, len(bodies))
+	for _, b := range bodies {
+		item := oauth.BulkItem{
+			Access: firstOf(b.AccessToken, b.AccessTokenAlt), Refresh: firstOf(b.RefreshToken, b.RefreshAlt),
+			ID: firstOf(b.IDToken, b.IDTokenAlt), Email: b.Email, ExpiresIn: b.ExpiresIn,
+		}
+		if b.ExpiresAt != "" {
+			at, err := time.Parse(time.RFC3339, b.ExpiresAt)
+			if err != nil {
+				return nil, "Invalid expiry"
+			}
+			item.ExpiresAt = at
+		}
+		out = append(out, item)
+	}
+	return out, ""
+}
+
+// firstOf is the first non-empty of two strings.
+func firstOf(a, b string) string {
+	if strings.TrimSpace(a) != "" {
+		return strings.TrimSpace(a)
+	}
+	return strings.TrimSpace(b)
 }
 
 // ImportRequest is what POST /api/oauth/{provider}/import takes: the token the

@@ -18,7 +18,7 @@ graph LR
         LLM["llm/ upstream routing translate executor oauth stream quota zed"]
         ACC["access/ auth identity oidc saml sso"]
         ST["store/ repository data importer analytics sealer dialect document lock"]
-        PROT["protocol/ sigv4 eventstream cosy"]
+        PROT["protocol/ sigv4 eventstream cosy keccak"]
         PLAT["platform/ cache network settings file text ttl redactor failure"]
         API["http, routes/"]
     end

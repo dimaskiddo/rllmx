@@ -243,6 +243,7 @@ func TestTheLoginRoutesNeedASessionAndTheCallbackPageIsPublic(t *testing.T) {
 	for _, rt := range [][2]string{
 		{"GET", "/api/oauth/{provider}/authorize"}, {"GET", "/api/oauth/{provider}/device-code"}, {"POST", "/api/oauth/poll"}, {"POST", "/api/oauth/exchange"},
 		{"POST", "/api/oauth/callback"}, {"GET", "/api/oauth/status"},
+		{"POST", "/api/oauth/{provider}/pat"}, {"POST", "/api/oauth/{provider}/import"}, {"POST", "/api/oauth/{provider}/bulk-import"},
 	} {
 		if class, ok := g.RouteClass(rt[0], rt[1]); !ok || class != apphttp.ClassAlwaysProtected {
 			t.Errorf("%s %s: class = %d ok=%v", rt[0], rt[1], class, ok)

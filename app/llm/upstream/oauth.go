@@ -144,6 +144,9 @@ type OAuth struct {
 	// PAT lets an account be connected by a personal access token checked against
 	// the user endpoint of its server.
 	PAT bool `json:"pat,omitempty"`
+	// Bulk lets accounts be pasted as a list of tokens, one per line of the
+	// request, without a login.
+	Bulk bool `json:"bulk,omitempty"`
 	// Exchange is the encoding of the code exchange body: json or form.
 	Exchange string `json:"exchange,omitempty"`
 	// EchoState sends the login state in the exchange body.
