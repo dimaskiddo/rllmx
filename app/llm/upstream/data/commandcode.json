@@ -1,4 +1,5 @@
 {
+  "passthroughModels": true,
   "id": "commandcode",
   "alias": "cmc",
   "category": "apikey",

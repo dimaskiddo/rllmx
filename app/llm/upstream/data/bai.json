@@ -1,4 +1,5 @@
 {
+  "passthroughModels": true,
   "id": "bai",
   "alias": "bai",
   "aliases": [

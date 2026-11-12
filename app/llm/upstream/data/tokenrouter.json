@@ -1,4 +1,5 @@
 {
+  "passthroughModels": true,
   "id": "tokenrouter",
   "alias": "tr",
   "category": "apikey",

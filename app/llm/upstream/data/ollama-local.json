@@ -9,5 +9,13 @@
     "format": "ollama"
   },
   "executor": "ollama-local",
+  "auth": {
+    "scheme": "",
+    "header": "",
+    "probe": {
+      "method": "GET",
+      "path": "/api/tags"
+    }
+  },
   "models": []
 }

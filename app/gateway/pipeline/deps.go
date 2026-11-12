@@ -8,6 +8,7 @@ import (
 
 	"rllmx/app/gateway/account"
 	"rllmx/app/gateway/conversation"
+	"rllmx/app/llm/catalog"
 	"rllmx/app/llm/executor"
 	"rllmx/app/llm/routing"
 	"rllmx/app/llm/stream"
@@ -84,6 +85,12 @@ type Targets interface {
 	Format(ctx context.Context, conn repository.Connection, model string) (string, error)
 }
 
+// Catalog tells whether the chosen account's provider lists a model, so a
+// request for an id no account serves is refused before anything is sent.
+type Catalog interface {
+	Known(ctx context.Context, provider string, conn repository.Connection, model string) catalog.Verdict
+}
+
 // Deps is everything a Pipeline needs. Overrides, Settings, Prefetch, Log and Now are optional.
 type Deps struct {
 	Resolver  Resolver
@@ -119,6 +126,9 @@ type Deps struct {
 	Quota Quota
 	// Targets names the wire format of a provider whose catalog decides it.
 	Targets Targets
+	// Catalog reads the provider's own model list before a send; nil leaves
+	// every model to the provider.
+	Catalog Catalog
 	// Sessions names the conversation a request belongs to; nil makes one.
 	Sessions *conversation.Store
 	Timers   stream.Timers

@@ -1,4 +1,5 @@
 {
+  "passthroughModels": true,
   "id": "nous",
   "alias": "nous",
   "aliases": ["nous-portal", "nous-research", "ns"],

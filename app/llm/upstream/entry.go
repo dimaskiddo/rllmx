@@ -2,6 +2,8 @@
 // provider is called, where it lives, which models it serves and what they cost.
 package upstream
 
+import "time"
+
 // Provider categories. The dashboard groups by them; selection ignores them.
 const (
 	CategoryAPIKey   = "apikey"
@@ -126,8 +128,12 @@ type Entry struct {
 	OAuth *OAuth `json:"oauth,omitempty"`
 	// ForceStream marks a provider that only answers as a stream, so a client
 	// that asked for JSON gets the stream collected into one answer.
-	ForceStream bool    `json:"forceStream,omitempty"`
-	Models      []Model `json:"models"`
+	ForceStream bool `json:"forceStream,omitempty"`
+	// PassthroughModels lists the provider as serving any model id, not only the
+	// ones below. An id the list does not name already reaches the executor; the
+	// flag is what a catalog or the dashboard reads.
+	PassthroughModels bool    `json:"passthroughModels,omitempty"`
+	Models            []Model `json:"models"`
 }
 
 // Display is what the dashboard shows.
@@ -178,6 +184,53 @@ type Transport struct {
 	// signed with one. It is public data, and it fails the load when it is not a
 	// key the signer can use.
 	SigningKey string `json:"signingKey,omitempty"`
+	// TimeoutMs bounds how long the provider may take to send response
+	// headers, over the shared UPSTREAM_CONNECT_TIMEOUT. Zero takes the shared
+	// value.
+	TimeoutMs int `json:"timeoutMs,omitempty"`
+	// StallTimeoutMs bounds how long a stream may stay silent, over the shared
+	// STREAM_STALL_TIMEOUT. Zero takes the shared value.
+	StallTimeoutMs int `json:"stallTimeoutMs,omitempty"`
+	// Regions are the clusters a connection may name, when the provider's host
+	// depends on one; DefaultRegion is the one used when it names none.
+	Regions       []Region `json:"regions,omitempty"`
+	DefaultRegion string   `json:"defaultRegion,omitempty"`
+}
+
+// Region is one cluster a provider serves its account from.
+type Region struct {
+	ID string `json:"id"`
+	// Host is the origin a connection in this region reaches.
+	Host string `json:"host"`
+}
+
+// Timeout is the header bound the provider sets, or zero.
+func (t Transport) Timeout() time.Duration {
+	if t.TimeoutMs <= 0 {
+		return 0
+	}
+	return time.Duration(t.TimeoutMs) * time.Millisecond
+}
+
+// Stall is the silence bound the provider sets, or zero.
+func (t Transport) Stall() time.Duration {
+	if t.StallTimeoutMs <= 0 {
+		return 0
+	}
+	return time.Duration(t.StallTimeoutMs) * time.Millisecond
+}
+
+// RegionHost resolves a region id to its host, falling back to the default.
+func (t Transport) RegionHost(id string) string {
+	if id == "" {
+		id = t.DefaultRegion
+	}
+	for _, r := range t.Regions {
+		if r.ID == id {
+			return r.Host
+		}
+	}
+	return ""
 }
 
 // Lane is one endpoint of a provider that serves several wire formats: its

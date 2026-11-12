@@ -267,8 +267,8 @@ func TestTheGoogleFilesDeclareWhatTheyNeed(t *testing.T) {
 		login            bool
 	}{
 		"gemini-cli":     {ExecutorGeminiCLI, FormatCloudCode, 7, true},
-		"antigravity":    {ExecutorAntigravity, FormatCloudCode, 27, true},
-		"vertex":         {ExecutorVertex, FormatVertex, 5, false},
+		"antigravity":    {ExecutorAntigravity, FormatCloudCode, 28, true},
+		"vertex":         {ExecutorVertex, FormatVertex, 9, false},
 		"vertex-partner": {ExecutorVertexPartner, FormatOpenAI, 4, false},
 	} {
 		e, ok := reg.ByID(id)

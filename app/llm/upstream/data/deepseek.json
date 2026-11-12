@@ -37,6 +37,18 @@
     {
       "id": "deepseek-reasoner",
       "name": "DeepSeek V3.2 Reasoner"
+    },
+    {
+      "id": "deepseek-v4-pro-max",
+      "name": "DeepSeek V4 Pro Max"
+    },
+    {
+      "id": "deepseek-v4-pro-none",
+      "name": "DeepSeek V4 Pro None"
+    },
+    {
+      "id": "deepseek-v4-flash-vision-exp",
+      "name": "DeepSeek V4 Flash Vision"
     }
   ]
 }

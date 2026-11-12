@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"time"
 
 	"rllmx/app/llm/upstream"
 )
@@ -50,6 +51,9 @@ type Request struct {
 	// proof the provider wants. A signer that fails stops the call: an unsigned
 	// request would be refused anyway, and sending it costs a round trip.
 	Sign func(method, target string, h http.Header, body []byte) error
+	// Timeout bounds how long the upstream may take to answer, over the client's
+	// own header timeout. Zero keeps the client's value.
+	Timeout time.Duration
 	// NoRedirect refuses a redirect instead of following it, for a request that
 	// carries a credential no other origin may be handed.
 	NoRedirect bool

@@ -94,7 +94,7 @@ sequenceDiagram
 - [x] `app/llm/routing`: model string to combo, alias, node or provider; `Resolver`, `Snapshot`, `Reserved` for node prefixes (1.7a)
 - [x] Registry loader and seed data for nine providers (1.7a); the other ids arrive with their executor in 1.10 (`PRD 8`)
 - [ ] Capability rows (`PRD 7`, 1.8)
-- [ ] A provider whose data sets `passthroughModels` (CommandCode, 0.5.116) sends an id its model list does not name; the final id-list pass owns it (1.10k)
+- [x] `passthroughModels` on the 23 providers the reference marks (CommandCode, the opencode family, kimchi, bedrock, zed, openrouter and the rest): the flag raises a provider's model listing; an id its list does not name already reached the executor, so chat behaviour is unchanged (1.10k)
 - [ ] Combo expansion, sticky round-robin, per-combo strategies, capacity adapter
 - [ ] Empty-stream failover and the request-scoped 4xx combo advance
 - [x] Provider-connection, provider-node and override routes (1.7c)

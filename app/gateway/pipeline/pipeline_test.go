@@ -578,3 +578,19 @@ func TestNewRefusesMissingDependencies(t *testing.T) {
 }
 
 var _ = translate.FormatOpenAI
+
+func TestAProvidersStallBoundReplacesTheSharedOne(t *testing.T) {
+	r := newRig(t)
+	r.p.d.Timers = stream.Timers{FirstChunk: 5 * time.Second, Stall: 9 * time.Second, UsageWait: time.Second}
+	c := &call{p: r.p, dest: destination{entry: upstream.Entry{Transport: upstream.Transport{StallTimeoutMs: 120000}}}}
+	if got := c.timers().Stall; got != 2*time.Minute {
+		t.Fatalf("stall = %v, want the provider's two minutes", got)
+	}
+	if got := c.timers().FirstChunk; got != 5*time.Second {
+		t.Fatalf("the first-chunk bound changed: %v", got)
+	}
+	c.dest.entry.Transport.StallTimeoutMs = 0
+	if got := c.timers().Stall; got != 9*time.Second {
+		t.Fatalf("stall = %v, want the shared value", got)
+	}
+}

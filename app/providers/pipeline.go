@@ -13,6 +13,7 @@ import (
 	"rllmx/app/gateway/account"
 	"rllmx/app/gateway/pipeline"
 	"rllmx/app/gateway/prefetch"
+	"rllmx/app/llm/catalog"
 	"rllmx/app/llm/executor"
 	"rllmx/app/llm/executor/mux"
 	"rllmx/app/llm/executor/opencode"
@@ -95,6 +96,7 @@ func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.P
 		Minter:        h.Minter,
 		Projects:      h.Google.Projects,
 		Targets:       zed.Targets{Client: h.Zed},
+		Catalog:       &catalog.Guard{Cache: cacheOrNil(app), Fetchers: catalog.Fetchers(h.Registry, client)},
 		Quota:         h.Google.Quota,
 		Timers:        stream.Timers{FirstChunk: h.Stream.FirstChunk, Stall: h.Stream.Stall, UsageWait: h.Stream.UsageWait},
 		Log:           log,

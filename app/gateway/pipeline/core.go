@@ -202,7 +202,7 @@ func (c *call) send(ctx context.Context, conn repository.Connection, key string)
 		URL: p.url, Body: p.body, Stream: c.upStream, Entry: c.dest.entry,
 		Key: key, Auth: p.auth, Model: c.dest.model, Account: accountField(conn),
 		Session: p.session, Compact: strings.HasSuffix(c.in.Path, "/compact"),
-		Renamed: c.renamed(p),
+		Renamed: c.renamed(p), Timeout: c.dest.entry.Transport.Timeout(),
 	}
 	req.Spec, _ = c.p.d.Registry.Model(c.dest.provider, c.dest.model)
 	switch c.dest.entry.Executor {

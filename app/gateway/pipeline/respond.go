@@ -51,6 +51,16 @@ func (c *call) respond(ctx context.Context, resp executor.Response) (Output, *ac
 	return c.buffered(ctx, resp)
 }
 
+// timers are the stream bounds in force for this call: the provider's own
+// silence bound when its data sets one, else the shared value.
+func (c *call) timers() stream.Timers {
+	t := c.p.d.Timers
+	if stall := c.dest.entry.Transport.Stall(); stall > 0 {
+		t.Stall = stall
+	}
+	return t
+}
+
 // framesWire is what a binary-framed answer carries. The executor knows, not
 // the format: a Kiro request and a Claude request to another provider both go
 // out in "claude", and only one of them frames its answer.
@@ -115,7 +125,7 @@ func (c *call) buffered(ctx context.Context, resp executor.Response) (Output, *a
 }
 
 func (c *call) collect(ctx context.Context, resp executor.Response, src stream.Source) (Output, *accountFail) {
-	got, err := stream.Collect(ctx, resp.Body, src, c.dest.format, c.tctx, c.p.d.Timers, len(c.body))
+	got, err := stream.Collect(ctx, resp.Body, src, c.dest.format, c.tctx, c.timers(), len(c.body))
 	if err != nil {
 		if ctx.Err() != nil {
 			return c.readFailed(ctx)
@@ -183,7 +193,7 @@ func (c *call) relay(ctx context.Context, resp executor.Response, src stream.Sou
 	lc := &lazyClient{open: c.open}
 	res := stream.Run(ctx, stream.Job{
 		Body: resp.Body, Source: src, UpstreamFormat: c.dest.format, ClientFormat: c.format, Ctx: c.tctx,
-		Client: lc, Timers: c.p.d.Timers, RequestBytes: len(c.body), Buffer: true, Now: c.p.d.Now,
+		Client: lc, Timers: c.timers(), RequestBytes: len(c.body), Buffer: true, Now: c.p.d.Now,
 		Rewrite: c.restoreEvent(),
 	})
 	if errors.Is(res.Err, stream.ErrClientGone) {

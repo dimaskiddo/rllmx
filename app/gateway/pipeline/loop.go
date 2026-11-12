@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"rllmx/app/gateway/account"
+	"rllmx/app/llm/catalog"
 	"rllmx/app/llm/oauth"
 	"rllmx/app/platform/failure"
 )
@@ -29,6 +30,12 @@ func (c *call) serve(ctx context.Context) Output {
 		c.row.Attempt = c.attempt
 		c.row.ConnectionID = sel.Conn.ID
 
+		// A model the account's own provider does not list is the client's
+		// mistake, not the account's: it ends the request here, before a send,
+		// so no lock is written and no other account is tried for it.
+		if c.p.d.Catalog != nil && c.p.d.Catalog.Known(ctx, c.dest.provider, sel.Conn, c.dest.model) == catalog.Unknown {
+			return c.fail(http.StatusBadRequest, "invalid_request", "Model not found")
+		}
 		out, f := c.try(ctx, sel.Conn)
 		if f == nil {
 			return out

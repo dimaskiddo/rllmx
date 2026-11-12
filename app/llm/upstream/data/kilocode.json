@@ -1,4 +1,5 @@
 {
+  "passthroughModels": true,
   "id": "kilocode",
   "alias": "kc",
   "category": "oauth",

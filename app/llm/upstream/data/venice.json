@@ -1,4 +1,5 @@
 {
+  "passthroughModels": true,
   "id": "venice",
   "alias": "venice",
   "aliases": [

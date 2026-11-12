@@ -1,4 +1,5 @@
 {
+  "passthroughModels": true,
   "id": "muse",
   "alias": "muse",
   "aliases": ["muse-ai", "muse-code", "meta-model-api", "muse-subscription"],

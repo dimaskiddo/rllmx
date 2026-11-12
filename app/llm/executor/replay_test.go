@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"rllmx/app/llm/upstream"
+	"rllmx/tests"
 	"rllmx/tests/llm"
 )
 
@@ -190,4 +192,80 @@ func TestTheStaleSocketClassification(t *testing.T) {
 			t.Errorf("%s: %v, want %v", name, got, c.stale)
 		}
 	}
+}
+
+func TestABusyFirstAddressFallsThroughToTheSecond(t *testing.T) {
+	busy := tests.NewUpstream(t, tests.Reply{Status: 429, Body: `{"error":{"message":"slow down"}}`})
+	good := tests.NewUpstream(t, tests.Reply{Body: `{"ok":true}`})
+	var waits []time.Duration
+	d := &Default{Client: nethttp.DefaultClient, Sleep: instant(&waits)}
+	req := Request{URL: busy.URL + "/v1", Key: llm.Secret, Auth: llm.Bearer(),
+		Entry: upstream.Entry{Transport: upstream.Transport{BaseURLs: []string{busy.URL + "/v1", good.URL + "/v1"}}}}
+	resp, err := d.Execute(context.Background(), req)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.Status != 200 || len(good.Calls()) != 1 {
+		t.Fatalf("status %d, second address %d calls", resp.Status, len(good.Calls()))
+	}
+	if len(waits) != 0 {
+		t.Fatalf("the fallback waited: %v", waits)
+	}
+}
+
+func TestAFallbackIsTriedOnlyOnce(t *testing.T) {
+	busy := tests.NewUpstream(t, tests.Reply{Status: 429, Body: `{}`})
+	d := &Default{Client: nethttp.DefaultClient, Sleep: instant(nil)}
+	req := Request{URL: busy.URL + "/v1", Key: llm.Secret, Auth: llm.Bearer(),
+		Entry: upstream.Entry{Transport: upstream.Transport{BaseURLs: []string{busy.URL + "/v1", busy.URL + "/v2"}}}}
+	resp, err := d.Execute(context.Background(), req)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.Status != 429 || len(busy.Calls()) != 2 {
+		t.Fatalf("status %d after %d calls, want 429 after 2", resp.Status, len(busy.Calls()))
+	}
+}
+
+func TestAnExecutorWithItsOwnHostsKeepsThem(t *testing.T) {
+	busy := tests.NewUpstream(t, tests.Reply{Status: 429, Body: `{}`})
+	d := &Default{Client: nethttp.DefaultClient, Sleep: instant(nil)}
+	req := Request{URL: busy.URL + "/v1", Key: llm.Secret, Auth: llm.Bearer(),
+		Entry: upstream.Entry{Executor: upstream.ExecutorKiro,
+			Transport: upstream.Transport{BaseURLs: []string{busy.URL + "/v2"}}}}
+	resp, _ := d.Execute(context.Background(), req)
+	if resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+	if len(busy.Calls()) != 1 {
+		t.Fatalf("%d calls: the default executor used kiro's host list", len(busy.Calls()))
+	}
+}
+
+func TestAProvidersOwnHeaderBoundIsUsed(t *testing.T) {
+	up := tests.NewUpstream(t, tests.Reply{Hang: true})
+	// No retry table: the test measures the bound, not the 502 rule that would
+	// retry a timeout four times.
+	d := &Default{Client: &nethttp.Client{Transport: &closeIdle{}}, Retry: map[int]Rule{}}
+	req := Request{URL: up.URL + "/v1", Key: llm.Secret, Auth: llm.Bearer(), Timeout: 50 * time.Millisecond}
+	start := time.Now()
+	resp, err := d.Execute(context.Background(), req)
+	if resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+	if err == nil {
+		t.Fatal("a hanging upstream answered")
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("the bound was not applied: %s", elapsed)
+	}
+}
+
+// closeIdle is a transport that never keeps a connection.
+type closeIdle struct{}
+
+func (*closeIdle) RoundTrip(r *nethttp.Request) (*nethttp.Response, error) {
+	return nethttp.DefaultTransport.RoundTrip(r)
 }

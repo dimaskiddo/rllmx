@@ -3,6 +3,7 @@ package upstream
 import (
 	"errors"
 	"net/url"
+	"regexp"
 	"rllmx/app/protocol/cosy"
 	"strings"
 	"unicode"
@@ -12,7 +13,13 @@ const (
 	maxRetryRules = 8
 	maxRetryTries = 10
 	maxRetryDelay = 60_000
+	// maxTimeoutMs bounds a provider's own header or silence bound.
+	maxTimeoutMs = 15 * 60 * 1000
+	maxRegions   = 8
 )
+
+// regionID is the shape of a cluster id: a short lower-case word.
+var regionID = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,31}$`)
 
 // Placeholders a provider's address may hold; the executor fills them from the
 // account's data.
@@ -74,6 +81,14 @@ func (t *Transport) validate(executor, authHeader string) error {
 	if t.Region != "" && !ValidRegion(t.Region) {
 		return errors.New("transport.region is not an AWS region")
 	}
+	for _, bound := range []int{t.TimeoutMs, t.StallTimeoutMs} {
+		if bound < 0 || bound > maxTimeoutMs {
+			return errors.New("transport timeout is out of range")
+		}
+	}
+	if err := t.validateRegions(); err != nil {
+		return err
+	}
 	if len(t.Retry) > maxRetryRules {
 		return errors.New("transport.retry has too many entries")
 	}
@@ -108,6 +123,25 @@ const maxLanes = 4
 
 // validateLanes holds each lane to the rules of the provider's own address: a
 // known format, an address on the same host, plain headers, a known scheme.
+// validateRegions holds each cluster to a plain id and an https host, so a
+// region a connection names cannot redirect a request.
+func (t *Transport) validateRegions() error {
+	if len(t.Regions) > maxRegions {
+		return errors.New("transport.regions has too many entries")
+	}
+	seen := map[string]bool{}
+	for _, r := range t.Regions {
+		if !regionID.MatchString(r.ID) || seen[r.ID] || !BareOrigin(r.Host) {
+			return errors.New("transport.regions holds an invalid entry")
+		}
+		seen[r.ID] = true
+	}
+	if t.DefaultRegion != "" && !seen[t.DefaultRegion] {
+		return errors.New("transport.defaultRegion is not one of the regions")
+	}
+	return nil
+}
+
 func (t *Transport) validateLanes() error {
 	if len(t.Lanes) > maxLanes {
 		return errors.New("transport.lanes has too many entries")

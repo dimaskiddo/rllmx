@@ -45,6 +45,9 @@ func verdict(r Result) contractshttp.Json {
 	if r.Dimensions > 0 {
 		out["dimensions"] = r.Dimensions
 	}
+	if r.Warning {
+		out["warning"] = true
+	}
 	return out
 }
 

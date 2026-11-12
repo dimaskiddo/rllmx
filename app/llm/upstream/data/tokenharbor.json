@@ -1,4 +1,5 @@
 {
+  "passthroughModels": true,
   "id": "tokenharbor",
   "alias": "tokenharbor",
   "aliases": [

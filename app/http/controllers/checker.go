@@ -71,6 +71,8 @@ type Result struct {
 	Method string
 	// Dimensions is the length of an embedding, when one was asked for.
 	Dimensions int
+	// Warning marks a pass with something worth saying, such as a plan limit.
+	Warning bool
 }
 
 // Valid reports a passing check.
@@ -207,6 +209,9 @@ func (c *Checker) CheckRegistry(ctx context.Context, e upstream.Entry, key strin
 	if e.Auth == nil {
 		return Result{Outcome: OutcomeUnsupported}
 	}
+	if p := e.Auth.Probe; p != nil {
+		return c.checkProbe(ctx, e, key, p)
+	}
 	target := e.Auth.WithKey(e.ProbeURL(), key)
 	headers := e.Auth.RequestHeaders(key)
 	status, _, out := c.do(ctx, nethttp.MethodGet, target, headers, nil)
@@ -214,6 +219,41 @@ func (c *Checker) CheckRegistry(ctx context.Context, e upstream.Entry, key strin
 		return Result{Outcome: out, Method: "models"}
 	}
 	return Result{Outcome: judge(status, e.Auth.BadKeyStatus), Method: "models"}
+}
+
+// checkProbe runs a data file's own key check: one call to the provider's
+// origin, judged by its status lists. A soft status passes with a warning.
+func (c *Checker) checkProbe(ctx context.Context, e upstream.Entry, key string, p *upstream.Probe) Result {
+	method, body := nethttp.MethodGet, []byte(nil)
+	if p.Method == "POST" {
+		method, body = nethttp.MethodPost, []byte(p.Body)
+	}
+	headers := e.Auth.RequestHeaders(key)
+	status, _, out := c.do(ctx, method, e.ProbeTarget(), headers, body)
+	if out != OutcomeValid {
+		return Result{Outcome: out, Method: "probe"}
+	}
+	switch {
+	case status >= 200 && status < 300:
+		return Result{Outcome: OutcomeValid, Method: "probe"}
+	case containsStatus(p.OK, status):
+		return Result{Outcome: OutcomeValid, Method: "probe"}
+	case containsStatus(p.Soft, status):
+		return Result{Outcome: OutcomeValid, Method: "probe", Warning: true}
+	case e.Auth.BadKeyStatus(status):
+		return Result{Outcome: OutcomeInvalidKey, Method: "probe"}
+	}
+	return Result{Outcome: judge(status, func(int) bool { return false }), Method: "probe"}
+}
+
+// containsStatus reports a status in a list.
+func containsStatus(list []int, status int) bool {
+	for _, c := range list {
+		if c == status {
+			return true
+		}
+	}
+	return false
 }
 
 // Node is what a node check needs: the stored type and base URL.

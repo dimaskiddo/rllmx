@@ -1,4 +1,5 @@
 {
+  "passthroughModels": true,
   "id": "llm7",
   "alias": "llm7",
   "aliases": [

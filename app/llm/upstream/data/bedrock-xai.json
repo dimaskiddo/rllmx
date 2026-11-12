@@ -1,4 +1,5 @@
 {
+  "passthroughModels": true,
   "id": "bedrock-xai",
   "alias": "brx",
   "aliases": [

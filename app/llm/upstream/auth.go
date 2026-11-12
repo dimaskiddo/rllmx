@@ -40,6 +40,25 @@ type Auth struct {
 	Headers map[string]string `json:"headers,omitempty"`
 	// BadKey lists the statuses that mean the key is wrong. Empty means 401, 403.
 	BadKey []int `json:"badKey,omitempty"`
+	// Probe replaces the GET /models check with a provider's own call, for a
+	// provider whose models address is not a key check.
+	Probe *Probe `json:"probe,omitempty"`
+}
+
+// Probe is one key check: a method, a path beside the provider's address, an
+// optional body, and the statuses that mean different things.
+type Probe struct {
+	// Method is GET or POST; empty means GET.
+	Method string `json:"method,omitempty"`
+	// Path is appended to the provider's origin. Empty uses ValidateURL.
+	Path string `json:"path,omitempty"`
+	// Body is a JSON value sent with a POST.
+	Body string `json:"body,omitempty"`
+	// OK are the statuses that mean the key works when they are not 2xx.
+	OK []int `json:"ok,omitempty"`
+	// Soft are the statuses that mean the key works but something is worth
+	// saying (a plan limit): the check passes with a warning.
+	Soft []int `json:"soft,omitempty"`
 }
 
 // ReservedHeader reports a header that no data file or override may set: the
@@ -124,13 +143,17 @@ func (a *Auth) BadKeyStatus(code int) bool {
 
 // validate checks an auth block against the provider's transport address.
 func (a *Auth) validate(transportURL string) error {
+	// An empty scheme sets no credential: a local daemon has no key to send.
 	switch a.Scheme {
-	case SchemeBearer, SchemeRaw, SchemeQuery, SchemeWorkOS:
+	case "", SchemeBearer, SchemeRaw, SchemeQuery, SchemeWorkOS:
 	default:
 		return errors.New("auth.scheme is unknown")
 	}
-	if !HeaderName(a.Header) {
+	if a.Scheme != "" && !HeaderName(a.Header) {
 		return errors.New("auth.header is not a valid name")
+	}
+	if a.Scheme == "" && a.Probe == nil {
+		return errors.New("auth without a scheme needs a probe")
 	}
 	if a.Scheme != SchemeQuery && ReservedHeader(a.Header) && !((a.Scheme == SchemeBearer || a.Scheme == SchemeWorkOS) && strings.EqualFold(a.Header, "authorization")) {
 		return errors.New("auth.header names a reserved header")
@@ -153,10 +176,41 @@ func (a *Auth) validate(transportURL string) error {
 			return errors.New("auth.badKey holds a status outside 400-599")
 		}
 	}
+	if a.Probe != nil {
+		return a.Probe.validate()
+	}
 	if a.ValidateURL == "" {
 		return nil
 	}
 	return sameHost(a.ValidateURL, transportURL)
+}
+
+// validate holds a probe to a method, a plain path and two status lists. The
+// path is joined to the provider's own origin, so a probe cannot name another
+// host.
+func (p *Probe) validate() error {
+	switch p.Method {
+	case "", "GET", "POST":
+	default:
+		return errors.New("auth.probe.method must be GET or POST")
+	}
+	if p.Path != "" && (!strings.HasPrefix(p.Path, "/") || strings.ContainsAny(p.Path, "\\ \t\r\n") || strings.Contains(p.Path, "://")) {
+		return errors.New("auth.probe.path must be an absolute path")
+	}
+	if p.Body != "" && !strings.HasPrefix(strings.TrimSpace(p.Body), "{") {
+		return errors.New("auth.probe.body must be a JSON object")
+	}
+	if p.Body != "" && p.Method == "" {
+		return errors.New("auth.probe.body needs POST")
+	}
+	for _, list := range [][]int{p.OK, p.Soft} {
+		for _, c := range list {
+			if c < 200 || c > 599 {
+				return errors.New("auth.probe status is outside 200-599")
+			}
+		}
+	}
+	return nil
 }
 
 // sameHost holds a probe address to the transport's own host, so a data file
@@ -171,6 +225,20 @@ func sameHost(probe, transport string) error {
 		return errors.New("auth.validateUrl names another host than the transport")
 	}
 	return nil
+}
+
+// ProbeTarget is where a data-file probe asks: the given path joined to the
+// provider's own origin, or the transport address itself.
+func (e Entry) ProbeTarget() string {
+	u, err := url.Parse(e.Transport.BaseURL)
+	if err != nil {
+		return ""
+	}
+	if e.Auth == nil || e.Auth.Probe == nil || e.Auth.Probe.Path == "" {
+		return u.Scheme + "://" + u.Host
+	}
+	u.Path, u.RawQuery, u.Fragment = e.Auth.Probe.Path, "", ""
+	return u.String()
 }
 
 // ProbeURL is the address a key check asks: the data file's own, else /models

@@ -43,8 +43,30 @@ func (d *Default) Execute(ctx context.Context, req Request) (Response, error) {
 		return Response{}, err
 	}
 	req.URL = target
+	// A provider that bounds its own wait gets a client copy with that bound:
+	// the client's timeout for the whole exchange, and its transport's header
+	// timeout, because a client timeout alone lets a written body wait on
+	// headers forever. The shared client is never mutated.
+	if req.Timeout > 0 && d.Client != nil {
+		strict := *d.Client
+		strict.Timeout = req.Timeout
+		if t, ok := strict.Transport.(*http.Transport); ok {
+			copied := t.Clone()
+			copied.ResponseHeaderTimeout = req.Timeout
+			strict.Transport = copied
+		}
+		d = &Default{Client: &strict, Retry: d.Retry, Sleep: d.Sleep}
+	}
 	tries := map[int]int{}
 	replayed := false
+	// addresses are the provider's other addresses, tried in data order when
+	// this one refuses with a 429 that is not retried in place. An executor that
+	// orders its own hosts (kiro) names an executor, so it is left alone.
+	addresses := []string{req.URL}
+	if req.Entry.Executor == "" || req.Entry.Executor == upstream.ExecutorDefault {
+		addresses = fallbackURLs(req)
+	}
+	address := 0
 	for {
 		resp, err := d.Send(ctx, req)
 		// A pooled socket the far end dropped silently costs one immediate
@@ -64,6 +86,16 @@ func (d *Default) Execute(ctx context.Context, req Request) (Response, error) {
 		}
 		rule, retryable := table[status]
 		if !retryable || tries[status] >= rule.Attempts {
+			// A second address is worth one try, and only for the status that
+			// means this one is busy: another address of the same provider is a
+			// different edge, not a different account.
+			if status == http.StatusTooManyRequests && err == nil && address+1 < len(addresses) {
+				address++
+				req.URL = addresses[address]
+				tries = map[int]int{}
+				Drain(resp.Body)
+				continue
+			}
 			if err != nil {
 				return Response{}, ErrUnreachable
 			}
@@ -82,6 +114,22 @@ func (d *Default) Execute(ctx context.Context, req Request) (Response, error) {
 			return Response{}, werr
 		}
 	}
+}
+
+// fallbackURLs is the provider's addresses in the order they are tried: its own
+// first, then the data file's others. A provider with one address returns one.
+func fallbackURLs(req Request) []string {
+	out := []string{req.URL}
+	base := req.URL
+	if i := strings.Index(base, "?"); i >= 0 {
+		base = base[:i]
+	}
+	for _, other := range req.Entry.Transport.BaseURLs {
+		if other != "" && other != base && !strings.Contains(other, "{") {
+			out = append(out, other)
+		}
+	}
+	return out
 }
 
 // RetryRules is the retry table in force for a provider: the executor's own, or

@@ -41,6 +41,14 @@
     {
       "id": "kimi-k3",
       "name": "Kimi K3"
+    },
+    {
+      "id": "sensenova-u1.5-lite",
+      "name": "SenseNova U1.5 Lite"
+    },
+    {
+      "id": "sensenova-u1.5-fast",
+      "name": "SenseNova U1.5 Fast"
     }
   ]
 }

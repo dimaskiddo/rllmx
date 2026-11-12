@@ -1,4 +1,5 @@
 {
+  "passthroughModels": true,
   "id": "vercel-ai-gateway",
   "alias": "vercel-ai-gateway",
   "aliases": [
