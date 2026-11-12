@@ -1,54 +1,56 @@
 # Router-LLM - Agent Instructions
 
-Router-LLM (RLLM, binary `rllmx`): LLM gateway in Go on Goravel Lite. One endpoint speaks the OpenAI, Anthropic, Gemini, Responses and Ollama client APIs and routes to many upstream providers. Go rewrite of 9router and the extended 9router fork; opens an existing 9router database as a drop-in replacement. Open source (MIT).
+Instructions for AI coding agents working in this repository. Humans: start at [`README.md`](README.md) and [`ROADMAP.md`](ROADMAP.md).
+
+Router-LLM (RLLM, binary `rllmx`): LLM gateway in Go on Goravel Lite. One endpoint speaks the OpenAI, Anthropic, Gemini, Responses and Ollama client APIs and routes to many upstream providers. Go rewrite of 9router; opens an existing 9router database as a drop-in replacement. Open source (MIT).
 
 **Scope:** LLM request router. Reject MITM interception, tunnels, relay deployers, process managers, auto-installers, cloud sync, licensing, and anything that shells out beyond the git allowlist.
 
-**This file holds rules.** Behavior, formats, design: `docs/prds/` (one PRD per area). Cross-cutting design and the full Go conventions: `docs/ARCHITECTURE.md`. Never restate a PRD rule here; cite it.
+**This file holds rules.** Behavior, formats, design: `docs/design/` (one design doc per area). Cross-cutting design and the full Go conventions: `docs/ARCHITECTURE.md`. Never restate a design doc rule here; cite it.
 
 ---
 
 ## Workflow Rules
 
-1. Before every session and plan, read this file, `TASKS.md`, `docs/PARITY.md`, then **only the PRD the task touches** (`docs/prds/README.md` indexes them). Plans cite the PRD they implement; on conflict, update the PRD first, with user approval. A PRD that reaches `done` gets a **Findings** section.
+1. Before every session and plan, read this file, [`README.md`](README.md), `docs/PARITY.md`, then **only the design doc the task touches** (`docs/design/README.md` indexes them). Plans cite the design doc they implement; on conflict, update the design doc first, with approval. A design doc that reaches `done` gets a **Findings** section.
 2. Before hand-writing a provider, command, middleware, route file, config file or test, run `./artisan list | grep make:` and scaffold with the matching `make:*` command (`--help` first).
-3. Never rework items marked done unless told. Update `TASKS.md` right after a task.
+3. Never rework items marked done unless told. Update [`ROADMAP.md`](ROADMAP.md) after a task that changes what is built.
 4. Never write the whole codebase in one response.
 
 ## Skills
 
-Load once per session, in order: `caveman`, `ponytail`, `humanizer`, `code-humanizer`, `remove-ai-marks`, `safeguard-guardrails`, `karpathy-guidelines`, `security-audit`, `using-superpowers`, `goravel-development` (`.agents/skills/goravel-development/`, plus `CUSTOM.md` beside it if present). `using-superpowers` routes to per-task skills. `security-audit` runs in guidance mode; a full audit needs an explicit request. This file beats any skill.
+`goravel-development` (`.agents/skills/goravel-development/`, plus `CUSTOM.md` beside it if present) covers the framework. This file beats any skill.
 
 ## Clean-Room & Parity
 
-- `references/9router/`, `references/9router-extended/` and `../rllm` are read-only behavior references (git-ignored). Read them for behavior. Never copy, port, import or commit their code, layout or filenames.
+- 9router is a behavior reference only. Never copy, port, import or commit its code, layout or filenames.
 - Re-author data tables (providers, prices, capabilities, models) by hand from the reference. Never convert with a script.
 - Docs may name 9router. Code, comments, identifiers, tests and fixtures never do, except the on-disk compatibility surface (database identifiers, `modelLock_` keys, API key format).
-- **Reference first:** read how the references do a mechanism before asking. Ask only when they are silent, ambiguous or conflict with a rule here.
-- **Core follows 9router 0.5.116.** Cloaking, translation and execution (translation shapes, the Claude disguise and its headers, request shape, parameter rules, lane choice) copy the reference. Do not ask. Router improvements stay: cache, account selection, locks, backoff, 503 and capacity handling, and the Security rules. A kept difference keeps its divergence row.
-- Never copy a reference bug. Fix it and record the divergence in the PRD's `Divergences` section, indexed in `docs/DIVERGENCES.md`.
-- Every parity row names the reference version and a status (`todo`, `partial`, `done`, `diverged`, `deferred`, `out`). A feature is `done` only when its tests pass and its row is updated in the same change. Reference updates: Parity Sync playbook, `docs/WORKFLOWS.md`.
+- **Reference first:** read how 9router does a mechanism before asking. Ask only when it is silent, ambiguous or conflicts with a rule here.
+- **Behavior follows 9router 0.5.116.** Translation and execution (translation shapes, the client-compatible headers a login's token carries, request shape, parameter rules, lane choice) follow the reference's behavior, written independently. Router improvements stay: cache, account selection, locks, backoff, 503 and capacity handling, and the Security rules. A kept difference keeps its divergence row.
+- Never copy a reference bug. Fix it and record the divergence in the design doc's `Divergences` section, indexed in `docs/DIVERGENCES.md`.
+- Every parity row names the reference version and a status (`todo`, `partial`, `done`, `diverged`, `deferred`, `out`). A feature is `done` only when its tests pass and its row is updated in the same change.
 
 ## Compatibility Contract
 
-Formats shared with 9router. **Changing any needs user approval.** Additive only. The format lives in the owner's PRD.
+Formats shared with 9router. **Changing any needs maintainer approval.** Additive only. The format lives in the owner's design doc.
 
 | Surface | Owner |
 |---|---|
-| Tables, columns, indexes, `_meta`, `schemaVersion`, `kv` scopes | `app/store/repository`, `PRD 15` |
-| Analytics schema | `app/store/analytics`, `PRD 15` |
-| JSON `data` columns, `settings` row | `app/store/document`, `PRD 15` |
-| Timestamps and stored values | `app/store/dialect`, `PRD 15` |
-| Sealed values (`enc:v1:`) | `app/store/sealer`, `PRD 15` |
-| Per-model locks in `providerConnections.data` | `app/gateway/account`, `PRD 5` |
-| API key, machine id | `app/access/identity`, `PRD 2` |
-| Dashboard session, password hash | `app/access/auth`, `PRD 2` |
+| Tables, columns, indexes, `_meta`, `schemaVersion`, `kv` scopes | `app/store/repository`, `design doc 15` |
+| Analytics schema | `app/store/analytics`, `design doc 15` |
+| JSON `data` columns, `settings` row | `app/store/document`, `design doc 15` |
+| Timestamps and stored values | `app/store/dialect`, `design doc 15` |
+| Sealed values (`enc:v1:`) | `app/store/sealer`, `design doc 15` |
+| Per-model locks in `providerConnections.data` | `app/gateway/account`, `design doc 5` |
+| API key, machine id | `app/access/identity`, `design doc 2` |
+| Dashboard session, password hash | `app/access/auth`, `design doc 2` |
 
-A database written by real 9router must open, read, round-trip untouched, and keep unmodified rows byte-identical. Test key, machine-id and JWT code with independently computed vectors. The fixture holds real credentials: git-ignored, test on a copy, skip when absent, never print row values.
+A database written by real 9router must open, read, round-trip untouched, and keep unmodified rows byte-identical. Test key, machine-id and JWT code with independently computed vectors.
 
 ## CLI
 
-Artisan commands in `app/console/commands`, registered in `bootstrap/commands.go`, run as `rllmx artisan <name>`. Local store only: no remote client, TUI, tray or OS service management. The container runs `rllmx`, which starts the server. Prompt rules: `PRD 23`.
+Artisan commands in `app/console/commands`, registered in `bootstrap/commands.go`, run as `rllmx artisan <name>`. Local store only: no remote client, TUI, tray or OS service management. The container runs `rllmx`, which starts the server. Prompt rules: `design doc 23`.
 
 ---
 
@@ -59,16 +61,16 @@ Full wording and reasons for the Go rules: `docs/ARCHITECTURE.md`, Go Convention
 ### Build
 - `CGO_ENABLED=0` always, except `make test-race` and `make test-pg`, which set it to 1 because `go test -race` requires cgo; no binary is built that way. Linux, macOS, Windows, amd64 and arm64. Go 1.26 (`go.mod`), `GOTOOLCHAIN=local`; a `go` directive bump is its own decision.
 - Build through the Makefile (`./artisan build` for a one-off). Dockerfile: pinned base, non-root, no `.env`.
-- `os/exec` only through `app/git`, the one deny-by-default gate; a test fails any other importer. Anything else needing a process is out (`PRD 11`, `PRD 22`).
+- `os/exec` only through `app/git`, the one deny-by-default gate; a test fails any other importer. Anything else needing a process is out (`design doc 11`, `design doc 22`).
 
 ### Goravel
 - Framework first (`DB`/`Schema`, `Cache`, `Log`, `Config`, `Schedule`, `Artisan`, `Hash`). A helper only for a gap the facade cannot fill, and it wraps the facade. Before building infrastructure read `./artisan list | grep make:` and `goravel/framework/contracts/`.
 - Facade functions only in `app/http`, `app/console`, `app/providers`, `bootstrap/`, `config/`. Product packages take the facade's interface so a test passes a fake.
 - A provider's `Register` binds, `Boot` wires cheap things; anything that locks, opens a store or listens runs in a runner's `Run`.
-- No `Orm`, models, `database/sql` handle or migration runner of ours; official drivers; additive schema only; destructive commands stay behind `WithCommandsFilter` and the `Artisan` wrapper, new ones on `bootstrap.CommandsAllowlist` (`PRD 15`).
-- Config in `config/*.go` via `config.Env("NAME", default)`; add a variable in the change that reads it (`PRD 17`).
-- Gin engine untouched; streams only via `stream.NewSSE`/`stream.NewNDJSON`, never `*gin.BodyWriter`; the guard reads `Request.RemoteAddr`, never `Ip()` (`PRD 1`).
-- Cache only via the `Cache()` facade and `app/platform/cache`, failing open (`PRD 20`). Usage rows hold metadata only (`PRD 16`). A request-scoped 4xx never locks an account (`PRD 5`).
+- No `Orm`, models, `database/sql` handle or migration runner of ours; official drivers; additive schema only; destructive commands stay behind `WithCommandsFilter` and the `Artisan` wrapper, new ones on `bootstrap.CommandsAllowlist` (`design doc 15`).
+- Config in `config/*.go` via `config.Env("NAME", default)`; add a variable in the change that reads it (`design doc 17`).
+- Gin engine untouched; streams only via `stream.NewSSE`/`stream.NewNDJSON`, never `*gin.BodyWriter`; the guard reads `Request.RemoteAddr`, never `Ip()` (`design doc 1`).
+- Cache only via the `Cache()` facade and `app/platform/cache`, failing open (`design doc 20`). Usage rows hold metadata only (`design doc 16`). A request-scoped 4xx never locks an account (`design doc 5`).
 
 ### Context & Concurrency
 - `ctx` first on anything that blocks or does I/O. Request work derives from the request context; no `context.Background()` on a request path. Never store a `Context` in a struct except a runner's lifetime context.
@@ -87,13 +89,13 @@ Full wording and reasons for the Go rules: `docs/ARCHITECTURE.md`, Go Convention
 
 ### Security
 - `crypto/rand` only; `subtle.ConstantTimeCompare` for secrets.
-- Never log tokens, keys, cookies, passwords or prompt text at INFO; never persist bodies (DEBUG only, redacted). Every `Log` call passes the redacting channel (`PRD 1`, `PRD 17`).
+- Never log tokens, keys, cookies, passwords or prompt text at INFO; never persist bodies (DEBUG only, redacted). Every `Log` call passes the redacting channel (`design doc 1`, `design doc 17`).
 - Validate at trust boundaries (client input, upstream answers, data files). Fail closed for access; fail open for savers, skills and cache.
-- TLS always verified. Every outbound URL goes through the SSRF dialer guard; no outbound proxy (`PRD 14`).
+- TLS always verified. Every outbound URL goes through the SSRF dialer guard; no outbound proxy (`design doc 14`).
 - Data files `0600`, dirs `0700`, no system temp dirs.
-- Identity is the API key or dashboard session; forwarding headers count only from a trusted proxy peer; local-only routes stay local-only (`PRD 2`).
-- Credentials only in memory-only cache groups (`PRD 20`). OAuth client ids and secrets are configuration, never literals (`PRD 6`).
-- Client errors use the client's format, no internal detail (`PRD 19`). Skills are data, never code (`PRD 11`).
+- Identity is the API key or dashboard session; forwarding headers count only from a trusted proxy peer; local-only routes stay local-only (`design doc 2`).
+- Credentials only in memory-only cache groups (`design doc 20`). OAuth client ids and secrets are configuration, never literals (`design doc 6`).
+- Client errors use the client's format, no internal detail (`design doc 19`). Skills are data, never code (`design doc 11`).
 - `govulncheck ./...` shows no called vulnerability before a step is done.
 
 ### Clean Code
@@ -114,10 +116,10 @@ Full wording and reasons for the Go rules: `docs/ARCHITECTURE.md`, Go Convention
 
 ### Dependencies
 - Order: stdlib, the framework, the official Goravel driver for a facade in use, a module the framework already requires, our own code. CGO-free.
-- Anything else needs user approval and a `TASKS.md` Dependency gates line before `go.mod`, with the reason in `docs/ARCHITECTURE.md`. Pin releases whose `go` directive is not newer than `go.mod`. `./artisan package:install` needs approval.
+- Anything else needs maintainer approval, an entry in the approved-module list in `docs/ARCHITECTURE.md`, and the reason recorded there before `go.mod` changes. Pin releases whose `go` directive is not newer than `go.mod`. `./artisan package:install` needs approval.
 
 ### Web Dashboard & Artifacts
-- Plain HTML, ES modules, CSS: no framework, bundler, build step or runtime CDN. Escape dynamic text; no `innerHTML` from data (`PRD 18`).
+- Plain HTML, ES modules, CSS: no framework, bundler, build step or runtime CDN. Escape dynamic text; no `innerHTML` from data (`design doc 18`).
 - Output to `dist/` via the Makefile. `tools/mutant.sh <label> <file> <old> <new>` prints CAUGHT, MISSED, BUILD or NOOP.
 
 ---
@@ -125,8 +127,8 @@ Full wording and reasons for the Go rules: `docs/ARCHITECTURE.md`, Go Convention
 ## Non-Negotiable Rules
 
 1. **No guessing** on wire formats, stored formats or ambiguous architecture. Check the reference; if still unclear, stop, state the ambiguity and what the reference does, and ask.
-2. **Short command list for the agent:** `go build`, `go vet`, `go test` (`-race` too), `staticcheck`, `govulncheck`, `tools/mutant.sh` (`make build|test|test-race` count). These are not the validation: the user runs `go vet ./...`, `go test -race ./...`, `staticcheck ./...`, `make build` (and `./artisan list` for a step that adds commands) and a step is done only when they report green. Everything else is the user's: `./artisan`, `go get`, `go mod tidy`, releases, Docker push, all git. Give the exact command and expected output, then wait.
-3. **Minimal comments.** WHY only, never WHAT or HOW. No step lists, no restating code, no separators, no phase labels, task ids or doc section numbers, no `ponytail:` notes, no "add X when Y" (that goes in the task list), no secrets. Doc comments on exported symbols start with the name: one line for simple, three at most for complex.
+2. **Commands.** While working: `go build`, `go vet`, `go test` (`-race` too), `staticcheck`, `govulncheck`, `tools/mutant.sh` (`make build|test|test-race` count). The final gate is `go vet ./... && go test -race ./... && staticcheck ./... && make build` (plus `./artisan list` for a change that adds commands), run by the maintainer or CI; a change is done only when it is green. `./artisan`, `go get`, `go mod tidy`, releases, Docker pushes and git operations are the maintainer's.
+3. **Minimal comments.** WHY only, never WHAT or HOW. No step lists, no restating code, no separators, no phase labels, task ids or doc section numbers, no "add X when Y" (that belongs in the roadmap), no secrets. Doc comments on exported symbols start with the name: one line for simple, three at most for complex.
 
 ## References
 
@@ -138,11 +140,11 @@ Full wording and reasons for the Go rules: `docs/ARCHITECTURE.md`, Go Convention
 | `web/` | Embedded dashboard files |
 | `tests/` | Shared test helpers and doubles |
 | `tools/mutant.sh` | Mutation check |
-| `references/` | Read-only 9router sources and the 9router fixture database (git-ignored; Clean-Room) |
-| `docs/prds/` | One PRD per area: status, design, parity rows, divergences, findings. **Design authority**; index in `docs/prds/README.md` |
+| `references/` | Read-only 9router sources (git-ignored; Clean-Room) |
+| `docs/design/` | One design doc per area: status, design, parity rows, divergences, findings. **Design authority**; index in `docs/design/README.md` |
 | `docs/ARCHITECTURE.md` | Module map, design decisions, approved modules, Go conventions, terminal commands |
 | `docs/PARITY.md`, `docs/DIVERGENCES.md` | Pinned references and status vocabulary; divergence index |
-| `docs/WORKFLOWS.md` | Pipeline, startup order, operator procedures, Parity Sync |
-| `TASKS.md` | Steps, audits, dependency gates, open items and decisions, backlog, sync log, unverified reference values, code-quality record (the last five link to their tables) |
-| `.env.example` | Every variable with its default (`PRD 17`) |
+| `docs/WORKFLOWS.md` | Pipeline, startup order and operator procedures |
+| `ROADMAP.md` | What is built, partial and planned, written for readers |
+| `.env.example` | Every variable with its default (`design doc 17`) |
 | `Makefile`, `Dockerfile`, `.goreleaser.yml` | Build, container, release |

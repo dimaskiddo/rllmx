@@ -1,10 +1,10 @@
-# PRD 12 — Health, Circuit Breaker & Probe (`app/health/`, `app/probe/`)
+# Design 12 — Health, Circuit Breaker & Probe (`app/health/`, `app/probe/`)
 
-**Status:** todo · **Steps:** 2.5
+**Status:** todo
 
-The health probe and the circuit breaker do not exist; each arrives with its step.
+The health probe and the circuit breaker do not exist; each arrives with its own step.
 
-The breaker lives in `app/health` (open after repeated failures, half-open after a pause) because the framework has none; `app/platform/cache` reuses it if the Redis measurement in `PRD 20` needs one.
+The breaker lives in `app/health` (open after repeated failures, half-open after a pause) because the framework has none; `app/platform/cache` reuses it if the Redis measurement in `design doc 20` needs one.
 
 | Part | Behavior |
 |---|---|
@@ -18,17 +18,17 @@ The breaker lives in `app/health` (open after repeated failures, half-open after
 
 ## Parity: Probe and Suggested-Model Routes
 
-| Endpoint | Package | Status | Step |
-|---|---|---|---|
-| `/api/combos/suggest`, `/suggest/accept`, `/api/health/latency-stream`, `/api/usage/active-providers` | `app/gateway`, `app/health` | todo | 2.5 |
-| `/api/headroom/*` (status, proxy) | `app/saver` | todo | 3.1 |
-| `/api/skills`, `/api/skills/sync-ecc` (dashboard action, not CLI) | `app/skill` | todo | 3.2 |
-| `/api/auto-plan/settings` | `app/plan` | todo | 3.4 |
+| Endpoint | Package | Status |
+|---|---|---|
+| `/api/combos/suggest`, `/suggest/accept`, `/api/health/latency-stream`, `/api/usage/active-providers` | `app/gateway`, `app/health` | todo |
+| `/api/headroom/*` (status, proxy) | `app/saver` | todo |
+| `/api/skills`, `/api/skills/sync-ecc` (dashboard action, not CLI) | `app/skill` | todo |
+| `/api/auto-plan/settings` | `app/plan` | todo |
 
 ---
 
 ## Remaining work
-**Step 2.5.** Nothing built.
+**Step.** Nothing built.
 
 - [ ] `app/health`: liveness, circuit breaker, latency SSE
 - [ ] `app/probe`: scheduled probe, model probe on create and update (concurrency 3, 10s timeout, 5-minute cache)
@@ -42,7 +42,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 
 | # | What we do differently | Why it is better |
 |---|---|---|
-| 7, 8 | Routing honors breaker **(2.5)**; IP limit becomes 5-minute model lock **(1.10)** | Decorative in reference, or needs pools (Deferred) (planned) |
+| 7, 8 | Routing honors the breaker (planned); IP limit becomes 5-minute model lock | Decorative in reference, or needs pools (Deferred) (planned) |
 
 ---
 

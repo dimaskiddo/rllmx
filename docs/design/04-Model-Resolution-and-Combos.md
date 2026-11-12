@@ -1,0 +1,136 @@
+# Design 04 — Model Resolution & Combos (`app/llm/routing/`)
+
+**Status:** partial
+
+Built: `app/llm/routing` (the resolver, the 5 s snapshot and the suffix grammar below). Nothing calls it yet; the first caller is the pipeline. Built: the connection, node and override routes in the Parity table below. `app/gateway` holds the pipeline, the catalog, the conversation store, prefetch and account selection; combo expansion, strategies and the management routes are and.
+
+### Resolution (`Resolver.Resolve`, built)
+
+The input is at most 256 bytes with no control characters (`ErrTooLong`, `ErrBadInput`); an empty result is `ErrEmpty`. Two suffixes are removed first and reported on the `Target` (`ContextMarker`, `Thinking`), never left in the model name, so `claude-opus-5[1m](high)` and `claude-opus-5(high)[1m]` reach the same place:
+- A trailing `[1m]` context marker (any case, stacked ones too).
+- A trailing thinking suffix `name(value)`. Values: `none` or `off`, `auto`, a level (`minimal`, `low`, `medium`, `high`, `xhigh`, `max`, `ultra`) or a token budget up to 1,000,000. An unknown value is dropped without an override.
+
+Then:
+
+| Rule |
+|---|
+| Split at the first slash (the rest is the model, so `openrouter/anthropic/claude-x` works). The prefix is a provider id, alias or extra alias from the registry (`cc` is `claude`, `cx` is `codex`), or a local name (`el`, `jina`, `jina-ai`, `polly`, `aws-polly`, `xmtp`, `xiaomi-tokenplan`) |
+| Only a prefix that is **not** one of those is matched against user provider nodes, by exact prefix, trying node types `openai-compatible`, `anthropic-compatible`, `custom-embedding`. A node with an empty prefix matches nothing. The node id becomes the provider. A built-in name cannot be taken over by a node, and a built-in prefix never reads the node list. An unknown prefix passes on as the provider id |
+| Combo name (a combo name with a slash is never reached), then user alias (`kv` scope `modelAliases`, value `"provider/model"` or `{"provider","model"}`; the result is **not** looked up as an alias again, so aliases cannot chain or loop; any other shape is ignored), then the built-in alias `grok-build` to `gcli/grok-build`, then prefix inference |
+| Inference | On the lower-cased name, first match wins: `codex-auto-review`, `gpt-5.x`, `gpt-6-`, `gpt-daybreak-`, `gpt-reserve...` is codex; `claude-` anthropic; `us\|eu\|ap\|global` + `anthropic\|meta\|amazon\|mistral\|xai` bedrock; `gemini-` gemini; `gpt-`, `o1`, `o3`, `o4` openai; `deepseek-` openrouter; anything else openai |
+| The resolver does not decide access. Key allow lists check the resolved target afterwards |
+
+Stored data comes through a `Snapshot` that reads aliases, nodes and combo names at most once every 5 s each (`Invalidate` drops them at once). A failed read is an error, never a guess, and is not cached. A node whose data is not JSON, or whose prefix is not a string, has an empty prefix.
+
+### Combos
+
+A combo has a name and an ordered list of `provider/model` strings or other combo names. The strategy comes from `settings.comboStrategies[name].fallbackStrategy`, then `settings.comboStrategy`, then `fallback`.
+
+| Strategy | Behavior |
+|---|---|
+| `fallback` | Try members in order |
+| `round-robin` | Rotate the start member, with a sticky count (`comboStickyRoundRobinLimit`) |
+| `smart` | A router model picks the member; session-sticky; confidence threshold; policy in `smartPolicy` |
+| `fusion` | Ask a panel in parallel with tools stripped, wait for a quorum, then a judge model combines the answers |
+
+```mermaid
+sequenceDiagram
+    participant P as Pipeline
+    participant C as Combo
+    participant A as Account loop
+    participant U as Upstream
+
+    P->>C: model = combo name
+    C->>C: strategy, order by capability
+    loop each member
+        C->>A: run member
+        A->>U: request
+        alt 2xx with content
+            U-->>P: answer
+        else fallback-class or request-scoped error
+            A-->>C: failure, next member
+        else empty answer
+            A-->>C: failure (not for the last member)
+        end
+    end
+    C-->>P: 503 with retryAfter when all failed
+```
+
+- Members are reordered so capable models come first when the request needs vision, pdf, audio or video. The **capacity adapter** appends models from a per-capability pool when no member qualifies.
+- A request-scoped 4xx also moves to the next member, but never locks an account.
+- An empty answer (zero content, or an SSE stream with no content within the peek deadline) counts as a failure for every member but the last.
+- When every member fails: 503 (or the last status) with `retryAfter` when known.
+- `fusion` runs the panel with tools stripped, non-streaming, a quorum of two, 8 s for stragglers and 90 s overall, then sends the answers to the judge. A `smart` choice sticks to the session.
+
+---
+
+## Parity: Provider, Model and Combo Routes
+
+| Endpoint | Package | Status |
+|---|---|---|
+| `/api/providers` (list, create), `/api/providers/{id}` (get, update, delete) | `app/http/controllers` | done |
+| `/api/providers/{id}/overrides` | `app/http/controllers` | done (; D147; `builtinHeaders` empty until) |
+| `GET /v1/models`, `/v1/models/info`, `/v1/models/{id}`, `GET /v1beta/models` | `app/gateway/catalog`, `app/http/controllers` | done |
+| `/api/providers/{id}/test`, `/api/providers/validate` | `app/http/controllers` | partial (API-key, node and registry probes built; an OAuth account of a provider with a login is checked without a call to the provider (renew when due, then look for a held token); AWS, cookie, special probes and pasted tokens answer "test not supported yet" (D95-99, D215)) |
+| `/api/providers/{id}/models` | `app/http/controllers` | partial (nodes: the node's own `/models`; registry: embedded list plus `customModels`, minus `disabledModels`, no request; both Built; live catalog per OAuth provider) |
+| `/api/provider-nodes` (list, create), `/{id}` (update, delete) | `app/http/controllers` | done |
+| `/api/provider-nodes/validate` | `app/http/controllers` | done |
+| `/api/providers/client` (usage list, filters, totals) | `app/http/controllers` | todo (quota fetchers) |
+| `/api/providers/test-batch`, `/api/providers/{id}/test-models`, `/api/models/test` | `app/http/controllers`, `app/probe` | todo (pipeline) |
+| `/api/providers/suggested-models`, `/api/providers/kilo/free-models` | `app/http/controllers` | todo (fixed URL list, guarded client) |
+| `/api/models/*` (alias, custom, disabled, availability, catalog-sync) | `app/http/controllers` | todo |
+| `/api/combos/*` (+ presets) | `app/http/controllers` | todo |
+| `/api/pricing` | `app/http/controllers` | todo |
+| `/api/translator/*` | `app/http/controllers` | todo |
+| `/api/media-providers/tts/*/voices` | `app/http/controllers`, `app/gateway` | done |
+| Media model resolution (bare id, slash id, `provider/model`, per-kind) | `app/llm/upstream` media index | done |
+| `/api/oauth/{provider}/authorize`, `exchange`, `callback`, `status`, `device-code`, `poll` and `/callback` | `app/llm/oauth`, `app/http/controllers`, `web` | partial (authorize, exchange, callback, status and `/callback` for claude and codex, D150-153; `device-code` and `poll` are); replaces `[provider]/[action]` |
+| `/api/oauth/*` importers (codex, grok-cli, cursor, kiro, zed, xiaomi-mimo, gitlab pat) plus Windsurf, Zed, Trae, Mimo callback shapes | `app/llm/oauth` | todo |
+
+---
+
+## Remaining work
+**Routing is built; combos are planned.**
+
+- [x] `app/llm/routing`: model string to combo, alias, node or provider; `Resolver`, `Snapshot`, `Reserved` for node prefixes
+- [x] Registry loader and seed data for nine providers; the other ids arrive with their executor (`design doc 8`)
+- [ ] Capability rows (`design doc 7`,)
+- [x] `passthroughModels` on the 23 providers the reference marks (CommandCode, the opencode family, kimchi, bedrock, zed, openrouter and the rest): the flag raises a provider's model listing; an id its list does not name already reached the executor, so chat behaviour is unchanged
+- [ ] Combo expansion, sticky round-robin, per-combo strategies, capacity adapter
+- [ ] Empty-stream failover and the request-scoped 4xx combo advance
+- [x] Provider-connection, provider-node and override routes
+- [x] The `Checker` and its four routes (`/test`, `/validate`, node `/validate`, `/models`)
+- [ ] `/api/combos*` —
+
+---
+
+## Divergences
+
+Deliberate differences from the references in this area. Numbers are stable and cited from other docs.
+
+| # | What we do differently | Why it is better |
+|---|---|---|
+| 86, 87, 88, 90 | Allow-list views (new fields hidden); key-like names masked; updates from fixed field list, tokens and locks refused, `providerSpecificData` merged in one transaction; node fields on a connection never change by update | Later field hidden by default; client cannot unlock or poison an account |
+| 106, 125, 127 | 400 for repeated keys, `__all`, empty models; limit text rules only for 401, 402, 403, 429, non-4xx | One body, one reading; one request cannot lock a whole provider; prompt quoting "rate limit" cannot lock healthy account |
+| 147 | Provider data, overrides share one name rule (letters, digits, dashes, not reserved); refuse every control character, C1 included | One definition of allowed header |
+| 79 | One row, case-insensitive | One rule |
+| 81 | 5 s snapshot with `Invalidate`; failed read fails the request | No wrong routing on storage fault; second instance may lag 5 s (trade-off) |
+| 91 | Strict pattern, not a built-in, unique, base URL checks, on write only | Shadowing prefix would hide a built-in; existing rows still read (trade-off) |
+| 225 | `GET /v1/models` lists only models a caller can call: a registry provider with at least one active, readable connection, and a node with one; every such connection counts and a model is listed if any accepts it. The reference lists the whole static catalog when no connection exists and counts only the first connection of a provider. Entries carry `created`; a read route changes no row (the reference refreshes credentials during a GET). Custom-model rows are matched by provider id, alias and node prefix, type `llm` only. Combos are not listed until | An empty gateway advertises nothing, a second account's models show, and an alias-keyed row from a real 9router database appears |
+| 226 | `/v1/models/info`, `/v1/models/{id}` and `/v1beta/models` are built from the same filtered list as `/v1/models`; the Gemini list has real token limits and `models/<id>` names. The reference answers `info` and `/v1beta/models` from the static catalog with no key filter, and invents 128000/8192 | A restricted key cannot learn a model it may not call; limits are the capability row's |
+| 213 | An update takes a fixed field list only: a client cannot set `testStatus`, `lastError*`, `errorCode`, `backoffLevel`, a lock, a token or a node connection's copied fields. Only the server writes health, and the `Checker` records test outcomes. Toggling `isActive` does not clear a cooldown | A dashboard form cannot hide a real cooldown or poison an account (improvement) |
+
+---
+
+## Findings
+
+One row per lesson; the decision is what the code does because of it.
+
+| Finding | Decision |
+|---|---|
+| A model must be listed exactly when some connection would accept it. | `account.ModelEnabled` is called by both the selector and the catalog. |
+| A model must never be shown under a spelling the pipeline would route elsewhere. | Each `Allow` entry is resolved and compared with the listed `provider/model` exactly, case included. |
+| A dead node must not be asked again on every request. | A failed or empty fetch is cached as an empty list for 30 s, keyed by node id and base URL, never the credential. |
+| `claude-opus-5[1m](high)` and `claude-opus-5(high)[1m]` must reach the same target. | The resolver strips a trailing marker and a trailing thinking suffix in a loop before anything else. |
+| A node must not shadow a built-in name whatever the stored row says. | `Registry.Reserved` decides: an id, an alias, an extra alias or a local name. |
+

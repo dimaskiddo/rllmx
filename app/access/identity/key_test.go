@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// The vectors were computed with Python's hmac/sha256 from the derivation PRD 2
+// The vectors were computed with Python's hmac/sha256 from the derivation in design doc 2
 // states, not from this package, so a change in the implementation fails here
 // instead of agreeing with itself.
 const (

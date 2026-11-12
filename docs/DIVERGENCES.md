@@ -1,35 +1,36 @@
-# Router-LLM - Divergences from the References
+# Router-LLM — Divergences from the Reference
 
-Deliberate differences from 9router and 9router-extended. **The detail lives in each PRD's `Divergences` section**, beside the area it describes; this file is only the index.
+Deliberate differences from 9router. **The detail lives in each design doc's `Divergences` section**, beside the area it describes; this file is only the index.
 
-Each row carries the number, what we do differently and why it is better, including the reference mechanism it replaces. Reference versions are pinned in `docs/PARITY.md`; framework choices are not divergences (`ARCHITECTURE.md`).
+Each row carries a stable identifier, what we do differently and why it is better, including the reference mechanism it replaces. The reference version is pinned in [`PARITY.md`](PARITY.md); framework choices are not divergences ([`ARCHITECTURE.md`](ARCHITECTURE.md)).
 
-**Numbers never change** — other docs cite them. Next free number: **279**. Add a row to the PRD of the area, then update the count here.
+**Identifiers never change,** because other documents cite them. Add a row to the design document of the area, then update the count here.
 
-| PRD | Area | Numbers | Link |
+| Design doc | Area | Identifiers | Link |
 |---|---|---|---|
-| 1 | HTTP Server & Routing | 10 | [01-…](prds/01-HTTP-Server-and-Routing.md) |
-| 2 | Authentication & Access | 40 | [02-…](prds/02-Authentication-and-Access.md) |
-| 3 | Request Pipeline | 6 | [03-…](prds/03-Request-Pipeline.md) |
-| 4 | Model Resolution & Combos | 14 | [04-…](prds/04-Model-Resolution-and-Combos.md) |
-| 5 | Account Selection, Error Rules & Backoff | 4 | [05-…](prds/05-Account-Selection-and-Backoff.md) |
-| 6 | OAuth & Token Refresh | 34 | [06-…](prds/06-OAuth-and-Token-Refresh.md) |
-| 7 | Format Translation | 28 | [07-…](prds/07-Format-Translation.md) |
-| 8 | Executors | 61 | [08-…](prds/08-Executors.md) |
-| 9 | Streaming | 13 | [09-…](prds/09-Streaming.md) |
-| 10 | Token Savers | 2 | [10-…](prds/10-Token-Savers.md) |
-| 11 | Skills, Session & Auto Plan | 7 | [11-…](prds/11-Skills-Session-and-Auto-Plan.md) |
-| 12 | Health, Circuit Breaker & Probe | 2 | [12-…](prds/12-Health-Circuit-Breaker-and-Probe.md) |
-| 13 | Media Endpoints | 3 | [13-…](prds/13-Media-Endpoints.md) |
-| 14 | Outbound Network | 14 | [14-…](prds/14-Outbound-Network.md) |
-| 15 | Storage | 19 | [15-…](prds/15-Storage.md) |
-| 16 | Usage, Pricing & Quota | 14 | [16-…](prds/16-Usage-Pricing-and-Quota.md) |
-| 17 | Configuration | 8 | [17-…](prds/17-Configuration.md) |
-| 20 | Cache | 5 | [20-…](prds/20-Cache.md) |
-| 21 | API Key Limits | 1 | [21-…](prds/21-API-Key-Limits.md) |
-| 22 | Deferred & Out of Scope | 3 | [22-…](prds/22-Deferred-and-Out-of-Scope.md) |
-| 23 | CLI | 4 | [23-…](prds/23-CLI.md) |
-| **Total** | | **305** | |
+| 1 | HTTP Server & Routing | 10 | [01-…](design/01-HTTP-Server-and-Routing.md) |
+| 2 | Authentication & Access | 40 | [02-…](design/02-Authentication-and-Access.md) |
+| 3 | Request Pipeline | 6 | [03-…](design/03-Request-Pipeline.md) |
+| 4 | Model Resolution & Combos | 14 | [04-…](design/04-Model-Resolution-and-Combos.md) |
+| 5 | Account Selection, Error Rules & Backoff | 4 | [05-…](design/05-Account-Selection-and-Backoff.md) |
+| 6 | OAuth & Token Refresh | 34 | [06-…](design/06-OAuth-and-Token-Refresh.md) |
+| 7 | Format Translation | 28 | [07-…](design/07-Format-Translation.md) |
+| 8 | Executors | 60 | [08-…](design/08-Executors.md) |
+| 9 | Streaming | 13 | [09-…](design/09-Streaming.md) |
+| 10 | Token Savers | 2 | [10-…](design/10-Token-Savers.md) |
+| 11 | Skills, Session & Auto Plan | 7 | [11-…](design/11-Skills-Session-and-Auto-Plan.md) |
+| 12 | Health, Circuit Breaker & Probe | 2 | [12-…](design/12-Health-Circuit-Breaker-and-Probe.md) |
+| 13 | Media Endpoints | 16 | [13-…](design/13-Media-Endpoints.md) |
+| 14 | Outbound Network | 14 | [14-…](design/14-Outbound-Network.md) |
+| 15 | Storage | 19 | [15-…](design/15-Storage.md) |
+| 16 | Usage, Pricing & Quota | 14 | [16-…](design/16-Usage-Pricing-and-Quota.md) |
+| 17 | Configuration | 8 | [17-…](design/17-Configuration.md) |
+| 19 | Go Interfaces | 0 | [19-…](design/19-Go-Interfaces.md) |
+| 20 | Cache | 5 | [20-…](design/20-Cache.md) |
+| 21 | API Key Limits | 1 | [21-…](design/21-API-Key-Limits.md) |
+| 22 | Deferred & Out of Scope | 3 | [22-…](design/22-Deferred-and-Out-of-Scope.md) |
+| 23 | CLI | 4 | [23-…](design/23-CLI.md) |
+| **Total** | | **304** | |
 
 ## Kinds
 
@@ -37,20 +38,20 @@ Each row's Why column says which kind it is. Every number is counted once, by th
 
 | Kind | Meaning | Count | Numbers |
 |---|---|---|---|
-| Improvement | Fixes a reference defect | 246 | Every row with no other marker |
-| New feature | Something neither reference has | 4 | 24, 32, 148, 284 |
+| Improvement | Differs from the reference for a stated reason | 245 | Every row with no other marker |
+| New feature | Something the reference does not have | 4 | 24, 32, 148, 284 |
 | Trade-off | A deliberate cost | 10 | 33, 81, 91, 138, 141, 286, 287, 289, 290 |
-| Scope cut | A reference feature not adopted | 26 | 3, 6, 9, 10, 11, 16, 48, 89, 105, 158, 159, 160, 161, 162, 202, 214, 250, 256, 260, 273, 278, 279 |
-| Planned | Names the step that resolves it | 5 | 7, 8, 25, 66, 102 |
-| Temporary | Stopgap until a named step | 2 | 93, 104 |
-| Retired | A framework choice or a rule that no longer applies, or a behavior now the reference's own; the number stays citable | 11 | 193, 196, 197, 198, 199, 201, 222, 236, 244, 245, 277 |
+| Scope cut | A reference feature not adopted | 25 | 3, 6, 9, 10, 11, 16, 48, 89, 105, 158, 159, 160, 161, 162, 202, 214, 250, 256, 260, 273, 278, 279 |
+| Planned | Resolved by a named later change | 5 | 7, 8, 25, 66, 102 |
+| Temporary | Stopgap until a named later change | 2 | 93, 104 |
+| Retired | A framework choice or a rule that no longer applies, or a behavior now the reference's own; the identifier stays citable | 11 | 193, 196, 197, 198, 199, 201, 222, 236, 244, 245, 277 |
 | Built as planned | Was only a schedule change and is now done | 1 | 216 |
-| **Total** | | **305** | |
+| **Total** | | **304** | |
 
 How a row is counted:
-- A row with no marker is an improvement. A row marked *partial* is one too, and so are 112-114 and 118, where only a sub-point waits for a later step.
+- A row with no marker is an improvement. A row marked *partial* is one too, and so are 112-114 and 118, where only a sub-point waits for later work.
 - A row that is both a scope cut and marked planned (3, 11) counts as a scope cut.
-- 25 is a new feature planned for 2.3, and counts as planned.
-- Recount from the PRD rows when a row is added or its marker changes.
+- 25 is a new feature planned, and counts as planned.
+- Recount from the design doc rows when a row is added or its marker changes.
 
-A divergence in a `done` PRD is built and tested; in a `todo` PRD it is a decision taken, not yet code.
+A divergence in a `done` design document is built and tested; in a `todo` one it is a decision taken, not yet code.

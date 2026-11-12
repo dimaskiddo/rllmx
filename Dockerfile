@@ -24,7 +24,7 @@ RUN go mod download \
 # Final Image
 # ---------------------------------------------------
 FROM dimaskiddo/alpine:base
-LABEL maintainer="Dimas Restu Hidayanto <drh.dimasrestu@gmail.com>"
+LABEL maintainer="Router-LLM maintainers <https://github.com/dimaskiddo/rllmx>"
 
 ARG SERVICE_NAME="rllmx"
 

@@ -87,12 +87,12 @@ func TestModelReasoningScope(t *testing.T) {
 
 var parityRow = regexp.MustCompile(`(?m)^\| (?:default|specialized) \| (done|partial)[^|]*\| ([^|]+) \|$`)
 
-// The parity tables of PRD 8 are the list of what must exist: a row marked
+// The parity tables of design doc 8 are the list of what must exist: a row marked
 // done or partial needs its data file, and nothing may be listed twice.
 func TestEveryProviderTheParityTablesCallDoneHasAFile(t *testing.T) {
-	raw, err := os.ReadFile("../../../docs/prds/08-Executors.md")
+	raw, err := os.ReadFile("../../../docs/design/08-Executors.md")
 	if err != nil {
-		t.Skip("the PRD is not beside the code")
+		t.Fatalf("the design doc is not beside the code: %v", err)
 	}
 	reg, err := Default()
 	if err != nil {

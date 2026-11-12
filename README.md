@@ -1,8 +1,8 @@
-# 🔀 Router-LLM - One Endpoint for Every LLM Provider
+# 🔀 Router-LLM - Single Endpoint for Every LLM Provider
 
 **Router-LLM** (short name **RLLM**, binary `rllmx`): LLM gateway in Go on the Goravel Lite framework. One base URL routes each request to a configured provider: OpenAI, Anthropic, Gemini and Responses translation, account and model fallback, OAuth refresh, usage and cost tracking.
 
-Go rewrite of [9router](https://github.com/decolua/9router) and its extended fork; opens an existing 9router database as a drop-in replacement. Single static binary, embedded dashboard, MIT License.
+Go rewrite of [9router](https://github.com/decolua/9router); opens an existing 9router database as a drop-in replacement. Single static binary, embedded dashboard, MIT License.
 
 **Scope:** an LLM request router. No MITM interception, tunnels, installers, launchers.
 
@@ -10,24 +10,34 @@ Go rewrite of [9router](https://github.com/decolua/9router) and its extended for
 
 ## 🚧 Project Status
 
-In development, early. In place: the Goravel Lite shell, configuration and logging, the guard and the API base (security headers, CORS, deadlines, body limit, cross-site guard), the data lock, both storage engines with migration and sealing, both legacy imports, the cache wrapper, the SSE writer, the maintenance jobs, the `db:*`/`keys:*`/`password:reset` commands, password login with dashboard sessions and API keys, OIDC and SAML sign-in, and the SSRF-guarded outbound client. Still landing: the request pipeline, model resolution, account selection, translation, executors, OAuth login, combos, media, token savers, skills and the dashboard. Design and parity: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/WORKFLOWS.md`](docs/WORKFLOWS.md), [`docs/PARITY.md`](docs/PARITY.md). Build order: `TASKS.md`. Features below are the target.
+In development, early, and usable today for chat, models and media. The table is a summary; [`ROADMAP.md`](ROADMAP.md) says what each area includes.
+
+| Area | Status |
+|---|---|
+| HTTP server, guard, configuration, logging, storage (SQLite and PostgreSQL), sealing, legacy imports, cache, SSE writer, maintenance and `db:*`/`keys:*`/`password:reset` commands | Built |
+| Password login with dashboard sessions, API keys, OIDC and SAML sign-in, SSRF-guarded outbound client | Built |
+| Request pipeline, model resolution, account selection and cooldown, format translation, executors, OAuth login and token refresh | Built |
+| Embeddings, image generation, speech, transcription and voice lists | Built |
+| Combos, token savers, skills, the full dashboard | Planned |
+
+Design and parity: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/PARITY.md`](docs/PARITY.md), [`docs/DIVERGENCES.md`](docs/DIVERGENCES.md), and one design document per area in [`docs/design/`](docs/design/).
 
 ---
 
 ## ✨ Why Router-LLM?
 
-*   **🔌 One Endpoint:** `/v1/chat/completions`, `/v1/messages`, `/v1/responses`, Gemini `/v1beta` on one port; Claude Code, Codex, OpenAI SDKs work as-is.
-*   **🔁 Format Translation:** OpenAI Chat hub; Claude, Gemini, Responses, Kiro, Cursor, Ollama both ways, streaming.
-*   **🧩 Combos:** Ordered list, rotation, router-model pick, judge-merged panel.
+*   **🔌 One Endpoint:** `/v1/chat/completions`, `/v1/messages`, `/v1/responses`, Gemini `/v1beta` plus `/v1/models`, embeddings, images and audio on one port; Claude Code, Codex and OpenAI SDKs work as-is. ✅
+*   **🔁 Format Translation:** OpenAI Chat hub; Claude, Gemini, Responses, Kiro, Cursor and Ollama both ways, streaming. ✅
+*   **🧩 Combos:** Ordered list, rotation, router-model pick, judge-merged panel. ⏳
 *   **♻️ Account Rotation & Cooldown:** Many accounts per provider, fill-first or sticky round-robin, per-model locks, exponential backoff on 429.
 *   **🔑 OAuth & Tokens:** Claude Code, Codex, GitHub Copilot, Gemini CLI, Kiro; refresh before expiry, on 401, in background.
-*   **🖼️ Media:** Embeddings, images, TTS, STT, video, web search, fetch, same keys.
-*   **✂️ Token Savers & Skills:** RTK tool-output filters, caveman and ponytail prompts, custom prompt, optional Headroom sidecar, Skills Studio declarative rules (no code).
-*   **🩺 Health Aware:** Latency and success tracking, circuit breaker, model probes, ranked combo suggestions.
+*   **🖼️ Media:** Embeddings, images, speech, transcription and voice lists today; video, web search and fetch planned. ✅
+*   **✂️ Token Savers & Skills:** RTK tool-output filters, two built-in prompt styles, custom prompt, optional Headroom sidecar, Skills Studio declarative rules (no code). ⏳
+*   **🩺 Health Aware:** Latency and success tracking, circuit breaker, model probes, ranked combo suggestions. ⏳
 *   **🗂️ Drop-In Database:** 9router SQLite schema for providers, keys, combos; SQLite default, PostgreSQL optional, credentials sealed.
 *   **📈 Usage Analytics:** Metadata-only row per request (key, model, tokens, cost, latency) in a separate store; no bodies, no prompts.
 *   **⚡ Cache:** In-process default, Redis optional; requests survive Redis loss.
-*   **📊 Dashboard & Binary:** Embedded plain HTML/JS/CSS UI (English, Indonesian). Pure Go, `CGO_ENABLED=0`, Linux, macOS, Windows, amd64, arm64.
+*   **📊 Dashboard & Binary:** Login and callback pages today, the rest planned. Pure Go, `CGO_ENABLED=0`, Linux, macOS, Windows, amd64, arm64.
 
 ---
 
@@ -58,7 +68,7 @@ graph TD
 
 ## 🚀 Getting Started
 
-**Prerequisites:** Go 1.26.10+ (Makefile and Dockerfile build with `GOTOOLCHAIN=local`), Make, Docker (optional).
+**Prerequisites:** Go 1.26+ (Makefile and Dockerfile build with `GOTOOLCHAIN=local`), Make, Docker (optional).
 
 ### 🐳 Using Container
 
@@ -104,7 +114,7 @@ make build   # binary in dist/rllmx; go run . starts it from source, ./artisan l
 
 ## 🕹️ Commands
 
-`rllmx artisan <name>` from a binary, `./artisan <name>` from the source tree. `PRD 23` tracks the surface.
+`rllmx artisan <name>` from a binary, `./artisan <name>` from the source tree.
 
 | Command | What it does |
 |---|---|
@@ -122,7 +132,7 @@ Local database only. `keys` and `password`: hidden input, never flags or environ
 
 ### Connecting a client
 
-Target state, once 1.8 lands: base URL is the router, the key comes from the dashboard. Today a key validates (step 1.6a) but no client route exists yet, so this section describes the contract, not working behavior.
+Point the client's base URL at the router and use a key created in the dashboard. Chat, messages, responses, models, embeddings, image generation, speech and transcription are served.
 
 ```sh
 # OpenAI SDKs and compatible tools
@@ -138,15 +148,19 @@ Model addressing: `provider/model` (`openai/gpt-5`), combo name, alias. Remote r
 
 ### Migrating from 9router
 
-1.  Stop 9router. Never run both against one database. Back up `~/.9router/db/data.sqlite`.
-2.  Start Router-LLM with `DATA_DIR=~/.9router` (default `storage/app`).
-3.  9router variable names are not read. Copy the **values** of `API_KEY_SECRET`, `MACHINE_ID_SALT`, `JWT_SECRET` into `AUTH_API_KEY_SECRET`, `AUTH_MACHINE_ID_SALT`, `JWT_SECRET`, or existing keys and logins stop working. All renames: [PRD 17](docs/prds/17-Configuration.md).
-4.  Set `DB_ENCRYPTION_SECRET`. First start seals credentials after a full backup; 9router then cannot open the file (undo with `rllmx artisan db:export-plain`).
-5.  Usage history stays in the old tables until `rllmx artisan db:import-analytics` runs.
+1. Stop 9router. Never run both against one database. Back up `~/.9router/db/data.sqlite`.
+2. Start Router-LLM with `DATA_DIR=~/.9router` (default `storage/app`).
+3. 9router variable names are not read. Copy the **values**     of `API_KEY_SECRET`, `MACHINE_ID_SALT`, `JWT_SECRET` into `AUTH_API_KEY_SECRET`, `AUTH_MACHINE_ID_SALT`, `JWT_SECRET`, or existing keys and logins stop working. All renames: [`docs/design/17-Configuration.md`](docs/design/17-Configuration.md).
+4. Set `DB_ENCRYPTION_SECRET`. First start seals credentials after a full backup; 9router then cannot open the file (undo with `rllmx artisan db:export-plain`).
+5. Usage history stays in the old tables until `rllmx artisan db:import-analytics` runs.
 
 Legacy `db.json` and `usage.json` import unsupported; open a database 9router already migrated.
 
-**New deployment on an empty database:** `rllmx artisan db:import-config --from ~/.9router` (add `--dry-run` to preview). Copies API keys, providers, custom provider nodes, combos, model aliases, custom and disabled models, pricing overrides, settings recording active skills and savers; skips usage, analytics, request details, dashboard password, login policy (`--with-sso` adds single sign-on settings). Set `AUTH_API_KEY_SECRET` and `AUTH_MACHINE_ID_SALT` to the old install's values so imported keys still work; stop the old install afterwards, because rotating refresh tokens would invalidate each other.
+**New deployment on an empty database:** seed from the old one with `rllmx artisan db:import-config --from ~/.9router` and `--dry-run` first.
+
+- **Copied:** API keys, providers, custom nodes, combos, aliases, custom and disabled models, pricing overrides, and the settings that record active skills and savers. `--with-sso` also copies the login policy.
+- **Skipped:** usage, analytics, request details, the dashboard password and the rest of the login policy.
+- **Then:** set `AUTH_API_KEY_SECRET` and `AUTH_MACHINE_ID_SALT` to the old install's values so imported keys still work, and stop the old install, because rotating refresh tokens would otherwise invalidate each other.
 
 ---
 
@@ -169,21 +183,26 @@ Environment variables or `.env` through `config/`; the process environment wins.
 | `JWT_SECRET` | generated into `DATA_DIR/jwt-secret` | Dashboard session signing |
 | `AUTH_INITIAL_PASSWORD` | none (set it) | First dashboard password |
 | `AUTH_API_KEY_SECRET` / `AUTH_MACHINE_ID_SALT` | 9router's defaults | API key, machine id derivation; your 9router values |
-| `AUTH_SSO_ALLOW` | empty | Exact emails or `@domain` entries for OIDC sign-in. **Empty admits any account the provider accepts.** |
+| `AUTH_SSO_ALLOW` | empty | Exact emails or `@domain` entries for OIDC sign-in. **Empty admits any account the provider accepts.**     |
 | `DB_CONNECTION` / `DB_DATABASE` | `sqlite` / empty | SQLite default, 9router's own format; `postgres` also needs `DB_HOST`, `DB_USERNAME`, `DB_PASSWORD`. Empty `DB_DATABASE` with SQLite = `DATA_DIR/db/data.sqlite`; point at a 9router `data.sqlite` to reuse it |
-| `DB_ENCRYPTION_SECRET` | none, **required** | 64 hex characters sealing every stored credential with AES-256-GCM |
+| `DB_ENCRYPTION_SECRET` | none, **required**     | 64 hex characters sealing every stored credential with AES-256-GCM |
 | `DB_DATABASE_ANALYTICS` / `ANALYTICS_RETENTION_DAYS` | empty / `90` | Usage-row destination (empty: beside the main database); per-request row retention |
 | `REDIS_HOST` / `REDIS_PORT` | empty / `6379` | In-process memory store default; `REDIS_HOST` also uses Redis or Valkey for shared cache groups |
 | `LOG_CHANNEL`, `LOG_LEVEL` | `single`, `info` | Goravel log channel (`single`, `daily`, `stack`), level; file `storage/logs/rllmx.log` |
-| `OAUTH_CLIENT_ID_<PROVIDER>` / `OAUTH_CLIENT_SECRET_<PROVIDER>` | empty in code; values in `.env.example` | OAuth app credentials per provider. Empty: that login off |
+| `OAUTH_CLIENT_ID_<PROVIDER>` / `OAUTH_CLIENT_SECRET_<PROVIDER>` | empty in code; `.env.example` holds the vendors' published installed-app values | OAuth app credentials per provider. Empty: that login off. Replace any value with your own app when you register one |
 | `UPSTREAM_ALLOW_PRIVATE` | empty | Hosts, addresses, CIDRs reachable on a private network or this machine (`localhost` node, LAN host, private IdP). Link-local and cloud metadata always refused. Only this variable widens the list, never a dashboard session |
 | `UPSTREAM_CONNECT_TIMEOUT` | `60s` | Upstream response-header deadline |
 
 Routing strategies, token savers and similar behavior: runtime database settings, dashboard-edited.
 
-**Providers and private addresses (planned, 1.10).** Connect-time permission check on the address actually used; redirects too. A `http://localhost:11434/v1` node or LAN host needs an entry (`localhost`, `192.168.1.0/24`), as does `ollama-local` on its default port. Ollama clients: `POST /v1/api/chat`. No provider file lands until 1.10, so registration, connection creation, the guarded client and probes are all unbuilt; `db:import-config` copies 9router rows as they are. The planned dashboard behavior: a key is never shown again after saving, and a connection test reports a fixed message, never the provider's error text.
+**Providers and private addresses.** Connect-time permission check on the address actually used, redirects included. A `http://localhost:11434/v1` node or a LAN host needs an entry (`localhost`, `192.168.1.0/24`), as does `ollama-local` on its default port. Ollama clients: `POST /v1/api/chat`. A key is never shown again after saving, and a connection test reports a fixed message, never the provider's error text.
 
-**Single sign-on.** OIDC and SAML are both built. Password login works unless SSO-only mode is chosen **and** that SSO is fully set up. OIDC needs an issuer URL, a client id and a client secret, all in the settings row; register `https://<your address>/api/auth/oidc/callback` at the provider and set `APP_URL`. SAML needs a sign-on URL and the IdP's signing certificate, plus the issuer the IdP puts in its responses; register `https://<your address>/api/auth/saml/acs` and give it the metadata from `https://<your address>/api/auth/saml/metadata`, whose entity id is that same address unless `samlIssuer` overrides it (a 9router import carries `urn:9router:sp` in for you). **`AUTH_SSO_ALLOW` is optional:** empty admits every account the provider accepts, so set exact addresses or `@domain` entries unless the provider is one you trust to decide who belongs. OIDC without an `email` claim may supply an address in `preferred_username`; only an exact allow-list entry admits it, never a whole `@domain`. A password change, a narrowed allow list or switching the mode off ends a provider session at the next request.
+**Single sign-on.** OIDC and SAML are both built. Password login keeps working unless SSO-only mode is chosen **and** that SSO is fully set up.
+
+- **OIDC:** issuer URL, client id and client secret in the settings row; register `https://<your address>/api/auth/oidc/callback` at the provider and set `APP_URL`.
+- **SAML:** sign-on URL, the IdP's signing certificate and the issuer from its responses; register `https://<your address>/api/auth/saml/acs`, and offer `https://<your address>/api/auth/saml/metadata` as its metadata. Its entity id is that same address unless `samlIssuer` overrides it; a 9router import carries `urn:9router:sp` for you.
+- **Allow list:** `AUTH_SSO_ALLOW` is optional. Empty admits every account the provider accepts, so set exact addresses or `@domain` entries unless you trust the provider to decide who belongs. An OIDC token without an `email` claim may fall back to `preferred_username`; only an exact entry admits that, never a whole `@domain`.
+- **Sessions:** a password change, a narrowed allow list or switching the mode off ends a provider session at the next request.
 
 ---
 
@@ -200,7 +219,7 @@ PostgreSQL tests read `TEST_PG_DSN` (a database where the user may create and dr
 
 ## ✍️ Authors
 
-*   **Dimas Restu Hidayanto** - *Initial Work & Architecture* - [DimasKiddo](https://github.com/dimaskiddo)
+*   **Dimas Restu Hidayanto** - *Initial Work & Architecture*     - [DimasKiddo](https://github.com/dimaskiddo)
 
 ## 🙏 Acknowledgements
 
@@ -208,17 +227,41 @@ Follows the behavior of [9router](https://github.com/decolua/9router) by decolua
 
 ## 🏗️ Dependencies
 
-Approved list and rules for adding one: [`AGENTS.md`](AGENTS.md) and the Dependency gates table in `TASKS.md`. Pure Go, no CGO.
+Approved modules and the rules for adding one: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`AGENTS.md`](AGENTS.md). Pure Go, no CGO.
 
 ---
 
 ## ⚠️ Disclaimer
 
-**DO WITH YOUR OWN RISK (DWYOR)**. Provided "as is", without warranty of any kind, express or implied. Router-LLM stores provider credentials and OAuth tokens in its database; protect `DATA_DIR`, and do not expose the port to untrusted networks without API keys and a strong dashboard password. Using subscription-based accounts through a router may violate a provider's terms of service; that responsibility is yours. The authors are not responsible for any damage from use of this application.
+**Use at your own risk.** Provided "as is", without warranty of any kind, express or implied.
+
+- Protect `DATA_DIR`; it holds provider credentials and OAuth tokens.
+- Do not expose the port to untrusted networks without API keys and a strong dashboard password.
+- Routing subscription-based accounts may conflict with a provider's terms of service. That is your responsibility.
+- The authors are not responsible for any damage from use of this application.
+
+## 🔐 Security
+
+Report a vulnerability through GitHub Security Advisories (the **Security** tab), not in a public issue.
+
+- Credentials and OAuth tokens are sealed with `DB_ENCRYPTION_SECRET`.
+- No token, key, cookie or prompt text is ever logged.
+- Every outbound request goes through an SSRF-guarded dialer.
+- Protect `DATA_DIR`, keep `AUTH_SSO_ALLOW` narrow, and use a strong dashboard password on any reachable deployment.
+
+More in [`docs/design/`](docs/design/).
+
+## 🤝 Contributing
+
+Open an issue to discuss a change before a large pull request; small fixes are welcome directly. [`AGENTS.md`](AGENTS.md) holds the engineering rules every change follows, and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) the design. Run `make test` and `staticcheck ./...` before opening a PR.
+
+## 🧩 Compatibility
+
+Router-LLM opens an existing 9router database (schema version 2 and later, migrated by 9router itself) as a drop-in replacement: providers, keys, nodes, combos, aliases and settings read unchanged, and unmodified rows stay byte-identical. The client APIs are OpenAI, Anthropic (Messages), Gemini (`/v1beta`), OpenAI Responses and Ollama. Builds for Linux, macOS and Windows on amd64 and arm64; no CGO.
 
 ## ⚖️ License
 
 **MIT License**. See `LICENSE`.
 
 ---
-**Router-LLM** - *One endpoint. Every model.* 🔀
+**Router-LLM** - *Single endpoint for every model.* 🔀

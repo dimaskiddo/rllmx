@@ -1,14 +1,16 @@
-# PRD 02 — Authentication & Access (`app/access/auth/`, `app/access/sso/`, `app/access/oidc/`, `app/access/saml/`, `app/access/identity/`)
+# Design 02 — Authentication & Access (`app/access/auth/`, `app/access/sso/`, `app/access/oidc/`, `app/access/saml/`, `app/access/identity/`)
 
-**Status:** partial · **Steps:** 1.6
+**Status:** partial
 
-Built in 1.6a: `app/access/identity` (key format, machine id, key extraction), `app/access/auth` (session, password rules, login limiter, sign-in mode, settings snapshot, key lookup, the authenticator), the five `/api/auth/*` and `/api/settings/require-login` routes, the five commands, and the authenticator the guard now asks.
+Built: `app/access/identity` (key format, machine id, key extraction), `app/access/auth` (session, password rules, login limiter, sign-in mode, settings snapshot, key lookup, the authenticator), the five `/api/auth/*` and `/api/settings/require-login` routes, the five commands, and the authenticator the guard now asks.
 
-Built in 1.6b: `app/access/sso` (public base, guarded IdP client, single-use flow state, allow list, bind cookie, error codes), `app/access/oidc` (settings, discovery, JWKS, PKCE, ID-token verification, identity), the two `/api/auth/oidc/*` routes, `AUTH_SSO_ALLOW`, and the real `Mode`.
+Built: `app/access/sso` (public base, guarded IdP client, single-use flow state, allow list, bind cookie, error codes), `app/access/oidc` (settings, discovery, JWKS, PKCE, ID-token verification, identity), the two `/api/auth/oidc/*` routes, `AUTH_SSO_ALLOW`, and the real `Mode`.
 
-Built in 1.6c: `app/access/saml` (settings, response parsing, XML-DSig verification over `goxmldsig`, the replay set, identity extraction, the AuthnRequest and the metadata document) and the three `/api/auth/saml/*` routes. Both sign-in types are done; `ResolveMode` now receives a real `samlUsable`, so a `saml` mode turns the password form off once its provider is configured.
+Built: `app/access/saml` (settings, response parsing, XML-DSig verification over `goxmldsig`, the replay set, identity extraction, the AuthnRequest and the metadata document) and the three `/api/auth/saml/*` routes. Both sign-in types are done; `ResolveMode` now receives a real `samlUsable`, so a `saml` mode turns the password form off once its provider is configured.
 
-**The allow list is optional.** An empty `AUTH_SSO_ALLOW` admits every account the configured provider accepts. That is a deliberate change from this PRD's first draft, which required a non-empty list before SSO became usable: on a company IdP the list is noise, and a half-configured IdP is already refused by `Configured()`. The trade-off is blunt and belongs here in full — **with an empty list, the dashboard is as open as the provider's own registration.** Point `oidcIssuerUrl` and `oidcClientId` at a public provider and every account there can sign in. Set `AUTH_SSO_ALLOW` to exact addresses or `@domain` entries to close that.
+**The allow list is optional.** An empty `AUTH_SSO_ALLOW` admits every account the configured provider accepts. A first draft required a non-empty list; a company IdP makes it noise, and `Configured` already refuses a half-set-up IdP.
+
+**The trade-off, stated plainly:** with an empty list the dashboard is as open as the provider's own registration. Point `oidcIssuerUrl` and `oidcClientId` at a public provider and every account there can sign in. Set `AUTH_SSO_ALLOW` to exact addresses or `@domain` entries to close that.
 
 ### Client API
 
@@ -18,8 +20,8 @@ Built in 1.6c: `app/access/saml` (settings, response parsing, XML-DSig verificat
 | Key validity | `identity.Classify` returns `Valid`, `ChecksumMismatch`, `Legacy` or `Malformed`. Only `Malformed` (not `sk-`, outside `[A-Za-z0-9_-]`, under 8 or over 256 bytes) is refused before lookup. The checksum is informational: the reference authenticates by exact row match. A key is valid only with an active `apiKeys` row |
 | Remote caller | Always needs a valid key |
 | Local caller | Needs a valid key while `requireApiKey` is on (default). With it off, passes either way. The guard hands the handler the caller (the key or a stable anonymous-local identity) through `http.CallerFrom` |
-| Key lookup | `auth.KeyStore`: cache namespace `apikeys`, SHA-256 keyed, 10 s, hits only. Key routes call `Changed()`. A database error counts as an invalid key |
-| Key access | A key with `accessRestricted` may call only the combos and resolved `provider/model` pairs in `accessAllow` (PRD 21) |
+| Key lookup | `auth.KeyStore`: cache namespace `apikeys`, SHA-256 keyed, 10 s, hits only. Key routes call `Changed`. A database error counts as an invalid key |
+| Key access | A key with `accessRestricted` may call only the combos and resolved `provider/model` pairs in `accessAllow` (design doc 21) |
 
 ### Local Request
 
@@ -33,11 +35,15 @@ One function (`app/http/locality.go`, tested over every combination). A request 
 | Origin | Absent or a loopback web origin (`null` is not) |
 | Sec-Fetch-Site | Absent, `same-origin` or `none`. Another port of this machine is `same-site`, not local |
 
-A repeated `Origin` or `Sec-Fetch-Site` is never trusted. No access decision reads `ctx.Request().Ip()` (logs and limiter keys only). Set `SERVER_TRUST_LOOPBACK=false` when a tunnel or reverse proxy on this machine forwards internet traffic, because it arrives from 127.0.0.1.
+A repeated `Origin` or `Sec-Fetch-Site` is never trusted. No access decision reads `ctx.Request.Ip` (logs and limiter keys only). Set `SERVER_TRUST_LOOPBACK=false` when a tunnel or reverse proxy on this machine forwards internet traffic, because it arrives from 127.0.0.1.
 
 ### Guard Classes
 
-Every route is declared in `routes/` through the guarded group `Handle(class, method, path, ...)`, which records the class and panics on a mistake (unknown class, a client route that is not `ClassLLM`, a page under `/api`, a duplicate). A route registered on the bare `Route()` facade is found by `Route().GetRoutes()` at the start and stops it. The policy is one pure function, `decide`, that denies by default.
+Every route is declared through the guarded group `Handle(class, method, path, …)`.
+
+- It records the class and panics on a mistake: an unknown class, a client route that is not `ClassLLM`, a page under `/api`, or a duplicate.
+- A route on the bare `Route` facade is found at start and stops it.
+- The policy is one pure function, `decide`, that denies by default.
 
 | Class | Rule |
 |---|---|
@@ -54,7 +60,7 @@ Every route is declared in `routes/` through the guarded group `Handle(class, me
 
 ### Cross-Site Guard
 
-Built in 1.5 as `middleware.SameOrigin` (PRD 1), before the guard. A POST, PUT, PATCH or DELETE under `/api` is refused with 403 unless:
+Built as `middleware.SameOrigin` (design doc 1), before the guard. A POST, PUT, PATCH or DELETE under `/api` is refused with 403 unless:
 - `Sec-Fetch-Site` is `same-origin` or `none`; or
 - the header is absent and `Origin` equals `Host`; or
 - neither header is present (curl, scripts).
@@ -100,16 +106,20 @@ flowchart TD
 |---|---|
 | Key | Client address (`X-Forwarded-For` only from a trusted proxy; IPv6 counts as its /64) |
 | Counting | Every attempt is counted **before** the compare, so parallel guesses cannot all see the old count |
-| Steps | Five free attempts, then locks of 30 s, 2 m, 10 m, 30 m. One hour of quiet starts over |
-| Lifetime | Entries live 2 h (longer than the longest lock plus the quiet hour); constants are in `app/access/auth/limiter.go` |
-| Local store | A dedicated, separately capped in-process store, because the shared cache evicts across namespaces |
-| Redis | With the Redis store as default, counters are also kept there under the SHA-256 of the client key. Each attempt loads both copies, takes the stricter value per field and writes both back. A Redis outage never lifts a lock. The read-modify-write is not atomic: instances racing on one address can let a few extra guesses through |
+| Five free attempts, then locks of 30 s, 2 m, 10 m, 30 m. One hour of quiet starts over |
+| Entries live 2 h (longer than the longest lock plus the quiet hour); constants are in `app/access/auth/limiter.go` |
+| A dedicated, separately capped in-process store, because the shared cache evicts across namespaces |
+| With the Redis store as default, counters are also kept there under the SHA-256 of the client key. Each attempt loads both copies, takes the stricter value per field and writes both back. A Redis outage never lifts a lock. The read-modify-write is not atomic: instances racing on one address can let a few extra guesses through |
 
 Change-password shares this counter. SSO counts differently (below).
 
 ### Sign-In Methods
 
-`auth.ResolveMode` turns `authMode` (`password`, `oidc`, `saml`, `sso`, `both`) and `ssoType` into one decision. SSO is usable only when its type is fully configured **and** `AUTH_SSO_ALLOW` names at least one entry. Password login is off only when the mode is SSO-only **and** SSO is usable, so half-configured SSO never locks the administrator out. SSO sessions are re-checked on every request against the current mode and allow-list.
+`auth.ResolveMode` turns `authMode` and `ssoType` into one decision.
+
+- SSO is usable only when its type is fully configured **and** `AUTH_SSO_ALLOW` names an entry.
+- Password login is off only when the mode is SSO-only **and** SSO is usable, so half-configured SSO cannot lock the administrator out.
+- SSO sessions are re-checked on every request against the current mode and allow-list.
 
 ### Single Sign-On (`app/access/oidc`, `app/access/saml`, `app/access/sso`)
 
@@ -146,7 +156,7 @@ Routes `GET /api/auth/saml/start`, `POST /api/auth/saml/acs`, `GET /api/auth/sam
 | Item | Behavior |
 |---|---|
 | Configured | Only when `samlEntryPoint`, `samlCert` **and** the new `samlIdpEntityId` are set. A database imported from 9router lacks the last, so SAML starts off and password login keeps working until it is filled. The issuer is never taken from the response |
-| Library | `github.com/russellhaering/goxmldsig` verifies the signature and nothing else, with a `TASKS.md` gate line. Everything else is ours: the response and assertion parsing over `encoding/xml`, the audience/recipient/time/`InResponseTo` checks, the reuse defence, the AuthnRequest and the metadata. `crewjam/saml` and `golang-jwt/jwt` are not adopted. No artifact binding (an outbound SOAP call) is built |
+| Library | `github.com/russellhaering/goxmldsig` verifies the signature and nothing else, from the approved-module list. Everything else is ours: the response and assertion parsing over `encoding/xml`, the audience/recipient/time/`InResponseTo` checks, the reuse defence, the AuthnRequest and the metadata. `crewjam/saml` and `golang-jwt/jwt` are not adopted. No artifact binding (an outbound SOAP call) is built |
 | Start | Unsigned AuthnRequest (HTTP-Redirect, deflated). Its id is the store key and travels as `RelayState` |
 | Bind cookie | `saml_bind`: HMAC of the relay state under a name distinct from the OIDC one, path `/api/auth/saml`, must return with the response (divergence 129). The ACS is a cross-site POST, so it is `SameSite=None` when `Secure`; without `Secure` it is `Lax`, because browsers reject `None` without `Secure` |
 | ACS input | POST body only (512 KiB cap enforced on the route, never the query). `SAMLart` is refused. Relay state taken once. The base64 form is size-capped and refused if it holds a DTD or entity declaration, before any parser sees it |
@@ -176,27 +186,27 @@ Anything the dashboard asks the router to do against its own endpoints (model te
 
 ## Parity: Auth Routes
 
-| Endpoint | Package | Status | Step |
-|---|---|---|---|
-| `/api/auth/*` (login, logout, status, change-password; reset-password = `rllmx artisan password:reset`) | `app/http/controllers`, `app/access/auth` | done (1.6a; D52-58) | 1.6 |
-| `/api/auth/oidc/{start,callback}` | `app/access/oidc`, `app/access/sso`, `app/http/controllers` | done (1.6b; D59-66) | 1.6 |
-| `/api/auth/saml/{start,acs,metadata}` | `app/access/saml`, `app/http/controllers` | done (1.6c; D67-74) | 1.6 |
-| `keys:create`, `keys:list`, `keys:revoke`, `password:reset`, `db:export-plain` | `app/console/commands`, `app/access/identity` | done (1.6a) | 1.6 |
-| `/api/auth/oidc/test`, `/api/auth/saml/test` | none | deferred (guarded client since 1.7; routes with the settings API) | 2.6 |
-| `/api/settings` (database export/import, the other settings) | `app/http/controllers` | todo (require-login is built) | 2.6 |
-| `/api/keys/*` | `app/http/controllers` | todo | 2.1 |
-| `/api/locale`, `/api/tags` | `app/http/controllers` | todo | 2.6 |
+| Endpoint | Package | Status |
+|---|---|---|
+| `/api/auth/*` (login, logout, status, change-password; reset-password = `rllmx artisan password:reset`) | `app/http/controllers`, `app/access/auth` | done |
+| `/api/auth/oidc/{start,callback}` | `app/access/oidc`, `app/access/sso`, `app/http/controllers` | done |
+| `/api/auth/saml/{start,acs,metadata}` | `app/access/saml`, `app/http/controllers` | done |
+| `keys:create`, `keys:list`, `keys:revoke`, `password:reset`, `db:export-plain` | `app/console/commands`, `app/access/identity` | done |
+| `/api/auth/oidc/test`, `/api/auth/saml/test` | none | deferred |
+| `/api/settings` (database export/import, the other settings) | `app/http/controllers` | todo (require-login is built) |
+| `/api/keys/*` | `app/http/controllers` | todo |
+| `/api/locale`, `/api/tags` | `app/http/controllers` | todo |
 
 ---
 
 ## Remaining work
 
-Steps 1.6a to 1.6c are built: password login with its session and limiter, API keys, OIDC, SAML and the five commands. The PRD is `partial` because four parity rows above are still open, each owned by a later step:
+ are built: password login with its session and limiter, API keys, OIDC, SAML and the five commands. The design doc is `partial` because four parity rows above are still open, each owned by a later step:
 
-- [ ] The key management API (`/api/keys/*`) and the rest of `/api/settings` — **2.1**, **2.6**
-- [ ] `/api/auth/oidc/test`, `/api/auth/saml/test`, `/api/locale`, `/api/tags` — **2.6**
-- [ ] The per-key model allow-list and quota the `Caller` already carries — **2.2**, **2.3** (`PRD 21`)
-- **Done when:** a revoked or disabled key is rejected within the cache TTL and immediately after explicit invalidation — that holds today and a test proves it. What keeps the PRD open is the management surface and the two limits, not the guard.
+- [ ] The key management API (`/api/keys/*`) and the rest of `/api/settings` — planned
+- [ ] `/api/auth/oidc/test`, `/api/auth/saml/test`, `/api/locale`, `/api/tags` — planned
+- [ ] The per-key model allow-list and quota the `Caller` already carries —, (`design doc 21`)
+- **Done when:** a revoked or disabled key is rejected within the cache TTL and immediately after explicit invalidation — that holds today and a test proves it. What keeps the design doc open is the management surface and the two limits, not the guard.
 
 ---
 
@@ -210,7 +220,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 231 | A remote caller whose API keys are refused five times in a row is locked out by the same progressive limiter as the dashboard login (key `key:<address>`, so its budget is its own); while locked, any call that presents a key gets `429` with `Retry-After`, a valid key included. A call with no key, and a local caller, are never counted | The reference lets a client try keys without limit; the key id is six characters from 36, so an unthrottled caller can walk it (improvement) |
 | 232 | One client address may hold at most 50 single sign-in flows open, and the pending store drops expired flows from the old end instead of scanning all of them. The cap is per address, so the store cannot be filled from one place | `oidc/start` and `saml/start` are public; without a per-address cap, ten thousand calls made every real sign-in fail for ten minutes (improvement) |
 | 51 | Only `/v1beta`, first source wins | Query keys out of proxies and logs |
-| 42, 43, 44, 58 | Local = loopback peer, no proxy header, `Host` naming this machine, loopback `Origin`, `Sec-Fetch-Site` same-origin/none; session also on local-only routes; cross-site `/api` writes refused **(built, `middleware.SameOrigin`, 1.5)**; `requireApiKey` in guard; no local-only route yet, logic tested | Admin routes unreachable from web app, DNS rebinding or same-machine tunnel; one decision point |
+| 42, 43, 44, 58 | Local = loopback peer, no proxy header, `Host` naming this machine, loopback `Origin`, `Sec-Fetch-Site` same-origin/none; session also on local-only routes; cross-site `/api` writes refused **(built, `middleware.SameOrigin`,)**; `requireApiKey` in guard; no local-only route yet, logic tested | Admin routes unreachable from web app, DNS rebinding or same-machine tunnel; one decision point |
 | 52 | `pv` claim (HMAC of password hash + session epoch); password change, "logout everywhere", `password reset` end all sessions | Stolen cookie dies with the password |
 | 53, 54, 57 | Count before compare, slot semaphore, no compare for locked address, Redis copy takes stricter state; remote login on well-known password refused (`mustChangePassword`); `X-Forwarded-For` only from trusted proxy, IPv6 as /64 | No free guesses in a burst, no fresh budget from forged header |
 | 55, 56 | `hasPassword` only to local or signed-in callers; `Secure` from TLS, `AUTH_COOKIE_SECURE`, trusted proxy | Anonymous callers learn nothing; clients cannot pick cookie flags |
@@ -227,7 +237,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 12, 50 | `crypto/rand`, unbiased; checksum classified (ok, mismatch, legacy), never rejects | Unguessable ids; default-secret checksum failures still work |
 | 144 | Non-JSON body: 400, ends nothing, so mistyped `everywhere` never passes for plain logout | Failure reported as failure |
 | 22 | Socket peer decides; `X-Forwarded-For` only from loopback or `SERVER_TRUSTED_PROXIES`; `X-Real-IP` never read | Forged header cannot grant access |
-| 66 | **(not built)**, with SSRF-guarded client in 2.6 | Needs the guard (planned) |
+| 66 | **(not built)**, with the SSRF-guarded client | Needs the guard (planned) |
 | 207 | A session carries `pv`, an HMAC of the stored hash and the session epoch, so a password change or a "logout everywhere" ends every issued session at once | The reference has no revocation: a stolen cookie stays valid for its full 24 h after a password change |
 | 208 | The login limiter keys an IPv6 caller by its /64, and a burst of comparisons is bounded by one slot per CPU with a 2 s wait then 503 | Addressing rotation within one prefix buys no fresh budget, and a guess storm cannot spend every core |
 
@@ -235,10 +245,11 @@ Deliberate differences from the references in this area. Numbers are stable and 
 
 ## Findings
 
-**A SAML verifier must read only what it proved.** `goxmldsig`'s `Validate` returns the element it verified, not the document it was handed. Every claim check therefore runs on that returned value, and the envelope supplies only the status and the destination, which can make a check stricter but never loosen one. A verifier that validates an assertion and then reads a sibling out of the original document has a signature-wrapping hole that no ordinary test notices, so the wrapping fixture is built from the real attack: a signed assertion hidden in `Advice` beside a forged one, with a test whose only job is to fail when the rule is broken.
+One row per lesson; the decision is what the code does because of it.
 
-**An assertion signed while attached canonicalises differently once detached.** Inclusive C14N pulls every in-scope namespace declaration into the digest, so an IdP that signs an assertion inside a Response carrying other prefixes produces a signature that only verifies against the original ancestor chain. The fixtures therefore sign assertions as standalone documents, which is what a provider signing assertions actually emits; a real IdP that signs in place is covered by the envelope path.
+| Finding | Decision |
+|---|---|
+| `goxmldsig`'s `Validate` returns the element it verified, not the document it was handed. | Every claim check runs on that returned value; the envelope supplies only status and destination. |
+| Inclusive C14N pulls in-scope namespace declarations, so a signature made while attached can fail once detached. | The verifier reads only what it proved, never the re-serialised document. |
+| The ACS parses the certificate on every sign-in, and the stored value changes only when the row does. | `saml.ParseCertificate` caches one certificate keyed by the stored text. |
 
-**The certificate is parsed once per stored value.** `saml.ParseCertificate` caches one `*x509.Certificate` keyed by the stored text, because the ACS parses on every sign-in and the value changes only when the row does.
-
-Nothing else recorded. `app/access/identity` holds only the `Caller` and `KeyStatus` types the guard needs.

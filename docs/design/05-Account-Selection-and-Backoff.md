@@ -1,8 +1,8 @@
-# PRD 05 — Account Selection, Error Rules & Backoff (`app/gateway/account/`)
+# Design 05 — Account Selection, Error Rules & Backoff (`app/gateway/account/`)
 
-**Status:** partial · **Steps:** 1.7
+**Status:** partial
 
-Built in 1.7b: `app/gateway/account` (the selector, the error rules, the backoff arithmetic and the reporter) over the `modelLock_*` fields `app/store/repository` writes and clears. Called by the account loop in `app/gateway/pipeline` since 1.8c. The selector, rules and reporter below describe what is built.
+Built: `app/gateway/account` (the selector, the error rules, the backoff arithmetic and the reporter) over the `modelLock_*` fields `app/store/repository` writes and clears. Called by the account loop in `app/gateway/pipeline`. The selector, rules and reporter below describe what is built.
 
 ### Selection (`Selector.Select`)
 
@@ -22,11 +22,13 @@ Serialized per provider by a mutex, so the usage counters it writes cannot race 
 | `fill-first` | First available connection; writes nothing |
 | `round-robin` | Takes the most recently used connection while its stored `consecutiveUseCount` is below the limit (`providerStrategies[provider].stickyRoundRobinLimit`, then `settings.stickyRoundRobinLimit`, then 3; zero, negative or unparsable values fall through), writing `lastUsedAt` and the count plus one. Otherwise the least recently used (never-used first, by priority), writing count 1. Both are persisted, so rotation survives a restart. The written time is never at or before the stored one, so two uses in one millisecond still order |
 
-**Pinning.** `Request.Prefer` names one connection (the reference reads it from the `x-connection-id` header on image and video calls, so the header is read in 1.11). While it is among the candidates it wins before any strategy and writes nothing; a locked, excluded or expired one falls back to the strategy.
+**Pinning.** `Request.Prefer` names one connection (the reference reads it from the `x-connection-id` header on image and video calls, so the header is read). While it is among the candidates it wins before any strategy and writes nothing; a locked, excluded or expired one falls back to the strategy.
 
 **No candidate left:** if every candidate is locked, the error is `*AllLockedError` with the earliest lock end that applies to the model, "reset after 2m 30s" text, and the first such connection's last error and code. It becomes a 503 with `retryAfter`. No candidates, or locks without a future end, is `ErrNoConnections`.
 
-**Not in the selector:** credential-less providers (a virtual connection), the Freebuff model-assignment hook and the circuit-breaker skip (PRD 12). The step that needs each adds it. The Antigravity quota gate is built (1.10g): a request carries `Request.Hold`, a function that names a connection spent for the model and the moment it frees up; a held connection counts as locked until then, and `AllLockedError` reports the earliest such moment, lock or hold. The selector reads memory only and `app/gateway/account` does not import `app/llm/quota`.
+**Not in the selector:** credential-less providers (a virtual connection), the Freebuff model-assignment hook and the circuit-breaker skip (design doc 12). The step that needs each adds it.
+
+**The Antigravity quota gate is built.** A request carries `Request.Hold`, which names a connection spent for a model and the moment it frees. Such a connection counts as locked until then, and `AllLockedError` reports the earliest lock or hold. The selector reads memory only; `app/gateway/account` does not import `app/llm/quota`.
 
 ### Error Classification (`account.Classify`)
 
@@ -42,7 +44,7 @@ Serialized per provider by a mutex, so the usage counters it writes cannot race 
 | `rate limit`, `too many requests`, `quota exceeded`, `capacity`, `overloaded`, only for status 401, 402, 403, 429 and non-4xx | exponential backoff (on any other 4xx the text may echo the request, so it stays request-scoped) |
 | status 401, 402, 403, 404 | 2 min |
 | status 429 | exponential backoff |
-| other 4xx (400, 406, 408, 413, ...) | request-scoped: no lock, error returned (a combo moves to the next member) |
+| other 4xx (400, 406, 408, 413,.) | request-scoped: no lock, error returned (a combo moves to the next member) |
 | anything else (5xx, network, status 0) | transient, 30 s |
 
 ### Backoff
@@ -70,14 +72,14 @@ flowchart TD
 ---
 
 ## Remaining work
-**Step 1.7b is built and the 1.8c pipeline calls it.**
+**The selector is built and the pipeline calls it.**
 
 - [x] `app/gateway/account` `Selector`: per-provider mutex, persisted counters, `Exclude`, `Prefer`
 - [x] Error rules as data, then backoff and lock arithmetic on top of the existing `modelLock_*` fields
 - [x] `Reporter`: `Fail` and `Succeed`
-- [x] Called from the account loop (1.8c)
-- [x] Exclusion hook for Antigravity quota (`Request.Hold`, 1.10g)
-- [ ] Freebuff model assignment, credential-less providers, the circuit-breaker skip — the steps that need each (**1.10**, **2.5**)
+- [x] Called from the account loop
+- [x] Exclusion hook for Antigravity quota (`Request.Hold`,)
+- [ ] Freebuff model assignment, credential-less providers, the circuit-breaker skip — the steps that need each
 
 ---
 
@@ -96,8 +98,11 @@ Deliberate differences from the references in this area. Numbers are stable and 
 
 ## Findings
 
-**The backoff level is read where the lock is written.** `Reporter.Fail` hands the repository a function that classifies with the level read inside the lock transaction, so twelve concurrent 429s store level 12, not twelve times level 1. Classifying once outside, then writing, loses every concurrent increment.
+One row per lesson; the decision is what the code does because of it.
 
-**A fixed cooldown keeps the level.** A 401 or a 5xx between two 429s must not restart their backoff, so only a backoff rule raises the level and a provider-reported reset is the one thing that clears it.
+| Finding | Decision |
+|---|---|
+| Twelve concurrent 429s must store level 12, not twelve times level 1. | `Reporter.Fail` classifies with the level read inside the lock transaction. |
+| A 401 or a 5xx between two 429s must not restart their backoff. | Only a backoff rule raises the level; a provider-reported reset is the one thing that clears it. |
+| A slow success must not undo the failure of a faster, later request. | `Succeed` passes when the request began, and a lock written after it is left alone. |
 
-**A failure newer than the request survives a success.** `Succeed` passes when the request began and the repository leaves a lock written after it alone, so a slow success cannot undo the failure of a faster, later request.

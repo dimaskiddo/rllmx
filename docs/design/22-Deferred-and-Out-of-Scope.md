@@ -1,6 +1,6 @@
-# PRD 22 — Deferred & Out of Scope
+# Design 22 — Deferred & Out of Scope
 
-**Status:** n/a · **Steps:** —
+**Status:** n/a
 
 | Item | Status | Reason |
 |---|---|---|
@@ -14,7 +14,7 @@
 | Install commands stored in skills, self-updater, autostart, Hermes manager, devin-cli, headroom installer | Out | Spawn processes; only the `git clone` behind the `app/git` filter gate may |
 | System tray, TUI | Out | Not a server concern |
 
-Package status lives in `TASKS.md`, feature status in the parity files.
+Package status lives in `ROADMAP.md`, feature status in the parity tables.
 
 ---
 
@@ -43,3 +43,4 @@ Deliberate differences from the references in this area. Numbers are stable and 
 ## Findings
 
 A policy list, not a build target.
+

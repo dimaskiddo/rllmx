@@ -1,8 +1,16 @@
-# PRD 15 — Storage (`app/store/repository/`, `app/store/dialect/`, `app/store/document/`)
+# Design 15 — Storage (`app/store/repository/`, `app/store/dialect/`, `app/store/document/`)
 
-**Status:** partial · **Steps:** 1.4, 1.7, 1.8
+**Status:** partial
 
-Two databases, SQLite (default, 9router's format) or PostgreSQL, reached through the `DB` facade, which already gives manual queries: `Select` (slice or struct, `sqlx` with the `db` tag), `Insert`, `Update`, `Delete`, `Statement`, `Table`, `Transaction`, `BeginTransaction`, `Connection`, `WithContext`. That is the interface for every 9router table; `Orm`'s naming, timestamps and auto-migration are the compatibility problem. No `database/sql` handle, pool, dialect layer or migration runner of ours. The facade passes SQL through and PostgreSQL knows only `$1, $2`, so `dialect.Rebind` rewrites `?` (quoted text skipped); SQL is written once with `?`. `dialect` also owns the stored-value formats and `document` the byte-preserving JSON editor, so a package outside the store imports those two. `Schema` checks tables (`HasTable`), reads indexes (`GetIndexes`), creates exact DDL (`Schema().Sql`) and registers migrations; columns are read through `DB` (see "No implicit DDL").
+Two databases, SQLite (default, 9router's format) or PostgreSQL, both reached through the `DB` facade.
+
+| Facade | What it gives |
+|---|---|
+| `DB` | `Select`, `Insert`, `Update`, `Delete`, `Statement`, `Table`, `Transaction`, `BeginTransaction`, `Connection`, `WithContext` — the interface for every 9router table |
+| `Schema` | `HasTable`, `GetIndexes`, exact DDL (`Schema.Sql`), migration registration; columns are read through `DB` (see "No implicit DDL") |
+| `Orm` | Not used: its naming, timestamps and auto-migration are the compatibility problem |
+
+No `database/sql` handle, pool, dialect layer or migration runner of ours. SQL is written once with `?` and `dialect.Rebind` rewrites it for PostgreSQL (quoted text skipped), because PostgreSQL knows only `$1, $2`. `dialect` owns the stored-value formats and `document` the byte-preserving JSON editor, so a package outside the store imports those two.
 
 | Connection | Holds | Schema |
 |---|---|---|
@@ -13,7 +21,7 @@ Two databases, SQLite (default, 9router's format) or PostgreSQL, reached through
 
 ### 15.1 Main Store
 
-SQLite at `${DATA_DIR}/db/data.sqlite` (`storage/app/db/data.sqlite`), or PostgreSQL via `DB_*`. `DB_CONNECTION` (default `sqlite`) picks the engine and must be `sqlite` or `postgres`; anything else stops the start. `config/database.go` declares `sqlite`, `sqlite_ro`, `sqlite_backup`, `sqlite_analytics`, `postgres`, `postgres_analytics`. `DB().Connection(name)` picks one; `DB_DATABASE` and `DB_DATABASE_ANALYTICS` name them.
+SQLite at `${DATA_DIR}/db/data.sqlite` (`storage/app/db/data.sqlite`), or PostgreSQL via `DB_*`. `DB_CONNECTION` (default `sqlite`) picks the engine and must be `sqlite` or `postgres`; anything else stops the start. `config/database.go` declares `sqlite`, `sqlite_ro`, `sqlite_backup`, `sqlite_analytics`, `postgres`, `postgres_analytics`. `DB.Connection(name)` picks one; `DB_DATABASE` and `DB_DATABASE_ANALYTICS` name them.
 
 | Backend | Driver | Notes |
 |---|---|---|
@@ -22,16 +30,16 @@ SQLite at `${DATA_DIR}/db/data.sqlite` (`storage/app/db/data.sqlite`), or Postgr
 
 | Rule | Detail |
 |---|---|
-| Writes | A read-then-write runs in `DB().Transaction(...)`; the facade rolls back on error |
+| Writes | A read-then-write runs in `DB.Transaction(...)`; the facade rolls back on error |
 | Raw SQL | Plain SQL with `?` (rebound for PostgreSQL) through `Select`, `Insert`, `Update`, `Delete`, `Statement`. Every table and column is quoted and named exactly as stored. `Table(name)` does not quote identifiers and struct `Insert`/`Update` drop zero values, so neither is used on shared tables. A row struct tags every selected column `db:"camelCase"`: outside a transaction the scanner ignores an untagged column, inside one it fails with `missing destination name` |
 | Lookups | A one-struct `Select` finding no row returns `sql.ErrNoRows` and logs an error holding the bound arguments. A lookup by secret (an API key) selects into a slice and checks its length |
 | Row types | Plain structs, never models, every table including analytics. A timestamp is a `string` (`TEXT`, `2006-01-02T15:04:05.000Z` UTC); a boolean binds as 0 or 1. No mapper converts anything |
-| No implicit DDL | Nothing creates, alters or drops a shared table by itself. Additive changes are migrations registered with `WithMigrations`, planned first with `Schema().HasTable`, `Schema().GetIndexes` and a column read through the `DB` facade (`pragma_table_info` on SQLite, `information_schema.columns` on PostgreSQL, because `Schema().GetColumns` fails on a composite key). `HasColumn` and `HasIndex` are not used. When nothing is missing nothing is written. The plan runs `SELECT 1` first, because a `Schema` check returns false on a query error |
+| No implicit DDL | Nothing creates, alters or drops a shared table by itself. Additive changes are migrations registered with `WithMigrations`, planned first with `Schema.HasTable`, `Schema.GetIndexes` and a column read through the `DB` facade (`pragma_table_info` on SQLite, `information_schema.columns` on PostgreSQL, because `Schema.GetColumns` fails on a composite key). `HasColumn` and `HasIndex` are not used. When nothing is missing nothing is written. The plan runs `SELECT 1` first, because a `Schema` check returns false on a query error |
 | Helpers | Sealing at the storage boundary, `kv` scopes with exact key formats, unknown JSON keys kept, NUL bytes stripped and the timestamp format are thin wrappers in `app/store/repository` and `app/store/sealer` around the facade call |
 | Tests | One suite, one engine per run: SQLite by default, PostgreSQL when `TEST_PG_DSN` names a server (`make test-pg`). `tests.UsingPostgres` selects, `tests.OpenAny` opens; PostgreSQL gets one schema per test, created and dropped by the helper. A test green on SQLite and broken on PostgreSQL stays invisible until the variable is set |
 | Tests that stay SQLite | `tests.RequireSQLite` skips a test whose subject only exists in a file: `VACUUM INTO` backups and `OpenSnapshot`, `ExportPlain`, `Vacuum`, the WAL checkpoint, the pragma reads (`integrity_check`, `auto_vacuum`), the byte-for-byte `dumpTables` comparisons, and reopen-by-file. Each call site states why. Everything else, including the schema plan, migration, sealing, every repository, `Tx` and its advisory lock, `Check` and the analytics store, runs on both |
 | Fixture | `app/store/repository/fixture_test.go` opens a copy of a real 9router database from `references/data.sqlite` (or `RLLMX_FIXTURE`). Skips when absent; never writes the original and checks its size and mtime after. Proves the additive plan is empty, that reading writes nothing, that a written row keeps every column but `updatedAt`, and that migration seals every plain secret |
-| Dependencies | `tidwall/gjson` and `sjson` (row editing, below), `gofrs/flock` (the data lock), `subosito/gotenv`; gates in `TASKS.md`, reasons in `docs/ARCHITECTURE.md` (Approved Modules) |
+| Dependencies | `tidwall/gjson` and `sjson` (row editing, below), `gofrs/flock` (the data lock), `subosito/gotenv`; approved in `docs/ARCHITECTURE.md` (Approved Modules) |
 
 ### Tables
 
@@ -49,13 +57,19 @@ DDL follows the reference (`src/lib/db/schema.js`, pinned in `PARITY.md`). Every
 
 `accessRestricted` and `accessAllow` are the only columns an older file may lack; the migration adds them. The framework's migration table is `migrations` (`config/database.go`), a plain identifier 9router ignores.
 
-**Legacy usage tables.** 9router also has `usageHistory`, `usageDaily`, `requestDetails` (the fork adds `proxyPoolFitness`, and 9router has a `proxyPools` table). rllmx neither creates nor writes them; only `db:import-analytics` reads them, and only `--drop-old` removes them. It does not create `proxyPools` either: a fresh database has no such table, and one that already has it keeps it and its rows untouched. The migration number 5 belonged to it and stays retired, so the later tables keep the names an existing database recorded.
+**Legacy usage tables.** 9router also has `usageHistory`, `usageDaily` and `requestDetails`, and a `proxyPools` table.
+
+| Table | What we do |
+|---|---|
+| `usageHistory`, `usageDaily`, `requestDetails` | Never created, never written; `db:import-analytics` reads them, `--drop-old` removes them |
+| `proxyPools`, `proxyPoolFitness` | Never created; an existing table keeps its rows untouched |
+| Migration 5 | Belonged to `proxyPools` and stays retired, so later tables keep the names a database already recorded |
 
 ### JSON Shapes
 
 | Where | Content |
 |---|---|
-| `providerConnections.data` | `displayName`, `accessToken`, `refreshToken`, `idToken`, `apiKey`, `expiresAt`, `expiresIn`, `lastRefreshAt`, `projectId`, `testStatus`, `lastError`, `errorCode`, `lastErrorAt`, `backoffLevel`, `lastUsedAt`, `consecutiveUseCount`, dynamic `modelLock_<model>`, `providerSpecificData` (copilot token, base URL, API type, account id, device id, proxy settings kept but unused, enabled models, assigned model, ...) |
+| `providerConnections.data` | `displayName`, `accessToken`, `refreshToken`, `idToken`, `apiKey`, `expiresAt`, `expiresIn`, `lastRefreshAt`, `projectId`, `testStatus`, `lastError`, `errorCode`, `lastErrorAt`, `backoffLevel`, `lastUsedAt`, `consecutiveUseCount`, dynamic `modelLock_<model>`, `providerSpecificData` (copilot token, base URL, API type, account id, device id, proxy settings kept but unused, enabled models, assigned model,.) |
 | `providerNodes.data` | prefix, base URL, API type |
 | `combos.models` | JSON array |
 | `kv` scopes | `modelAliases`, `customModels` (key `providerAlias\|id\|type`), `mitmAlias`, `pricing`, `disabledModels`. Go-only scopes use the prefix `rllm`: `rllmKeyLimits` (key = API key id), `rllmAuth/sessionEpoch`, `rllmCrypto/check` |
@@ -71,7 +85,7 @@ DDL follows the reference (`src/lib/db/schema.js`, pinned in `PARITY.md`). Every
 | Ids | v4 UUIDs from `google/uuid` |
 | Create | Keeps whitelisted fields, takes `priority = MAX + 1` for its provider |
 | Update | Merges only the patched keys. `testStatus` to `active` clears the error fields, sets `backoffLevel` 0 and nulls every `modelLock_*` |
-| Priorities | Renumbered 1..N only on a priority update or a delete (ties go to the most recently updated) |
+| Priorities | Renumbered 1.N only on a priority update or a delete (ties go to the most recently updated) |
 | Dedup on create | OAuth by email; Codex also by `chatgptAccountId`; others by workspace id or `username` with both sides present; API keys by provider and name (`ErrNameConflict` when overwriting is refused) |
 | Atomic helpers | `MarkUnavailable`, `ClearLocks`, `TouchUsage`, `UpdateCredentials` each read and write in one transaction. This closes four reference races: backoff level read outside the write, lost counter increments, clearing from a stale snapshot, replacing `providerSpecificData` from the caller's copy |
 | Corrupt rows | A list returns a corrupt connection flagged `Corrupt` with raw text; every write refuses it (`ErrCorruptRow`); refresh, lock and backoff skip it. A restricted key whose `accessAllow` does not parse allows nothing; an unrestricted one stays unrestricted |
@@ -106,7 +120,7 @@ flowchart TD
 - A failed backup aborts. Rows with damaged JSON are left alone with a warning.
 - `pre-encryption-*` is never pruned; `schema-change-*` is pruned to 3.
 - PostgreSQL converts too, with a `pg_dump` warning. The read-only open used by commands never converts.
-- **Way back:** `rllmx artisan db:export-plain` (asks the dashboard password, SQLite only; the command arrives in 1.6, the `ExportPlain` store function is built) writes a `VACUUM INTO` copy with every secret opened and the `rllmCrypto` rows removed.
+- **Way back:** `rllmx artisan db:export-plain` (asks the dashboard password, SQLite only; the command planned, the `ExportPlain` store function is built) writes a `VACUUM INTO` copy with every secret opened and the `rllmCrypto` rows removed.
 - Old usage tables keep the plain keys they always had; `import-analytics --drop-old` removes them.
 
 ### Schema Handling
@@ -120,7 +134,7 @@ flowchart TD
 | Backup | `VACUUM INTO` a full copy at `db/backups/<label>-rllmx-<version>-<YYYYMMDD-HHMMSS>/data.sqlite`, directory `0700`, file set to `0600` afterwards (the copy follows the umask). Three newest automatic backups kept; `rllmx artisan db:backup` never prunes. Includes `requestDetails` when present. PostgreSQL: use `pg_dump` |
 | Unknown objects | `proxyPools`, `proxyPoolFitness`, `sqlite_sequence`, a stale `sqlite_stat1` are left alone; `PRAGMA optimize` may add `sqlite_stat1/4`, which comparison tests ignore |
 | Names | Go-only tables use plain identifiers (letters, digits, underscore), so 9router's backup, which interpolates names unquoted, still works on a shared file |
-| PostgreSQL columns | `information_schema.columns` filtered by `table_schema = current_schema()`, exact names; the migrator's `addColumn` uses `ADD COLUMN IF NOT EXISTS` |
+| PostgreSQL columns | `information_schema.columns` filtered by `table_schema = current_schema`, exact names; the migrator's `addColumn` uses `ADD COLUMN IF NOT EXISTS` |
 
 **Files in `DATA_DIR`:** `jwt-secret`, `machine-id`, `db/data.sqlite`, `db/analytics.sqlite`, `db/backups/`, `db/analytics-backups/`, `skills/`, `model-catalog.json`, `rllmx.lock`. Directories `0700`, files `0600`. `DATA_DIR` defaults to `storage/app`; logs sit in `storage/logs` (`rllmx.log`), so `storage/` is the one volume to keep. The main store holds only router configuration.
 
@@ -145,15 +159,28 @@ flowchart TD
 
 Indexes on `requests`: `(ts)`, `(apiKeyId, ts)`, `(connectionId, ts)`, `(provider, model, ts)`. A column an older file lacks is added on open: plan first, no write when current, SQLite backed up first (`${DATA_DIR}/db/analytics-backups/`, `0700`/`0600`), a failed backup aborts.
 
-**Writer.** `Enqueue(Record) bool` never blocks: a closed writer or a full queue (10,000) drops the row and counts it. One goroutine flushes at 500 rows or 1 s in one transaction (insert, pre-aggregate, upsert rollups in sorted key order). A failed flush drops that batch and logs it. `Close(ctx)` stops accepting, then drains until the context ends. Measured here: 100,000 records from 8 goroutines written in about 2.5 s with a queue sized for the burst; a 100,000 burst in half a second against the default queue drops most of it. Sustained traffic above the write rate shows in the drop counter.
+**Writer.** `Enqueue(Record) bool` never blocks; a closed writer or a full queue (10,000) drops the row and counts it.
 
-**Opening another file.** The legacy import and `--drop-old` need a second SQLite connection, and so does any test. `repository.Opener` builds one; `providers.SQLiteOpener` registers a fresh `database.connections.<name>` key per call, because the framework caches a built connection (and its gorm handle) by name for the whole process, so a shared name would hand every caller the first file it opened. The pool is closed through `Conn.Close`. The db commands take the same opener through `commands.Facades`, and both stores open through one path (`data.OpenAnalytics`), so a command sees the file the server sees.
+- One goroutine flushes at 500 rows or 1 s, in one transaction: insert, pre-aggregate, upsert rollups in sorted key order.
+- A failed flush drops that batch and logs it.
+- `Close(ctx)` stops accepting, then drains until the context ends.
+- Measured: a burst sized to the queue is kept; sustained traffic above the write rate shows in the drop counter.
+
+**Opening another file.** The legacy import, `--drop-old` and any test need a second SQLite connection.
+
+- `repository.Opener` builds one; `providers.SQLiteOpener` registers a fresh `database.connections.<name>` key per call, because the framework caches a built connection by name for the process's life. A shared name would hand every caller the first file it opened.
+- The pool is closed through `Conn.Close`.
+- The db commands take the same opener through `commands.Facades`, and both stores open through `data.OpenAnalytics`, so a command sees the file the server sees.
 
 **Retention.** `ANALYTICS_RETENTION_DAYS` (90) prunes `requests` and `rollupHourly` in batches. `rollupDaily` is kept, so long charts and key quota totals stay correct.
 
 ### 15.3 Maintenance
 
-Jobs are registered with `WithSchedule` in `bootstrap/app.go`: they run in the server process and stop with it. Each event is named and uses `SkipIfStillRunning`; the framework always recovers a job panic. The facade has no jitter, no clock injection and no context, so a job takes its start offset and clock as arguments (a fake in tests), watches the application context, and keeps its last start, end and error in memory for the API (2.6). Shutdown waits for a running job with no limit, so jobs stay short.
+Jobs are registered with `WithSchedule` in `bootstrap/app.go`. They run in the server process and stop with it.
+
+- Each event is named and uses `SkipIfStillRunning`; the framework always recovers a job panic.
+- The facade has no jitter, no clock injection and no context, so a job takes its start offset and clock as arguments (a fake in tests), watches the application context, and keeps its last start, end and error in memory for the API.
+- Shutdown waits for a running job with no limit, so jobs stay short.
 
 | Job | Schedule | Work |
 |---|---|---|
@@ -172,27 +199,31 @@ A failing job never blocks start. The main file never switches `auto_vacuum`.
 | `db:import-analytics [--from file] [--drop-old]` | Copies the source with `VACUUM INTO`, imports in batches of 5,000 into the usage store, verifies the row count, the five token sums and the cost, and seeds the lifetime counter once. Takes `rllmx.lock`. `--drop-old` needs a terminal and a typed `DROP`, refuses when a row was unreadable, writes `db/backups/before-drop-*` and then drops `usageHistory`, `usageDaily` and `requestDetails` |
 | `db:import-config --from <file or dir> [--dry-run] [--yes] [--with-sso]` | Seeds an **empty** destination from a legacy source read through a private copy: connections (locks and error state removed), API keys, nodes, combos, four `kv` scopes and the allow-listed settings, in one transaction with the original ids and timestamps. Secrets are re-sealed for the destination; a sealed source is refused. Prints counts and key names only. Takes `rllmx.lock`, a dry run included |
 
-`migrate:fresh`, `migrate:reset`, `migrate:rollback`, `migrate:refresh`, `db:wipe` and `db:seed` would drop or rewrite the 9router tables, and `WithCommandsFilter` does not reach them (the database provider registers without consulting the list). `providers.CommandsServiceProvider` wraps the bound `Artisan` and filters every `Register` through the same allow-list — see the Framework Choices row. Prompts are typed answers read with `Ask`: y/N for `db:vacuum` and `db:import-config`, `DROP` for `--drop-old`; the framework's `Confirm` widget is not used. Each refuses without a terminal unless `--yes` is given.
+The framework's `migrate:*`, `db:wipe` and `db:seed` would drop or rewrite the 9router tables, and `WithCommandsFilter` does not reach them: the database provider registers without consulting the list.
+
+- `providers.CommandsServiceProvider` wraps the bound `Artisan` and filters every `Register` through the same allow-list (see Framework Choices).
+- Prompts are typed answers read with `Ask`: y/N for `db:vacuum` and `db:import-config`, `DROP` for `--drop-old`. The framework's `Confirm` widget is not used.
+- Each refuses without a terminal unless `--yes` is given.
 
 ---
 
 ## Parity: Database Contract
 
-| Item | Reference | Status | Step |
-|---|---|---|---|
-| Configuration tables and indexes (`backupSchemaVersion` 2) | `src/lib/db/schema.js` | done on SQLite; written but never run on PostgreSQL (`TEST_PG_DSN`, `make test-pg`; SQLite-only cases listed above) | 1.4 |
-| `usageHistory`, `usageDaily`, `requestDetails` tables | `src/lib/db/schema.js` | diverged (not created or written; read only by `rllmx artisan db:import-analytics`) | 1.4 |
-| `settings` single row with `CHECK (id = 1)` | `src/lib/db/schema.js` | done | 1.4 |
-| `_meta` keys and backup-before-change rule (`schemaVersion` 1 = migration level) | `src/lib/db/migrate.js` | done | 1.4 |
-| `_meta.totalRequestsLifetime` bump | `src/lib/db/repos/usageRepo.js` | diverged (counter in the analytics store; importer seeds from this key once) | done |
-| `modelLock_<model>` fields | `src/sse/services/auth.js` | done (written and cleared by `app/store/repository`, read by `app/gateway/account` since 1.7b) | 1.7 |
-| `kv` scope `rllmResponseCache` (per-key response-cache flag) | none | done: the reader `KVRepo.ResponseCacheEnabled` (1.8g); the writer comes with the key API (2.1) | 1.8g, 2.1 |
-| `kv` scopes and key formats | `src/lib/db/repos/*` | done (the four shared scopes; Go-only scopes arrive with their step) | 1.4 |
-| API key, machine id, JWT and bcrypt formats | `src/shared/utils/apiKey.js`, `machineId.js`, `src/lib/auth/dashboardSession.js` | done (1.6a: `app/access/identity` golden vectors, `app/access/auth` `iss`, `method`, `pv`) | 1.6 |
-| `proxyPools`, `proxyPoolFitness` tables | `schema.js`, extended `proxyPoolFitnessRepo.js` | out (not created, read or dropped; left alone if present, divergences 202, 214) | - |
-| Legacy `db.json`, `usage.json`, `disabledModels.json`, `request-details.json` import | `src/lib/db/migrate.js` | out | - |
+| Item | Reference | Status |
+|---|---|---|
+| Configuration tables and indexes (`backupSchemaVersion` 2) | `src/lib/db/schema.js` | done on SQLite; written but never run on PostgreSQL (`TEST_PG_DSN`, `make test-pg`; SQLite-only cases listed above) |
+| `usageHistory`, `usageDaily`, `requestDetails` tables | `src/lib/db/schema.js` | diverged (not created or written; read only by `rllmx artisan db:import-analytics`) |
+| `settings` single row with `CHECK (id = 1)` | `src/lib/db/schema.js` | done |
+| `_meta` keys and backup-before-change rule (`schemaVersion` 1 = migration level) | `src/lib/db/migrate.js` | done |
+| `_meta.totalRequestsLifetime` bump | `src/lib/db/repos/usageRepo.js` | diverged (counter in the analytics store; importer seeds from this key once) |
+| `modelLock_<model>` fields | `src/sse/services/auth.js` | done (written and cleared by `app/store/repository`, read by `app/gateway/account`) |
+| `kv` scope `rllmResponseCache` (per-key response-cache flag) | none | done: the reader `KVRepo.ResponseCacheEnabled`; the writer comes with the key API |
+| `kv` scopes and key formats | `src/lib/db/repos/*` | done (the four shared scopes; Go-only scopes arrive with their step) |
+| API key, machine id, JWT and bcrypt formats | `src/shared/utils/apiKey.js`, `machineId.js`, `src/lib/auth/dashboardSession.js` | done (`app/access/identity` golden vectors, `app/access/auth` `iss`, `method`, `pv`) |
+| `proxyPools`, `proxyPoolFitness` tables | `schema.js`, extended `proxyPoolFitnessRepo.js` | out (not created, read or dropped; left alone if present, divergences 202, 214) |
+| Legacy `db.json`, `usage.json`, `disabledModels.json`, `request-details.json` import | `src/lib/db/migrate.js` | out |
 
-Two rows above are still open, and each is owned by a later step: the `rllmResponseCache` scope has its reader since 1.8g and its writer arrives with the key API (**2.1**), and the proxy tables are `out`. That is why this PRD is `partial`: the schema and both engines are done, the readers of two scopes are not.
+Two rows above are still open, and each is owned by a later step: the `rllmResponseCache` scope has its reader and its writer, and both arrive with the key API, and the proxy tables are `out`. That is why this design doc is `partial`: the schema and both engines are done, the readers of two scopes are not.
 
 ---
 
@@ -200,16 +231,16 @@ Two rows above are still open, and each is owned by a later step: the `rllmRespo
 
 No reference counterpart.
 
-| Item | Status | Step |
-|---|---|---|
-| Analytics store (`requests`, rollups, `meta`), writer, retention, legacy importer | done on SQLite; PostgreSQL paths written, not run (`app/store/analytics`; file-only cases in PRD 15) | 1.4 |
-| PostgreSQL mapping | written, not run (needs `TEST_PG_DSN` and a server; see `TASKS.md` Open items) | 1.4 |
-| Sealed secrets: `enc:v1:` values in `apiKeys.key`, connection `data`, `settings.oidcClientSecret`; check row in kv scope `rllmCrypto` | done (converted after a full backup; no plain secret left in the file or its WAL) | 1.4 |
-| Pre-encryption backup (never pruned), `rllmx artisan db:export-plain` | partial (`ExportPlain` store function built and tested; the command arrives with `keys:*` in 1.6; SQLite only) | 1.4, 1.6 |
-| `rllmx artisan db:backup`, `check`, `vacuum` | done | 1.4 |
-| `rllmx artisan db:import-config` (seed from a 9router database) | done | 1.4 |
-| `rllmx artisan db:import-analytics` (usage history import) | done | 1.4 |
-| Skill folder import in `import-config` | new | 3.2 |
+| Item | Status |
+|---|---|
+| Analytics store (`requests`, rollups, `meta`), writer, retention, legacy importer | done on SQLite; PostgreSQL paths built (`app/store/analytics`) |
+| PostgreSQL mapping | built; run `make test-pg` with `TEST_PG_DSN` against a server |
+| Sealed secrets: `enc:v1:` values in `apiKeys.key`, connection `data`, `settings.oidcClientSecret`; check row in kv scope `rllmCrypto` | done (converted after a full backup; no plain secret left in the file or its WAL) |
+| Pre-encryption backup (never pruned), `rllmx artisan db:export-plain` | partial (`ExportPlain` store function built and tested; the command arrives with `keys:*`; SQLite only) |
+| `rllmx artisan db:backup`, `check`, `vacuum` | done |
+| `rllmx artisan db:import-config` (seed from a 9router database) | done |
+| `rllmx artisan db:import-analytics` (usage history import) | done |
+| Skill folder import in `import-config` | new |
 
 ---
 
@@ -236,7 +267,11 @@ Deliberate differences from the references in this area. Numbers are stable and 
 
 ## Findings
 
-The Schema facade's SQLite column reader scans the primary-key position into a bool and fails on `kv`'s two-column key, so columns are read with `pragma_table_info` / `information_schema.columns` instead.
-The framework migrator logs a migration once and never re-runs it, so `Store.Migrate` repairs a dropped index or column from its own plan.
-`WithCommandsFilter` does not reach the database provider, which registers fifteen commands with a bare `artisan.Register`; `providers.CommandsServiceProvider` wraps the bound `Artisan` to close that (F-fix).
-The PostgreSQL paths are written and have not run; they need `TEST_PG_DSN` and a server.
+One row per lesson; the decision is what the code does because of it.
+
+| Finding | Decision |
+|---|---|
+| The Schema facade's SQLite column reader scans the primary-key position into a bool and fails on `kv`'s two-column key. | Columns are read with `pragma_table_info` / `information_schema.columns` instead. |
+| The framework migrator logs a migration once and never re-runs it. | `Store.Migrate` repairs a dropped index or column from its own plan. |
+| `WithCommandsFilter` does not reach the database provider, which registers fifteen commands with a bare `artisan.Register`. | `providers.CommandsServiceProvider` wraps the bound `Artisan` to close that (F-fix). |
+

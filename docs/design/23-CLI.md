@@ -1,15 +1,15 @@
-# PRD 23 — CLI (`app/console/commands/`)
+# Design 23 — CLI (`app/console/commands/`)
 
-**Status:** done · **Steps:** 1.0, 1.4, 1.6
+**Status:** done
 
-The Artisan command surface. `rllmx artisan <name>` from the binary, `./artisan <name>` from the source tree. The list is in `README.md`; the rules for when a command prompts are in this PRD.
+The Artisan command surface. `rllmx artisan <name>` from the binary, `./artisan <name>` from the source tree. The list is in `README.md`; the rules for when a command prompts are in this design doc.
 
 | Command | State | Notes |
 |---|---|---|
 | `version` | done | Version and commit, printed from the build |
-| `health` | need user validation | Exits non-zero when the local `/api/health` is not 200. Built with 1.0; the user's run is what confirms it against a live listener |
-| `db:backup`, `db:check`, `db:vacuum` | done | See PRD 15 |
-| `db:import-config`, `db:import-analytics` | done | See PRD 15 |
+| `health` | unverified | Exits non-zero when the local `/api/health` is not 200. A live listener is what confirms it |
+| `db:backup`, `db:check`, `db:vacuum` | done | See design doc 15 |
+| `db:import-config`, `db:import-analytics` | done | See design doc 15 |
 | `keys:create\|list\|revoke`, `password:reset` | done | Hidden prompt through `ctx.Secret`; three tries, 2 s after a wrong one; the key printed once |
 | `db:export-plain` | done | Asks the dashboard password, confirms, then writes the copy |
 
@@ -25,7 +25,7 @@ The Artisan command surface. `rllmx artisan <name>` from the binary, `./artisan 
 
 ## Remaining work
 
-**Step 1.6a** brought `keys:*`, `password:reset` and `db:export-plain`. Every command on the list is built; `health` is `need user validation` because only a live listener confirms it, which is a validation run and not missing behaviour.
+ brought `keys:*`, `password:reset` and `db:export-plain`. Every command on the list is built; `health` is `unverified` because only a live listener confirms it, which is a validation step and not missing behavior.
 
 ---
 

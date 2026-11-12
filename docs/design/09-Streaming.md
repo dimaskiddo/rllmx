@@ -1,8 +1,18 @@
-# PRD 09 — Streaming (`app/llm/stream/`)
+# Design 09 — Streaming (`app/llm/stream/`)
 
-**Status:** partial · **Steps:** 1.0, 1.8, 2.4
+**Status:** partial
 
-Built in 1.8b, as a library: the 1.8c pipeline calls it; the chat routes reach it since 1.8d and 1.8e. `app/llm/stream` holds the writers (`NewSSE`, `NewNDJSON`, `WriterOf`), the upstream readers (`Reader` for SSE, `Lines` for NDJSON), `Run` (the pump with its three timers, translate and passthrough modes), `Collect` (forced SSE to JSON), `Tracker`, `AddClientBuffer` and the content-type helpers. The stream half of each format lives in `app/llm/translate` (`StreamReader`, `StreamWriter`, `Frame`; `stream_<format>.go`). The empty-stream peek is combo failover and belongs to 2.4.
+`app/llm/stream` is built as a library; `gateway/pipeline` calls it.
+
+| Part | Holds |
+|---|---|
+| Writers | `NewSSE`, `NewNDJSON`, `WriterOf` |
+| Upstream readers | `Reader` for SSE, `Lines` for NDJSON |
+| `Run` | The pump with its three timers, translate and passthrough modes |
+| `Collect` | Forced SSE turned into JSON |
+| The rest | `Tracker`, `AddClientBuffer` and the content-type helpers |
+
+The stream half of each format lives in `app/llm/translate` (`StreamReader`, `StreamWriter`, `Frame`). The empty-stream peek is combo failover.
 
 | Item | Behavior |
 |---|---|
@@ -17,7 +27,7 @@ Built in 1.8b, as a library: the 1.8c pipeline calls it; the chat routes reach i
 | Client disconnect | Cancels the upstream request through the request context |
 | Non-SSE upstream error | An HTML page becomes a clean JSON error with the page title |
 | Forced SSE to JSON | `Collect` reads the whole stream through the upstream's `StreamReader` and returns one hub `Response` (text, reasoning, tool calls by index, signature, images, finish, usage); the client codec's `WriteResponse` renders it. One implementation for every upstream format |
-| Completion | `Run` returns a `Result` (raw usage, estimate flag, finish, content length, first-byte time, whether a byte reached the client, the cause, the failure status); the pipeline turns it into one usage row (1.8c); `Wrote` decides whether the next account may still be tried |
+| Completion | `Run` returns a `Result` (raw usage, estimate flag, finish, content length, first-byte time, whether a byte reached the client, the cause, the failure status); the pipeline turns it into one usage row; `Wrote` decides whether the next account may still be tried |
 
 **Peek failover.** For combo members, the first bytes of an SSE answer are held until content, a tool call or an error arrives, or `STREAM_EMPTY_PEEK_DEADLINE` (45 s) passes. An empty generation then fails over to the next member. This is the only place a stream is buffered.
 
@@ -42,12 +52,12 @@ Partial reports merge by field-wise maximum (`translate.MergeUsage`). Cached and
 ---
 
 ## Remaining work
-**Step 1.8b is built** (library; no route calls it).
+**is built** (library; no route calls it).
 
-- [x] SSE and NDJSON readers, the NDJSON writer, usage capture, the client buffer, the three timers, translate and passthrough modes, forced SSE to JSON, content-type helpers (1.8b)
-- [x] `Run` and `Collect` wired into the pipeline, the usage row recorded, an HTML upstream page answered with a 502 (1.8c)
-- [ ] Empty-stream failover and the peek deadline `STREAM_EMPTY_PEEK_DEADLINE` (2.4)
-- [ ] Per-provider stall override from the registry (1.10)
+- [x] SSE and NDJSON readers, the NDJSON writer, usage capture, the client buffer, the three timers, translate and passthrough modes, forced SSE to JSON, content-type helpers
+- [x] `Run` and `Collect` wired into the pipeline, the usage row recorded, an HTML upstream page answered with a 502
+- [ ] Empty-stream failover and the peek deadline `STREAM_EMPTY_PEEK_DEADLINE` (planned)
+- [ ] Per-provider stall override from the registry
 
 ---
 
@@ -71,8 +81,13 @@ Deliberate differences from the references in this area. Numbers are stable and 
 
 ## Findings
 
-- The writers, not the pump, own the hold-for-usage rule. Giving each writer a `Held()` lets the pump arm one usage timer for every format and call `Close()` when it fires, instead of every format re-implementing a timer.
-- A Gemini function call and an Ollama tool call arrive whole, so those two writers collect fragments and send them with the turn. Writing a fragment as it came produced two calls for one on the first test run.
-- `translate.ReadUsageEvent` made the old "two copies of each usage rule" note false: the stream tracker calls the response readers.
-- `NewSSE` and `NewNDJSON` share one `sink` (flush, deadline, sticky error). The sink is embedded by pointer: it holds a mutex, and `go vet` rejects copying one.
-- A `\ufeff` escape in a Go string survives; a literal byte-order mark in source is a compile error, so the reader and its tests use the `bom` constant.
+One row per lesson; the decision is what the code does because of it.
+
+| Finding | Decision |
+|---|---|
+| The writers, not the pump, own the hold-for-usage rule. | Each writer has a `Held` the pump arms; one usage timer serves every format. |
+| A Gemini function call and an Ollama tool call arrive whole. | Those two writers collect fragments and send the call with the turn. |
+| `translate.ReadUsageEvent` made the old "two copies of each usage rule" note false. | The stream tracker calls the response readers. |
+| `NewSSE` and `NewNDJSON` must share flush, deadline and sticky error. | Both embed one `sink` by pointer; `go vet` rejects copying a mutex. |
+| A literal byte-order mark in Go source is a compile error. | The reader and its tests use the `bom` constant. |
+
