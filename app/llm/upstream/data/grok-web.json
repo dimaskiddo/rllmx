@@ -1,0 +1,11 @@
+{
+  "id": "grok-web",
+  "alias": "grok-web",
+  "category": "webCookie",
+  "display": { "name": "Grok Web" },
+  "media": { "serviceKinds": ["image", "video"], "videoConfig": { "executorDriven": true } },
+  "models": [
+    { "id": "grok-image", "name": "Grok Imagine Image", "kind": "image", "params": ["n", "size"] },
+    { "id": "grok-video", "name": "Grok Imagine Video", "kind": "video", "params": ["seconds", "size"] }
+  ]
+}

@@ -64,5 +64,9 @@
       "id": "nvidia/nemotron-3-super-120b-a12b",
       "name": "Nemotron 3 Super 120B"
     }
-  ]
+  ],
+    "media": {
+    "serviceKinds": ["llm", "webSearch"],
+    "searchViaChat": { "defaultModel": "perplexity/sonar", "endpoint": "https://api.perplexity.ai/v1/responses", "pricingUrl": "https://docs.perplexity.ai/docs/agent-api/models" }
+  }
 }

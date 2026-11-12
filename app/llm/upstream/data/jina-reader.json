@@ -1,0 +1,10 @@
+{
+  "id": "jina-reader",
+  "alias": "jina-reader",
+  "category": "apikey",
+  "display": { "name": "Jina Reader" },
+  "media": {
+    "serviceKinds": ["webFetch"],
+    "fetchConfig": { "baseUrl": "https://r.jina.ai", "method": "GET", "authType": "apikey", "authHeader": "bearer", "costPerQuery": 0, "freeMonthlyQuota": 1000000, "formats": ["markdown", "text", "html"], "maxCharacters": 200000, "timeoutMs": 30000 }
+  }
+}

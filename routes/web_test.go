@@ -280,3 +280,18 @@ func TestTheLoginRoutesAreLeftOutWithoutTheirControllers(t *testing.T) {
 		}
 	}
 }
+
+func TestMediaRoutesAreLLMRoutesThatNeedAKey(t *testing.T) {
+	r := tests.NewRoute(t)
+	g := apphttp.NewGuard(nil, true)
+	r.SetGlobalMiddleware([]contractshttp.Middleware{&middleware.RequestID{}, &middleware.Guard{Guard: g}})
+	Web(r, g, Base{Media: &controllers.MediaController{}})
+	for _, p := range []string{"/v1/embeddings", "/v1/images/generations"} {
+		if class, ok := g.RouteClass("POST", p); !ok || class != apphttp.ClassLLM {
+			t.Errorf("%s: class = %d ok=%v", p, class, ok)
+		}
+		if rec := call(r, nethttp.MethodPost, p); rec.Code != 401 {
+			t.Errorf("%s without a key: %d", p, rec.Code)
+		}
+	}
+}

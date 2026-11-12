@@ -1,0 +1,10 @@
+{
+  "id": "searchapi",
+  "alias": "searchapi",
+  "category": "apikey",
+  "display": { "name": "SearchApi" },
+  "media": {
+    "serviceKinds": ["webSearch"],
+    "searchConfig": { "baseUrl": "https://www.searchapi.io/api/v1/search", "method": "GET", "authType": "apikey", "authHeader": "api_key", "costPerQuery": 0.004, "freeMonthlyQuota": 100, "searchTypes": ["web", "news"], "defaultMaxResults": 5, "maxMaxResults": 100, "timeoutMs": 10000, "cacheTTLMs": 300000 }
+  }
+}

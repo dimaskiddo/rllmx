@@ -79,6 +79,14 @@
     {
       "id": "grok-imagine-video",
       "name": "Grok Imagine Video"
-    }
-  ]
+    },
+    { "id": "grok-2-image-1212", "name": "Grok 2 Image", "kind": "image", "params": ["n", "response_format"] },
+    { "id": "grok-imagine-video", "name": "Grok Imagine Video", "kind": "video", "params": ["duration", "aspect_ratio", "resolution"] }
+  ],
+    "media": {
+    "serviceKinds": ["llm", "imageToText", "webSearch", "image", "video"],
+    "imageConfig": { "baseUrl": "https://api.x.ai/v1/images/generations", "bodyFields": ["model", "prompt", "n", "response_format"] },
+    "videoConfig": { "baseUrl": "https://api.x.ai/v1/videos" },
+    "searchViaChat": { "defaultModel": "grok-4.20-reasoning", "endpoint": "https://api.x.ai/v1/responses", "pricingUrl": "https://x.ai/api#pricing" }
+  }
 }

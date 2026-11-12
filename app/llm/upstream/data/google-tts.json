@@ -1,0 +1,12 @@
+{
+  "id": "google-tts",
+  "alias": "google-tts",
+  "category": "freeTier",
+  "display": { "name": "Google Translate TTS" },
+  "media": {
+    "serviceKinds": ["tts"],
+    "noAuth": true,
+    "mediaPriority": 5,
+    "ttsConfig": { "baseUrl": "google-tts", "authType": "none", "authHeader": "none", "format": "google-tts", "models": [] }
+  }
+}

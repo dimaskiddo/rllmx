@@ -1,0 +1,12 @@
+{
+  "id": "veoaifree-web",
+  "alias": "veoaifree-web",
+  "category": "apikey",
+  "display": { "name": "Veo AI Free (Web)" },
+  "media": { "serviceKinds": ["image", "video"], "noAuth": true, "videoConfig": { "executorDriven": true } },
+  "models": [
+    { "id": "veo", "name": "VEO 3.1 (Free)", "kind": "video", "params": ["seconds", "size"] },
+    { "id": "seedance", "name": "Seedance (Free)", "kind": "video", "params": ["seconds", "size"] },
+    { "id": "nano-banana", "name": "Nano Banana (Free)", "kind": "image", "params": ["n", "size"] }
+  ]
+}

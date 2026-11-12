@@ -183,7 +183,7 @@ func TestProtocolPackagesImportNothingOfTheProgram(t *testing.T) {
 // siblings share belongs in the parent as an exported type, and the wiring that
 // needs every sibling is one package of its own.
 func TestNoSubPackageImportsASibling(t *testing.T) {
-	wiring := map[string]bool{"app/llm/executor/mux": true, "app/llm/oauth/dialects": true}
+	wiring := map[string]bool{"app/llm/executor/mux": true, "app/llm/oauth/dialects": true, "app/llm/media/mux": true}
 	for name, path := range goFiles(t) {
 		dir := filepath.ToSlash(filepath.Dir(name))
 		if !strings.HasPrefix(name, "app/") || strings.HasSuffix(name, "_test.go") || wiring[dir] || isGoravelFolder(dir) {

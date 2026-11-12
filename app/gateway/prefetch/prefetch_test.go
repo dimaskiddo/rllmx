@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"rllmx/app/platform/file"
 	"strconv"
 	"sync/atomic"
 	"testing"
@@ -66,11 +67,11 @@ func TestEveryKnownMagic(t *testing.T) {
 		"image/bmp":  []byte("BM...."),
 	}
 	for want, b := range cases {
-		if got := sniff(b); got != want {
+		if got := file.ImageMIME(b); got != want {
 			t.Errorf("%s: got %q", want, got)
 		}
 	}
-	if sniff([]byte("<html>")) != "" || sniff(nil) != "" {
+	if file.ImageMIME([]byte("<html>")) != "" || file.ImageMIME(nil) != "" {
 		t.Fatal("a non-image was accepted")
 	}
 }
@@ -198,7 +199,7 @@ func FuzzInline(f *testing.F) {
 			if p.Data != "" && p.URL != "" {
 				t.Fatalf("both data and url: %+v", p)
 			}
-			if p.Data != "" && sniff(mustDecode(t, p.Data)) != p.MediaType {
+			if p.Data != "" && file.ImageMIME(mustDecode(t, p.Data)) != p.MediaType {
 				t.Fatalf("media type %q does not match the bytes", p.MediaType)
 			}
 		}

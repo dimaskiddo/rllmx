@@ -36,6 +36,11 @@ func (c *call) resolve(ctx context.Context) (Output, bool) {
 		return c.internal(ctx, err), false
 	}
 	c.row.Provider, c.row.Model = t.Provider, t.Model
+	// A media model is never a chat model: the two areas share one registry, so
+	// the kind decides.
+	if m, ok := c.p.d.Registry.Model(t.Provider, t.Model); ok && m.Kind != "" && m.Kind != upstream.KindLLM {
+		return c.fail(http.StatusNotFound, "not_found", "Model not found"), false
+	}
 	if t.Combo != "" {
 		c.row.ComboName = t.Combo
 		return c.fail(http.StatusNotFound, "not_found", "Model not found"), false

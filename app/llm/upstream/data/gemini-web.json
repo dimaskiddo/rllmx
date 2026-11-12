@@ -1,0 +1,10 @@
+{
+  "id": "gemini-web",
+  "alias": "gemini-web",
+  "category": "webCookie",
+  "display": { "name": "Gemini Web" },
+  "media": { "serviceKinds": ["image"] },
+  "models": [
+    { "id": "gemini-image", "name": "Gemini Image (web)", "kind": "image", "params": ["n", "size"] }
+  ]
+}

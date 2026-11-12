@@ -1,0 +1,7 @@
+{
+  "id": "topaz",
+  "alias": "topaz",
+  "category": "apikey",
+  "display": { "name": "Topaz" },
+  "media": { "serviceKinds": ["image"] }
+}

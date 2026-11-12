@@ -41,6 +41,15 @@
     {
       "id": "nvidia/nemotron-3-ultra-550b-a55b",
       "name": "Nemotron 3 Ultra"
-    }
-  ]
+    },
+    { "id": "nvidia/nv-embedqa-e5-v5", "name": "NV EmbedQA E5 v5", "kind": "embedding" },
+    { "id": "nvidia/parakeet-ctc-1.1b-asr", "name": "Parakeet CTC 1.1B", "kind": "stt", "params": ["language"] },
+    { "id": "fastpitch", "name": "FastPitch", "kind": "tts" },
+    { "id": "tacotron2", "name": "Tacotron2", "kind": "tts" }
+  ],
+    "media": {
+    "serviceKinds": ["llm", "tts", "embedding"],
+    "embeddingConfig": { "baseUrl": "https://integrate.api.nvidia.com/v1/embeddings", "authType": "apikey", "authHeader": "bearer" },
+    "ttsConfig": { "baseUrl": "https://integrate.api.nvidia.com/v1/audio/speech", "authType": "apikey", "authHeader": "bearer", "format": "nvidia-tts" }
+  }
 }

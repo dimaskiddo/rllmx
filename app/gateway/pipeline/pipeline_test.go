@@ -96,7 +96,7 @@ func newRig(t *testing.T, steps ...tests.Reply) *rig {
 	st := store.Migrated(t)
 	ctx := context.Background()
 
-	forced := `{"id":"forced","category":"apikey","display":{"name":"F"},"forceStream":true,"transport":{"baseUrl":"` + up.URL + `/v1/chat/completions","format":"openai"},"models":[{"id":"fm"}]}`
+	forced := `{"id":"forced","category":"apikey","display":{"name":"F"},"forceStream":true,"transport":{"baseUrl":"` + up.URL + `/v1/chat/completions","format":"openai"},"models":[{"id":"fm"},{"id":"fm-img","kind":"image"}]}`
 	gem := `{"id":"gem","alias":"gem","category":"apikey","display":{"name":"G"},"transport":{"baseUrl":"` + up.URL + `/v1beta/models","format":"gemini"},"auth":{"scheme":"raw","header":"x-goog-api-key"},"models":[{"id":"g-vision"}]}`
 	sub := `{"id":"sub","category":"oauth","display":{"name":"S"},"transport":{"baseUrl":"` + up.URL + `/v1/messages","format":"claude"},` +
 		`"oauth":{"flow":"code-pkce","authorizeUrl":"https://a.example/authorize","tokenUrl":"https://a.example/token","scope":"s","redirect":"local","exchange":"json",` +
@@ -592,5 +592,14 @@ func TestAProvidersStallBoundReplacesTheSharedOne(t *testing.T) {
 	c.dest.entry.Transport.StallTimeoutMs = 0
 	if got := c.timers().Stall; got != 9*time.Second {
 		t.Fatalf("stall = %v, want the shared value", got)
+	}
+}
+
+func TestAMediaModelIsNotAServedChatModel(t *testing.T) {
+	r := newRig(t, tests.Reply{ContentType: "application/json", Body: okJSON})
+	r.conn("forced", "k1")
+	out, _ := r.do("/v1/chat/completions", `{"model":"forced/fm-img","messages":[{"role":"user","content":"hi"}]}`)
+	if out.Status != http.StatusNotFound {
+		t.Fatalf("%d %s", out.Status, out.Body)
 	}
 }

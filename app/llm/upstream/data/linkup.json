@@ -1,0 +1,10 @@
+{
+  "id": "linkup",
+  "alias": "linkup",
+  "category": "apikey",
+  "display": { "name": "Linkup" },
+  "media": {
+    "serviceKinds": ["webSearch"],
+    "searchConfig": { "baseUrl": "https://api.linkup.so/v1/search", "method": "POST", "authType": "apikey", "authHeader": "bearer", "costPerQuery": 0.005, "freeMonthlyQuota": 1000, "searchTypes": ["web"], "defaultMaxResults": 5, "maxMaxResults": 50, "timeoutMs": 10000, "cacheTTLMs": 300000 }
+  }
+}

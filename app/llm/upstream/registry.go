@@ -36,6 +36,11 @@ type Registry struct {
 	entries map[string]Entry
 	tokens  map[string]string
 	order   []string
+
+	mediaOrder []MediaRef
+	mediaBare  map[string][]MediaRef
+	mediaKey   map[string]MediaRef
+	byKind     map[string][]MediaRef
 }
 
 var (
@@ -60,7 +65,11 @@ func Load(fsys fs.FS, dir string) (*Registry, error) {
 	if len(names) == 0 {
 		return nil, ErrNoProviders
 	}
-	r := &Registry{entries: map[string]Entry{}, tokens: map[string]string{}}
+	r := &Registry{
+		entries: map[string]Entry{}, tokens: map[string]string{},
+		mediaBare: map[string][]MediaRef{}, mediaKey: map[string]MediaRef{},
+		byKind: map[string][]MediaRef{},
+	}
 	var errs []error
 	for _, name := range names {
 		e, err := readEntry(fsys, name)
@@ -80,6 +89,11 @@ func Load(fsys fs.FS, dir string) (*Registry, error) {
 		return nil, errors.Join(errs...)
 	}
 	slices.Sort(r.order)
+	for kind := range r.byKind {
+		slices.SortStableFunc(r.byKind[kind], func(a, b MediaRef) int {
+			return strings.Compare(a.Provider+"/"+a.Model, b.Provider+"/"+b.Model)
+		})
+	}
 	return r, nil
 }
 
@@ -140,7 +154,8 @@ func (r *Registry) add(e Entry) error {
 			return err
 		}
 	}
-	if err := e.Transport.validate(e.Executor, authHeader); err != nil {
+	mediaOnly := e.Transport.BaseURL == "" && e.Media != nil
+	if err := e.Transport.validate(e.Executor, authHeader, mediaOnly); err != nil {
 		return err
 	}
 	if e.OAuth != nil {
@@ -149,13 +164,32 @@ func (r *Registry) add(e Entry) error {
 		}
 	}
 	seen := map[string]bool{}
+	seenKind := map[string]string{}
+	chatModels := map[string]bool{}
 	for _, m := range e.Models {
 		if m.ID == "" || len(m.ID) > maxNameBytes {
 			return errors.New("a model id is empty or over 256 bytes")
 		}
-		if seen[m.ID] {
+		if m.Kind != "" && !mediaKinds[m.Kind] {
+			return errors.New("a model has an unknown kind")
+		}
+		if m.Kind == "" || m.Kind == KindLLM {
+			chatModels[m.ID] = true
+		}
+		if m.Dimensions < 0 || m.Dimensions > 1<<20 || len(m.Params) > 32 || len(m.Transport) > 64 || text.HasASCIIControl(m.Transport) {
+			return errors.New("a model has a bad media field")
+		}
+		for _, p := range m.Params {
+			if p == "" || len(p) > 64 || text.HasASCIIControl(p) {
+				return errors.New("a model has a bad parameter name")
+			}
+		}
+		// One id may name a chat model and a media model (a provider that serves
+		// both under the same name); two models of one kind may not share it.
+		if prev, dup := seenKind[m.ID]; dup && prev == m.Kind {
 			return errors.New("duplicate model id")
 		}
+		seenKind[m.ID] = m.Kind
 		if m.TargetFormat != "" && !formats[m.TargetFormat] {
 			return errors.New("a model has an unknown target format")
 		}
@@ -171,6 +205,9 @@ func (r *Registry) add(e Entry) error {
 			}
 		}
 		seen[m.ID] = true
+	}
+	if err := e.Media.validate(chatModels); err != nil {
+		return err
 	}
 	for _, tok := range append([]string{e.ID, e.Alias}, e.Aliases...) {
 		if tok == "" {
@@ -189,6 +226,7 @@ func (r *Registry) add(e Entry) error {
 	}
 	r.entries[e.ID] = e
 	r.order = append(r.order, e.ID)
+	r.indexMedia(e)
 	return nil
 }
 

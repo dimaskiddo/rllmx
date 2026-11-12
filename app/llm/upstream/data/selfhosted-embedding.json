@@ -1,0 +1,14 @@
+{
+  "id": "selfhosted-embedding",
+  "alias": "selfhosted-embedding",
+  "category": "apikey",
+  "display": { "name": "Self-hosted Embedding" },
+  "auth": { "scheme": "bearer", "header": "Authorization" },
+  "models": [
+    { "id": "embedding", "name": "Self-hosted embedding model", "kind": "embedding" }
+  ],
+  "media": {
+    "serviceKinds": ["embedding"],
+    "embeddingConfig": { "baseUrl": "http://localhost:8080/v1/embeddings", "authType": "apikey", "authHeader": "bearer" }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "id": "coqui",
+  "alias": "coqui",
+  "category": "freeTier",
+  "display": { "name": "Coqui" },
+  "media": {
+    "serviceKinds": ["tts"],
+    "noAuth": true,
+    "ttsConfig": { "baseUrl": "http://localhost:5002/api/tts", "authType": "none", "authHeader": "none", "format": "coqui", "models": [ { "id": "tts_models/en/ljspeech/tacotron2-DDC", "name": "Tacotron2 DDC (LJSpeech)" } ] }
+  }
+}

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"rllmx/app/llm/media"
 	"rllmx/app/llm/upstream"
 	"rllmx/app/platform/file"
 	"rllmx/app/platform/network"
@@ -203,6 +204,9 @@ func defaultBad(code int) bool { return code == 401 || code == 403 }
 // CheckRegistry asks a registry provider's own validation address. A provider
 // with no auth block is one the generic prober cannot judge.
 func (c *Checker) CheckRegistry(ctx context.Context, e upstream.Entry, key string) Result {
+	if res, ok := c.checkMedia(ctx, e, key); ok {
+		return res
+	}
 	if strings.TrimSpace(key) == "" {
 		return Result{Outcome: OutcomeInvalidKey}
 	}
@@ -219,6 +223,98 @@ func (c *Checker) CheckRegistry(ctx context.Context, e upstream.Entry, key strin
 		return Result{Outcome: out, Method: "models"}
 	}
 	return Result{Outcome: judge(status, e.Auth.BadKeyStatus), Method: "models"}
+}
+
+// mediaProbeKinds are the services a media-only provider may offer, in the
+// order the reference tries their configs.
+// mediaProbeKinds follow the reference's order (speech before vectors); search
+// and fetch get their own probe with 1.11d.
+var mediaProbeKinds = []string{
+	upstream.KindTTS, upstream.KindSTT, upstream.KindEmbedding, upstream.KindImage, upstream.KindVideo,
+}
+
+// checkMedia tests a media-only provider the way the reference does: one cheap
+// request to its own address, where anything but a refused key means the key is
+// good. It reports false for a provider that also serves chat.
+func (c *Checker) checkMedia(ctx context.Context, e upstream.Entry, key string) (Result, bool) {
+	if e.Media == nil || len(e.Media.ServiceKinds) == 0 {
+		return Result{}, false
+	}
+	for _, m := range e.Models {
+		if m.Kind == "" || m.Kind == upstream.KindLLM {
+			return Result{}, false
+		}
+	}
+	for _, kind := range mediaProbeKinds {
+		cfg := e.Media.Config(kind)
+		if cfg == nil {
+			continue
+		}
+		if e.Media.NoAuth || cfg.AuthType == "none" {
+			return Result{Outcome: OutcomeValid, Method: kind}, true
+		}
+		if strings.TrimSpace(key) == "" {
+			return Result{Outcome: OutcomeInvalidKey, Method: kind}, true
+		}
+		switch cfg.AuthHeader {
+		case "playht", "aws-sigv4":
+			// These need provider data the key alone does not carry.
+			return Result{Outcome: OutcomeValid, Method: kind, Warning: true}, true
+		}
+		if cfg.BaseURL == "" || !strings.HasPrefix(cfg.BaseURL, "http") {
+			return Result{Outcome: OutcomeUnsupported, Method: kind}, true
+		}
+		q := url.Values{}
+		headers := map[string]string{"Content-Type": "application/json"}
+		for k, v := range cfg.Headers {
+			headers[k] = v
+		}
+		media.Auth(cfg, key, headers, q)
+		target := cfg.BaseURL
+		if len(q) > 0 {
+			sep := "?"
+			if strings.Contains(target, "?") {
+				sep = "&"
+			}
+			target += sep + q.Encode()
+		}
+		body := map[string]string{"input": "ping", "text": "ping", "prompt": "ping"}
+		if model := probeModel(e, kind, cfg); model != "" {
+			body["model"] = model
+		}
+		raw, err := json.Marshal(body)
+		if err != nil {
+			return Result{Outcome: OutcomeUnsupported, Method: kind}, true
+		}
+		status, _, out := c.do(ctx, nethttp.MethodPost, target, headers, raw)
+		if out != OutcomeValid {
+			return Result{Outcome: out, Method: kind}, true
+		}
+		// The reference's rule: only a refused key is a bad key, whatever else
+		// the provider answers for a ping.
+		if status == 401 || status == 403 {
+			return Result{Outcome: OutcomeInvalidKey, Method: kind}, true
+		}
+		return Result{Outcome: OutcomeValid, Method: kind}, true
+	}
+	return Result{Outcome: OutcomeUnsupported}, true
+}
+
+// probeModel names the model a media probe sends: the config's default, else
+// the first model of that kind.
+func probeModel(e upstream.Entry, kind string, cfg *upstream.MediaConfig) string {
+	if cfg.DefaultModel != "" {
+		return cfg.DefaultModel
+	}
+	if len(cfg.Models) > 0 {
+		return cfg.Models[0].ID
+	}
+	for _, m := range e.Models {
+		if m.Kind == kind {
+			return m.ID
+		}
+	}
+	return "test"
 }
 
 // checkProbe runs a data file's own key check: one call to the provider's

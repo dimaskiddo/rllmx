@@ -1,0 +1,15 @@
+{
+  "id": "comfyui",
+  "alias": "comfyui",
+  "category": "apikey",
+  "display": { "name": "ComfyUI" },
+  "media": {
+    "serviceKinds": ["image"],
+    "noAuth": true,
+    "imageConfig": { "baseUrl": "http://localhost:8188", "authType": "none" }
+  },
+  "models": [
+    { "id": "flux-dev", "name": "FLUX Dev", "kind": "image", "params": ["n", "size"] },
+    { "id": "sdxl", "name": "SDXL", "kind": "image", "params": ["n", "size"] }
+  ]
+}

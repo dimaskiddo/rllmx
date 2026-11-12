@@ -1,0 +1,10 @@
+{
+  "id": "serper",
+  "alias": "serper",
+  "category": "apikey",
+  "display": { "name": "Serper" },
+  "media": {
+    "serviceKinds": ["webSearch"],
+    "searchConfig": { "baseUrl": "https://google.serper.dev", "method": "POST", "authType": "apikey", "authHeader": "x-api-key", "costPerQuery": 0.001, "freeMonthlyQuota": 2500, "searchTypes": ["web", "news"], "defaultMaxResults": 5, "maxMaxResults": 100, "timeoutMs": 10000, "cacheTTLMs": 300000 }
+  }
+}

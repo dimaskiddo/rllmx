@@ -97,6 +97,29 @@
     {
       "id": "o1-mini",
       "name": "O1 Mini"
-    }
-  ]
+    },
+    { "id": "text-embedding-3-large", "name": "Text Embedding 3 Large", "kind": "embedding" },
+    { "id": "text-embedding-3-small", "name": "Text Embedding 3 Small", "kind": "embedding" },
+    { "id": "text-embedding-ada-002", "name": "Text Embedding Ada 002", "kind": "embedding" },
+    { "id": "tts-1", "name": "TTS-1", "kind": "tts" },
+    { "id": "tts-1-hd", "name": "TTS-1 HD", "kind": "tts" },
+    { "id": "gpt-4o-mini-tts", "name": "GPT-4o Mini TTS", "kind": "tts" },
+    { "id": "whisper-1", "name": "Whisper 1", "kind": "stt", "params": ["language", "response_format", "temperature", "prompt"] },
+    { "id": "gpt-4o-transcribe", "name": "GPT-4o Transcribe", "kind": "stt", "params": ["language", "response_format", "temperature", "prompt"] },
+    { "id": "gpt-4o-mini-transcribe", "name": "GPT-4o Mini Transcribe", "kind": "stt", "params": ["language", "response_format", "temperature", "prompt"] },
+    { "id": "gpt-image-2.5", "name": "GPT Image 2.5", "kind": "image", "params": ["n", "size", "quality", "response_format"] },
+    { "id": "gpt-image-2.5-flare", "name": "GPT Image 2.5 Flare", "kind": "image", "params": ["n", "size", "quality", "response_format"] },
+    { "id": "gpt-image-2.5-sunburst", "name": "GPT Image 2.5 Sunburst", "kind": "image", "params": ["n", "size", "quality", "response_format"] },
+    { "id": "gpt-image-1", "name": "GPT Image 1", "kind": "image", "params": ["n", "size", "quality", "response_format"] },
+    { "id": "dall-e-3", "name": "DALL-E 3", "kind": "image", "params": ["size", "quality", "style", "response_format"] },
+    { "id": "dall-e-2", "name": "DALL-E 2", "kind": "image", "params": ["n", "size", "response_format"] }
+  ],
+  "media": {
+    "serviceKinds": ["llm", "embedding", "tts", "stt", "image", "imageToText", "webSearch"],
+    "embeddingConfig": { "baseUrl": "https://api.openai.com/v1/embeddings", "authType": "apikey", "authHeader": "bearer" },
+    "imageConfig": { "baseUrl": "https://api.openai.com/v1/images/generations" },
+    "ttsConfig": { "baseUrl": "https://api.openai.com/v1/audio/speech", "authType": "apikey", "authHeader": "bearer", "format": "openai", "defaultModel": "gpt-4o-mini-tts" },
+    "sttConfig": { "baseUrl": "https://api.openai.com/v1/audio/transcriptions", "authType": "apikey", "authHeader": "bearer", "format": "openai" },
+    "searchViaChat": { "defaultModel": "gpt-4o-mini", "pricingUrl": "https://openai.com/api/pricing" }
+  }
 }

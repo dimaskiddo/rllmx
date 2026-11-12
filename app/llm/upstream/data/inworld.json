@@ -1,0 +1,10 @@
+{
+  "id": "inworld",
+  "alias": "inworld",
+  "category": "apikey",
+  "display": { "name": "Inworld" },
+  "media": {
+    "serviceKinds": ["tts"],
+    "ttsConfig": { "baseUrl": "https://api.inworld.ai/tts/v1/voice", "authType": "apikey", "authHeader": "basic", "format": "inworld", "models": [ { "id": "inworld-tts-1.5-mini", "name": "Inworld TTS 1.5 Mini" }, { "id": "inworld-tts-1.5-max", "name": "Inworld TTS 1.5 Max" } ] }
+  }
+}

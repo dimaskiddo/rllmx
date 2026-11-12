@@ -1,0 +1,10 @@
+{
+  "id": "google-pse",
+  "alias": "google-pse",
+  "category": "apikey",
+  "display": { "name": "Google Programmable Search" },
+  "media": {
+    "serviceKinds": ["webSearch"],
+    "searchConfig": { "baseUrl": "https://www.googleapis.com/customsearch/v1", "method": "GET", "authType": "apikey", "authHeader": "key", "costPerQuery": 0.005, "freeMonthlyQuota": 3000, "searchTypes": ["web", "news"], "defaultMaxResults": 5, "maxMaxResults": 10, "timeoutMs": 10000, "cacheTTLMs": 300000 }
+  }
+}

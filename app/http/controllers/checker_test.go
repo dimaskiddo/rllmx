@@ -423,3 +423,58 @@ func TestClassifyErrorByType(t *testing.T) {
 		}
 	}
 }
+
+func mediaEntryFor(base string, cfg *upstream.MediaConfig) upstream.Entry {
+	return upstream.Entry{ID: "m", Category: "apikey", Display: upstream.Display{Name: "M"},
+		Media: &upstream.Media{ServiceKinds: []string{upstream.KindEmbedding}, Embedding: cfg}}
+}
+
+func TestAMediaProviderIsCheckedByItsOwnAddress(t *testing.T) {
+	for name, tc := range map[string]struct {
+		status int
+		want   Outcome
+	}{
+		"a good key":      {200, OutcomeValid},
+		"a ping refused":  {400, OutcomeValid},
+		"a refused key":   {401, OutcomeInvalidKey},
+		"a forbidden key": {403, OutcomeInvalidKey},
+	} {
+		t.Run(name, func(t *testing.T) {
+			u := newUpstream(t, tc.status, `{"error":"`+canary+`"}`)
+			e := mediaEntryFor(u.URL, &upstream.MediaConfig{BaseURL: u.URL + "/v1/embeddings", AuthType: "apikey", AuthHeader: "bearer"})
+			res := loopbackChecker(t).CheckRegistry(context.Background(), e, "secret-key")
+			if res.Outcome != tc.want || res.Method != upstream.KindEmbedding {
+				t.Fatalf("%+v", res)
+			}
+			if u.hits.Load() != 1 {
+				t.Fatalf("%d calls", u.hits.Load())
+			}
+			if got := fmt.Sprint(res); strings.Contains(got, canary) || strings.Contains(got, "secret-key") {
+				t.Fatalf("the result carried provider text: %s", got)
+			}
+		})
+	}
+}
+
+func TestAMediaProviderThatTakesNoKeyIsTestedWithoutACall(t *testing.T) {
+	u := newUpstream(t, 500, canary)
+	e := upstream.Entry{ID: "m", Category: "free", Display: upstream.Display{Name: "M"},
+		Media: &upstream.Media{ServiceKinds: []string{upstream.KindEmbedding}, NoAuth: true,
+			Embedding: &upstream.MediaConfig{BaseURL: u.URL + "/v1/embeddings", AuthType: "none"}}}
+	res := loopbackChecker(t).CheckRegistry(context.Background(), e, "")
+	if res.Outcome != OutcomeValid || u.hits.Load() != 0 {
+		t.Fatalf("%+v, %d calls", res, u.hits.Load())
+	}
+}
+
+func TestAProviderWithAChatModelKeepsItsLLMProbe(t *testing.T) {
+	u := newUpstream(t, 401, canary)
+	e := mediaEntryFor(u.URL, &upstream.MediaConfig{BaseURL: u.URL + "/v1/embeddings", AuthType: "apikey", AuthHeader: "bearer"})
+	e.Models = []upstream.Model{{ID: "chat-model"}}
+	if res := loopbackChecker(t).CheckRegistry(context.Background(), e, "k"); res.Outcome != OutcomeUnsupported {
+		t.Fatalf("%+v", res)
+	}
+	if u.hits.Load() != 0 {
+		t.Fatalf("a chat provider was probed as media")
+	}
+}

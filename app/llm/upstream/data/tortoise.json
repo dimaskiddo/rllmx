@@ -1,0 +1,11 @@
+{
+  "id": "tortoise",
+  "alias": "tortoise",
+  "category": "freeTier",
+  "display": { "name": "Tortoise" },
+  "media": {
+    "serviceKinds": ["tts"],
+    "noAuth": true,
+    "ttsConfig": { "baseUrl": "http://localhost:5000/api/tts", "authType": "none", "authHeader": "none", "format": "tortoise", "models": [ { "id": "tortoise-v2", "name": "Tortoise v2" } ] }
+  }
+}

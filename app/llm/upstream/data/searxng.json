@@ -1,0 +1,11 @@
+{
+  "id": "searxng",
+  "alias": "searxng",
+  "category": "freeTier",
+  "display": { "name": "SearXNG" },
+  "media": {
+    "serviceKinds": ["webSearch"],
+    "noAuth": true,
+    "searchConfig": { "baseUrl": "http://localhost:8888/search", "method": "GET", "authType": "none", "authHeader": "none", "costPerQuery": 0, "freeMonthlyQuota": 999999, "searchTypes": ["web", "news"], "defaultMaxResults": 5, "maxMaxResults": 50, "timeoutMs": 10000, "cacheTTLMs": 180000 }
+  }
+}

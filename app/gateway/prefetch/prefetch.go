@@ -3,7 +3,6 @@
 package prefetch
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"net/http"
@@ -109,27 +108,9 @@ func (f *Fetcher) fetch(ctx context.Context, url string, room int) *fetched {
 	if err != nil {
 		return nil
 	}
-	media := sniff(raw)
+	media := file.ImageMIME(raw)
 	if media == "" {
 		return nil
 	}
 	return &fetched{media: media, data: base64.StdEncoding.EncodeToString(raw)}
-}
-
-// sniff names the image type from the first bytes. The response's own
-// Content-Type is never believed.
-func sniff(b []byte) string {
-	switch {
-	case bytes.HasPrefix(b, []byte("\x89PNG\r\n\x1a\n")):
-		return "image/png"
-	case bytes.HasPrefix(b, []byte{0xFF, 0xD8, 0xFF}):
-		return "image/jpeg"
-	case bytes.HasPrefix(b, []byte("GIF87a")), bytes.HasPrefix(b, []byte("GIF89a")):
-		return "image/gif"
-	case len(b) >= 12 && string(b[:4]) == "RIFF" && string(b[8:12]) == "WEBP":
-		return "image/webp"
-	case bytes.HasPrefix(b, []byte("BM")):
-		return "image/bmp"
-	}
-	return ""
 }

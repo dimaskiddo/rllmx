@@ -134,6 +134,8 @@ type Entry struct {
 	// flag is what a catalog or the dashboard reads.
 	PassthroughModels bool    `json:"passthroughModels,omitempty"`
 	Models            []Model `json:"models"`
+	// Media is the provider's non-chat services; nil for a chat-only provider.
+	Media *Media `json:"media,omitempty"`
 }
 
 // Display is what the dashboard shows.
@@ -300,6 +302,15 @@ type Model struct {
 	// Levels are the reasoning efforts the model accepts, when it is stricter
 	// than the shared tables.
 	Levels []string `json:"levels,omitempty"`
+	// Kind is the service a media model belongs to; empty or "llm" is a chat
+	// model. A media model is never offered as a chat model.
+	Kind string `json:"kind,omitempty"`
+	// Params are the request fields the model accepts (an STT vendor's extras).
+	Params []string `json:"params,omitempty"`
+	// Dimensions is an embedding's vector length, when the provider fixes one.
+	Dimensions int `json:"dimensions,omitempty"`
+	// Transport overrides the service's format for one model (an STT vendor).
+	Transport string `json:"transport,omitempty"`
 }
 
 // effortLevels are the names a model's levels may use.

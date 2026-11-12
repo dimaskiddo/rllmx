@@ -1,0 +1,10 @@
+{
+  "id": "xquik",
+  "alias": "xquik",
+  "category": "apikey",
+  "display": { "name": "Xquik" },
+  "media": {
+    "serviceKinds": ["webSearch"],
+    "searchConfig": { "baseUrl": "https://xquik.com/api/v1/x/tweets/search", "validateUrl": "https://xquik.com/api/v1/credits", "method": "GET", "authType": "apikey", "authHeader": "x-api-key", "searchTypes": ["x"], "defaultMaxResults": 5, "maxMaxResults": 100, "timeoutMs": 10000, "cacheTTLMs": 60000, "creditsPerResult": 1 }
+  }
+}

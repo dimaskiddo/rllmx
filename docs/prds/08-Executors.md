@@ -154,7 +154,10 @@ Every provider the references ship, with executor kind, status and delivering st
 | default | done (1.10a) | alicode, alicode-intl, alims-intl, alitp-intl, atria, bai, baidu, blackbox, bluesminds, cerebras, chutes, cohere, dahl, featherless, fireworks, glm-cn, hyperbolic, llm7, minimax, minimax-cn, mistral, morph, nebius, perplexity, perplexity-agent, runcrate, sambanova, sensenova, siliconflow, tencent, together, tokenharbor, venice, vercel-ai-gateway, volcengine-ark |
 | default | done (1.10i) | tokenrouter |
 | default | done | anthropic, deepseek, groq, openai |
-| default | todo 1.11 | assemblyai, aws-polly, black-forest-labs, brave-search, cartesia, comfyui, deepgram, elevenlabs, exa, fal-ai, firecrawl, fish-audio, google-pse, huggingface, inworld, jina-ai, jina-reader, linkup, nace, nanobanana, ollama-search, playht, recraft, runwayml, sdwebui, searchapi, selfhosted-embedding, selfhosted-stt, selfhosted-tts, serper, stability-ai, tavily, tinyfish, topaz, v1m, voyage-ai, xquik, youcom |
+| default | done (1.11a) | black-forest-labs, comfyui, fal-ai, huggingface, jina-ai, nanobanana, recraft, runwayml, sdwebui, stability-ai, voyage-ai |
+| default | todo 1.11b | assemblyai, aws-polly, cartesia, deepgram, elevenlabs, fish-audio, inworld, playht, selfhosted-stt, selfhosted-tts |
+| default | todo 1.11d | brave-search, exa, firecrawl, google-pse, jina-reader, linkup, ollama-search, searchapi, serper, tavily, tinyfish, youcom, xquik |
+| default | todo 1.11e | nace, topaz, v1m |
 | specialized | done (1.10a) | azure |
 | specialized | done (1.10i) | xiaomi-tokenplan |
 | specialized | done (1.10h) | bedrock |
@@ -162,7 +165,7 @@ Every provider the references ship, with executor kind, status and delivering st
 | specialized | done (1.10g) | vertex-partner |
 | specialized | done (1.10h) | bedrock-xai |
 | specialized | done (1.10i) | commandcode, opencode-go, opencode-zen |
-| specialized | todo 1.11 | veoaifree-web |
+| specialized | todo 1.11e | veoaifree-web |
 
 ## Free Providers (`free`)
 
@@ -181,7 +184,8 @@ Every provider the references ship, with executor kind, status and delivering st
 | default | done (1.10d) | nous |
 | default | done (1.10i) | ollama |
 | default | done | gemini, openrouter |
-| default | todo 1.11 | coqui, edge-tts, google-tts, local-device, searxng, tortoise |
+| default | todo 1.11b | coqui, edge-tts, google-tts, local-device, tortoise |
+| default | todo 1.11d | searxng |
 | specialized | done (1.10i) | kimchi, vertex |
 
 ## OAuth Providers (`oauth`)
@@ -206,9 +210,9 @@ Every provider the references ship, with executor kind, status and delivering st
 | Executor | Status | Providers |
 |---|---|---|
 | specialized | done (1.10j) | deepseek-web |
-| specialized | todo 1.11 | chatgpt-web, grok-web (their image and video paths; their chat is parked by the reference) |
+| specialized | todo 1.11e | chatgpt-web, grok-web (their image and video paths; their chat is parked by the reference) |
 | specialized | deferred | perplexity-web (the reference offers it for no service kind) |
-| specialized | todo 1.11 | uc-web |
+| specialized | todo 1.11e | uc-web |
 | specialized | deferred | gemini-web, muse-web |
 
 Auth: pasted credential over a plain HTTP client. Browser or TLS-fingerprint clients deferred (PRD 22).

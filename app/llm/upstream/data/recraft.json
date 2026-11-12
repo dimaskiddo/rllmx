@@ -1,0 +1,14 @@
+{
+  "id": "recraft",
+  "alias": "recraft",
+  "category": "apikey",
+  "display": { "name": "Recraft" },
+  "media": {
+    "serviceKinds": ["image"],
+    "imageConfig": { "baseUrl": "https://external.api.recraft.ai/v1/images/generations", "authType": "apikey", "authHeader": "bearer" }
+  },
+  "models": [
+    { "id": "recraftv3", "name": "Recraft V3", "kind": "image", "params": ["n", "size", "style"] },
+    { "id": "recraftv2", "name": "Recraft V2", "kind": "image", "params": ["n", "size", "style"] }
+  ]
+}

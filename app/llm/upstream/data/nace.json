@@ -1,0 +1,11 @@
+{
+  "id": "nace",
+  "alias": "nace",
+  "category": "apikey",
+  "display": { "name": "Nace" },
+  "media": { "serviceKinds": ["systemone"] },
+  "models": [
+    { "id": "drex-max", "name": "Drex Max", "kind": "systemone" },
+    { "id": "drex-v2.0", "name": "Drex 2.0", "kind": "systemone" }
+  ]
+}

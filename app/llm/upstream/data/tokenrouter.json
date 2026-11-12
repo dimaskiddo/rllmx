@@ -38,5 +38,10 @@
     { "id": "z-ai/glm-5.2", "name": "GLM 5.2" },
     { "id": "z-ai/glm-5-turbo", "name": "GLM 5 Turbo" },
     { "id": "x-ai/grok-4.5", "name": "Grok 4.5" }
-  ]
+  ],
+    "media": {
+    "serviceKinds": ["llm", "embedding", "image"],
+    "embeddingConfig": { "baseUrl": "https://api.tokenrouter.com/v1/embeddings", "authType": "apikey", "authHeader": "bearer" },
+    "imageConfig": { "baseUrl": "https://api.tokenrouter.com/v1/images/generations" }
+  }
 }

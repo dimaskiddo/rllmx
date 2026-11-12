@@ -1,0 +1,11 @@
+{
+  "id": "muse-web",
+  "alias": "muse-web",
+  "category": "webCookie",
+  "display": { "name": "Muse Web" },
+  "media": { "serviceKinds": ["image", "video"], "videoConfig": { "executorDriven": true } },
+  "models": [
+    { "id": "muse-image", "name": "Muse Image", "kind": "image", "params": ["n", "size"] },
+    { "id": "muse-video", "name": "Muse Video", "kind": "video", "params": ["size", "seconds", "image"] }
+  ]
+}

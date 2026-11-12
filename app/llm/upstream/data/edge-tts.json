@@ -1,0 +1,12 @@
+{
+  "id": "edge-tts",
+  "alias": "edge-tts",
+  "category": "freeTier",
+  "display": { "name": "Edge TTS" },
+  "media": {
+    "serviceKinds": ["tts"],
+    "noAuth": true,
+    "mediaPriority": 5,
+    "ttsConfig": { "baseUrl": "edge-tts", "authType": "none", "authHeader": "none", "format": "edge-tts", "models": [] }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "id": "fal-ai",
+  "alias": "fal-ai",
+  "category": "apikey",
+  "display": { "name": "fal.ai" },
+  "media": {
+    "serviceKinds": ["image"],
+    "imageConfig": { "baseUrl": "https://queue.fal.run", "authType": "apikey", "authHeader": "key-auth" }
+  },
+  "models": [
+    { "id": "fal-ai/flux/schnell", "name": "FLUX Schnell", "kind": "image", "params": ["n", "size"] },
+    { "id": "fal-ai/flux/dev", "name": "FLUX Dev", "kind": "image", "params": ["n", "size"] },
+    { "id": "fal-ai/flux-pro/v1.1", "name": "FLUX Pro v1.1", "kind": "image", "params": ["n", "size"] },
+    { "id": "fal-ai/flux-pro/v1.1-ultra", "name": "FLUX Pro v1.1 Ultra", "kind": "image", "params": ["n", "size"] },
+    { "id": "fal-ai/recraft-v3", "name": "Recraft V3", "kind": "image", "params": ["n", "size", "style"] },
+    { "id": "fal-ai/ideogram/v2", "name": "Ideogram V2", "kind": "image", "params": ["n", "size", "style"] },
+    { "id": "fal-ai/stable-diffusion-v35-large", "name": "SD 3.5 Large", "kind": "image", "params": ["n", "size"] }
+  ]
+}

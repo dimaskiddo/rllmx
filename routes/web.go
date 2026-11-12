@@ -30,6 +30,8 @@ type Base struct {
 	Chat *controllers.ChatController
 	// Models is the model catalog handler; nil leaves its routes out.
 	Models *controllers.ModelsController
+	// Media serves the non-chat endpoints; nil leaves their routes out.
+	Media *controllers.MediaController
 	// OAuth is the account login handler; nil leaves its routes out.
 	OAuth *controllers.OAuthController
 	// Callback serves the page a provider redirects the browser to.
@@ -98,6 +100,11 @@ func Web(router route.Route, guard *apphttp.Guard, base Base) {
 			guard.Handle(router, apphttp.ClassLLM, nethttp.MethodPost, path, c.Serve)
 		}
 		guard.Handle(router, apphttp.ClassLLM, nethttp.MethodPost, "/v1/messages/count_tokens", c.CountTokens)
+	}
+
+	if m := base.Media; m != nil {
+		guard.Handle(router, apphttp.ClassLLM, nethttp.MethodPost, "/v1/embeddings", m.Embeddings)
+		guard.Handle(router, apphttp.ClassLLM, nethttp.MethodPost, "/v1/images/generations", m.Images)
 	}
 
 	if m := base.Models; m != nil {

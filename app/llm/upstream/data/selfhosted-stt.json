@@ -1,0 +1,13 @@
+{
+  "id": "selfhosted-stt",
+  "alias": "selfhosted-stt",
+  "category": "apikey",
+  "display": { "name": "Self-hosted STT" },
+  "media": {
+    "serviceKinds": ["stt"],
+    "sttConfig": { "baseUrl": "http://localhost:8080/v1/audio/transcriptions", "authType": "apikey", "authHeader": "bearer", "format": "openai" }
+  },
+  "models": [
+    { "id": "whisper-1", "name": "Whisper (self-hosted)", "kind": "stt", "params": ["language", "response_format", "temperature", "prompt"] }
+  ]
+}

@@ -184,7 +184,13 @@
     },
     {
       "id": "gemini-3.1-flash-image",
-      "name": "Gemini 3.1 Flash Image"
+      "name": "Gemini 3.1 Flash Image",
+      "kind": "image"
     }
-  ]
+  ],
+  "media": {
+    "serviceKinds": ["llm", "image", "webSearch"],
+    "imageConfig": { "baseUrl": "https://daily-cloudcode-pa.googleapis.com/v1internal:generateContent" },
+    "searchViaChat": { "defaultModel": "gemini-2.5-flash", "endpoint": "https://daily-cloudcode-pa.googleapis.com/v1internal:generateContent", "freeTier": "Free — Google Search grounding through an Antigravity OAuth account." }
+  }
 }

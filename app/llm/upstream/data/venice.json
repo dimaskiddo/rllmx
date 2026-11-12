@@ -53,6 +53,17 @@
     {
       "id": "mistral-small-3-2-24b-instruct",
       "name": "Mistral Small 3.2 24B"
-    }
-  ]
+    },
+    { "id": "text-embedding-3-large", "name": "Text Embedding 3 Large", "kind": "embedding" },
+    { "id": "text-embedding-bge-m3", "name": "BGE-M3 Embedding", "kind": "embedding" },
+    { "id": "text-embedding-qwen3-8b", "name": "Qwen3 8B Embedding", "kind": "embedding" },
+    { "id": "venice-sd35", "name": "Venice SD3.5", "kind": "image", "params": ["n", "size"] },
+    { "id": "flux-2-pro", "name": "FLUX.2 Pro", "kind": "image", "params": ["n", "size"] },
+    { "id": "gpt-image-2", "name": "GPT Image 2 (via Venice)", "kind": "image", "params": ["n", "size", "quality"] }
+  ],
+    "media": {
+    "serviceKinds": ["llm", "embedding", "image"],
+    "embeddingConfig": { "baseUrl": "https://api.venice.ai/api/v1/embeddings", "authType": "apikey", "authHeader": "bearer" },
+    "imageConfig": { "baseUrl": "https://api.venice.ai/api/v1/images/generations" }
+  }
 }

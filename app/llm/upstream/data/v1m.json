@@ -1,0 +1,11 @@
+{
+  "id": "v1m",
+  "alias": "v1m",
+  "category": "apikey",
+  "display": { "name": "v1m" },
+  "media": { "serviceKinds": ["systemone"] },
+  "models": [
+    { "id": "rev-latest", "name": "v1m Rev Latest (Calibrated)", "kind": "systemone" },
+    { "id": "v1m-decision-engine", "name": "v1m Decision Engine", "kind": "systemone" }
+  ]
+}

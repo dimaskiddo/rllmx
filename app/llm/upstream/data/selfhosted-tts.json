@@ -1,0 +1,13 @@
+{
+  "id": "selfhosted-tts",
+  "alias": "selfhosted-tts",
+  "category": "apikey",
+  "display": { "name": "Self-hosted TTS" },
+  "media": {
+    "serviceKinds": ["tts"],
+    "ttsConfig": { "baseUrl": "http://localhost:8880", "defaultModel": "kokoro", "authType": "apikey", "format": "openai-speech" }
+  },
+  "models": [
+    { "id": "kokoro", "name": "Kokoro (self-hosted)", "kind": "tts", "params": ["voice", "response_format", "speed"] }
+  ]
+}

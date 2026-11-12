@@ -67,6 +67,22 @@
     {
       "id": "@cf/qwen/qwen2.5-coder-32b-instruct",
       "name": "Qwen 2.5 Coder 32B Instruct"
-    }
-  ]
+    },
+    { "id": "@cf/cloudflare/clef-flash", "name": "Clef Flash", "kind": "systemone" },
+    { "id": "@cf/black-forest-labs/flux-2-klein-9b", "name": "FLUX.2 Klein 9B", "kind": "image", "params": ["size"] },
+    { "id": "@cf/black-forest-labs/flux-2-klein-4b", "name": "FLUX.2 Klein 4B", "kind": "image", "params": ["size"] },
+    { "id": "@cf/black-forest-labs/flux-2-dev", "name": "FLUX.2 Dev", "kind": "image", "params": ["size"] },
+    { "id": "@cf/leonardo/lucid-origin", "name": "Lucid Origin", "kind": "image", "params": ["size"] },
+    { "id": "@cf/leonardo/phoenix-1.0", "name": "Phoenix 1.0", "kind": "image", "params": ["size"] },
+    { "id": "@cf/black-forest-labs/flux-1-schnell", "name": "FLUX.1 Schnell", "kind": "image", "params": ["size"] },
+    { "id": "@cf/bytedance/stable-diffusion-xl-lightning", "name": "SDXL Lightning", "kind": "image", "params": ["size"] },
+    { "id": "@cf/lykon/dreamshaper-8-lcm", "name": "DreamShaper 8 LCM", "kind": "image", "params": ["size"] },
+    { "id": "@cf/runwayml/stable-diffusion-v1-5-img2img", "name": "Stable Diffusion v1.5 Img2Img", "kind": "image", "params": ["size"] },
+    { "id": "@cf/runwayml/stable-diffusion-v1-5-inpainting", "name": "Stable Diffusion v1.5 Inpainting", "kind": "image", "params": ["size"] },
+    { "id": "@cf/stabilityai/stable-diffusion-xl-base-1.0", "name": "SDXL Base 1.0", "kind": "image", "params": ["size"] }
+  ],
+    "media": {
+    "serviceKinds": ["llm", "image", "systemone"],
+    "imageConfig": { "baseUrl": "https://api.cloudflare.com/client/v4/accounts" }
+  }
 }

@@ -58,6 +58,13 @@
     {
       "id": "clef:cloud",
       "name": "Clef (cloud)"
-    }
-  ]
+    },
+    { "id": "clef", "name": "Clef", "kind": "systemone" },
+    { "id": "clef-flash", "name": "Clef Flash", "kind": "systemone" },
+    { "id": "clef:cloud", "name": "Clef (Cloud)", "kind": "systemone" }
+  ],
+    "media": {
+    "serviceKinds": ["llm", "webFetch", "systemone"],
+    "fetchConfig": { "baseUrl": "https://ollama.com/api/web_fetch", "method": "POST", "authType": "apikey", "authHeader": "bearer", "formats": ["markdown"], "maxCharacters": 200000, "timeoutMs": 30000 }
+  }
 }

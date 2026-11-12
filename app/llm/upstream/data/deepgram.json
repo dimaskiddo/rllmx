@@ -1,0 +1,16 @@
+{
+  "id": "deepgram",
+  "alias": "deepgram",
+  "category": "apikey",
+  "display": { "name": "Deepgram" },
+  "media": {
+    "serviceKinds": ["stt"],
+    "sttConfig": { "baseUrl": "https://api.deepgram.com/v1/listen", "authType": "apikey", "authHeader": "token", "format": "deepgram" }
+  },
+  "models": [
+    { "id": "nova-3", "name": "Nova 3", "kind": "stt", "params": ["language"] },
+    { "id": "nova-2", "name": "Nova 2", "kind": "stt", "params": ["language"] },
+    { "id": "whisper-large", "name": "Whisper Large", "kind": "stt", "params": ["language"] },
+    { "id": "nova", "name": "Nova", "kind": "stt" }
+  ]
+}

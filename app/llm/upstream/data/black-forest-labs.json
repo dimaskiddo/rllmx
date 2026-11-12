@@ -1,0 +1,18 @@
+{
+  "id": "black-forest-labs",
+  "alias": "black-forest-labs",
+  "category": "apikey",
+  "display": { "name": "Black Forest Labs" },
+  "media": {
+    "serviceKinds": ["image"],
+    "imageConfig": { "baseUrl": "https://api.bfl.ai/v1", "authType": "apikey", "authHeader": "x-key" }
+  },
+  "models": [
+    { "id": "flux-pro-1.1", "name": "FLUX Pro 1.1", "kind": "image", "params": ["n", "size"] },
+    { "id": "flux-pro-1.1-ultra", "name": "FLUX Pro 1.1 Ultra", "kind": "image", "params": ["size"] },
+    { "id": "flux-pro", "name": "FLUX Pro", "kind": "image", "params": ["n", "size"] },
+    { "id": "flux-dev", "name": "FLUX Dev", "kind": "image", "params": ["n", "size"] },
+    { "id": "flux-kontext-pro", "name": "FLUX Kontext Pro (Edit)", "kind": "image", "params": ["size"] },
+    { "id": "flux-kontext-max", "name": "FLUX Kontext Max (Edit)", "kind": "image", "params": ["size"] }
+  ]
+}

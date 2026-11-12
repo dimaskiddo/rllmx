@@ -333,6 +333,9 @@
     {
       "id": "jev-1.13-free",
       "name": "JEV 1.13 (free)"
-    }
-  ]
+    },
+    { "id": "jev-1.13", "name": "Jev 1.13", "kind": "systemone" },
+    { "id": "jev-1.13-free", "name": "Jev 1.13 Free", "kind": "systemone" }
+  ],
+    "media": { "serviceKinds": ["llm", "systemone"] }
 }

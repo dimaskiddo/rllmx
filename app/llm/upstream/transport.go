@@ -51,8 +51,8 @@ func BareOrigin(raw string) bool {
 
 // validate checks the transport of one provider. authHeader is the credential
 // header of its auth block, which a static header must not shadow.
-func (t *Transport) validate(executor, authHeader string) error {
-	if err := t.checkAddress(executor); err != nil {
+func (t *Transport) validate(executor, authHeader string, mediaOnly bool) error {
+	if err := t.checkAddress(executor, mediaOnly); err != nil {
 		return err
 	}
 	if len(t.Headers) > maxAuthHeaders {
@@ -209,8 +209,11 @@ func (t *Transport) validateHosts() error {
 // checkAddress holds the base address to a plain URL. The placeholders it may
 // hold are {accountId} and, at the start, {baseUrl}; an executor that builds its
 // own address has none.
-func (t *Transport) checkAddress(executor string) error {
+func (t *Transport) checkAddress(executor string, mediaOnly bool) error {
 	if t.BaseURL == "" {
+		if mediaOnly {
+			return nil
+		}
 		if executor == ExecutorDefault {
 			return errors.New("transport.baseUrl is required")
 		}

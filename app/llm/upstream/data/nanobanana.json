@@ -1,0 +1,14 @@
+{
+  "id": "nanobanana",
+  "alias": "nanobanana",
+  "category": "apikey",
+  "display": { "name": "NanoBanana" },
+  "media": {
+    "serviceKinds": ["image"],
+    "imageConfig": { "baseUrl": "https://api.nanobananaapi.ai/api/v1/nanobanana/generate", "pollUrl": "https://api.nanobananaapi.ai/api/v1/nanobanana/record-info", "authType": "apikey", "authHeader": "bearer" }
+  },
+  "models": [
+    { "id": "nanobanana-flash", "name": "NanoBanana Flash", "kind": "image", "params": ["n", "size"] },
+    { "id": "nanobanana-pro", "name": "NanoBanana Pro", "kind": "image", "params": ["n", "size"] }
+  ]
+}

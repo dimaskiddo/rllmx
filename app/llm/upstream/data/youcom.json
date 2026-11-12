@@ -1,0 +1,10 @@
+{
+  "id": "youcom",
+  "alias": "youcom",
+  "category": "apikey",
+  "display": { "name": "You.com" },
+  "media": {
+    "serviceKinds": ["webSearch"],
+    "searchConfig": { "baseUrl": "https://ydc-index.io/v1/search", "method": "GET", "authType": "apikey", "authHeader": "x-api-key", "costPerQuery": 0.005, "freeMonthlyQuota": 0, "searchTypes": ["web", "news"], "defaultMaxResults": 5, "maxMaxResults": 100, "timeoutMs": 10000, "cacheTTLMs": 300000 }
+  }
+}

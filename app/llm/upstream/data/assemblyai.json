@@ -1,0 +1,16 @@
+{
+  "id": "assemblyai",
+  "alias": "assemblyai",
+  "category": "apikey",
+  "display": { "name": "AssemblyAI" },
+  "media": {
+    "serviceKinds": ["stt"],
+    "sttConfig": { "baseUrl": "https://api.assemblyai.com/v2/transcript", "authType": "apikey", "authHeader": "authorization", "format": "assemblyai" }
+  },
+  "models": [
+    { "id": "universal-3-pro", "name": "Universal 3 Pro", "kind": "stt", "params": ["language"] },
+    { "id": "universal-2", "name": "Universal 2", "kind": "stt", "params": ["language"] },
+    { "id": "best", "name": "Best (Nano + Universal)", "kind": "stt" },
+    { "id": "nano", "name": "Nano (Fast)", "kind": "stt" }
+  ]
+}

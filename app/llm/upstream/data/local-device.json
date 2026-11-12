@@ -1,0 +1,12 @@
+{
+  "id": "local-device",
+  "alias": "local-device",
+  "category": "freeTier",
+  "display": { "name": "Local Device Speech" },
+  "media": {
+    "serviceKinds": ["tts"],
+    "noAuth": true,
+    "mediaPriority": 5,
+    "ttsConfig": { "baseUrl": "local-device", "authType": "none", "authHeader": "none", "format": "local-device", "models": [] }
+  }
+}

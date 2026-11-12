@@ -82,7 +82,8 @@ sequenceDiagram
 | `/api/combos/*` (+ presets) | `app/http/controllers` | todo | 2.4 |
 | `/api/pricing` | `app/http/controllers` | todo | 2.6 |
 | `/api/translator/*` | `app/http/controllers` | todo | 2.6 |
-| `/api/media-providers/tts/*/voices` | `app/http/controllers`, `app/gateway` | todo | 1.11 |
+| `/api/media-providers/tts/*/voices` | `app/http/controllers`, `app/gateway` | todo | 1.11b |
+| Media model resolution (bare id, slash id, `provider/model`, per-kind) | `app/llm/upstream` media index | done | 1.11a |
 | `/api/oauth/{provider}/authorize`, `exchange`, `callback`, `status`, `device-code`, `poll` and `/callback` | `app/llm/oauth`, `app/http/controllers`, `web` | partial (1.9a: authorize, exchange, callback, status and `/callback` for claude and codex, D150-153; `device-code` and `poll` are 1.10); replaces `[provider]/[action]` | 1.9a, 1.10 |
 | `/api/oauth/*` importers (codex, grok-cli, cursor, kiro, zed, xiaomi-mimo, gitlab pat) plus Windsurf, Zed, Trae, Mimo callback shapes | `app/llm/oauth` | todo | 1.10 |
 

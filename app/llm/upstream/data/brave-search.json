@@ -1,0 +1,10 @@
+{
+  "id": "brave-search",
+  "alias": "brave-search",
+  "category": "apikey",
+  "display": { "name": "Brave Search" },
+  "media": {
+    "serviceKinds": ["webSearch"],
+    "searchConfig": { "baseUrl": "https://api.search.brave.com/res/v1", "method": "GET", "authType": "apikey", "authHeader": "x-subscription-token", "costPerQuery": 0.005, "freeMonthlyQuota": 1000, "searchTypes": ["web", "news"], "defaultMaxResults": 5, "maxMaxResults": 20, "timeoutMs": 10000, "cacheTTLMs": 300000 }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "id": "cartesia",
+  "alias": "cartesia",
+  "category": "apikey",
+  "display": { "name": "Cartesia" },
+  "media": {
+    "serviceKinds": ["tts"],
+    "ttsConfig": { "baseUrl": "https://api.cartesia.ai/tts/bytes", "authType": "apikey", "authHeader": "x-api-key", "format": "cartesia", "models": [ { "id": "sonic-2", "name": "Sonic 2" }, { "id": "sonic-3", "name": "Sonic 3" } ] }
+  }
+}

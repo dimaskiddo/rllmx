@@ -1,0 +1,16 @@
+{
+  "id": "runwayml",
+  "alias": "runwayml",
+  "category": "apikey",
+  "display": { "name": "Runway" },
+  "media": {
+    "serviceKinds": ["image"],
+    "imageConfig": { "baseUrl": "https://api.dev.runwayml.com/v1", "authType": "apikey", "authHeader": "bearer" }
+  },
+  "models": [
+    { "id": "gen4_image", "name": "Gen-4 Image", "kind": "image", "params": ["size"] },
+    { "id": "gen4_image_turbo", "name": "Gen-4 Image Turbo", "kind": "image", "params": ["size"] },
+    { "id": "gen4_turbo", "name": "Gen-4 Turbo", "kind": "video" },
+    { "id": "gen3a_turbo", "name": "Gen-3 Alpha Turbo", "kind": "video" }
+  ]
+}

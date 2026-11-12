@@ -1,0 +1,17 @@
+{
+  "id": "stability-ai",
+  "alias": "stability-ai",
+  "category": "apikey",
+  "display": { "name": "Stability AI" },
+  "media": {
+    "serviceKinds": ["image"],
+    "imageConfig": { "baseUrl": "https://api.stability.ai/v2beta/stable-image/generate", "authType": "apikey", "authHeader": "bearer" }
+  },
+  "models": [
+    { "id": "stable-image-ultra", "name": "Stable Image Ultra", "kind": "image", "params": ["size"] },
+    { "id": "stable-image-core", "name": "Stable Image Core", "kind": "image", "params": ["size", "style"] },
+    { "id": "sd3.5-large", "name": "Stable Diffusion 3.5 Large", "kind": "image", "params": ["size"] },
+    { "id": "sd3.5-large-turbo", "name": "Stable Diffusion 3.5 Large Turbo", "kind": "image", "params": ["size"] },
+    { "id": "sd3.5-medium", "name": "Stable Diffusion 3.5 Medium", "kind": "image", "params": ["size"] }
+  ]
+}

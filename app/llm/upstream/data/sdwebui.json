@@ -1,0 +1,15 @@
+{
+  "id": "sdwebui",
+  "alias": "sdwebui",
+  "category": "apikey",
+  "display": { "name": "Stable Diffusion WebUI" },
+  "media": {
+    "serviceKinds": ["image"],
+    "noAuth": true,
+    "imageConfig": { "baseUrl": "http://localhost:7860/sdapi/v1/txt2img", "authType": "none" }
+  },
+  "models": [
+    { "id": "stable-diffusion-v1-5", "name": "Stable Diffusion v1.5", "kind": "image", "params": ["n", "size"] },
+    { "id": "sdxl-base-1.0", "name": "SDXL Base 1.0", "kind": "image", "params": ["n", "size"] }
+  ]
+}

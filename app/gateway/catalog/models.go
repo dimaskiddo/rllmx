@@ -78,7 +78,7 @@ func RegistryModels(ctx context.Context, kv KV, e upstream.Entry) ([]Model, erro
 	}
 	base := make([]Model, 0, len(e.Models))
 	for _, m := range e.Models {
-		base = append(base, Model{ID: m.ID, Name: m.Name, Source: "builtin"})
+		base = append(base, Model{ID: m.ID, Name: m.Name, Source: "builtin", Kind: m.Kind})
 	}
 	return merge(base, names, custom, nil, off), nil
 }

@@ -1,0 +1,10 @@
+{
+  "id": "chatgpt-web",
+  "alias": "chatgpt-web",
+  "category": "webCookie",
+  "display": { "name": "ChatGPT Web" },
+  "media": { "serviceKinds": ["image"] },
+  "models": [
+    { "id": "gpt-image-2", "name": "GPT Image 2 (web)", "kind": "image", "params": ["n", "size"] }
+  ]
+}

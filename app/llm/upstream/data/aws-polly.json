@@ -1,0 +1,10 @@
+{
+  "id": "aws-polly",
+  "alias": "aws-polly",
+  "category": "apikey",
+  "display": { "name": "Amazon Polly" },
+  "media": {
+    "serviceKinds": ["tts"],
+    "ttsConfig": { "baseUrl": "https://polly.{region}.amazonaws.com/v1/speech", "authType": "apikey", "authHeader": "aws-sigv4", "format": "aws-polly", "models": [ { "id": "standard", "name": "Standard" }, { "id": "neural", "name": "Neural" }, { "id": "long-form", "name": "Long-form" }, { "id": "generative", "name": "Generative" } ] }
+  }
+}

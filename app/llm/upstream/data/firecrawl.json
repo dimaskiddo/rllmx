@@ -1,0 +1,10 @@
+{
+  "id": "firecrawl",
+  "alias": "firecrawl",
+  "category": "apikey",
+  "display": { "name": "Firecrawl" },
+  "media": {
+    "serviceKinds": ["webFetch"],
+    "fetchConfig": { "baseUrl": "https://api.firecrawl.dev/v1/scrape", "method": "POST", "authType": "apikey", "authHeader": "bearer", "costPerQuery": 0.002, "freeMonthlyQuota": 500, "formats": ["markdown", "html", "text"], "maxCharacters": 200000, "timeoutMs": 30000 }
+  }
+}

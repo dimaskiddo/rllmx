@@ -1,0 +1,21 @@
+{
+  "id": "jina-ai",
+  "alias": "jina",
+  "category": "apikey",
+  "display": { "name": "Jina AI" },
+  "auth": { "scheme": "bearer", "header": "Authorization" },
+  "models": [],
+  "media": {
+    "serviceKinds": ["embedding"],
+    "embeddingConfig": {
+      "baseUrl": "https://api.jina.ai/v1/embeddings",
+      "authType": "apikey",
+      "authHeader": "bearer",
+      "models": [
+        { "id": "jina-embeddings-v3", "name": "Jina Embeddings v3", "dimensions": 1024 },
+        { "id": "jina-embeddings-v2-base-en", "name": "Jina Embeddings v2 Base EN", "dimensions": 768 },
+        { "id": "jina-embeddings-v2-base-code", "name": "Jina Embeddings v2 Base Code", "dimensions": 768 }
+      ]
+    }
+  }
+}
