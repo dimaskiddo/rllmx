@@ -13,6 +13,8 @@ import (
 	"rllmx/app/llm/media/ollama"
 	"rllmx/app/llm/media/openai"
 	"rllmx/app/llm/media/selfhosted"
+	"rllmx/app/llm/media/stt"
+	"rllmx/app/llm/media/tts"
 	"rllmx/app/llm/upstream"
 )
 
@@ -62,6 +64,41 @@ func New() *Table {
 	} {
 		t.add(a.adapter, a.provider)
 	}
+
+	for _, a := range []struct {
+		adapter  media.Adapter
+		provider string
+	}{
+		{tts.OpenAI{}, "openai"},
+		{tts.LocalOpenAI{}, "selfhosted-tts"},
+		{tts.LocalOpenAI{}, "ollama-local"},
+		{tts.ElevenLabs{}, "elevenlabs"},
+		{tts.Gemini{}, "gemini"},
+		{tts.MiniMax{}, "minimax"},
+		{tts.MiniMax{}, "minimax-cn"},
+		{tts.Xiaomi{}, "xiaomi-mimo"},
+		{tts.OpenRouter{}, "openrouter"},
+		{tts.Cartesia{}, "cartesia"},
+		{tts.Inworld{}, "inworld"},
+		{tts.PlayHT{}, "playht"},
+		{tts.FishAudio{}, "fish-audio"},
+		{tts.NVIDIA{}, "nvidia"},
+		{tts.Coqui{}, "coqui"},
+		{tts.Tortoise{}, "tortoise"},
+		{stt.OpenAI{}, "openai"},
+		{stt.OpenAI{}, "groq"},
+		{stt.OpenAI{}, "selfhosted-stt"},
+		{stt.Deepgram{}, "deepgram"},
+		{stt.AssemblyAI{}, "assemblyai"},
+		{stt.ElevenLabs{}, "elevenlabs"},
+		{stt.HuggingFace{}, "huggingface"},
+		{stt.Gemini{}, "gemini"},
+		{stt.NewCodex(), "codex"},
+	} {
+		t.add(a.adapter, a.provider)
+	}
+	// A model marker picks a second adapter for the same provider.
+	t.adapters["gemini"]["stt|gemini-live"] = stt.GeminiLive{}
 	return t
 }
 
@@ -75,9 +112,15 @@ func (t *Table) add(a media.Adapter, providers ...string) {
 	}
 }
 
-// For returns the adapter of one provider and service. A user node speaks the
-// OpenAI body for both node kinds that serve embeddings.
-func (t *Table) For(provider, kind string) (media.Adapter, bool) {
+// For returns the adapter of one provider and service. A transport marker may
+// pick a second adapter (gemini-live); a user node speaks the OpenAI body for
+// both node kinds that serve embeddings.
+func (t *Table) For(provider, kind, transport string) (media.Adapter, bool) {
+	if transport != "" {
+		if a, ok := t.adapters[provider][kind+"|"+transport]; ok {
+			return a, true
+		}
+	}
 	if a, ok := t.adapters[provider][kind]; ok {
 		return a, true
 	}
@@ -91,5 +134,5 @@ func (t *Table) For(provider, kind string) (media.Adapter, bool) {
 
 // Adapter is the table as the gateway sees it.
 var _ interface {
-	For(provider, kind string) (media.Adapter, bool)
+	For(provider, kind, transport string) (media.Adapter, bool)
 } = (*Table)(nil)

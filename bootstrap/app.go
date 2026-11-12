@@ -50,7 +50,10 @@ func Boot(version, commit string) contractsfoundation.Application {
 			base.Chat = &controllers.ChatController{Pipe: providers.NewPipelineSource(facades.App()).Get, Log: facades.Log()}
 			base.Models = &controllers.ModelsController{Catalog: providers.NewCatalogSource(facades.App()).Get, Log: facades.Log()}
 			media := providers.NewMediaSource(facades.App())
-			base.Media = &controllers.MediaController{EmbeddingsPipe: media.Get, ImagesPipe: media.Get, Log: facades.Log()}
+			base.Media = &controllers.MediaController{
+				EmbeddingsPipe: media.Get, ImagesPipe: media.Get, SpeechPipe: media.Get,
+				TranscribePipe: media.Get, VoicesPipe: media.Get, Log: facades.Log(),
+			}
 			base.OAuth = &controllers.OAuthController{Service: h.OAuth, Auth: h.Auth, Server: h.Settings}
 			base.Callback = &controllers.CallbackController{Files: web.Static}
 			routes.Web(facades.Route(), h.Guard, base)

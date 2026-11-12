@@ -311,6 +311,8 @@ type Model struct {
 	Dimensions int `json:"dimensions,omitempty"`
 	// Transport overrides the service's format for one model (an STT vendor).
 	Transport string `json:"transport,omitempty"`
+	// Voices are the voices a speech model offers.
+	Voices []Voice `json:"voices,omitempty"`
 }
 
 // effortLevels are the names a model's levels may use.

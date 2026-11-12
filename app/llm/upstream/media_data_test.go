@@ -40,9 +40,19 @@ func TestTheShippedMediaDataLoadsAndIndexes(t *testing.T) {
 		{"huggingface/black-forest-labs/FLUX.1-schnell", KindImage},
 		{"nvidia/nv-embedqa-e5-v5", KindEmbedding},
 		{"qwen3-embedding:8b", KindEmbedding},
+		{"openai/whisper-1", KindSTT},
+		{"openai/tts-1", KindTTS},
+		{"nova-3", KindSTT},
 	} {
 		if ref, ok := reg.Media(want.name, want.kind); !ok || ref.Kind != want.kind {
 			t.Errorf("%s (%s) is not indexed: %+v %v", want.name, want.kind, ref, ok)
+		}
+	}
+	for _, id := range []string{"openai", "gemini", "xiaomi-mimo", "ollama-local"} {
+		e, _ := reg.ByID(id)
+		cfg := e.Media.Config(KindTTS)
+		if cfg == nil || (len(cfg.Voices) == 0 && len(e.Models) == 0) {
+			t.Errorf("%s has no voices in its data", id)
 		}
 	}
 }

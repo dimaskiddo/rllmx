@@ -77,6 +77,14 @@ type SearchViaChat struct {
 }
 
 // MediaConfig is one service's address, credential shape and model list.
+// Voice is one voice a speech service offers.
+type Voice struct {
+	ID     string `json:"id"`
+	Name   string `json:"name,omitempty"`
+	Lang   string `json:"lang,omitempty"`
+	Gender string `json:"gender,omitempty"`
+}
+
 type MediaConfig struct {
 	BaseURL string `json:"baseUrl,omitempty"`
 	// Path is appended to the base address for a service whose model is a path
@@ -91,6 +99,8 @@ type MediaConfig struct {
 	TimeoutMs    int    `json:"timeoutMs,omitempty"`
 
 	Models []MediaModel `json:"models,omitempty"`
+	// Voices are the provider-wide voices; a model's own list wins.
+	Voices []Voice `json:"voices,omitempty"`
 	// ModelMap maps a client model id to the provider's path, or to a path and a
 	// task when the request shape differs.
 	ModelMap map[string]ModelTarget `json:"modelMap,omitempty"`
@@ -121,6 +131,7 @@ type MediaModel struct {
 	UpstreamID string   `json:"upstreamId,omitempty"`
 	Dimensions int      `json:"dimensions,omitempty"`
 	Params     []string `json:"params,omitempty"`
+	Voices     []Voice  `json:"voices,omitempty"`
 }
 
 // ModelTarget is a modelMap value: a provider path, or a path with the task
@@ -348,6 +359,14 @@ func (c *MediaConfig) validate(kind string, chatModels map[string]bool) error {
 			return errors.New("a media model map has a bad entry")
 		}
 	}
+	if err := validateVoices(c.Voices); err != nil {
+		return err
+	}
+	for _, m := range c.Models {
+		if err := validateVoices(m.Voices); err != nil {
+			return err
+		}
+	}
 	for name, value := range c.Headers {
 		if !headerNameOK(name) || len(value) > maxNameBytes || text.HasASCIIControl(value) {
 			return errors.New("a media header has a bad name or value")
@@ -373,6 +392,31 @@ func (c *MediaConfig) validate(kind string, chatModels map[string]bool) error {
 
 // mediaSentinel is a local adapter's marker in place of an address.
 var mediaSentinel = regexp.MustCompile(`^[a-z][a-z0-9-]{0,63}$`)
+
+// maxVoices bounds the voices one provider or model may declare.
+const maxVoices = 256
+
+func validateVoices(list []Voice) error {
+	if len(list) > maxVoices {
+		return errors.New("a media config has too many voices")
+	}
+	seen := map[string]bool{}
+	for _, v := range list {
+		if v.ID == "" || len(v.ID) > maxNameBytes || text.HasASCIIControl(v.ID) {
+			return errors.New("a voice id is empty or too long")
+		}
+		if seen[v.ID] {
+			return errors.New("a voice id is duplicated")
+		}
+		seen[v.ID] = true
+		for _, f := range []string{v.Name, v.Lang, v.Gender} {
+			if len(f) > maxNameBytes || text.HasASCIIControl(f) {
+				return errors.New("a voice field is too long")
+			}
+		}
+	}
+	return nil
+}
 
 // validLinkURL is a display link: http(s) with a host; a fragment is fine.
 func validLinkURL(raw string) bool {

@@ -38,7 +38,7 @@ func (s scriptAdapter) Parse(context.Context, media.Request, media.Client, int, 
 
 type table map[string]media.Adapter
 
-func (t table) For(provider, kind string) (media.Adapter, bool) {
+func (t table) For(provider, kind, _ string) (media.Adapter, bool) {
 	a, ok := t[provider]
 	return a, ok
 }

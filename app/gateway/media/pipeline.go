@@ -21,6 +21,7 @@ import (
 	"rllmx/app/llm/upstream"
 	appfailure "rllmx/app/platform/failure"
 	appfile "rllmx/app/platform/file"
+	"rllmx/app/platform/network"
 	"rllmx/app/store/analytics"
 	"rllmx/app/store/repository"
 )
@@ -53,15 +54,19 @@ type Nodes interface {
 	List(ctx context.Context, typ string) ([]repository.Node, error)
 }
 
+// VoiceLister asks a provider for its own voice list.
+type VoiceLister func(ctx context.Context, provider string, r media.Request, c media.Client) ([]upstream.Voice, error)
+
 // Usage takes the one row a request leaves behind.
 type Usage interface {
 	Enqueue(r analytics.Record) bool
 }
 
 // Adapters is the provider table: which adapter serves a provider and service.
-// A provider absent from it has no adapter for that service.
+// A provider absent from it has no adapter for that service; a transport marker
+// may pick a second one (gemini-live).
 type Adapters interface {
-	For(provider, kind string) (media.Adapter, bool)
+	For(provider, kind, transport string) (media.Adapter, bool)
 }
 
 // Deps is what the endpoints need. Only Registry and Adapters are required.
@@ -74,9 +79,13 @@ type Deps struct {
 	Refresher Refresher
 	Minter    Minter
 	Nodes     Nodes
+	Voices    VoiceLister
 	Usage     Usage
 	Log       log.Log
 	Now       func() time.Time
+	// Network is the guarded dialer's configuration, for an adapter that opens a
+	// socket of its own.
+	Network network.Options
 	// Timeout bounds one media call; zero takes the kind's own bound.
 	Timeout time.Duration
 }
@@ -90,6 +99,19 @@ type Input struct {
 	KeyName   string
 	// Binary asks for the image bytes rather than the JSON list.
 	Binary bool
+	// Form is the parsed multipart of a transcription.
+	Form *Form
+	// ResponseFormat is the query's answer-format hint, which wins over the
+	// body's own.
+	ResponseFormat string
+}
+
+// Form is a transcription upload: one file and its fields.
+type Form struct {
+	Audio       []byte
+	Filename    string
+	ContentType string
+	Fields      map[string]string
 }
 
 // Output is the answer, already in the client's shape.
@@ -119,21 +141,35 @@ func (p *Pipeline) timeout(kind string, cfg *upstream.MediaConfig) time.Duration
 	if p.d.Timeout > 0 {
 		return p.d.Timeout
 	}
-	if kind == upstream.KindImage {
+	switch kind {
+	case upstream.KindImage:
 		return 150 * time.Second
+	case upstream.KindTTS:
+		return 120 * time.Second
+	case upstream.KindSTT:
+		// The reference's route budget, enough for a polling transcription.
+		return 300 * time.Second
 	}
 	return 60 * time.Second
 }
 
 // Embeddings serves POST /v1/embeddings.
 func (p *Pipeline) Embeddings(ctx context.Context, in Input) Output {
-	return p.run(ctx, upstream.KindEmbedding, in)
+	parsed, out, ok := parseJSON(in.Body)
+	if !ok {
+		return out
+	}
+	return p.run(ctx, upstream.KindEmbedding, in, parsed)
 }
 
 // Images serves POST /v1/images/generations. A caller that asked for bytes gets
 // the first image itself.
 func (p *Pipeline) Images(ctx context.Context, in Input) Output {
-	out := p.run(ctx, upstream.KindImage, in)
+	parsed, bad, ok := parseJSON(in.Body)
+	if !ok {
+		return bad
+	}
+	out := p.run(ctx, upstream.KindImage, in, parsed)
 	if !in.Binary || out.Status < 200 || out.Status > 299 {
 		return out
 	}
@@ -143,9 +179,29 @@ func (p *Pipeline) Images(ctx context.Context, in Input) Output {
 	return out
 }
 
-// run is the one path both endpoints take: validate, resolve, pick an account,
+// parsed is one request's model and payload, whichever route it came from.
+type parsed struct {
+	model          string
+	body           []byte
+	upload         *media.Upload
+	modelTransport string
+}
+
+// parseJSON reads the model of a JSON body, refusing a body that is not one.
+func parseJSON(body []byte) (parsed, Output, bool) {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return parsed{}, failureOutput(http.StatusBadRequest, "The request body is not valid JSON"), false
+	}
+	model := strings.TrimSpace(gjson.GetBytes(body, "model").String())
+	if model == "" {
+		return parsed{}, failureOutput(http.StatusBadRequest, "The request names no model"), false
+	}
+	return parsed{model: model, body: body}, Output{}, true
+}
+
+// run is the one path every endpoint takes: validate, resolve, pick an account,
 // call the adapter and record the request once.
-func (p *Pipeline) run(ctx context.Context, kind string, in Input) Output {
+func (p *Pipeline) run(ctx context.Context, kind string, in Input, req parsed) Output {
 	row := analytics.Record{
 		Time: p.now(), RequestID: in.RequestID, APIKeyID: in.APIKeyID, APIKeyName: in.KeyName,
 		Endpoint: in.Path,
@@ -163,37 +219,21 @@ func (p *Pipeline) run(ctx context.Context, kind string, in Input) Output {
 		return failureOutput(status, msg)
 	}
 
-	var body = in.Body
-	if len(body) == 0 || !gjson.ValidBytes(body) {
-		return bad(http.StatusBadRequest, "The request body is not valid JSON")
-	}
-	model := strings.TrimSpace(gjson.GetBytes(body, "model").String())
-	if model == "" {
-		return bad(http.StatusBadRequest, "The request names no model")
-	}
+	model := req.model
 	row.Model = model
-	if err := checkBody(kind, body); err != nil {
+	if err := p.checkBody(kind, req); err != nil {
 		return bad(http.StatusBadRequest, strings.ToUpper(err.Error()[:1])+err.Error()[1:])
 	}
-	ref, ok := p.d.Registry.Media(model, kind)
-	entry := upstream.Entry{}
+	ref, entry, ok := p.target(ctx, kind, model)
 	if !ok {
-		// An embedding node is a user endpoint with its own address, never a
-		// registry model.
-		if kind != upstream.KindEmbedding || !p.nodeRef(ctx, model, &ref, &entry) {
-			return bad(http.StatusNotFound, "Model not found")
-		}
-		ok = true
-	}
-	if !ok || ref.Kind != kind {
 		return bad(http.StatusNotFound, "Model not found")
 	}
 	row.Provider, row.Model = ref.Provider, ref.Model
-	if entry.ID == "" {
-		entry, _ = p.d.Registry.ByID(ref.Provider)
+	if kind == upstream.KindSTT {
+		req.modelTransport = p.modelTransport(ref)
 	}
 	cfg := entry.Media.Config(kind)
-	adapter, ok := p.d.Adapters.For(ref.Provider, kind)
+	adapter, ok := p.d.Adapters.For(ref.Provider, kind, req.modelTransport)
 	if !ok || cfg == nil {
 		return bad(http.StatusBadRequest, "This provider does not serve that model here")
 	}
@@ -205,7 +245,7 @@ func (p *Pipeline) run(ctx context.Context, kind string, in Input) Output {
 		if !ok {
 			return out
 		}
-		out, done := p.try(ctx, kind, adapter, entry, cfg, ref, model, conn, body, &row)
+		out, done := p.try(ctx, kind, adapter, entry, cfg, ref, model, conn, req.body, req.upload, req.modelTransport, &row)
 		if done {
 			return out
 		}
@@ -325,7 +365,7 @@ func (p *Pipeline) noAccount(ctx context.Context, err error, provider, model str
 
 // try runs the request on one account. done says the answer is final for this
 // request; otherwise another account is tried.
-func (p *Pipeline) try(ctx context.Context, kind string, adapter media.Adapter, entry upstream.Entry, cfg *upstream.MediaConfig, ref upstream.MediaRef, model string, conn repository.Connection, body []byte, row *analytics.Record) (Output, bool) {
+func (p *Pipeline) try(ctx context.Context, kind string, adapter media.Adapter, entry upstream.Entry, cfg *upstream.MediaConfig, ref upstream.MediaRef, model string, conn repository.Connection, body []byte, upload *media.Upload, modelTransport string, row *analytics.Record) (Output, bool) {
 	noAuth := cfg != nil && (cfg.AuthType == "none" || (entry.Media != nil && entry.Media.NoAuth))
 	oauthed := conn.ID != "" && conn.AuthType == "oauth" && entry.OAuth != nil
 	if oauthed && p.d.Refresher != nil {
@@ -347,6 +387,7 @@ func (p *Pipeline) try(ctx context.Context, kind string, adapter media.Adapter, 
 	req := media.Request{
 		Kind: kind, Provider: ref.Provider, Model: model, WireModel: p.wireModel(entry, cfg, ref.Model),
 		Entry: entry, Config: cfg, Credential: key, Account: accountData(conn), Body: body,
+		Upload: upload, ModelTransport: modelTransport,
 	}
 	ans, refused, err := p.call(ctx, adapter, req)
 	if refused {
@@ -417,6 +458,11 @@ func (p *Pipeline) call(ctx context.Context, adapter media.Adapter, req media.Re
 	}
 	cctx, cancel := context.WithTimeout(ctx, p.timeout(req.Kind, req.Config))
 	defer cancel()
+	req.Network = p.d.Network
+	if direct, ok := adapter.(media.Director); ok {
+		ans, err := direct.Direct(cctx, req, p.d.Client)
+		return ans, false, err
+	}
 	call, err := adapter.Build(cctx, req, p.d.Client)
 	if err != nil {
 		return media.Response{}, false, err
@@ -526,8 +572,8 @@ const (
 	MaxImages    = 10
 )
 
-// checkBody refuses what the endpoint cannot serve before any call.
-func checkBody(kind string, body []byte) error {
+// checkJSONBody refuses what an embeddings or image request cannot serve.
+func checkJSONBody(kind string, body []byte) error {
 	switch kind {
 	case upstream.KindEmbedding:
 		input := gjson.GetBytes(body, "input")

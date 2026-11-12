@@ -9,6 +9,7 @@ import (
 	"rllmx/app/gateway/account"
 	gatewaymedia "rllmx/app/gateway/media"
 	mediamux "rllmx/app/llm/media/mux"
+	"rllmx/app/llm/media/voice"
 	"rllmx/app/platform/network"
 )
 
@@ -46,9 +47,11 @@ func buildMedia(_ context.Context, app foundation.Application) (*gatewaymedia.Pi
 		Selector: account.NewSelector(account.SelectorOptions{Conns: store.Connections(), Settings: store.Settings(), Log: log}),
 		Reporter: account.NewReporter(store.Connections(), log, nil),
 		Nodes:    store.Nodes(),
+		Voices:   voice.List,
 		Usage:    writer,
 		Log:      log,
 		Now:      time.Now,
+		Network:  network.Options{ConnectTimeout: h.Upstream.ConnectTimeout, Allow: h.Upstream.Allow, Curves: h.Upstream.Curves},
 	}
 	if h.Refresher != nil {
 		deps.Refresher = h.Refresher

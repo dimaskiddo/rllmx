@@ -179,6 +179,9 @@ func (r *Registry) add(e Entry) error {
 		if m.Dimensions < 0 || m.Dimensions > 1<<20 || len(m.Params) > 32 || len(m.Transport) > 64 || text.HasASCIIControl(m.Transport) {
 			return errors.New("a model has a bad media field")
 		}
+		if err := validateVoices(m.Voices); err != nil {
+			return err
+		}
 		for _, p := range m.Params {
 			if p == "" || len(p) > 64 || text.HasASCIIControl(p) {
 				return errors.New("a model has a bad parameter name")

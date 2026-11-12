@@ -286,12 +286,18 @@ func TestMediaRoutesAreLLMRoutesThatNeedAKey(t *testing.T) {
 	g := apphttp.NewGuard(nil, true)
 	r.SetGlobalMiddleware([]contractshttp.Middleware{&middleware.RequestID{}, &middleware.Guard{Guard: g}})
 	Web(r, g, Base{Media: &controllers.MediaController{}})
-	for _, p := range []string{"/v1/embeddings", "/v1/images/generations"} {
+	for _, p := range []string{"/v1/embeddings", "/v1/images/generations", "/v1/audio/speech", "/v1/audio/transcriptions"} {
 		if class, ok := g.RouteClass("POST", p); !ok || class != apphttp.ClassLLM {
 			t.Errorf("%s: class = %d ok=%v", p, class, ok)
 		}
 		if rec := call(r, nethttp.MethodPost, p); rec.Code != 401 {
 			t.Errorf("%s without a key: %d", p, rec.Code)
 		}
+	}
+	if class, ok := g.RouteClass("GET", "/v1/audio/voices"); !ok || class != apphttp.ClassLLM {
+		t.Errorf("voices: class = %d ok=%v", class, ok)
+	}
+	if class, ok := g.RouteClass("GET", "/api/media-providers/tts/voices"); !ok || class != apphttp.ClassProtected {
+		t.Errorf("dashboard voices: class = %d ok=%v", class, ok)
 	}
 }

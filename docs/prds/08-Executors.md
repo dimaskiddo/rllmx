@@ -155,9 +155,12 @@ Every provider the references ship, with executor kind, status and delivering st
 | default | done (1.10i) | tokenrouter |
 | default | done | anthropic, deepseek, groq, openai |
 | default | done (1.11a) | black-forest-labs, comfyui, fal-ai, huggingface, jina-ai, nanobanana, recraft, runwayml, sdwebui, stability-ai, voyage-ai |
-| default | todo 1.11b | assemblyai, aws-polly, cartesia, deepgram, elevenlabs, fish-audio, inworld, playht, selfhosted-stt, selfhosted-tts |
+| default | done (1.11b) | assemblyai, cartesia, deepgram, elevenlabs, fish-audio, inworld, playht, selfhosted-stt, selfhosted-tts |
+| default | out | aws-polly (the reference has no handler; D300) |
 | default | todo 1.11d | brave-search, exa, firecrawl, google-pse, jina-reader, linkup, ollama-search, searchapi, serper, tavily, tinyfish, youcom, xquik |
 | default | todo 1.11e | nace, topaz, v1m |
+
+`nvidia` lists an STT model but has no `sttConfig` in the reference, so its transcription path is unreachable and no adapter exists here either.
 | specialized | done (1.10a) | azure |
 | specialized | done (1.10i) | xiaomi-tokenplan |
 | specialized | done (1.10h) | bedrock |
@@ -184,7 +187,8 @@ Every provider the references ship, with executor kind, status and delivering st
 | default | done (1.10d) | nous |
 | default | done (1.10i) | ollama |
 | default | done | gemini, openrouter |
-| default | todo 1.11b | coqui, edge-tts, google-tts, local-device, tortoise |
+| default | done (1.11b) | coqui, tortoise |
+| default | out | edge-tts, google-tts, local-device (scraped pages or a spawned process; D299) |
 | default | todo 1.11d | searxng |
 | specialized | done (1.10i) | kimchi, vertex |
 

@@ -67,6 +67,6 @@
   ],
     "media": {
     "serviceKinds": ["llm", "tts"],
-    "ttsConfig": { "baseUrl": "https://api.xiaomimimo.com/v1/chat/completions", "authType": "apikey", "authHeader": "bearer", "format": "xiaomi-mimo-tts" }
+    "ttsConfig": { "baseUrl": "https://api.xiaomimimo.com/v1/chat/completions", "authType": "apikey", "authHeader": "bearer", "format": "xiaomi-mimo-tts", "voices": [{ "id": "mimo_default", "name": "mimo_default" }, { "id": "冰糖", "name": "冰糖" }, { "id": "茉莉", "name": "茉莉" }, { "id": "苏打", "name": "苏打" }, { "id": "白桦", "name": "白桦" }, { "id": "Mia", "name": "Mia" }, { "id": "Chloe", "name": "Chloe" }, { "id": "Milo", "name": "Milo" }, { "id": "Dean", "name": "Dean" }] }
   }
 }

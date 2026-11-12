@@ -29,7 +29,7 @@ Each row carries the number, what we do differently and why it is better, includ
 | 21 | API Key Limits | 1 | [21-…](prds/21-API-Key-Limits.md) |
 | 22 | Deferred & Out of Scope | 3 | [22-…](prds/22-Deferred-and-Out-of-Scope.md) |
 | 23 | CLI | 4 | [23-…](prds/23-CLI.md) |
-| **Total** | | **298** | |
+| **Total** | | **305** | |
 
 ## Kinds
 
@@ -37,15 +37,15 @@ Each row's Why column says which kind it is. Every number is counted once, by th
 
 | Kind | Meaning | Count | Numbers |
 |---|---|---|---|
-| Improvement | Fixes a reference defect | 244 | Every row with no other marker |
+| Improvement | Fixes a reference defect | 246 | Every row with no other marker |
 | New feature | Something neither reference has | 4 | 24, 32, 148, 284 |
-| Trade-off | A deliberate cost | 9 | 33, 81, 91, 138, 141, 286, 287, 289, 290 |
-| Scope cut | A reference feature not adopted | 22 | 3, 6, 9, 10, 11, 16, 48, 89, 105, 158, 159, 160, 161, 162, 202, 214, 250, 256, 260, 273, 278, 279 |
+| Trade-off | A deliberate cost | 10 | 33, 81, 91, 138, 141, 286, 287, 289, 290 |
+| Scope cut | A reference feature not adopted | 26 | 3, 6, 9, 10, 11, 16, 48, 89, 105, 158, 159, 160, 161, 162, 202, 214, 250, 256, 260, 273, 278, 279 |
 | Planned | Names the step that resolves it | 5 | 7, 8, 25, 66, 102 |
 | Temporary | Stopgap until a named step | 2 | 93, 104 |
 | Retired | A framework choice or a rule that no longer applies, or a behavior now the reference's own; the number stays citable | 11 | 193, 196, 197, 198, 199, 201, 222, 236, 244, 245, 277 |
 | Built as planned | Was only a schedule change and is now done | 1 | 216 |
-| **Total** | | **298** | |
+| **Total** | | **305** | |
 
 How a row is counted:
 - A row with no marker is an improvement. A row marked *partial* is one too, and so are 112-114 and 118, where only a sub-point waits for a later step.

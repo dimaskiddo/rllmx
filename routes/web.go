@@ -105,6 +105,11 @@ func Web(router route.Route, guard *apphttp.Guard, base Base) {
 	if m := base.Media; m != nil {
 		guard.Handle(router, apphttp.ClassLLM, nethttp.MethodPost, "/v1/embeddings", m.Embeddings)
 		guard.Handle(router, apphttp.ClassLLM, nethttp.MethodPost, "/v1/images/generations", m.Images)
+		guard.Handle(router, apphttp.ClassLLM, nethttp.MethodPost, "/v1/audio/speech", m.Speech)
+		guard.Handle(router, apphttp.ClassLLM, nethttp.MethodPost, "/v1/audio/transcriptions", m.Transcriptions)
+		guard.Handle(router, apphttp.ClassLLM, nethttp.MethodGet, "/v1/audio/voices", m.Voices)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/media-providers/tts/voices", m.TTSVoices)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/media-providers/tts/{provider}/voices", m.ProviderVoices)
 	}
 
 	if m := base.Models; m != nil {

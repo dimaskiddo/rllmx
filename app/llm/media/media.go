@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"rllmx/app/llm/upstream"
+	"rllmx/app/platform/network"
 )
 
 // Request is one media call as its adapter sees it.
@@ -29,6 +30,13 @@ type Request struct {
 	Account map[string]string
 	// Body is the client's parsed request, for an adapter that must reshape it.
 	Body []byte
+	// Upload is the file a transcription carries.
+	Upload *Upload
+	// ModelTransport is the per-model marker a task names (gemini-live).
+	ModelTransport string
+	// Network is the guarded dialer's configuration, for an adapter that opens a
+	// socket of its own.
+	Network network.Options
 }
 
 // Response is one media answer, already normalized to the client's shape.
@@ -59,6 +67,12 @@ type Call struct {
 	URL    string
 	Header map[string]string
 	Body   []byte
+}
+
+// Director is an adapter that runs its own exchange, for a service that is not
+// one HTTP request and a parsed answer.
+type Director interface {
+	Direct(ctx context.Context, r Request, c Client) (Response, error)
 }
 
 // Adapter is one provider family's media wire shape.
