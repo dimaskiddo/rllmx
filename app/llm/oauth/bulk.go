@@ -62,7 +62,7 @@ func (s *Service) BulkImport(ctx context.Context, provider string, items []BulkI
 // bulkOne stores one item.
 func (s *Service) bulkOne(ctx context.Context, f Flow, item BulkItem) (string, error) {
 	access := strings.TrimSpace(item.Access)
-	if !credentialText(access) {
+	if !CredentialText(access) {
 		return "", ErrToken
 	}
 	t := Tokens{Access: access, Refresh: strings.TrimSpace(item.Refresh), ID: strings.TrimSpace(item.ID), ExpiresIn: item.ExpiresIn}
@@ -80,9 +80,9 @@ func (s *Service) bulkOne(ctx context.Context, f Flow, item BulkItem) (string, e
 	if f.Flow == upstream.FlowDevice {
 		// A bulk account is one a device login would have made, and its renewal
 		// kind is recorded so the refresher presents it the same way.
-		acc.PSD = withPSD(acc.PSD, "authMethod", "device_code")
+		acc.PSD = WithPSD(acc.PSD, "authMethod", "device_code")
 	}
-	return s.save(ctx, f, t, acc)
+	return s.Save(ctx, f, t, acc)
 }
 
 // bulkFailure is the fixed word one refused item reports.

@@ -34,9 +34,9 @@ type Account struct {
 
 const maxJWT = 16 << 10
 
-// claims decodes the payload of a JWT without checking its signature: the
-// claims only name the account and decide duplicates, they grant nothing.
-func claims(jwt string) (gjson.Result, bool) {
+// Claims decodes the payload of a JWT without checking its signature: the
+// Claims only name the account and decide duplicates, they grant nothing.
+func Claims(jwt string) (gjson.Result, bool) {
 	parts := strings.Split(jwt, ".")
 	if len(parts) != 3 || len(jwt) > maxJWT {
 		return gjson.Result{}, false
@@ -49,24 +49,26 @@ func claims(jwt string) (gjson.Result, bool) {
 	return r, r.IsObject()
 }
 
-// codexAccount is the Codex login step: what the tokens themselves say about
-// the account.
-func codexAccount(t Tokens) Account { return claimsAccount(t) }
-
-// claimsAccount reads the email, the ChatGPT account id and the plan from the
-// ID token, then the email alone from the access token. It makes no call, so a
+// claimsAccount reads the email and the ChatGPT account from the ID token, then
+// from the access token whatever the first did not name: a pasted access token
+// carries the same claims and has no ID token beside it. It makes no call, so a
 // pasted list can use it too.
 func claimsAccount(t Tokens) Account {
 	var acc Account
 	var id, plan string
-	if c, ok := claims(t.ID); ok {
-		acc.Email = c.Get("email").String()
-		id = document.FirstString(c.Get(`https://api\.openai\.com/auth.chatgpt_account_id`), c.Get("account_id"))
-		plan = document.FirstString(c.Get(`https://api\.openai\.com/auth.chatgpt_plan_type`), c.Get("plan_type"))
-	}
-	if acc.Email == "" {
-		if c, ok := claims(t.Access); ok {
-			acc.Email = document.FirstString(c.Get("email"), c.Get("preferred_username"), c.Get("sub"))
+	for _, tok := range []string{t.ID, t.Access} {
+		c, ok := Claims(tok)
+		if !ok {
+			continue
+		}
+		if acc.Email == "" {
+			acc.Email = document.FirstString(c.Get("email"), c.Get(`https://api\.openai\.com/profile.email`), c.Get("preferred_username"))
+		}
+		if id == "" {
+			id = document.FirstString(c.Get(`https://api\.openai\.com/auth.chatgpt_account_id`), c.Get("account_id"))
+		}
+		if plan == "" {
+			plan = document.FirstString(c.Get(`https://api\.openai\.com/auth.chatgpt_plan_type`), c.Get("plan_type"))
 		}
 	}
 	psd := map[string]string{}
@@ -76,6 +78,6 @@ func claimsAccount(t Tokens) Account {
 	if plan != "" {
 		psd["chatgptPlanType"] = plan
 	}
-	acc.PSD = jsonObject(psd)
+	acc.PSD = JSONObject(psd)
 	return acc
 }

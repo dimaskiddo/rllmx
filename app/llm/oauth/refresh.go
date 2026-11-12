@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"maps"
+	"slices"
 	"strconv"
 	"time"
 
@@ -79,25 +80,21 @@ type Refresher struct {
 	Dialects Dialects
 }
 
-// dials returns the dialect table in force.
-func (r *Refresher) dials() Dialects {
-	if r.Dialects.empty() {
-		return DefaultDialects()
-	}
-	return r.Dialects
-}
-
 // flowOf is the login an account renews with: the provider's own, or for a
 // provider whose application came with the account, the one stored with it. An
 // account that lost its application cannot be renewed.
-func (r *Refresher) flowOf(conn repository.Connection) (Flow, bool) {
+// dials returns the dialect table in force: an empty one follows the standard
+// calls only.
+func (r *Refresher) dials() Dialects { return r.Dialects }
+
+func (r *Refresher) FlowOf(conn repository.Connection) (Flow, bool) {
 	f, ok := r.Flow(conn.Provider)
 	if !ok {
 		return f, false
 	}
 	// A device dialect that registers its own client keeps that client on the
 	// account, since the pair belongs to the login and not to the provider.
-	if !f.AppFromAccount && r.dials().Device[f.Dialect].refresh != nil {
+	if !f.AppFromAccount && r.dials().Device[f.Dialect].Refresh != nil {
 		psd, _ := conn.Doc().GetRaw("providerSpecificData")
 		f.ClientID = gjson.Get(psd, "clientId").String()
 		f.ClientSecret = gjson.Get(psd, "clientSecret").String()
@@ -105,10 +102,15 @@ func (r *Refresher) flowOf(conn repository.Connection) (Flow, bool) {
 	}
 	// A code dialect that signs in through an identity provider renews with the
 	// one the account used, which its own data recorded.
-	if !f.AppFromAccount && r.dials().Code[f.Dialect].refresh != nil {
-		psd, _ := conn.Doc().GetRaw("providerSpecificData")
-		f.Params = append(append([]upstream.Param{}, f.Params...), upstream.Param{Name: kiroIdpParam, Value: gjson.Get(psd, "authMethod").String()})
-		return f, true
+	if d := r.dials().Code[f.Dialect]; d.Refresh != nil {
+		if !f.AppFromAccount {
+			psd, _ := conn.Doc().GetRaw("providerSpecificData")
+			names := slices.Sorted(maps.Keys(d.RenewParams))
+			for _, name := range names {
+				f.Params = append(append([]upstream.Param{}, f.Params...), upstream.Param{Name: name, Value: gjson.Get(psd, d.RenewParams[name]).String()})
+			}
+			return f, true
+		}
 	}
 	if !f.AppFromAccount {
 		return f, true
@@ -144,7 +146,7 @@ func (r *Refresher) wait(ctx context.Context, d time.Duration) error {
 	}
 }
 
-func (r *Refresher) store() (Store, error) {
+func (r *Refresher) Cooldowns() (Store, error) {
 	if r.Store == nil {
 		return nil, ErrStorage
 	}
@@ -169,7 +171,7 @@ func (r *Refresher) Ready(ctx context.Context, conn repository.Connection) (repo
 	if conn.AuthType != "oauth" || conn.Corrupt {
 		return conn, nil
 	}
-	f, ok := r.flowOf(conn)
+	f, ok := r.FlowOf(conn)
 	if !ok || !Due(f, conn.Doc(), r.now()) {
 		return conn, nil
 	}
@@ -211,7 +213,7 @@ func (r *Refresher) Renew(ctx context.Context, conn repository.Connection) (repo
 // refused, or "" when the caller only found it due; when the stored token is
 // something else, it was renewed already and nothing is called.
 func (r *Refresher) Refresh(ctx context.Context, id, rejected string) (repository.Connection, error) {
-	st, err := r.store()
+	st, err := r.Cooldowns()
 	if err != nil {
 		return repository.Connection{}, err
 	}
@@ -225,7 +227,7 @@ func (r *Refresher) Refresh(ctx context.Context, id, rejected string) (repositor
 	if status, _ := conn.Doc().GetString("testStatus"); status == repository.StatusExpired {
 		return conn, ErrExpired
 	}
-	f, ok := r.flowOf(conn)
+	f, ok := r.FlowOf(conn)
 	if !ok {
 		return conn, ErrNoRefresh
 	}
@@ -267,7 +269,7 @@ func (r *Refresher) Refresh(ctx context.Context, id, rejected string) (repositor
 // the cache's single flight.
 func (r *Refresher) exchange(ctx context.Context, st Store, f Flow, conn repository.Connection, rt string) ([]byte, error) {
 	psd, _ := conn.Doc().GetRaw("providerSpecificData")
-	headers := callHeaders(f, gjson.Get(psd, deviceIDKey).String())
+	headers := CallHeaders(f, gjson.Get(psd, deviceIDKey).String())
 	t, err := r.Tokens.Refresh(ctx, f, rt, headers)
 	if err != nil {
 		if ClassOf(err) != ClassInvalidGrant {
@@ -317,7 +319,7 @@ func (r *Refresher) exchange(ctx context.Context, st Store, f Flow, conn reposit
 // check one is held and, when it cannot be renewed, that it has not run out.
 // refreshed says whether a call was made.
 func (r *Refresher) Ensure(ctx context.Context, id string) (refreshed bool, err error) {
-	st, err := r.store()
+	st, err := r.Cooldowns()
 	if err != nil {
 		return false, err
 	}
@@ -335,7 +337,7 @@ func (r *Refresher) Ensure(ctx context.Context, id string) (refreshed bool, err 
 	if access, _ := d.GetString("accessToken"); access == "" {
 		return false, ErrNoToken
 	}
-	f, ok := r.flowOf(conn)
+	f, ok := r.FlowOf(conn)
 	if !ok {
 		return false, ErrNoRefresh
 	}

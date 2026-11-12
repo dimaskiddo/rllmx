@@ -84,23 +84,19 @@ type TokenClient struct {
 	Dialects Dialects
 }
 
-// dials returns the dialect table in force.
-func (c *TokenClient) dials() Dialects {
-	if c.Dialects.empty() {
-		return DefaultDialects()
-	}
-	return c.Dialects
-}
+// dials returns the dialect table in force: an empty one follows the standard
+// calls only.
+func (c *TokenClient) dials() Dialects { return c.Dialects }
 
-func (c *TokenClient) now() time.Time {
+func (c *TokenClient) Clock() time.Time {
 	if c.Now != nil {
 		return c.Now()
 	}
 	return time.Now()
 }
 
-// wait pauses for d, or until ctx ends.
-func (c *TokenClient) wait(ctx context.Context, d time.Duration) error {
+// Wait pauses for d, or until ctx ends.
+func (c *TokenClient) Wait(ctx context.Context, d time.Duration) error {
 	if c.Sleep != nil {
 		return c.Sleep(ctx, d)
 	}
@@ -125,7 +121,7 @@ func NewTokenClient(allow *network.Allow) *TokenClient {
 // application has one.
 func (c *TokenClient) Exchange(ctx context.Context, f Flow, code, redirect, verifier, state string) (Tokens, error) {
 	if d, ok := c.dials().Code[f.Dialect]; ok {
-		return d.exchange(ctx, c, f, CodeExchange{Code: code, Verifier: verifier, Redirect: redirect})
+		return d.Exchange(ctx, c, f, CodeExchange{Code: code, Verifier: verifier, Redirect: redirect})
 	}
 	fields := map[string]string{
 		"grant_type": "authorization_code", "client_id": f.ClientID, "code": code,
@@ -144,19 +140,19 @@ func (c *TokenClient) Exchange(ctx context.Context, f Flow, code, redirect, veri
 }
 
 func (c *TokenClient) call(ctx context.Context, tokenURL, encoding string, fields, headers map[string]string) (Tokens, error) {
-	status, raw, err := c.post(ctx, tokenURL, encoding, fields, headers)
+	status, raw, err := c.Post(ctx, tokenURL, encoding, fields, headers)
 	if err != nil {
 		return Tokens{}, err
 	}
 	if status < 200 || status > 299 {
-		return Tokens{}, &Error{classify(raw)}
+		return Tokens{}, &Error{Classify(raw)}
 	}
-	return parseTokens(raw)
+	return ParseTokens(raw)
 }
 
-// post sends one form or JSON body and returns the status and the bounded
+// Post sends one form or JSON body and returns the status and the bounded
 // answer. Every failure is already a class.
-func (c *TokenClient) post(ctx context.Context, target, encoding string, fields, headers map[string]string) (int, []byte, error) {
+func (c *TokenClient) Post(ctx context.Context, target, encoding string, fields, headers map[string]string) (int, []byte, error) {
 	var body []byte
 	var contentType string
 	if encoding == upstream.EncodingJSON {
@@ -172,9 +168,9 @@ func (c *TokenClient) post(ctx context.Context, target, encoding string, fields,
 	return c.do(ctx, http.MethodPost, target, contentType, body, headers)
 }
 
-// head sends one bounded GET and returns its status and its headers, for a call
+// Head sends one bounded GET and returns its status and its headers, for a call
 // whose answer is a redirect and a cookie rather than a body.
-func (c *TokenClient) head(ctx context.Context, target string, headers map[string]string) (int, http.Header, error) {
+func (c *TokenClient) Head(ctx context.Context, target string, headers map[string]string) (int, http.Header, error) {
 	ctx, cancel := context.WithTimeout(ctx, tokenTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
@@ -195,9 +191,9 @@ func (c *TokenClient) head(ctx context.Context, target string, headers map[strin
 	return resp.StatusCode, resp.Header, nil
 }
 
-// get makes one bounded GET with the given headers and returns the status and
+// Get makes one bounded GET with the given headers and returns the status and
 // the answer. A failure is already a class.
-func (c *TokenClient) get(ctx context.Context, target string, headers map[string]string) (int, []byte, error) {
+func (c *TokenClient) Get(ctx context.Context, target string, headers map[string]string) (int, []byte, error) {
 	return c.do(ctx, http.MethodGet, target, "", nil, headers)
 }
 
@@ -236,13 +232,13 @@ func (c *TokenClient) do(ctx context.Context, method, target, contentType string
 	return resp.StatusCode, raw, nil
 }
 
-// postJSON sends a JSON body that holds more than strings, for a hook's call.
-func (c *TokenClient) postJSON(ctx context.Context, target, body string, headers map[string]string) (int, []byte, error) {
+// PostJSON sends a JSON body that holds more than strings, for a hook's call.
+func (c *TokenClient) PostJSON(ctx context.Context, target, body string, headers map[string]string) (int, []byte, error) {
 	return c.do(ctx, http.MethodPost, target, "application/json", []byte(body), headers)
 }
 
-// classify reduces an error body to a class by the codes both providers use.
-func classify(body []byte) Class {
+// Classify reduces an error body to a class by the codes both providers use.
+func Classify(body []byte) Class {
 	lower := strings.ToLower(string(body))
 	for _, code := range []string{"invalid_grant", "refresh_token_reused", "refresh_token_expired", "refresh_token_invalidated"} {
 		if strings.Contains(lower, code) {
@@ -252,7 +248,7 @@ func classify(body []byte) Class {
 	return ClassRejected
 }
 
-func parseTokens(raw []byte) (Tokens, error) {
+func ParseTokens(raw []byte) (Tokens, error) {
 	if !gjson.ValidBytes(raw) || !gjson.ParseBytes(raw).IsObject() {
 		return Tokens{}, &Error{ClassMalformed}
 	}
@@ -281,10 +277,10 @@ func (c *TokenClient) Refresh(ctx context.Context, f Flow, refreshToken string, 
 	var err error
 	dials := c.dials()
 	switch d, dev := dials.Device[f.Dialect]; {
-	case dials.Code[f.Dialect].refresh != nil:
-		t, err = dials.Code[f.Dialect].refresh(ctx, c, f, refreshToken, headers)
-	case dev && d.refresh != nil:
-		t, err = d.refresh(ctx, c, f, refreshToken, headers)
+	case dials.Code[f.Dialect].Refresh != nil:
+		t, err = dials.Code[f.Dialect].Refresh(ctx, c, f, refreshToken, headers)
+	case dev && d.Refresh != nil:
+		t, err = d.Refresh(ctx, c, f, refreshToken, headers)
 	default:
 		fields := map[string]string{"grant_type": "refresh_token", "refresh_token": refreshToken, "client_id": f.ClientID}
 		if f.ClientSecret != "" {

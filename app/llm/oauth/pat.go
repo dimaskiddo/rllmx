@@ -22,19 +22,24 @@ func (s *Service) ConnectToken(ctx context.Context, provider, baseURL, token str
 	if !f.PAT {
 		return "", ErrUnsupported
 	}
-	if !upstream.BareOrigin(baseURL) || !credentialText(token) {
+	if !upstream.BareOrigin(baseURL) || !CredentialText(token) {
 		return "", ErrToken
 	}
 	f.Endpoints = rebaseAll(f.Endpoints, baseURL)
 	u := f.Endpoints[upstream.EndpointUser]
-	status, raw, err := s.Tokens.get(ctx, u, map[string]string{"Authorization": "Bearer " + token})
+	status, _, err := s.Tokens.Get(ctx, u, map[string]string{"Authorization": "Bearer " + token})
 	if err != nil || status < 200 || status > 299 {
 		return "", ErrToken
 	}
-	acc := gitlabProfile(raw)
-	acc.PSD = withPSD(acc.PSD, "baseUrl", baseURL)
-	acc.PSD = withPSD(acc.PSD, "authKind", "personal_access_token")
-	id, err := s.save(ctx, f, Tokens{Access: token}, Account{Email: acc.Email, PSD: acc.PSD, NoRefresh: true})
+	acc := Account{}
+	if h := s.dials().Hooks[f.Hook]; h != nil {
+		if got, err := h(ctx, s.Tokens, f, Tokens{Access: token}, CallHeaders(f, "")); err == nil {
+			acc = got
+		}
+	}
+	acc.PSD = WithPSD(acc.PSD, "baseUrl", baseURL)
+	acc.PSD = WithPSD(acc.PSD, "authKind", "personal_access_token")
+	id, err := s.Save(ctx, f, Tokens{Access: token}, Account{Email: acc.Email, PSD: acc.PSD, NoRefresh: true})
 	if err != nil {
 		if s.Log != nil {
 			s.Log.Warningf("oauth: storing a token failed: %v", err)

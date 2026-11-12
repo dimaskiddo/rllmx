@@ -9,8 +9,14 @@ import (
 	"rllmx/app/platform/text"
 )
 
-// paramOf is the value of a named data parameter, or "".
-func paramOf(f Flow, name string) string {
+// MaxMinted is the longest minted token a login may store.
+const MaxMinted = 4096
+
+// MaxBearer is the longest token a login may store and send.
+const MaxBearer = 16 << 10
+
+// Param is the value of a named data parameter, or "".
+func Param(f Flow, name string) string {
 	for _, p := range f.Params {
 		if p.Name == name {
 			return p.Value
@@ -19,16 +25,16 @@ func paramOf(f Flow, name string) string {
 	return ""
 }
 
-// withEntries copies h and adds the given headers.
-func withEntries(h, add map[string]string) map[string]string {
+// WithEntries copies h and adds the given headers.
+func WithEntries(h, add map[string]string) map[string]string {
 	out := make(map[string]string, len(h)+len(add))
 	maps.Copy(out, h)
 	maps.Copy(out, add)
 	return out
 }
 
-// objectOf parses an answer that must be a JSON object.
-func objectOf(raw []byte) (gjson.Result, bool) {
+// ObjectOf parses an answer that must be a JSON object.
+func ObjectOf(raw []byte) (gjson.Result, bool) {
 	if !gjson.ValidBytes(raw) {
 		return gjson.Result{}, false
 	}
@@ -36,8 +42,8 @@ func objectOf(raw []byte) (gjson.Result, bool) {
 	return r, r.IsObject()
 }
 
-// bearerText reports a token fit to be stored and sent: not empty, bounded, no
+// BearerText reports a token fit to be stored and sent: not empty, bounded, no
 // control character. JWTs are longer than credentialText allows.
-func bearerText(s string) bool {
-	return s != "" && len(s) <= maxBearer && !text.HasASCIIControl(s) && !strings.ContainsAny(s, " \t")
+func BearerText(s string) bool {
+	return s != "" && len(s) <= MaxBearer && !text.HasASCIIControl(s) && !strings.ContainsAny(s, " \t")
 }

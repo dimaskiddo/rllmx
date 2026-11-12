@@ -11,6 +11,11 @@ import (
 	"github.com/goravel/framework/contracts/foundation"
 
 	"rllmx/app/llm/oauth"
+	"rllmx/app/llm/oauth/dialects"
+	"rllmx/app/llm/oauth/freebuff"
+	"rllmx/app/llm/oauth/github"
+	"rllmx/app/llm/oauth/google"
+	"rllmx/app/llm/oauth/xiaomi"
 	"rllmx/app/llm/quota"
 	"rllmx/app/llm/upstream"
 	"rllmx/app/platform/settings"
@@ -20,15 +25,15 @@ import (
 // newLogin builds the account login service and the refresher that keeps its
 // tokens alive. The store opens in a runner after every provider registered, so
 // accounts are looked up on use.
-func newLogin(app foundation.Application, reg *upstream.Registry, cfg *settings.OAuth, up *settings.Upstream) (*oauth.Service, *oauth.Refresher, *oauth.Minter, *Google, *zed.Client, *oauth.FreebuffSessions) {
+func newLogin(app foundation.Application, reg *upstream.Registry, cfg *settings.OAuth, up *settings.Upstream) (*oauth.Service, *oauth.Refresher, *github.Minter, *Google, *zed.Client, *freebuff.Sessions) {
 	sessions := oauth.NewSessions()
 	listeners := &oauth.Listeners{Host: cfg.CallbackHost, Sessions: sessions, Log: app.MakeLog()}
 	tokens := oauth.NewTokenClient(up.Allow)
-	dialects := oauth.DefaultDialects()
-	tokens.Dialects = dialects
+	table := dialects.Default()
+	tokens.Dialects = table
 	svc := &oauth.Service{
 		Registry: reg, ClientID: cfg.ClientID, ClientSecret: cfg.ClientSecret, Sessions: sessions,
-		Tokens: tokens, Listeners: listeners, Log: app.MakeLog(), Now: time.Now, Dialects: dialects,
+		Tokens: tokens, Listeners: listeners, Log: app.MakeLog(), Now: time.Now, Dialects: table,
 		Accounts: func() oauth.Accounts {
 			store := DataOf(app).Runner.Store()
 			if store == nil {
@@ -44,7 +49,7 @@ func newLogin(app foundation.Application, reg *upstream.Registry, cfg *settings.
 			return f, err == nil
 		},
 		Tokens: tokens, Cache: cacheOrNil(app), Log: app.MakeLog(), Now: time.Now,
-		Dialects: dialects, SlowGap: cfg.RefreshGoogleDelay,
+		Dialects: table, SlowGap: cfg.RefreshGoogleDelay,
 		Store: func() oauth.Store {
 			store := DataOf(app).Runner.Store()
 			if store == nil {
@@ -53,9 +58,9 @@ func newLogin(app foundation.Application, reg *upstream.Registry, cfg *settings.
 			return store.Connections()
 		},
 	}
-	minter := &oauth.Minter{
+	minter := &github.Minter{
 		Registry: reg, Tokens: tokens, Cache: cacheOrNil(app), Log: app.MakeLog(), Now: time.Now,
-		Store: func() oauth.PSDStore {
+		Store: func() github.PSDStore {
 			store := DataOf(app).Runner.Store()
 			if store == nil {
 				return nil
@@ -64,9 +69,9 @@ func newLogin(app foundation.Application, reg *upstream.Registry, cfg *settings.
 		},
 	}
 	google := &Google{
-		Projects: &oauth.ProjectResolver{
+		Projects: &google.ProjectResolver{
 			Registry: reg, Tokens: tokens, Cache: cacheOrNil(app), Log: app.MakeLog(),
-			Store: func() oauth.ProjectStore {
+			Store: func() google.ProjectStore {
 				store := DataOf(app).Runner.Store()
 				if store == nil {
 					return nil
@@ -74,12 +79,12 @@ func newLogin(app foundation.Application, reg *upstream.Registry, cfg *settings.
 				return store.Connections()
 			},
 		},
-		Vertex: oauth.VertexTokens{Minter: &oauth.GoogleMinter{Tokens: tokens, Cache: cacheOrNil(app), Log: app.MakeLog(), Now: time.Now}},
-		Mimo:   &oauth.MimoCookies{Tokens: tokens, Cache: cacheOrNil(app), Log: app.MakeLog()},
+		Vertex: google.VertexTokens{Minter: &google.GoogleMinter{Tokens: tokens, Cache: cacheOrNil(app), Log: app.MakeLog(), Now: time.Now}},
+		Mimo:   &xiaomi.MimoCookies{Tokens: tokens, Cache: cacheOrNil(app), Log: app.MakeLog()},
 		Quota:  newQuotaGate(reg, tokens.HTTP),
 	}
 	hosted := &zed.Client{HTTP: network.NewClient(network.Options{MaxRedirects: 0, Allow: up.Allow, BodyCap: -1}), Cache: cacheOrNil(app)}
-	fb := &oauth.FreebuffSessions{HTTP: network.NewClient(network.Options{MaxRedirects: 0, Allow: up.Allow, BodyCap: -1}), Cache: cacheOrNil(app), Log: app.MakeLog()}
+	fb := &freebuff.Sessions{HTTP: network.NewClient(network.Options{MaxRedirects: 0, Allow: up.Allow, BodyCap: -1}), Cache: cacheOrNil(app), Log: app.MakeLog()}
 	return svc, refresher, minter, google, hosted, fb
 }
 
@@ -87,11 +92,11 @@ func newLogin(app foundation.Application, reg *upstream.Registry, cfg *settings.
 // resolver that finds a Cloud Code account's project, the source that trades a
 // Vertex key for a token, and the Antigravity quota gate.
 type Google struct {
-	Projects *oauth.ProjectResolver
-	Vertex   oauth.VertexTokens
+	Projects *google.ProjectResolver
+	Vertex   google.VertexTokens
 	Quota    *quota.Gate
 	// Mimo trades a MiMo desktop account's pass token for a session cookie.
-	Mimo *oauth.MimoCookies
+	Mimo *xiaomi.MimoCookies
 }
 
 // newQuotaGate builds the Antigravity quota gate from the provider's own data: the

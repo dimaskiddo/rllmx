@@ -1,8 +1,9 @@
-package oauth
+package oauth_test
 
 import (
 	"context"
 	"net/http"
+	"rllmx/app/llm/oauth"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -34,13 +35,13 @@ func importRegistry(t *testing.T, flow string) *upstream.Registry {
 	return reg
 }
 
-func importService(t *testing.T, flow string) (*Service, *fakeAccounts) {
+func importService(t *testing.T, flow string) (*oauth.Service, *fakeAccounts) {
 	t.Helper()
 	accounts := &fakeAccounts{}
-	return &Service{
+	return &oauth.Service{
 		Registry: importRegistry(t, flow), ClientID: func(string) string { return "" },
-		Sessions: NewSessions(), Tokens: &TokenClient{HTTP: http.DefaultClient},
-		Now: func() time.Time { return time.Unix(1_700_000_000, 0) }, Accounts: func() Accounts { return accounts },
+		Sessions: oauth.NewSessions(), Tokens: &oauth.TokenClient{HTTP: http.DefaultClient},
+		Now: func() time.Time { return time.Unix(1_700_000_000, 0) }, Accounts: func() oauth.Accounts { return accounts },
 	}, accounts
 }
 
@@ -79,18 +80,18 @@ func TestImportTokenStoresAPastedTokenAndItsExtraValue(t *testing.T) {
 func TestImportTokenRefusesWhatIsMissing(t *testing.T) {
 	svc, _ := importService(t, "import")
 	token := "TOKEN-" + strings.Repeat("c", 60)
-	if _, err := svc.ImportToken(context.Background(), "imp", map[string]string{"accessToken": token}); err != ErrImportField {
-		t.Fatalf("missing machine id: %v, want ErrImportField", err)
+	if _, err := svc.ImportToken(context.Background(), "imp", map[string]string{"accessToken": token}); err != oauth.ErrImportField {
+		t.Fatalf("missing machine id: %v, want oauth.ErrImportField", err)
 	}
-	if _, err := svc.ImportToken(context.Background(), "imp", map[string]string{"accessToken": "short", "machineId": "m"}); err != ErrToken {
-		t.Fatalf("short token: %v, want ErrToken", err)
+	if _, err := svc.ImportToken(context.Background(), "imp", map[string]string{"accessToken": "short", "machineId": "m"}); err != oauth.ErrToken {
+		t.Fatalf("short token: %v, want oauth.ErrToken", err)
 	}
 }
 
 func TestImportTokenRefusesAProviderThatLogsInInABrowser(t *testing.T) {
 	svc, _ := importService(t, "code")
 	_, err := svc.ImportToken(context.Background(), "imp", map[string]string{"accessToken": "TOKEN-" + strings.Repeat("d", 60)})
-	if err != ErrUnsupported {
+	if err != oauth.ErrUnsupported {
 		t.Fatalf("err = %v, want ErrUnsupported", err)
 	}
 }

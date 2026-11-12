@@ -1,10 +1,11 @@
-package oauth
+package oauth_test
 
 import (
 	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"rllmx/app/llm/oauth"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -41,7 +42,7 @@ func TestWhenATokenIsDue(t *testing.T) {
 	stamp := func(d time.Duration) string { return dialect.FormatTimestamp(epoch.Add(d)) }
 	cases := []struct {
 		name string
-		flow Flow
+		flow oauth.Flow
 		kv   map[string]string
 		want bool
 	}{
@@ -58,7 +59,7 @@ func TestWhenATokenIsDue(t *testing.T) {
 		{"codex never recorded a renewal", codex, map[string]string{"refreshToken": "r", "expiresAt": stamp(48 * time.Hour)}, true},
 	}
 	for _, tc := range cases {
-		if got := Due(tc.flow, docWith(t, tc.kv), epoch); got != tc.want {
+		if got := oauth.Due(tc.flow, docWith(t, tc.kv), epoch); got != tc.want {
 			t.Errorf("%s: due = %v, want %v", tc.name, got, tc.want)
 		}
 	}
@@ -95,7 +96,7 @@ func newTokenEndpoint(t *testing.T, answer func(call int, body string) (int, str
 }
 
 type renewRig struct {
-	r     *Refresher
+	r     *oauth.Refresher
 	st    *store.Store
 	end   *tokenEndpoint
 	log   *tests.Log
@@ -109,19 +110,19 @@ func newRenewRig(t *testing.T, answer func(call int, body string) (int, string))
 	rig := &renewRig{st: store.Migrated(t), log: &tests.Log{}, now: epoch}
 	rig.end = newTokenEndpoint(t, answer)
 	reg := fakeRegistry(t, rig.end.URL)
-	rig.r = &Refresher{
-		Flow: func(provider string) (Flow, bool) {
+	rig.r = &oauth.Refresher{
+		Flow: func(provider string) (oauth.Flow, bool) {
 			id, ok := reg.Resolve(provider)
 			if !ok {
-				return Flow{}, false
+				return oauth.Flow{}, false
 			}
 			e, _ := reg.ByID(id)
-			f, err := NewFlow(e, "client-"+id)
+			f, err := oauth.NewFlow(e, "client-"+id)
 			return f, err == nil
 		},
-		Tokens: &TokenClient{HTTP: rig.end.Client()},
+		Tokens: &oauth.TokenClient{HTTP: rig.end.Client()},
 		Cache:  cache.New(tests.NewCache()),
-		Store:  func() Store { return rig.st.Connections() },
+		Store:  func() oauth.Store { return rig.st.Connections() },
 		Log:    rig.log,
 		Now:    func() time.Time { rig.mu.Lock(); defer rig.mu.Unlock(); return rig.now },
 		Wait: func(_ context.Context, d time.Duration) error {
@@ -229,7 +230,7 @@ func TestAnAPIKeyAccountIsNeverRenewed(t *testing.T) {
 	if _, err := g.r.Ready(context.Background(), c); err != nil || g.end.calls.Load() != 0 {
 		t.Fatalf("%v, %d calls", err, g.end.calls.Load())
 	}
-	if _, err := g.r.Renew(context.Background(), c); err != ErrNoRefresh || g.end.calls.Load() != 0 {
+	if _, err := g.r.Renew(context.Background(), c); err != oauth.ErrNoRefresh || g.end.calls.Load() != 0 {
 		t.Fatalf("renew: %v, %d calls", err, g.end.calls.Load())
 	}
 }
@@ -308,14 +309,14 @@ func TestADeadRefreshTokenMarksTheAccountOnceAndIsNeverSpentAgain(t *testing.T) 
 	})
 	c := dueClaude(g, t)
 	_, err := g.r.Ready(context.Background(), c)
-	if err != ErrExpired {
+	if err != oauth.ErrExpired {
 		t.Fatalf("err = %v", err)
 	}
 	d := g.reload(t, c.ID)
 	if st, _ := d.GetString("testStatus"); st != repository.StatusExpired {
 		t.Fatalf("status = %q", st)
 	}
-	if msg, _ := d.GetString("lastError"); msg != ReconnectMessage {
+	if msg, _ := d.GetString("lastError"); msg != oauth.ReconnectMessage {
 		t.Fatalf("lastError = %q", msg)
 	}
 	for _, line := range g.log.Lines() {
@@ -324,7 +325,7 @@ func TestADeadRefreshTokenMarksTheAccountOnceAndIsNeverSpentAgain(t *testing.T) 
 		}
 	}
 	for range 3 {
-		if _, err := g.r.Renew(context.Background(), c); err != ErrExpired {
+		if _, err := g.r.Renew(context.Background(), c); err != oauth.ErrExpired {
 			t.Fatalf("renew: %v", err)
 		}
 	}
@@ -336,7 +337,7 @@ func TestADeadRefreshTokenMarksTheAccountOnceAndIsNeverSpentAgain(t *testing.T) 
 func TestATransportFailureMarksNothing(t *testing.T) {
 	g := newRenewRig(t, func(int, string) (int, string) { return 503, `<html>down</html>` })
 	c := dueClaude(g, t)
-	if _, err := g.r.Ready(context.Background(), c); ClassOf(err) != ClassRejected {
+	if _, err := g.r.Ready(context.Background(), c); oauth.ClassOf(err) != oauth.ClassRejected {
 		t.Fatalf("err = %v", err)
 	}
 	if st, _ := g.reload(t, c.ID).GetString("testStatus"); st != "active" {
@@ -348,8 +349,8 @@ func TestADeadTokenIsNotMarkedWhenAnotherCallerAlreadyRotatedIt(t *testing.T) {
 	g := newRenewRig(t, func(int, string) (int, string) { return 400, `{"error":"invalid_grant"}` })
 	c := dueClaude(g, t)
 	g.st.Connections().SwapCredentials(context.Background(), c.ID, "OLD-RT", map[string]string{"refreshToken": `"ROTATED"`, "accessToken": `"A2"`})
-	st, _ := g.r.store()
-	marked, err := st.MarkExpired(context.Background(), c.ID, "OLD-RT", ReconnectMessage, epoch)
+	st, _ := g.r.Cooldowns()
+	marked, err := st.MarkExpired(context.Background(), c.ID, "OLD-RT", oauth.ReconnectMessage, epoch)
 	if err != nil || marked {
 		t.Fatalf("a rotated token was declared dead: %v %v", marked, err)
 	}
@@ -359,7 +360,7 @@ func TestRenewTriesThreeTimesWithGrowingPauses(t *testing.T) {
 	g := newRenewRig(t, func(int, string) (int, string) { return 502, `bad gateway` })
 	c := dueClaude(g, t)
 	_, err := g.r.Renew(context.Background(), c)
-	if ClassOf(err) != ClassRejected {
+	if oauth.ClassOf(err) != oauth.ClassRejected {
 		t.Fatalf("err = %v", err)
 	}
 	if n := g.end.calls.Load(); n != 3 {
@@ -373,7 +374,7 @@ func TestRenewTriesThreeTimesWithGrowingPauses(t *testing.T) {
 func TestRenewStopsAtOnceOnADeadToken(t *testing.T) {
 	g := newRenewRig(t, func(int, string) (int, string) { return 400, `{"error":"invalid_grant"}` })
 	c := dueClaude(g, t)
-	if _, err := g.r.Renew(context.Background(), c); err != ErrExpired {
+	if _, err := g.r.Renew(context.Background(), c); err != oauth.ErrExpired {
 		t.Fatalf("err = %v", err)
 	}
 	if g.end.calls.Load() != 1 || len(g.waits) != 0 {
@@ -417,12 +418,12 @@ func TestEnsure(t *testing.T) {
 	}
 
 	none := g.conn(t, "claude", "", map[string]string{"refreshToken": "RT"})
-	if _, err := g.r.Ensure(ctx, none.ID); err != ErrNoToken {
+	if _, err := g.r.Ensure(ctx, none.ID); err != oauth.ErrNoToken {
 		t.Fatalf("no access token: %v", err)
 	}
 
 	lapsed := g.conn(t, "claude", "", map[string]string{"accessToken": "AT", "expiresAt": stamp(-time.Hour)})
-	if _, err := g.r.Ensure(ctx, lapsed.ID); err != ErrNoRefresh {
+	if _, err := g.r.Ensure(ctx, lapsed.ID); err != oauth.ErrNoRefresh {
 		t.Fatalf("lapsed with nothing to renew with: %v", err)
 	}
 
@@ -435,10 +436,10 @@ func TestEnsure(t *testing.T) {
 func TestEnsureDoesNotTryADeadAccountAgain(t *testing.T) {
 	g := newRenewRig(t, func(int, string) (int, string) { return 400, `{"error":"invalid_grant"}` })
 	c := dueClaude(g, t)
-	if _, err := g.r.Ensure(context.Background(), c.ID); err != ErrExpired {
+	if _, err := g.r.Ensure(context.Background(), c.ID); err != oauth.ErrExpired {
 		t.Fatalf("first: %v", err)
 	}
-	if _, err := g.r.Ensure(context.Background(), c.ID); err != ErrExpired {
+	if _, err := g.r.Ensure(context.Background(), c.ID); err != oauth.ErrExpired {
 		t.Fatalf("second: %v", err)
 	}
 	if g.end.calls.Load() != 1 {
@@ -457,8 +458,8 @@ func TestRefreshWithoutACacheStillWorks(t *testing.T) {
 
 func TestRefreshBeforeTheStoreOpensIsAStorageError(t *testing.T) {
 	g := newRenewRig(t, good)
-	g.r.Store = func() Store { return nil }
-	if _, err := g.r.Refresh(context.Background(), "x", ""); err != ErrStorage {
+	g.r.Store = func() oauth.Store { return nil }
+	if _, err := g.r.Refresh(context.Background(), "x", ""); err != oauth.ErrStorage {
 		t.Fatalf("%v", err)
 	}
 	if n := g.r.Pass(context.Background(), 0); n != 0 {
@@ -552,7 +553,7 @@ func TestTheLoopWaitsTenSecondsThenFiveMinutes(t *testing.T) {
 		return nil
 	}
 	g.r.Loop(ctx, 0)
-	if len(seen) != 3 || seen[0] != FirstPass || seen[1] != PassEvery || seen[2] != PassEvery {
+	if len(seen) != 3 || seen[0] != oauth.FirstPass || seen[1] != oauth.PassEvery || seen[2] != oauth.PassEvery {
 		t.Fatalf("waits = %v", seen)
 	}
 }
@@ -563,10 +564,10 @@ func TestAMarkedAccountIsNeverCalledValidEvenWhenItsTokenIsNotDue(t *testing.T) 
 		"accessToken": "AT", "refreshToken": "RT", "testStatus": repository.StatusExpired,
 		"expiresAt": dialect.FormatTimestamp(epoch.Add(10 * time.Hour)),
 	})
-	if _, err := g.r.Ensure(context.Background(), c.ID); err != ErrExpired {
+	if _, err := g.r.Ensure(context.Background(), c.ID); err != oauth.ErrExpired {
 		t.Fatalf("Ensure = %v", err)
 	}
-	if _, err := g.r.Refresh(context.Background(), c.ID, ""); err != ErrExpired {
+	if _, err := g.r.Refresh(context.Background(), c.ID, ""); err != oauth.ErrExpired {
 		t.Fatalf("Refresh = %v", err)
 	}
 	if g.end.calls.Load() != 0 {
@@ -585,13 +586,13 @@ func TestAnAccountOfASlowProviderIsFollowedByTheLongerPauseWithJitter(t *testing
 		g := newRenewRig(t, good)
 		g.r.SlowGap = 12 * time.Second
 		g.r.Jitter = func(max time.Duration) time.Duration {
-			if max != maxSlowJitter {
+			if max != oauth.MaxSlowJitter {
 				t.Errorf("jitter bound %v", max)
 			}
 			return 3 * time.Second
 		}
 		slow := g.r.Flow
-		g.r.Flow = func(provider string) (Flow, bool) {
+		g.r.Flow = func(provider string) (oauth.Flow, bool) {
 			f, ok := slow(provider)
 			f.SlowRefresh = provider == "claude"
 			return f, ok
@@ -611,7 +612,7 @@ func TestAnAccountOfASlowProviderIsFollowedByTheLongerPauseWithJitter(t *testing
 func TestTheCommonGapIsKeptWhenNoSlowGapIsSet(t *testing.T) {
 	g := newRenewRig(t, good)
 	slow := g.r.Flow
-	g.r.Flow = func(provider string) (Flow, bool) {
+	g.r.Flow = func(provider string) (oauth.Flow, bool) {
 		f, ok := slow(provider)
 		f.SlowRefresh = true
 		return f, ok

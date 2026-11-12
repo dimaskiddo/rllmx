@@ -83,10 +83,10 @@ func (s *Service) PollDevice(ctx context.Context, state, bind string) DevicePoll
 	switch {
 	case err != nil:
 		return s.endDevice(state, deviceCode(err))
-	case pending == pollSlow:
+	case pending == PollSlow:
 		s.Sessions.Rest(state, min(sess.Interval+slowStep, maxSlowInterval))
 		return DevicePolled{Status: "pending", Interval: int(min(sess.Interval+slowStep, maxSlowInterval) / time.Second)}
-	case pending == pollPending:
+	case pending == PollPending:
 		s.Sessions.Rest(state, sess.Interval)
 		return DevicePolled{Status: "pending", Interval: int(sess.Interval / time.Second)}
 	}

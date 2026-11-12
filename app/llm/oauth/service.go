@@ -73,6 +73,10 @@ type Started struct {
 	Paste bool `json:"paste"`
 }
 
+// dials returns the dialect table in force: an empty one follows the standard
+// calls only.
+func (s *Service) dials() Dialects { return s.Dialects }
+
 func (s *Service) flow(provider string) (Flow, error) {
 	return FlowFor(s.Registry, s.ClientID, s.ClientSecret, provider)
 }
@@ -122,8 +126,9 @@ func (s *Service) Start(req StartRequest) (Started, error) {
 	if err != nil {
 		return Started{}, err
 	}
-	if f.Dialect != "" {
-		if f, err = withVariant(f, req.Variant); err != nil {
+	d := s.dials().Code[f.Dialect]
+	if d.Variant != nil {
+		if f, err = d.Variant(f, req.Variant); err != nil {
 			return Started{}, err
 		}
 	}
@@ -141,8 +146,8 @@ func (s *Service) Start(req StartRequest) (Started, error) {
 	// the address names the public half, and the private one is what the answer
 	// is read with.
 	var authURL string
-	if f.SignedIn() {
-		if authURL, verifier, err = zedAuthorize(f); err != nil {
+	if d.Authorize != nil {
+		if authURL, verifier, err = d.Authorize(f); err != nil {
 			return Started{}, err
 		}
 	}
@@ -154,7 +159,7 @@ func (s *Service) Start(req StartRequest) (Started, error) {
 	port := f.ListenerPort()
 	// A login whose provider answers a scheme no server receives is finished by
 	// pasting, whatever this request looks like.
-	paste := !req.Local && !f.NeedsPublicBase() || f.Dialect == kiroSocialDialect
+	paste := !req.Local && !f.NeedsPublicBase() || d.Paste
 	if port != 0 {
 		if s.Listeners == nil || !s.Listeners.Acquire(port, f.CallbackPath) {
 			paste = true
@@ -168,7 +173,11 @@ func (s *Service) Start(req StartRequest) (Started, error) {
 		return Started{}, err
 	}
 	if authURL == "" {
-		authURL = f.URL(redirect, state, challenge, nonce)
+		if d.CustomURL != nil {
+			authURL = d.CustomURL(f, state, challenge)
+		} else {
+			authURL = f.URL(redirect, state, challenge, nonce)
+		}
 	}
 	return Started{AuthURL: authURL, State: state, Redirect: redirect, Paste: paste}, nil
 }
@@ -202,8 +211,8 @@ func (s *Service) finish(ctx context.Context, state string, in Input, allow func
 	if err != nil {
 		return "", s.end(state, sess, "", CodeInput)
 	}
-	if f.Dialect != "" {
-		if f, err = withVariant(f, sess.Variant); err != nil {
+	if d := s.dials().Code[f.Dialect]; d.Variant != nil {
+		if f, err = d.Variant(f, sess.Variant); err != nil {
 			return "", s.end(state, sess, "", CodeInput)
 		}
 	}
@@ -246,15 +255,15 @@ func (s *Service) store(ctx context.Context, f Flow, t Tokens, deviceID string) 
 	var acc Account
 	if h, ok := s.dials().Hooks[f.Hook]; ok {
 		var err error
-		if acc, err = h(ctx, s.Tokens, f, t, callHeaders(f, deviceID)); err != nil {
+		if acc, err = h(ctx, s.Tokens, f, t, CallHeaders(f, deviceID)); err != nil {
 			return "", err
 		}
 	}
-	return s.save(ctx, f, t, acc, deviceID)
+	return s.Save(ctx, f, t, acc, deviceID)
 }
 
 // save writes the account a login or a pasted token ends with.
-func (s *Service) save(ctx context.Context, f Flow, t Tokens, acc Account, deviceID ...string) (string, error) {
+func (s *Service) Save(ctx context.Context, f Flow, t Tokens, acc Account, deviceID ...string) (string, error) {
 	accounts := s.Accounts()
 	if accounts == nil {
 		return "", ErrStorage
@@ -274,15 +283,15 @@ func (s *Service) save(ctx context.Context, f Flow, t Tokens, acc Account, devic
 		psd = t.PSD
 	}
 	if len(deviceID) > 0 && deviceID[0] != "" {
-		psd = withPSD(psd, deviceIDKey, deviceID[0])
+		psd = WithPSD(psd, deviceIDKey, deviceID[0])
 	}
 	if f.AppBase != "" {
-		psd = withPSD(psd, "baseUrl", f.AppBase)
-		psd = withPSD(psd, "clientId", f.ClientID)
+		psd = WithPSD(psd, "baseUrl", f.AppBase)
+		psd = WithPSD(psd, "clientId", f.ClientID)
 		if f.ClientSecret != "" {
-			psd = withPSD(psd, "clientSecret", f.ClientSecret)
+			psd = WithPSD(psd, "clientSecret", f.ClientSecret)
 		}
-		psd = withPSD(psd, "authKind", "oauth")
+		psd = WithPSD(psd, "authKind", "oauth")
 	}
 	conn, err := accounts.Create(ctx, repository.ConnInput{
 		Provider: f.Provider, AuthType: "oauth", Email: acc.Email, Fields: fields, PSD: psd,
@@ -329,8 +338,8 @@ func credentialFields(t Tokens, acc Account, now time.Time) map[string]string {
 	return fields
 }
 
-// withPSD sets one string key in a provider data object ("" is empty).
-func withPSD(psd, k, v string) string {
+// WithPSD sets one string key in a provider data object ("" is empty).
+func WithPSD(psd, k, v string) string {
 	m := map[string]string{}
 	if psd != "" {
 		for key, val := range gjson.Parse(psd).Map() {
@@ -340,11 +349,11 @@ func withPSD(psd, k, v string) string {
 		}
 	}
 	m[k] = v
-	return jsonObject(m)
+	return JSONObject(m)
 }
 
-// jsonObject renders a string map as a JSON object with sorted keys, or "".
-func jsonObject(m map[string]string) string {
+// JSONObject renders a string map as a JSON object with sorted keys, or "".
+func JSONObject(m map[string]string) string {
 	if len(m) == 0 {
 		return ""
 	}
@@ -363,12 +372,4 @@ func jsonObject(m map[string]string) string {
 		out = append(out, document.Encode(m[k])...)
 	}
 	return string(append(out, '}'))
-}
-
-// dials returns the dialect table in force.
-func (s *Service) dials() Dialects {
-	if s.Dialects.empty() {
-		return DefaultDialects()
-	}
-	return s.Dialects
 }

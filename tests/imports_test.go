@@ -183,7 +183,7 @@ func TestProtocolPackagesImportNothingOfTheProgram(t *testing.T) {
 // siblings share belongs in the parent as an exported type, and the wiring that
 // needs every sibling is one package of its own.
 func TestNoSubPackageImportsASibling(t *testing.T) {
-	wiring := map[string]bool{"app/llm/executor/mux": true}
+	wiring := map[string]bool{"app/llm/executor/mux": true, "app/llm/oauth/dialects": true}
 	for name, path := range goFiles(t) {
 		dir := filepath.ToSlash(filepath.Dir(name))
 		if !strings.HasPrefix(name, "app/") || strings.HasSuffix(name, "_test.go") || wiring[dir] || isGoravelFolder(dir) {
@@ -239,6 +239,41 @@ func TestNoTranslateFormatImportsAnother(t *testing.T) {
 				if ok && slices.Contains(formats, rest) {
 					t.Errorf("%s imports the %s format: a format package imports the hub, never a sibling", name, rest)
 				}
+			}
+		}
+	}
+}
+
+// An oauth provider package reaches the engine and nothing else of the login
+// area: what two providers share belongs in the engine or the wiring table.
+func TestNoOAuthProviderImportsAnother(t *testing.T) {
+	const area = "app/llm/oauth/"
+	for name, path := range goFiles(t) {
+		dir := filepath.ToSlash(filepath.Dir(name))
+		if !strings.HasPrefix(dir, area) || strings.HasSuffix(name, "_test.go") || dir == "app/llm/oauth/dialects" {
+			continue
+		}
+		for _, imp := range importsOf(t, path) {
+			rest, ok := strings.CutPrefix(imp, "rllmx/"+area)
+			if !ok || rest == "" {
+				continue
+			}
+			t.Errorf("%s imports %s: a provider package imports the engine, never a sibling", name, imp)
+		}
+	}
+}
+
+// The engine does not depend on an executor: the two areas meet only at their
+// wiring, so a login step can never reach a request path by accident.
+func TestTheLoginEngineImportsNoExecutor(t *testing.T) {
+	for name, path := range goFiles(t) {
+		dir := filepath.ToSlash(filepath.Dir(name))
+		if dir != "app/llm/oauth" || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		for _, imp := range importsOf(t, path) {
+			if imp == "rllmx/app/llm/executor" || strings.HasPrefix(imp, "rllmx/app/llm/executor/") {
+				t.Errorf("%s imports %s: the engine knows no executor", name, imp)
 			}
 		}
 	}

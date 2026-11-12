@@ -2,6 +2,7 @@ package opencode
 
 import (
 	"context"
+	"crypto/tls"
 	"strings"
 	"testing"
 
@@ -215,5 +216,38 @@ func TestOpenCodeATerminalToolGoesOutUnderAnotherName(t *testing.T) {
 	}
 	if strings.Contains(strings.Join(names, ","), "terminal") || strings.Contains(strings.Join(names, ","), "Terminal") {
 		t.Fatalf("a terminal name reached the wire: %v", names)
+	}
+}
+
+// The free gate reads the TLS ClientHello, and it compares a sorted suite list,
+// so only the set matters: Go sends its own TLS 1.3 set and its own ordering.
+func TestTheFreeLaneOffersTheSuitesTheGateReads(t *testing.T) {
+	want := []uint16{
+		tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+		tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+		tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+		tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+		tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
+		tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+		tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
+		tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+		tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
+		tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+		tls.TLS_RSA_WITH_AES_128_GCM_SHA256,
+		tls.TLS_RSA_WITH_AES_256_GCM_SHA384,
+		tls.TLS_RSA_WITH_AES_128_CBC_SHA,
+		tls.TLS_RSA_WITH_AES_256_CBC_SHA,
+	}
+	have := map[uint16]bool{}
+	for _, s := range OpenCodeCipherSuites {
+		have[s] = true
+	}
+	if len(OpenCodeCipherSuites) != len(want) || len(have) != len(want) {
+		t.Fatalf("%d suites, %d unique, want %d", len(OpenCodeCipherSuites), len(have), len(want))
+	}
+	for _, s := range want {
+		if !have[s] {
+			t.Errorf("suite %#x is missing", s)
+		}
 	}
 }

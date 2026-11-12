@@ -1,10 +1,11 @@
-package oauth
+package oauth_test
 
 import (
 	"context"
 	"io"
 	"net"
 	"net/http"
+	"rllmx/app/llm/oauth"
 	"strconv"
 	"strings"
 	"sync"
@@ -29,7 +30,7 @@ type handled struct {
 	calls []string
 }
 
-func (h *handled) record(_ context.Context, _ int, state string, _ Input) error {
+func (h *handled) record(_ context.Context, _ int, state string, _ oauth.Input) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.calls = append(h.calls, state)
@@ -42,11 +43,11 @@ func (h *handled) count() int {
 	return len(h.calls)
 }
 
-func newListeners(t *testing.T) (*Listeners, *handled, *Sessions) {
+func newListeners(t *testing.T) (*oauth.Listeners, *handled, *oauth.Sessions) {
 	t.Helper()
-	sessions := NewSessions()
+	sessions := oauth.NewSessions()
 	h := &handled{}
-	l := &Listeners{Host: "127.0.0.1", Sessions: sessions, Handle: h.record}
+	l := &oauth.Listeners{Host: "127.0.0.1", Sessions: sessions, Handle: h.record}
 	t.Cleanup(l.Close)
 	return l, h, sessions
 }
@@ -70,7 +71,7 @@ func TestTheListenerAnswersOnlyAKnownStateOnTheCallbackPathForALoopbackHost(t *t
 	if !l.Acquire(port, "/auth/callback") {
 		t.Fatal("the port was not bound")
 	}
-	state, _ := sessions.Put(Session{Port: port, Bind: "b"})
+	state, _ := sessions.Put(oauth.Session{Port: port, Bind: "b"})
 	host := "localhost:" + strconv.Itoa(port)
 
 	cases := []struct {
@@ -103,7 +104,7 @@ func TestAStateOfAnotherPortIsRefused(t *testing.T) {
 	l, h, sessions := newListeners(t)
 	port := freePort(t)
 	l.Acquire(port, "/cb")
-	other, _ := sessions.Put(Session{Port: port + 1, Bind: "b"})
+	other, _ := sessions.Put(oauth.Session{Port: port + 1, Bind: "b"})
 	if code, _ := get(t, port, "localhost", "/cb?code=c&state="+other); code != 404 || h.count() != 0 {
 		t.Fatalf("%d, %d", code, h.count())
 	}
@@ -120,17 +121,17 @@ func TestTwoLoginsShareOneListenerWhichStopsWithTheLast(t *testing.T) {
 	if !l.Acquire(port, "/cb") {
 		t.Fatal("the shared listener was not reused")
 	}
-	a, _ := sessions.Put(Session{Port: port, Bind: "a"})
-	b, _ := sessions.Put(Session{Port: port, Bind: "b"})
+	a, _ := sessions.Put(oauth.Session{Port: port, Bind: "a"})
+	b, _ := sessions.Put(oauth.Session{Port: port, Bind: "b"})
 	now = now.Add(time.Minute)
 
-	sessions.Begin(a, func(Session) bool { return true })
+	sessions.Begin(a, func(oauth.Session) bool { return true })
 	sessions.End(a, "c", "")
 	l.Release(port)
 	if !l.Running(port) {
 		t.Fatal("the listener stopped while a login still waited")
 	}
-	sessions.Begin(b, func(Session) bool { return true })
+	sessions.Begin(b, func(oauth.Session) bool { return true })
 	sessions.End(b, "c", "")
 	l.Release(port)
 	if l.Running(port) {
@@ -173,7 +174,7 @@ func TestAFullCodexLoginOverTheListener(t *testing.T) {
 	svc, accounts := newService(t, srv.URL, srv.Client())
 	port := freePort(t)
 	svc.Registry = fakeRegistryPort(t, srv.URL, port)
-	svc.Listeners = &Listeners{Host: "127.0.0.1", Sessions: svc.Sessions, Handle: svc.Listened}
+	svc.Listeners = &oauth.Listeners{Host: "127.0.0.1", Sessions: svc.Sessions, Handle: svc.Listened}
 	t.Cleanup(svc.Listeners.Close)
 
 	started, err := startLogin(svc, "codex", true)
@@ -193,17 +194,17 @@ func TestAFullCodexLoginOverTheListener(t *testing.T) {
 
 func TestAFailedLoginIsLoggedByItsCodeAndNothingElse(t *testing.T) {
 	lg := &tests.Log{}
-	sessions := NewSessions()
-	l := &Listeners{
+	sessions := oauth.NewSessions()
+	l := &oauth.Listeners{
 		Host: "127.0.0.1", Sessions: sessions, Log: lg,
-		Handle: func(context.Context, int, string, Input) error { return &Failure{Code: CodeDenied} },
+		Handle: func(context.Context, int, string, oauth.Input) error { return &oauth.Failure{Code: oauth.CodeDenied} },
 	}
 	t.Cleanup(l.Close)
 	port := freePort(t)
 	if !l.Acquire(port, "/auth/callback") {
 		t.Fatal("the port was not bound")
 	}
-	state, _ := sessions.Put(Session{Port: port, Bind: "b"})
+	state, _ := sessions.Put(oauth.Session{Port: port, Bind: "b"})
 	if code, _ := get(t, port, "localhost:"+strconv.Itoa(port), "/auth/callback?code=SECRETCODE&state="+state); code != 200 {
 		t.Fatalf("status %d", code)
 	}
@@ -212,7 +213,7 @@ func TestAFailedLoginIsLoggedByItsCodeAndNothingElse(t *testing.T) {
 		if strings.Contains(line, "SECRETCODE") || strings.Contains(line, state) {
 			t.Fatalf("the log line carries login data: %q", line)
 		}
-		if strings.Contains(line, CodeDenied) {
+		if strings.Contains(line, oauth.CodeDenied) {
 			seen = true
 		}
 	}

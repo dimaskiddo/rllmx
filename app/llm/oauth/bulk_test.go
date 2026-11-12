@@ -1,8 +1,9 @@
-package oauth
+package oauth_test
 
 import (
 	"context"
 	"encoding/json"
+	"rllmx/app/llm/oauth"
 	"strings"
 	"testing"
 	"time"
@@ -20,13 +21,13 @@ func bulkJWT(t *testing.T, claims map[string]any) string {
 	return jwt(string(raw))
 }
 
-func bulkService(t *testing.T) (*Service, *fakeAccounts) {
+func bulkService(t *testing.T) (*oauth.Service, *fakeAccounts) {
 	t.Helper()
 	accounts := &fakeAccounts{}
-	return &Service{
+	return &oauth.Service{
 		Registry: registry(t), ClientID: func(p string) string { return "client-" + p },
-		Sessions: NewSessions(), Tokens: &TokenClient{HTTP: nil},
-		Now: func() time.Time { return time.Unix(1_700_000_000, 0) }, Accounts: func() Accounts { return accounts },
+		Sessions: oauth.NewSessions(), Tokens: &oauth.TokenClient{HTTP: nil},
+		Now: func() time.Time { return time.Unix(1_700_000_000, 0) }, Accounts: func() oauth.Accounts { return accounts },
 	}, accounts
 }
 
@@ -34,7 +35,7 @@ func TestBulkImportStoresEachAccount(t *testing.T) {
 	svc, accounts := bulkService(t)
 	access := bulkJWT(t, map[string]any{"email": "a@x.test", "sub": "u1"})
 	id := bulkJWT(t, map[string]any{"email": "a@x.test", "account_id": "acct-1", "plan_type": "plus"})
-	out, err := svc.BulkImport(context.Background(), "codex", []BulkItem{
+	out, err := svc.BulkImport(context.Background(), "codex", []oauth.BulkItem{
 		{Access: access, ID: id, Refresh: "r1", ExpiresIn: 3600},
 		{Access: ""},
 	})
@@ -59,10 +60,37 @@ func TestBulkImportStoresEachAccount(t *testing.T) {
 	}
 }
 
+func TestBulkImportReadsTheAccountFromTheAccessTokenAlone(t *testing.T) {
+	svc, accounts := bulkService(t)
+	access := bulkJWT(t, map[string]any{
+		"email":                       "a@x.test",
+		"https://api.openai.com/auth": map[string]any{"chatgpt_account_id": "acct-nested", "chatgpt_plan_type": "pro"},
+	})
+	out, err := svc.BulkImport(context.Background(), "codex", []oauth.BulkItem{{Access: access}})
+	if err != nil || len(out) != 1 || out[0].ID == "" {
+		t.Fatalf("outcomes = %+v %v", out, err)
+	}
+	made := accounts.made[0]
+	if made.Email != "a@x.test" || gjson.Get(made.PSD, "chatgptAccountId").String() != "acct-nested" || gjson.Get(made.PSD, "chatgptPlanType").String() != "pro" {
+		t.Fatalf("account = %+v, data = %s", made, made.PSD)
+	}
+}
+
+func TestBulkImportStoresATokenThatNamesNoAccount(t *testing.T) {
+	svc, accounts := bulkService(t)
+	out, err := svc.BulkImport(context.Background(), "codex", []oauth.BulkItem{{Access: "an-access-token-that-is-not-a-jwt"}})
+	if err != nil || len(out) != 1 || out[0].ID == "" {
+		t.Fatalf("outcomes = %+v %v", out, err)
+	}
+	if made := accounts.made[0]; made.Email != "" || made.PSD != "" {
+		t.Fatalf("an unreadable token was given an account: %+v", made)
+	}
+}
+
 func TestBulkImportRecordsTheDeviceRenewalKind(t *testing.T) {
 	svc, accounts := bulkService(t)
 	access := bulkJWT(t, map[string]any{"email": "g@x.test"})
-	out, err := svc.BulkImport(context.Background(), "grok-cli", []BulkItem{{Access: access}})
+	out, err := svc.BulkImport(context.Background(), "grok-cli", []oauth.BulkItem{{Access: access}})
 	if err != nil {
 		t.Fatalf("bulk: %v", err)
 	}
@@ -76,17 +104,17 @@ func TestBulkImportRecordsTheDeviceRenewalKind(t *testing.T) {
 
 func TestBulkImportRefusesWhatItCannotTake(t *testing.T) {
 	svc, _ := bulkService(t)
-	if _, err := svc.BulkImport(context.Background(), "kimi", []BulkItem{{Access: strings.Repeat("a", 20)}}); err != ErrBulk {
+	if _, err := svc.BulkImport(context.Background(), "kimi", []oauth.BulkItem{{Access: strings.Repeat("a", 20)}}); err != oauth.ErrBulk {
 		t.Fatalf("a provider without a bulk login: %v, want ErrBulk", err)
 	}
-	items := make([]BulkItem, BulkLimit+1)
+	items := make([]oauth.BulkItem, oauth.BulkLimit+1)
 	for i := range items {
-		items[i] = BulkItem{Access: strings.Repeat("a", 20)}
+		items[i] = oauth.BulkItem{Access: strings.Repeat("a", 20)}
 	}
-	if _, err := svc.BulkImport(context.Background(), "codex", items); err != ErrBulk {
+	if _, err := svc.BulkImport(context.Background(), "codex", items); err != oauth.ErrBulk {
 		t.Fatalf("too many items: %v, want ErrBulk", err)
 	}
-	if _, err := svc.BulkImport(context.Background(), "codex", nil); err != ErrBulk {
+	if _, err := svc.BulkImport(context.Background(), "codex", nil); err != oauth.ErrBulk {
 		t.Fatalf("no items: %v, want ErrBulk", err)
 	}
 }

@@ -1,4 +1,4 @@
-package oauth
+package oauth_test
 
 import (
 	"context"
@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"rllmx/app/llm/oauth"
+	"rllmx/tests/login"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,13 +29,13 @@ func registry(t *testing.T) *upstream.Registry {
 	return reg
 }
 
-func flowFor(t *testing.T, id string) Flow {
+func flowFor(t *testing.T, id string) oauth.Flow {
 	t.Helper()
 	e, ok := registry(t).ByID(id)
 	if !ok {
 		t.Fatalf("no provider %s", id)
 	}
-	f, err := NewFlow(e, "client-"+id)
+	f, err := oauth.NewFlow(e, "client-"+id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,11 +72,11 @@ func TestTheServerDecidesTheRedirect(t *testing.T) {
 
 func TestAProviderWithoutALoginOrAClientIDHasNone(t *testing.T) {
 	e, _ := registry(t).ByID("openai")
-	if _, err := NewFlow(e, "id"); err != ErrUnsupported {
+	if _, err := oauth.NewFlow(e, "id"); err != oauth.ErrUnsupported {
 		t.Fatalf("no block: %v", err)
 	}
 	e, _ = registry(t).ByID("claude")
-	if _, err := NewFlow(e, ""); err != ErrDisabled {
+	if _, err := oauth.NewFlow(e, ""); err != oauth.ErrDisabled {
 		t.Fatalf("empty id: %v", err)
 	}
 }
@@ -82,24 +84,24 @@ func TestAProviderWithoutALoginOrAClientIDHasNone(t *testing.T) {
 func TestParseInput(t *testing.T) {
 	cases := []struct {
 		name, in string
-		want     Input
+		want     oauth.Input
 		bad      bool
 	}{
-		{"address with query", "http://localhost:1455/auth/callback?code=abc&state=xyz", Input{Code: "abc", State: "xyz"}, false},
-		{"address with fragment", "http://localhost:20128/callback#code=abc&state=xyz", Input{Code: "abc", State: "xyz"}, false},
-		{"bare code", "abc", Input{Code: "abc"}, false},
-		{"code and state", "abc#xyz", Input{Code: "abc", State: "xyz"}, false},
-		{"padded", "  abc#xyz \n", Input{Code: "abc", State: "xyz"}, false},
-		{"provider error", "http://localhost/callback?error=access_denied&state=xyz", Input{State: "xyz", Failed: true}, false},
-		{"empty", "  ", Input{}, true},
-		{"address without code", "http://localhost/callback?state=xyz", Input{}, true},
-		{"space inside", "ab cd", Input{}, true},
-		{"control byte", "ab\x00cd", Input{}, true},
-		{"huge", strings.Repeat("a", maxInput+1), Input{}, true},
+		{"address with query", "http://localhost:1455/auth/callback?code=abc&state=xyz", oauth.Input{Code: "abc", State: "xyz"}, false},
+		{"address with fragment", "http://localhost:20128/callback#code=abc&state=xyz", oauth.Input{Code: "abc", State: "xyz"}, false},
+		{"bare code", "abc", oauth.Input{Code: "abc"}, false},
+		{"code and state", "abc#xyz", oauth.Input{Code: "abc", State: "xyz"}, false},
+		{"padded", "  abc#xyz \n", oauth.Input{Code: "abc", State: "xyz"}, false},
+		{"provider error", "http://localhost/callback?error=access_denied&state=xyz", oauth.Input{State: "xyz", Failed: true}, false},
+		{"empty", "  ", oauth.Input{}, true},
+		{"address without code", "http://localhost/callback?state=xyz", oauth.Input{}, true},
+		{"space inside", "ab cd", oauth.Input{}, true},
+		{"control byte", "ab\x00cd", oauth.Input{}, true},
+		{"huge", strings.Repeat("a", oauth.MaxInput+1), oauth.Input{}, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := ParseInput(tc.in)
+			got, err := oauth.ParseInput(tc.in)
 			if tc.bad {
 				if err == nil {
 					t.Fatalf("accepted: %+v", got)
@@ -118,7 +120,7 @@ func FuzzParseInput(f *testing.F) {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, s string) {
-		in, err := ParseInput(s)
+		in, err := oauth.ParseInput(s)
 		if err != nil {
 			return
 		}
@@ -133,14 +135,14 @@ func FuzzParseInput(f *testing.F) {
 
 func TestSessionsAreSingleUseAndBound(t *testing.T) {
 	now := time.Unix(1000, 0)
-	s := NewSessions()
+	s := oauth.NewSessions()
 	s.Now = func() time.Time { return now }
-	state, err := s.Put(Session{Provider: "claude", Verifier: "v", Bind: "mine"})
+	state, err := s.Put(oauth.Session{Provider: "claude", Verifier: "v", Bind: "mine"})
 	if err != nil || len(state) < 40 {
 		t.Fatalf("state %q: %v", state, err)
 	}
-	mine := func(x Session) bool { return SameBind(x.Bind, "mine") }
-	if _, ok := s.Begin(state, func(x Session) bool { return SameBind(x.Bind, "theirs") }); ok {
+	mine := func(x oauth.Session) bool { return oauth.SameBind(x.Bind, "mine") }
+	if _, ok := s.Begin(state, func(x oauth.Session) bool { return oauth.SameBind(x.Bind, "theirs") }); ok {
 		t.Fatal("a foreign browser began the login")
 	}
 	if _, ok := s.Begin("nope", mine); ok {
@@ -169,34 +171,34 @@ func TestSessionsAreSingleUseAndBound(t *testing.T) {
 }
 
 func TestAnEmptyBindingNeverMatches(t *testing.T) {
-	if SameBind("", "") || SameBind("a", "") {
+	if oauth.SameBind("", "") || oauth.SameBind("a", "") {
 		t.Fatal("empty bindings matched")
 	}
 }
 
 func TestSessionsExpire(t *testing.T) {
 	now := time.Unix(1000, 0)
-	s := NewSessions()
+	s := oauth.NewSessions()
 	s.Now = func() time.Time { return now }
-	state, _ := s.Put(Session{Bind: "b"})
-	now = now.Add(sessionLife + time.Second)
-	if _, ok := s.Begin(state, func(Session) bool { return true }); ok {
+	state, _ := s.Put(oauth.Session{Bind: "b"})
+	now = now.Add(oauth.SessionLife + time.Second)
+	if _, ok := s.Begin(state, func(oauth.Session) bool { return true }); ok {
 		t.Fatal("an expired login began")
 	}
-	state, _ = s.Put(Session{Bind: "b"})
-	s.Begin(state, func(Session) bool { return true })
+	state, _ = s.Put(oauth.Session{Bind: "b"})
+	s.Begin(state, func(oauth.Session) bool { return true })
 	s.End(state, "c", "")
-	now = now.Add(doneLife + time.Second)
+	now = now.Add(oauth.DoneLife + time.Second)
 	if st := s.Status(state, "b"); st.State != "unknown" {
 		t.Fatalf("an old outcome survived: %+v", st)
 	}
 }
 
 func TestAClientCannotFloodTheStore(t *testing.T) {
-	s := NewSessions()
+	s := oauth.NewSessions()
 	var first string
-	for i := 0; i <= maxPerBind; i++ {
-		st, err := s.Put(Session{Bind: "same"})
+	for i := 0; i <= oauth.MaxPerBind; i++ {
+		st, err := s.Put(oauth.Session{Bind: "same"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -204,15 +206,15 @@ func TestAClientCannotFloodTheStore(t *testing.T) {
 			first = st
 		}
 	}
-	if _, ok := s.Begin(first, func(Session) bool { return true }); ok {
+	if _, ok := s.Begin(first, func(oauth.Session) bool { return true }); ok {
 		t.Fatal("the oldest login of a full binding survived")
 	}
-	if n := s.Waiting(0); n != maxPerBind {
+	if n := s.Waiting(0); n != oauth.MaxPerBind {
 		t.Fatalf("%d logins wait", n)
 	}
 }
 
-func tokenServer(t *testing.T, status int, body string, seen *[]string) (*httptest.Server, Flow) {
+func tokenServer(t *testing.T, status int, body string, seen *[]string) (*httptest.Server, oauth.Flow) {
 	t.Helper()
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw := make([]byte, 4096)
@@ -230,7 +232,7 @@ func tokenServer(t *testing.T, status int, body string, seen *[]string) (*httpte
 func TestClaudeExchangesAsJSONWithTheState(t *testing.T) {
 	var seen []string
 	srv, f := tokenServer(t, 200, `{"access_token":"a","refresh_token":"r","expires_in":3600,"scope":"s"}`, &seen)
-	c := &TokenClient{HTTP: srv.Client()}
+	c := &oauth.TokenClient{HTTP: srv.Client()}
 	tok, err := c.Exchange(context.Background(), f, "CODE", "http://localhost:1/callback", "VER", "STATE")
 	if err != nil || tok.Access != "a" || tok.Refresh != "r" || tok.ExpiresIn != 3600 {
 		t.Fatalf("%+v %v", tok, err)
@@ -259,7 +261,7 @@ func TestCodexExchangesAsAFormWithoutTheState(t *testing.T) {
 	srv, f := tokenServer(t, 200, `{"access_token":"a"}`, &seen)
 	f = flowFor(t, "codex")
 	f.TokenURL = srv.URL
-	c := &TokenClient{HTTP: srv.Client()}
+	c := &oauth.TokenClient{HTTP: srv.Client()}
 	if _, err := c.Exchange(context.Background(), f, "CODE", "http://localhost:1455/auth/callback", "VER", "STATE"); err != nil {
 		t.Fatal(err)
 	}
@@ -277,20 +279,20 @@ func TestATokenFailureIsAClassAndNeverCarriesProviderText(t *testing.T) {
 	cases := []struct {
 		status int
 		body   string
-		want   Class
+		want   oauth.Class
 	}{
-		{400, `{"error":"invalid_grant","error_description":"SECRET-TEXT"}`, ClassInvalidGrant},
-		{400, `{"error":"refresh_token_reused"}`, ClassInvalidGrant},
-		{500, `<html>SECRET-TEXT</html>`, ClassRejected},
-		{200, `not json SECRET-TEXT`, ClassMalformed},
-		{200, `{"refresh_token":"r"}`, ClassMalformed},
+		{400, `{"error":"invalid_grant","error_description":"SECRET-TEXT"}`, oauth.ClassInvalidGrant},
+		{400, `{"error":"refresh_token_reused"}`, oauth.ClassInvalidGrant},
+		{500, `<html>SECRET-TEXT</html>`, oauth.ClassRejected},
+		{200, `not json SECRET-TEXT`, oauth.ClassMalformed},
+		{200, `{"refresh_token":"r"}`, oauth.ClassMalformed},
 	}
 	for _, tc := range cases {
 		var seen []string
 		srv, f := tokenServer(t, tc.status, tc.body, &seen)
-		_, err := (&TokenClient{HTTP: srv.Client()}).Exchange(context.Background(), f, "c", "r", "v", "s")
-		if ClassOf(err) != tc.want {
-			t.Errorf("%d %s: class %q want %q", tc.status, tc.body, ClassOf(err), tc.want)
+		_, err := (&oauth.TokenClient{HTTP: srv.Client()}).Exchange(context.Background(), f, "c", "r", "v", "s")
+		if oauth.ClassOf(err) != tc.want {
+			t.Errorf("%d %s: class %q want %q", tc.status, tc.body, oauth.ClassOf(err), tc.want)
 		}
 		if err != nil && strings.Contains(err.Error(), "SECRET") {
 			t.Errorf("the error carries provider text: %v", err)
@@ -308,7 +310,7 @@ func TestTheTokenClientFollowsNoRedirect(t *testing.T) {
 	defer srv.Close()
 	hc := srv.Client()
 	hc.CheckRedirect = nil
-	c := NewTokenClient(nil)
+	c := oauth.NewTokenClient(nil)
 	c.HTTP.Transport = srv.Client().Transport
 	f := flowFor(t, "claude")
 	f.TokenURL = srv.URL
@@ -320,8 +322,8 @@ func TestTheTokenClientFollowsNoRedirect(t *testing.T) {
 func TestTheTokenClientRefusesAPrivateAddress(t *testing.T) {
 	f := flowFor(t, "claude")
 	f.TokenURL = "https://127.0.0.1:1/token"
-	_, err := NewTokenClient(nil).Exchange(context.Background(), f, "c", "r", "v", "s")
-	if ClassOf(err) != ClassTransport {
+	_, err := oauth.NewTokenClient(nil).Exchange(context.Background(), f, "c", "r", "v", "s")
+	if oauth.ClassOf(err) != oauth.ClassTransport {
 		t.Fatalf("%v", err)
 	}
 }
@@ -332,18 +334,18 @@ func jwt(payload string) string {
 }
 
 func TestCodexReadsTheAccountFromTheIDToken(t *testing.T) {
-	acc := codexAccount(Tokens{ID: jwt(`{"email":"a@x.test","https://api.openai.com/auth":{"chatgpt_account_id":"acct-1","chatgpt_plan_type":"plus"}}`)})
+	acc := oauth.CodexAccount(oauth.Tokens{ID: jwt(`{"email":"a@x.test","https://api.openai.com/auth":{"chatgpt_account_id":"acct-1","chatgpt_plan_type":"plus"}}`)})
 	if acc.Email != "a@x.test" {
 		t.Fatalf("email %q", acc.Email)
 	}
 	if acc.PSD != `{"chatgptAccountId":"acct-1","chatgptPlanType":"plus"}` {
 		t.Fatalf("psd %s", acc.PSD)
 	}
-	fallback := codexAccount(Tokens{ID: "garbage", Access: jwt(`{"preferred_username":"b@x.test"}`)})
+	fallback := oauth.CodexAccount(oauth.Tokens{ID: "garbage", Access: jwt(`{"preferred_username":"b@x.test"}`)})
 	if fallback.Email != "b@x.test" || fallback.PSD != "" {
 		t.Fatalf("fallback %+v", fallback)
 	}
-	if got := codexAccount(Tokens{ID: jwt(`{"account_id":"old","plan_type":"pro"}`)}); got.PSD != `{"chatgptAccountId":"old","chatgptPlanType":"pro"}` {
+	if got := oauth.CodexAccount(oauth.Tokens{ID: jwt(`{"account_id":"old","plan_type":"pro"}`)}); got.PSD != `{"chatgptAccountId":"old","chatgptPlanType":"pro"}` {
 		t.Fatalf("legacy claims %s", got.PSD)
 	}
 }
@@ -360,16 +362,19 @@ func (f *fakeAccounts) Create(_ context.Context, in repository.ConnInput, _ *boo
 	return repository.Connection{ID: "conn-" + string(rune('0'+len(f.made)))}, nil
 }
 
-func newService(t *testing.T, tokenURL string, hc *http.Client) (*Service, *fakeAccounts) {
+func newService(t *testing.T, tokenURL string, hc *http.Client) (*oauth.Service, *fakeAccounts) {
 	t.Helper()
 	accounts := &fakeAccounts{}
-	sessions := NewSessions()
-	svc := &Service{
+	sessions := oauth.NewSessions()
+	svc := &oauth.Service{
 		Registry: registry(t), ClientID: func(p string) string { return "client-" + p },
-		Sessions: sessions, Tokens: &TokenClient{HTTP: hc}, Now: func() time.Time { return time.Unix(1_700_000_000, 0) },
-		Accounts: func() Accounts { return accounts },
+		Sessions: sessions, Tokens: &oauth.TokenClient{HTTP: hc}, Now: func() time.Time { return time.Unix(1_700_000_000, 0) },
+		Accounts: func() oauth.Accounts { return accounts },
+		Dialects: oauth.Dialects{Hooks: map[string]oauth.Hook{"codex": func(_ context.Context, _ *oauth.TokenClient, _ oauth.Flow, t oauth.Tokens, _ map[string]string) (oauth.Account, error) {
+			return oauth.CodexAccount(t), nil
+		}}},
 	}
-	svc.Registry = fakeRegistry(t, tokenURL)
+	svc.Registry = login.FakeRegistry(t, tokenURL)
 	return svc, accounts
 }
 
@@ -416,7 +421,7 @@ func TestAFullLoginStoresTheAccountOnce(t *testing.T) {
 		t.Fatal("the verifier is in the authorize address")
 	}
 
-	id, err := svc.Complete(context.Background(), started.State, Input{Code: "CODE", State: started.State}, "bind")
+	id, err := svc.Complete(context.Background(), started.State, oauth.Input{Code: "CODE", State: started.State}, "bind")
 	if err != nil || id == "" {
 		t.Fatalf("%q %v", id, err)
 	}
@@ -430,7 +435,7 @@ func TestAFullLoginStoresTheAccountOnce(t *testing.T) {
 	if in.Fields["expiresAt"] != `"2023-11-14T23:13:20.000Z"` {
 		t.Fatalf("expiresAt %s", in.Fields["expiresAt"])
 	}
-	if _, err := svc.Complete(context.Background(), started.State, Input{Code: "CODE"}, "bind"); err != ErrSession {
+	if _, err := svc.Complete(context.Background(), started.State, oauth.Input{Code: "CODE"}, "bind"); err != oauth.ErrSession {
 		t.Fatalf("a replay finished: %v", err)
 	}
 	if len(accounts.made) != 1 || len(seen) != 1 {
@@ -445,15 +450,15 @@ func TestEveryCompletionPathChecksTheState(t *testing.T) {
 
 	for name, run := range map[string]func(state string) error{
 		"another state in the input": func(s string) error {
-			_, err := svc.Complete(context.Background(), s, Input{Code: "C", State: "forged"}, "bind")
+			_, err := svc.Complete(context.Background(), s, oauth.Input{Code: "C", State: "forged"}, "bind")
 			return err
 		},
 		"another browser": func(s string) error {
-			_, err := svc.Complete(context.Background(), s, Input{Code: "C"}, "other")
+			_, err := svc.Complete(context.Background(), s, oauth.Input{Code: "C"}, "other")
 			return err
 		},
 		"an unknown state": func(string) error {
-			_, err := svc.Complete(context.Background(), "unknown", Input{Code: "C"}, "bind")
+			_, err := svc.Complete(context.Background(), "unknown", oauth.Input{Code: "C"}, "bind")
 			return err
 		},
 	} {
@@ -473,12 +478,12 @@ func TestEveryCompletionPathChecksTheState(t *testing.T) {
 func TestAProviderErrorEndsTheLoginWithAFixedCode(t *testing.T) {
 	svc, accounts := newService(t, "https://unused.invalid/token", http.DefaultClient)
 	started, _ := startLogin(svc, "claude", true)
-	_, err := svc.Complete(context.Background(), started.State, Input{Failed: true}, "bind")
-	var f *Failure
-	if !asFailure(err, &f) || f.Code != CodeDenied {
+	_, err := svc.Complete(context.Background(), started.State, oauth.Input{Failed: true}, "bind")
+	var f *oauth.Failure
+	if !asFailure(err, &f) || f.Code != oauth.CodeDenied {
 		t.Fatalf("%v", err)
 	}
-	if st := svc.Sessions.Status(started.State, "bind"); st.State != "error" || st.Error != CodeDenied {
+	if st := svc.Sessions.Status(started.State, "bind"); st.State != "error" || st.Error != oauth.CodeDenied {
 		t.Fatalf("%+v", st)
 	}
 	if len(accounts.made) != 0 {
@@ -495,7 +500,7 @@ func TestACodexLoginKeepsTheAccountIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Complete(context.Background(), started.State, Input{Code: "C"}, "bind"); err != nil {
+	if _, err := svc.Complete(context.Background(), started.State, oauth.Input{Code: "C"}, "bind"); err != nil {
 		t.Fatal(err)
 	}
 	in := accounts.made[0]
@@ -507,25 +512,25 @@ func TestACodexLoginKeepsTheAccountIdentity(t *testing.T) {
 func TestADisabledLoginSendsNothing(t *testing.T) {
 	svc, _ := newService(t, "https://unused.invalid/token", http.DefaultClient)
 	svc.ClientID = func(string) string { return "" }
-	if _, err := startLogin(svc, "claude", true); err != ErrDisabled {
+	if _, err := startLogin(svc, "claude", true); err != oauth.ErrDisabled {
 		t.Fatalf("%v", err)
 	}
-	if _, err := startLogin(svc, "openai", true); err != ErrUnsupported {
+	if _, err := startLogin(svc, "openai", true); err != oauth.ErrUnsupported {
 		t.Fatalf("%v", err)
 	}
-	if _, err := startLogin(svc, "nothing", true); err != ErrUnsupported {
+	if _, err := startLogin(svc, "nothing", true); err != oauth.ErrUnsupported {
 		t.Fatalf("%v", err)
 	}
 }
 
-func asFailure(err error, out **Failure) bool {
-	f, ok := err.(*Failure)
+func asFailure(err error, out **oauth.Failure) bool {
+	f, ok := err.(*oauth.Failure)
 	*out = f
 	return ok
 }
 
 // startLogin opens a login on the test port, for a browser that is or is not on
 // this machine.
-func startLogin(svc *Service, provider string, local bool) (Started, error) {
-	return svc.Start(StartRequest{Provider: provider, Bind: "bind", Local: local, RouterPort: 20128})
+func startLogin(svc *oauth.Service, provider string, local bool) (oauth.Started, error) {
+	return svc.Start(oauth.StartRequest{Provider: provider, Bind: "bind", Local: local, RouterPort: 20128})
 }

@@ -155,22 +155,10 @@ func (f Flow) ListenerPort() int {
 	return 0
 }
 
-// SignedIn reports a login that makes its own key, whose address and verifier
-// therefore depend on each other.
-func (f Flow) SignedIn() bool { return f.Dialect == zedDialect }
-
 // URLWith builds the authorize address. A code-pkce login sends the standard
 // parameters, the provider's extra ones in file order, then the state; a code
 // login sends only the provider's own parameters. Spaces are written %20.
-//
-// A dialect whose provider owns the redirect scheme builds its own address:
-// Kiro's provider only answers a custom scheme, so its parameters are not the
-// standard ones and cannot be reached by editing this list. verifier carries
-// what the login made for itself, for a sign-in whose address depends on it.
 func (f Flow) URLWith(redirect, state, challenge, nonce, verifier string) string {
-	if f.Dialect == kiroSocialDialect {
-		return kiroSocialAuthorize(f, state, challenge)
-	}
 	var pairs [][2]string
 	if f.Flow != upstream.FlowCode {
 		pairs = [][2]string{

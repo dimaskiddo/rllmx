@@ -19,10 +19,10 @@ func WithEntry(h map[string]string, k, v string) map[string]string {
 	return out
 }
 
-// callHeaders are the headers the router sends to a provider while logging in,
+// CallHeaders are the headers the router sends to a provider while logging in,
 // renewing a token and running a hook. The device id placeholder is filled from
 // the account; with none it is left out rather than sent as text.
-func callHeaders(f Flow, deviceID string) map[string]string {
+func CallHeaders(f Flow, deviceID string) map[string]string {
 	if len(f.CallHeaders) == 0 {
 		return nil
 	}

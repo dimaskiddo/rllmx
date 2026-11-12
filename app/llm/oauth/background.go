@@ -29,7 +29,7 @@ func (r *Refresher) pending(list []repository.Connection) []repository.Connectio
 		if status, _ := d.GetString("testStatus"); status == repository.StatusExpired {
 			continue
 		}
-		f, ok := r.flowOf(c)
+		f, ok := r.FlowOf(c)
 		if !ok {
 			continue
 		}
@@ -52,7 +52,7 @@ func (r *Refresher) pending(list []repository.Connection) []repository.Connectio
 // between them. One account failing never stops the pass; only the class of a
 // failure is logged. It returns how many accounts it renewed.
 func (r *Refresher) Pass(ctx context.Context, gap time.Duration) int {
-	st, err := r.store()
+	st, err := r.Cooldowns()
 	if err != nil {
 		return 0
 	}
@@ -83,15 +83,15 @@ func (r *Refresher) Pass(ctx context.Context, gap time.Duration) int {
 	return renewed
 }
 
-// maxSlowJitter is the most random time added to the pause after a slow
+// MaxSlowJitter is the most random time added to the pause after a slow
 // provider's account, so several of them do not renew on a fixed beat.
-const maxSlowJitter = 4 * time.Second
+const MaxSlowJitter = 4 * time.Second
 
 // gapAfter is the pause before the next account once c has been renewed: the
 // common gap, or for a provider that rate-limits renewals the longer SlowGap
 // plus some jitter.
 func (r *Refresher) gapAfter(c repository.Connection, gap time.Duration) time.Duration {
-	f, ok := r.flowOf(c)
+	f, ok := r.FlowOf(c)
 	if !ok || !f.SlowRefresh || r.SlowGap <= 0 {
 		return gap
 	}
@@ -100,13 +100,13 @@ func (r *Refresher) gapAfter(c repository.Connection, gap time.Duration) time.Du
 
 func (r *Refresher) jitter() time.Duration {
 	if r.Jitter != nil {
-		return r.Jitter(maxSlowJitter)
+		return r.Jitter(MaxSlowJitter)
 	}
 	var b [2]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		return 0
 	}
-	return time.Duration(uint64(binary.BigEndian.Uint16(b[:])) * uint64(maxSlowJitter) / 65536)
+	return time.Duration(uint64(binary.BigEndian.Uint16(b[:])) * uint64(MaxSlowJitter) / 65536)
 }
 
 // reason names a failure without provider text.

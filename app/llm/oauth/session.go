@@ -11,10 +11,10 @@ import (
 // Limits of the login store. A login must finish on the instance that started
 // it, so the store is a plain in-process map and never the shared cache.
 const (
-	sessionLife = 10 * time.Minute
-	doneLife    = 2 * time.Minute
+	SessionLife = 10 * time.Minute
+	DoneLife    = 2 * time.Minute
 	maxSessions = 1000
-	maxPerBind  = 20
+	MaxPerBind  = 20
 )
 
 // Session is one login in flight. The verifier never leaves this process.
@@ -114,10 +114,10 @@ func (s *Sessions) Put(sess Session) (string, error) {
 			oldest = k
 		}
 	}
-	if own >= maxPerBind {
+	if own >= MaxPerBind {
 		delete(s.m, oldest)
 	}
-	life := sessionLife
+	life := SessionLife
 	if sess.Life > 0 {
 		life = sess.Life
 	}
@@ -192,7 +192,7 @@ func (s *Sessions) End(state, connID, code string) {
 		return
 	}
 	e.phase, e.conn, e.code = finished, connID, code
-	e.expires = s.Now().Add(doneLife)
+	e.expires = s.Now().Add(DoneLife)
 }
 
 // Peek reports the listener port of a pending login.

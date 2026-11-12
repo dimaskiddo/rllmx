@@ -13,7 +13,7 @@ var ErrInput = errors.New("oauth: the pasted text holds no authorization code")
 // A code may carry the tokens themselves (Cline's does), so it can be as long as
 // two JWTs.
 const (
-	maxInput = 32 << 10
+	MaxInput = 32 << 10
 	maxCode  = 16 << 10
 )
 
@@ -31,7 +31,7 @@ type Input struct {
 // fragment, a bare code, or `code#state`.
 func ParseInput(raw string) (Input, error) {
 	raw = strings.TrimSpace(raw)
-	if raw == "" || len(raw) > maxInput {
+	if raw == "" || len(raw) > MaxInput {
 		return Input{}, ErrInput
 	}
 	if looksLikeURL(raw) {

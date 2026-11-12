@@ -23,6 +23,8 @@ import (
 	apphttp "rllmx/app/http"
 	"rllmx/app/http/controllers"
 	"rllmx/app/llm/oauth"
+	"rllmx/app/llm/oauth/freebuff"
+	"rllmx/app/llm/oauth/github"
 	"rllmx/app/llm/upstream"
 	"rllmx/app/platform/cache"
 	"rllmx/app/platform/file"
@@ -63,13 +65,13 @@ type HTTP struct {
 	// Refresher renews the tokens of logged-in accounts.
 	Refresher *oauth.Refresher
 	// Minter makes the Copilot token of a GitHub account.
-	Minter *oauth.Minter
+	Minter *github.Minter
 	// Google finds a Cloud Code project and trades a Vertex key for a token.
 	Google *Google
 	// Zed exchanges a Zed account's token for a hosted one and reads its catalog.
 	Zed *zed.Client
 	// Freebuff claims the session its backend binds an account to.
-	Freebuff *oauth.FreebuffSessions
+	Freebuff *freebuff.Sessions
 	// OAuthSettings is the checked OAUTH_* configuration.
 	OAuthSettings *settings.OAuth
 }

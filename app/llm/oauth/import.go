@@ -28,14 +28,14 @@ func (s *Service) ImportToken(ctx context.Context, provider string, values map[s
 		return "", ErrUnsupported
 	}
 	token := strings.TrimSpace(values["accessToken"])
-	if !credentialText(token) || len(token) < minImportToken {
+	if !CredentialText(token) || len(token) < minImportToken {
 		return "", ErrToken
 	}
 	acc := Account{NoRefresh: true, PSD: importPSD(f, values)}
 	if acc.PSD == "" && len(f.Fields) > 0 {
 		return "", ErrImportField
 	}
-	if cl, ok := claims(token); ok {
+	if cl, ok := Claims(token); ok {
 		acc.Email = CleanEmail(claimText(cl, "email", "sub"))
 		// A token that says when it ends is stored with that moment: a guess
 		// either drops a working account or sends a dead one.
@@ -48,7 +48,7 @@ func (s *Service) ImportToken(ctx context.Context, provider string, values map[s
 	if acc.Email == "" && caseEmail != "" {
 		acc.Email = CleanEmail(caseEmail)
 	}
-	return s.save(ctx, f, Tokens{Access: token}, acc)
+	return s.Save(ctx, f, Tokens{Access: token}, acc)
 }
 
 // importPSD reads the extra values a provider's data names, as its provider
@@ -57,10 +57,10 @@ func importPSD(f Flow, values map[string]string) string {
 	psd := `{"authMethod":"imported"`
 	for _, name := range f.Fields {
 		v := strings.TrimSpace(values[name])
-		if v == "" || len(v) > maxProfileField {
+		if v == "" || len(v) > MaxProfileField {
 			return ""
 		}
-		psd = withPSD(psd, name, v)
+		psd = WithPSD(psd, name, v)
 	}
 	return psd + "}"
 }

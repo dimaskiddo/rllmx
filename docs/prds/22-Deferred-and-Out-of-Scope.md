@@ -7,7 +7,7 @@
 | PXPIPE | Deferred | Lazily installed external module; add later behind an interface |
 | MITM, Cloudflare and Tailscale tunnels, relay deployers | Deferred | Interception and public exposure; outside the router's job for v1 |
 | Outbound proxy, proxy pools, per-connection proxies | Out | The router dials direct; nothing is built, stored or read for them (divergence 214) |
-| Browser-automation web login, TLS-fingerprint clients | Deferred | Needs a browser or non-stdlib TLS stack; cookie paste covers the simple providers |
+| Browser-automation web login, `playwright-core`, `wreq-js` | Deferred | `playwright-core` drives Chromium for gemini-web (every request), chatgpt-web's Turnstile fallback, muse-web, the web-login button and the extended fork's browser pool and Obscura. `wreq-js` imitates a TLS ClientHello: OpenCode Free, built here as the suite set on the guarded transport (D269), and grok-web, deferred. Both are reached by a run-time `npm install`, a spawned process; the browser-driven providers stay deferred |
 | MiniMax lease broker | Deferred | Reads another desktop app's data; revisit later |
 | Legacy `db.json`/`usage.json` import | Out | Only 9router databases that already migrated are supported |
 | Cloud sync | Out | Removed from the reference as well |
