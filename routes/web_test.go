@@ -286,7 +286,10 @@ func TestMediaRoutesAreLLMRoutesThatNeedAKey(t *testing.T) {
 	g := apphttp.NewGuard(nil, true)
 	r.SetGlobalMiddleware([]contractshttp.Middleware{&middleware.RequestID{}, &middleware.Guard{Guard: g}})
 	Web(r, g, Base{Media: &controllers.MediaController{}})
-	for _, p := range []string{"/v1/embeddings", "/v1/images/generations", "/v1/audio/speech", "/v1/audio/transcriptions"} {
+	for _, p := range []string{
+		"/v1/embeddings", "/v1/images/generations", "/v1/audio/speech", "/v1/audio/transcriptions",
+		"/v1/videos/generations", "/v1/videos/edits", "/v1/videos/extensions",
+	} {
 		if class, ok := g.RouteClass("POST", p); !ok || class != apphttp.ClassLLM {
 			t.Errorf("%s: class = %d ok=%v", p, class, ok)
 		}
@@ -296,6 +299,9 @@ func TestMediaRoutesAreLLMRoutesThatNeedAKey(t *testing.T) {
 	}
 	if class, ok := g.RouteClass("GET", "/v1/audio/voices"); !ok || class != apphttp.ClassLLM {
 		t.Errorf("voices: class = %d ok=%v", class, ok)
+	}
+	if class, ok := g.RouteClass("GET", "/v1/videos/{id}"); !ok || class != apphttp.ClassLLM {
+		t.Errorf("video job: class = %d ok=%v", class, ok)
 	}
 	if class, ok := g.RouteClass("GET", "/api/media-providers/tts/voices"); !ok || class != apphttp.ClassProtected {
 		t.Errorf("dashboard voices: class = %d ok=%v", class, ok)

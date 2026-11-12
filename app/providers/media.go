@@ -41,17 +41,21 @@ func buildMedia(_ context.Context, app foundation.Application) (*gatewaymedia.Pi
 		Curves: h.Upstream.Curves,
 	})
 	deps := gatewaymedia.Deps{
-		Registry: h.Registry,
-		Adapters: mediamux.New(),
-		Client:   gatewaymedia.HTTP{Client: client},
-		Selector: account.NewSelector(account.SelectorOptions{Conns: store.Connections(), Settings: store.Settings(), Log: log}),
-		Reporter: account.NewReporter(store.Connections(), log, nil),
-		Nodes:    store.Nodes(),
-		Voices:   voice.List,
-		Usage:    writer,
-		Log:      log,
-		Now:      time.Now,
-		Network:  network.Options{ConnectTimeout: h.Upstream.ConnectTimeout, Allow: h.Upstream.Allow, Curves: h.Upstream.Curves},
+		Registry:    h.Registry,
+		Adapters:    mediamux.New(mediamux.Options{VertexTokens: h.Google.Vertex}),
+		Client:      gatewaymedia.HTTP{Client: client},
+		Selector:    account.NewSelector(account.SelectorOptions{Conns: store.Connections(), Settings: store.Settings(), Log: log}),
+		Reporter:    account.NewReporter(store.Connections(), log, nil),
+		Nodes:       store.Nodes(),
+		Connections: store.Connections(),
+		Voices:      voice.List,
+		Usage:       writer,
+		Log:         log,
+		Now:         time.Now,
+		Network:     network.Options{ConnectTimeout: h.Upstream.ConnectTimeout, Allow: h.Upstream.Allow, Curves: h.Upstream.Curves},
+	}
+	if h.Media != nil {
+		deps.VideoTimeout = h.Media.VideoTimeout
 	}
 	if h.Refresher != nil {
 		deps.Refresher = h.Refresher

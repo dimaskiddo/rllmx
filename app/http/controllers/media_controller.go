@@ -10,6 +10,7 @@ import (
 	gatewaymedia "rllmx/app/gateway/media"
 	apphttp "rllmx/app/http"
 	"rllmx/app/http/middleware"
+	"rllmx/app/llm/media"
 	"rllmx/app/platform/failure"
 )
 
@@ -21,7 +22,39 @@ type MediaController struct {
 	SpeechPipe     func() (*gatewaymedia.Pipeline, error)
 	TranscribePipe func() (*gatewaymedia.Pipeline, error)
 	VoicesPipe     func() (*gatewaymedia.Pipeline, error)
+	VideosPipe     func() (*gatewaymedia.Pipeline, error)
 	Log            log.Log
+}
+
+// VideoGenerations answers POST /v1/videos/generations.
+func (m *MediaController) VideoGenerations(ctx contractshttp.Context) contractshttp.Response {
+	return m.videos(ctx, media.VideoGenerations)
+}
+
+// VideoEdits answers POST /v1/videos/edits.
+func (m *MediaController) VideoEdits(ctx contractshttp.Context) contractshttp.Response {
+	return m.videos(ctx, media.VideoEdits)
+}
+
+// VideoExtensions answers POST /v1/videos/extensions.
+func (m *MediaController) VideoExtensions(ctx contractshttp.Context) contractshttp.Response {
+	return m.videos(ctx, media.VideoExtensions)
+}
+
+func (m *MediaController) videos(ctx contractshttp.Context, action string) contractshttp.Response {
+	r := ctx.Request().Origin()
+	return m.serve(ctx, m.VideosPipe, func(p *gatewaymedia.Pipeline, in gatewaymedia.Input) gatewaymedia.Output {
+		return p.Videos(r.Context(), in, action)
+	})
+}
+
+// VideoJob answers GET /v1/videos/{id}: a job's status.
+func (m *MediaController) VideoJob(ctx contractshttp.Context) contractshttp.Response {
+	r := ctx.Request().Origin()
+	id := ctx.Request().Route("id")
+	return m.serve(ctx, m.VideosPipe, func(p *gatewaymedia.Pipeline, in gatewaymedia.Input) gatewaymedia.Output {
+		return p.VideoJob(r.Context(), in, id)
+	})
 }
 
 // Speech answers POST /v1/audio/speech.
@@ -176,6 +209,10 @@ func (m *MediaController) serve(ctx contractshttp.Context, source func() (*gatew
 		APIKeyID: caller.ID, KeyName: caller.Name,
 		Binary:         r.URL.Query().Get("response_format") == "binary",
 		ResponseFormat: r.URL.Query().Get("response_format"),
+		ContentType:    r.Header.Get("Content-Type"),
+		IdempotencyKey: r.Header.Get("Idempotency-Key"),
+		ConnectionID:   r.Header.Get("x-connection-id"),
+		Provider:       r.URL.Query().Get("provider"),
 	})
 	for k, v := range out.Header {
 		w.Header().Set(k, v)

@@ -31,7 +31,7 @@ Design and parity: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/PARITY
 *   **🧩 Combos:** Ordered list, rotation, router-model pick, judge-merged panel. ⏳
 *   **♻️ Account Rotation & Cooldown:** Many accounts per provider, fill-first or sticky round-robin, per-model locks, exponential backoff on 429.
 *   **🔑 OAuth & Tokens:** Claude Code, Codex, GitHub Copilot, Gemini CLI, Kiro; refresh before expiry, on 401, in background.
-*   **🖼️ Media:** Embeddings, images, speech, transcription and voice lists today; video, web search and fetch planned. ✅
+*   **🖼️ Media:** Embeddings, images, speech, transcription, voice lists and video today; web search and fetch planned. ✅
 *   **✂️ Token Savers & Skills:** RTK tool-output filters, two built-in prompt styles, custom prompt, optional Headroom sidecar, Skills Studio declarative rules (no code). ⏳
 *   **🩺 Health Aware:** Latency and success tracking, circuit breaker, model probes, ranked combo suggestions. ⏳
 *   **🗂️ Drop-In Database:** 9router SQLite schema for providers, keys, combos; SQLite default, PostgreSQL optional, credentials sealed.

@@ -60,6 +60,8 @@ type HTTP struct {
 	Stream *settings.Stream
 	// Upstream is the outbound network setting: connect timeout and allow list.
 	Upstream *settings.Upstream
+	// Media is the checked MEDIA_* configuration.
+	Media *settings.Media
 	// OAuth runs account logins. Its listeners stop with the server.
 	OAuth *oauth.Service
 	// Refresher renews the tokens of logged-in accounts.
@@ -145,6 +147,10 @@ func (r *ServerServiceProvider) Register(app foundation.Application) {
 		if err != nil {
 			return nil, err
 		}
+		mediaCfg, err := settings.LoadMedia(cfg)
+		if err != nil {
+			return nil, err
+		}
 		allowSSO := sso.ParseAllow(cfg.GetString("auth.sso_allow"))
 		a := auth.NewAuthenticator(
 			auth.NewStore(db),
@@ -181,6 +187,7 @@ func (r *ServerServiceProvider) Register(app foundation.Application) {
 			Capabilities:  capabilities,
 			Stream:        streamCfg,
 			Upstream:      upstreamCfg,
+			Media:         mediaCfg,
 			OAuth:         login,
 			Refresher:     refresher,
 			Minter:        minter,

@@ -54,6 +54,12 @@ type Nodes interface {
 	List(ctx context.Context, typ string) ([]repository.Node, error)
 }
 
+// Connections reads one connection by id, for a video poll that names the
+// account which created the job.
+type Connections interface {
+	Get(ctx context.Context, id string) (repository.Connection, bool, error)
+}
+
 // VoiceLister asks a provider for its own voice list.
 type VoiceLister func(ctx context.Context, provider string, r media.Request, c media.Client) ([]upstream.Voice, error)
 
@@ -79,15 +85,19 @@ type Deps struct {
 	Refresher Refresher
 	Minter    Minter
 	Nodes     Nodes
-	Voices    VoiceLister
-	Usage     Usage
-	Log       log.Log
-	Now       func() time.Time
+	// Connections looks up the account a video poll names.
+	Connections Connections
+	Voices      VoiceLister
+	Usage       Usage
+	Log         log.Log
+	Now         func() time.Time
 	// Network is the guarded dialer's configuration, for an adapter that opens a
 	// socket of its own.
 	Network network.Options
 	// Timeout bounds one media call; zero takes the kind's own bound.
 	Timeout time.Duration
+	// VideoTimeout bounds one video call; zero takes the reference's default.
+	VideoTimeout time.Duration
 }
 
 // Input is one media request.
@@ -104,6 +114,15 @@ type Input struct {
 	// ResponseFormat is the query's answer-format hint, which wins over the
 	// body's own.
 	ResponseFormat string
+	// ContentType is the body's own media type, which a video create forwards.
+	ContentType string
+	// IdempotencyKey is the client's key for a billable video create.
+	IdempotencyKey string
+	// ConnectionID pins a request to one account: the one a video job belongs
+	// to.
+	ConnectionID string
+	// Provider is the query's provider hint for a video poll.
+	Provider string
 }
 
 // Form is a transcription upload: one file and its fields.
@@ -149,6 +168,12 @@ func (p *Pipeline) timeout(kind string, cfg *upstream.MediaConfig) time.Duration
 	case upstream.KindSTT:
 		// The reference's route budget, enough for a polling transcription.
 		return 300 * time.Second
+	case upstream.KindVideo:
+		// One HTTP round trip, not the job's own rendering time.
+		if p.d.VideoTimeout > 0 {
+			return p.d.VideoTimeout
+		}
+		return 120 * time.Second
 	}
 	return 60 * time.Second
 }
@@ -185,6 +210,9 @@ type parsed struct {
 	body           []byte
 	upload         *media.Upload
 	modelTransport string
+	// action is the video create the request names; empty for every other
+	// service.
+	action string
 }
 
 // parseJSON reads the model of a JSON body, refusing a body that is not one.
@@ -241,25 +269,58 @@ func (p *Pipeline) run(ctx context.Context, kind string, in Input, req parsed) O
 	exclude := map[string]bool{}
 	var last *Output
 	for {
-		conn, out, ok := p.selectAccount(ctx, kind, entry, ref, model, exclude, &row, last)
+		conn, out, ok := p.selectAccount(ctx, kind, entry, ref, model, in.ConnectionID, exclude, &row, last)
 		if !ok {
 			return out
 		}
-		out, done := p.try(ctx, kind, adapter, entry, cfg, ref, model, conn, req.body, req.upload, req.modelTransport, &row)
+		call := media.Request{
+			Kind: kind, Provider: ref.Provider, Model: model, WireModel: p.wireModel(entry, cfg, ref.Model),
+			Entry: entry, Config: cfg, Body: req.body, Upload: req.upload, ModelTransport: req.modelTransport,
+			Action: req.action, ContentType: in.ContentType, IdempotencyKey: in.IdempotencyKey,
+		}
+		out, done := p.try(ctx, kind, adapter, entry, cfg, ref, conn, call, &row)
 		if done {
-			return out
+			return videoPin(out, kind, conn)
 		}
 		if conn.ID == "" {
 			return failureOutput(http.StatusBadGateway, "The provider refused the request")
+		}
+		// A create is a billable job: only a refusal upstream raises before the
+		// job exists may move to another account.
+		if kind == upstream.KindVideo && !createRotates(out.Status) {
+			return out
 		}
 		exclude[conn.ID] = true
 		last = &out
 	}
 }
 
+// createRotates reports whether a video create may be re-sent on another
+// account: the statuses a provider raises before it starts a job.
+func createRotates(status int) bool {
+	return status == http.StatusUnauthorized || status == http.StatusForbidden || status == http.StatusTooManyRequests
+}
+
+// videoPin answers the account a job belongs to, which the client echoes when it
+// polls.
+func videoPin(out Output, kind string, conn repository.Connection) Output {
+	if kind != upstream.KindVideo || conn.ID == "" || out.Status < 200 || out.Status > 299 {
+		return out
+	}
+	h := make(map[string]string, len(out.Header)+2)
+	for k, v := range out.Header {
+		h[k] = v
+	}
+	h["x-9router-connection-id"] = conn.ID
+	h["X-Rllm-Connection-Id"] = conn.ID
+	out.Header = h
+	return out
+}
+
 // selectAccount picks the next account. A service that takes no credential runs
-// without one; every other one walks the provider's accounts.
-func (p *Pipeline) selectAccount(ctx context.Context, kind string, entry upstream.Entry, ref upstream.MediaRef, model string, exclude map[string]bool, row *analytics.Record, last *Output) (repository.Connection, Output, bool) {
+// without one; every other one walks the provider's accounts. prefer pins the
+// request to one account while it is a candidate.
+func (p *Pipeline) selectAccount(ctx context.Context, kind string, entry upstream.Entry, ref upstream.MediaRef, model, prefer string, exclude map[string]bool, row *analytics.Record, last *Output) (repository.Connection, Output, bool) {
 	cfg := entry.Media.Config(kind)
 	noAuth := cfg != nil && (cfg.AuthType == "none" || (entry.Media != nil && entry.Media.NoAuth))
 	if p.d.Selector == nil {
@@ -268,7 +329,7 @@ func (p *Pipeline) selectAccount(ctx context.Context, kind string, entry upstrea
 		}
 		return repository.Connection{}, failureOutput(http.StatusNotFound, "No credentials for provider: "+ref.Provider), false
 	}
-	sel, err := p.d.Selector.Select(ctx, account.Request{Provider: ref.Provider, Model: ref.Model, RequestedModel: model, Exclude: exclude})
+	sel, err := p.d.Selector.Select(ctx, account.Request{Provider: ref.Provider, Model: ref.Model, RequestedModel: model, Exclude: exclude, Prefer: prefer})
 	if err != nil {
 		// A service that takes no credential still runs without a connection; an
 		// existing one only supplies its address.
@@ -365,7 +426,7 @@ func (p *Pipeline) noAccount(ctx context.Context, err error, provider, model str
 
 // try runs the request on one account. done says the answer is final for this
 // request; otherwise another account is tried.
-func (p *Pipeline) try(ctx context.Context, kind string, adapter media.Adapter, entry upstream.Entry, cfg *upstream.MediaConfig, ref upstream.MediaRef, model string, conn repository.Connection, body []byte, upload *media.Upload, modelTransport string, row *analytics.Record) (Output, bool) {
+func (p *Pipeline) try(ctx context.Context, kind string, adapter media.Adapter, entry upstream.Entry, cfg *upstream.MediaConfig, ref upstream.MediaRef, conn repository.Connection, call media.Request, row *analytics.Record) (Output, bool) {
 	noAuth := cfg != nil && (cfg.AuthType == "none" || (entry.Media != nil && entry.Media.NoAuth))
 	oauthed := conn.ID != "" && conn.AuthType == "oauth" && entry.OAuth != nil
 	if oauthed && p.d.Refresher != nil {
@@ -384,11 +445,8 @@ func (p *Pipeline) try(ctx context.Context, kind string, adapter media.Adapter, 
 		}
 		key = minted
 	}
-	req := media.Request{
-		Kind: kind, Provider: ref.Provider, Model: model, WireModel: p.wireModel(entry, cfg, ref.Model),
-		Entry: entry, Config: cfg, Credential: key, Account: accountData(conn), Body: body,
-		Upload: upload, ModelTransport: modelTransport,
-	}
+	call.Credential, call.Account = key, accountData(conn)
+	req := call
 	ans, refused, err := p.call(ctx, adapter, req)
 	if refused {
 		renewed, newKey, ok := p.renew(ctx, conn, entry, cfg, key, mints, row)

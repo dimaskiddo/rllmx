@@ -10,13 +10,13 @@ import (
 
 const (
 	// exposedHeaders are what a browser client may read off a client API answer:
-	// the request id for support, Retry-After for a backoff, and whether the
-	// response cache answered.
-	exposedHeaders = "X-Request-Id, Retry-After, X-Rllm-Cache"
+	// the request id for support, Retry-After for a backoff, whether the response
+	// cache answered, and the account a video job belongs to so a poll can pin it.
+	exposedHeaders = "X-Request-Id, Retry-After, X-Rllm-Cache, X-Rllm-Connection-Id, x-9router-connection-id"
 	allowMethods   = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
 	// defaultHeaders cover every SDK header; a wildcard does not include
 	// Authorization, so the list has to be explicit when the client names none.
-	defaultHeaders = "Authorization, Content-Type, X-Api-Key, X-Goog-Api-Key, Anthropic-Version, Anthropic-Beta, X-Request-Id, X-Rllm-Cache"
+	defaultHeaders = "Authorization, Content-Type, X-Api-Key, X-Goog-Api-Key, Anthropic-Version, Anthropic-Beta, X-Request-Id, X-Rllm-Cache, X-Connection-Id, Idempotency-Key"
 	maxEchoBytes   = 1024
 	maxAgeSeconds  = "86400"
 )

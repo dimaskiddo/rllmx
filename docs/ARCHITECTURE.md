@@ -174,7 +174,7 @@ A package that outgrows about 25 files into a shared framework plus independent 
 |---|---|
 | `translate` | One package per client format; the root holds the hub and the concerns |
 | `executor` | One package per provider family |
-| `media` | One package per family (openai, google, github, ollama, selfhosted, imaging, codex, antigravity) |
+| `media` | One package per family (openai, google, github, ollama, selfhosted, imaging, codex, antigravity, tts, stt, video) |
 | `oauth` | One package per provider, with its table in `oauth/dialects` |
 
 Goravel owns `app/http`, `app/console`, `app/providers`, `app/facades`, `app/models`, `bootstrap`, `config`, `routes`, `database`, `tests`, `storage` and `resources`. None is reused for another purpose.

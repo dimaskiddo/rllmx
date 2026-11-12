@@ -55,7 +55,7 @@ func newRig(t *testing.T, entry string) *rig {
 	sink := &usage.Sink{}
 	p := gatewaymedia.New(gatewaymedia.Deps{
 		Registry: reg,
-		Adapters: mediamux.New(),
+		Adapters: mediamux.New(mediamux.Options{}),
 		Client:   gatewaymedia.HTTP{Client: srv.Client()},
 		Selector: account.NewSelector(account.SelectorOptions{Conns: st.Connections(), Settings: st.Settings(), Now: time.Now}),
 		Reporter: account.NewReporter(st.Connections(), &tests.Log{}, func() time.Time { return time.Unix(1_700_000_000, 0) }),
@@ -180,7 +180,7 @@ func TestANoAuthServiceRunsWithoutAConnection(t *testing.T) {
 	st := store.Migrated(t)
 	sink := &usage.Sink{}
 	p := gatewaymedia.New(gatewaymedia.Deps{
-		Registry: reg, Adapters: mediamux.New(), Client: gatewaymedia.HTTP{Client: srv.Client()},
+		Registry: reg, Adapters: mediamux.New(mediamux.Options{}), Client: gatewaymedia.HTTP{Client: srv.Client()},
 		Selector: account.NewSelector(account.SelectorOptions{Conns: st.Connections(), Settings: st.Settings()}),
 		Reporter: account.NewReporter(st.Connections(), &tests.Log{}, nil),
 		Usage:    sink, Now: time.Now,
@@ -224,7 +224,7 @@ func TestAnEmbeddingNodeIsServed(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := gatewaymedia.New(gatewaymedia.Deps{
-		Registry: reg, Adapters: mediamux.New(), Client: gatewaymedia.HTTP{Client: srv.Client()},
+		Registry: reg, Adapters: mediamux.New(mediamux.Options{}), Client: gatewaymedia.HTTP{Client: srv.Client()},
 		Selector: account.NewSelector(account.SelectorOptions{Conns: st.Connections(), Settings: st.Settings()}),
 		Reporter: account.NewReporter(st.Connections(), &tests.Log{}, nil),
 		Nodes:    nodeStore{base: srv.URL + "/v1"}, Usage: &usage.Sink{}, Now: time.Now,
@@ -255,7 +255,7 @@ func TestARefusedKeyIsAnsweredAndRecorded(t *testing.T) {
 	}
 	sink := &usage.Sink{}
 	p := gatewaymedia.New(gatewaymedia.Deps{
-		Registry: reg, Adapters: mediamux.New(), Client: gatewaymedia.HTTP{Client: srv.Client()},
+		Registry: reg, Adapters: mediamux.New(mediamux.Options{}), Client: gatewaymedia.HTTP{Client: srv.Client()},
 		Selector: account.NewSelector(account.SelectorOptions{Conns: st.Connections(), Settings: st.Settings()}),
 		Reporter: account.NewReporter(st.Connections(), &tests.Log{}, nil),
 		Usage:    sink, Now: time.Now,
@@ -294,7 +294,7 @@ func TestARefusalFallsBackToTheNextAccount(t *testing.T) {
 		}
 	}
 	p := gatewaymedia.New(gatewaymedia.Deps{
-		Registry: reg, Adapters: mediamux.New(), Client: gatewaymedia.HTTP{Client: srv.Client()},
+		Registry: reg, Adapters: mediamux.New(mediamux.Options{}), Client: gatewaymedia.HTTP{Client: srv.Client()},
 		Selector: account.NewSelector(account.SelectorOptions{Conns: st.Connections(), Settings: st.Settings()}),
 		Reporter: account.NewReporter(st.Connections(), &tests.Log{}, nil),
 		Usage:    &usage.Sink{}, Now: time.Now,

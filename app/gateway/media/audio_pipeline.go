@@ -98,6 +98,16 @@ func (p *Pipeline) target(ctx context.Context, kind, name string) (upstream.Medi
 		}
 	}
 	ref, ok := p.d.Registry.Media(name, kind)
+	if !ok && kind == upstream.KindImage {
+		// A provider that serves a video model through its image endpoint (Runway)
+		// has no image index entry for it; the reference resolves it all the same.
+		if asVideo, found := p.d.Registry.Media(name, upstream.KindVideo); found {
+			if e, ok := p.d.Registry.ByID(asVideo.Provider); ok && e.Media != nil && e.Media.Image != nil && e.Media.Video == nil {
+				asVideo.Kind = kind
+				return asVideo, e, true
+			}
+		}
+	}
 	if !ok {
 		if kind != upstream.KindEmbedding {
 			return upstream.MediaRef{}, upstream.Entry{}, false
@@ -196,7 +206,7 @@ func (p *Pipeline) Voices(ctx context.Context, provider, lang string) Output {
 	}
 	if p.d.Voices != nil {
 		req := media.Request{Kind: upstream.KindTTS, Provider: id, Entry: entry, Config: cfg, Network: p.d.Network}
-		if conn, out, ok := p.selectAccount(ctx, upstream.KindTTS, entry, upstream.MediaRef{Provider: id, Kind: upstream.KindTTS}, provider, map[string]bool{}, &analytics.Record{}, nil); ok {
+		if conn, out, ok := p.selectAccount(ctx, upstream.KindTTS, entry, upstream.MediaRef{Provider: id, Kind: upstream.KindTTS}, provider, "", map[string]bool{}, &analytics.Record{}, nil); ok {
 			req.Credential = credential(conn, cfg)
 			req.Account = accountData(conn)
 		} else if len(list) == 0 {

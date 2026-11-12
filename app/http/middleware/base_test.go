@@ -115,7 +115,7 @@ func TestCORSIsOnlyOnTheClientAPI(t *testing.T) {
 			t.Errorf("%s allow-origin = %v", tc.path, got)
 		}
 		if tc.want {
-			if got := rec.Header().Get("Access-Control-Expose-Headers"); !strings.Contains(got, "X-Request-Id") || !strings.Contains(got, "Retry-After") || !strings.Contains(got, "X-Rllm-Cache") {
+			if got := rec.Header().Get("Access-Control-Expose-Headers"); !strings.Contains(got, "X-Request-Id") || !strings.Contains(got, "Retry-After") || !strings.Contains(got, "X-Rllm-Cache") || !strings.Contains(got, "X-Rllm-Connection-Id") {
 				t.Errorf("%s expose = %q", tc.path, got)
 			}
 		}

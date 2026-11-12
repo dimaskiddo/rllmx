@@ -2,7 +2,7 @@
 
 **Status:** partial
 
-No media adapter exists. Each endpoint resolves model and account as chat does, then calls a per-provider adapter registered by provider id and modality. Usage rows carry the modality in `endpoint`.
+Each endpoint resolves model and account as chat does, then calls a per-provider adapter registered by provider id and modality. Usage rows carry the modality in `endpoint`.
 
 | Endpoint | Notes |
 |---|---|
@@ -22,11 +22,13 @@ No media adapter exists. Each endpoint resolves model and account as chat does, 
 | Foundations | Media schema, index, `media/mux`, `app/gateway/media`, embeddings, non-browser images, probes, one usage row per request | done |
 | Vendor images | Stability, BFL, fal, HuggingFace, ComfyUI, SD WebUI, Runway, Cloudflare, NanoBanana, plus the codex and antigravity bridges | done |
 | Audio | TTS, STT, voice lists: `/v1/audio/speech`, `/v1/audio/transcriptions`, `/v1/audio/voices`, the two dashboard routes | done |
-| Video | `/v1/videos/generations\|edits\|extensions` and `GET /v1/videos/{id}` | todo |
+| Video | `/v1/videos/generations\|edits\|extensions` and `GET /v1/videos/{id}`: xAI's shape, OpenRouter and Vertex (Veo) | done |
 | Search and fetch | `/v1/search` and `/v1/web/fetch`; the HTML-to-markdown library is an open decision; `MEDIA_SEARXNG_URL`; SSRF on every hop | todo |
 | Browser and web media | chatgpt-web, grok-web, gemini-web, muse-web, uc-web, veoaifree-web, and anything the earlier slices defer | todo |
 
-Bounds already built: a 25 MiB upload, a 32 KiB speech input, a 120 s speech timeout and a 300 s transcription timeout.
+Bounds already built: a 25 MiB upload, a 32 KiB speech input, a 120 s speech timeout, a 300 s transcription timeout and a 120 s video round trip (`MEDIA_VIDEO_TIMEOUT`).
+
+A video create is a billable job. It moves to another account only on 401, 403 or 429, never after a network error, a timeout or a 5xx. Its answer carries `x-9router-connection-id` and `X-Rllm-Connection-Id`, and a poll reads the account from `x-connection-id`, then `?provider=`, then xAI. Runway's video models are served through the images route, as the reference does.
 
 **Done when:** every endpoint passes its end-to-end test against fake providers, and oversized uploads and SSRF targets are rejected.
 ---
@@ -45,14 +47,17 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 295 | Runway's `ratio` is a pixel ratio (`1024:1792`); the reference sends `1:1`, which Runway rejects. **Built** | A request the vendor documents and accepts |
 | 296 | An Antigravity answer with no image is an error; the reference answers 200 with an empty `b64_json`. **Built** | A success with no image is not a success |
 | 297 | An embeddings request is bounded (2,048 inputs, 32 KiB each); the reference accepts any size. **Built** | One request cannot exhaust memory (`AGENTS.md`) |
-| 299 | The scraped and OS-spawned speech providers are out: `edge-tts` and `google-tts` screen-scrape Bing and Translate, and `local-device` runs the OS speech tool through ffmpeg. **Recorded ** | Page scraping and process spawns are outside the router's rules (`design doc 11`, `design doc 22`) |
-| 300 | `aws-polly` is out: the reference has no handler for its format, so no behavior exists to copy. **Recorded ** | A dead entry is not a feature |
+| 299 | The scraped and OS-spawned speech providers are out: `edge-tts` and `google-tts` screen-scrape Bing and Translate, and `local-device` runs the OS speech tool through ffmpeg. **Recorded** | Page scraping and process spawns are outside the router's rules (`design doc 11`, `design doc 22`) |
+| 300 | `aws-polly` is out: the reference has no handler for its format, so no behavior exists to copy. **Recorded** | A dead entry is not a feature |
 | 301 | Codex transcription takes only 16-bit PCM mono 24 kHz WAV and never converts; the reference runs ffmpeg for every format. **Built** | A spawned process is forbidden; a clear 400 beats a silent mismatch |
 | 302 | A transcription upload is bounded at 25 MiB; the reference's route accepts the 128 MiB proxy cap. **Built** | One request cannot exhaust memory (`AGENTS.md`) |
 | 303 | AssemblyAI gets the key raw in `Authorization`, as its API documents; the reference's own config falls through to `Bearer`. **Built** | The documented form |
 | 304 | Speech is served as `audio/mpeg`; the reference writes the non-standard `audio/mp3`. **Built** | The registered media type |
-| 305 | The reference's Gemini-native `/v1beta/models/…:generateContent` audio route is not built: the chat route owns that path. Gemini speech is served through `/v1/audio/speech`. **Deferred to ** | One path, one owner; the TTS adapter already reaches the same model |
+| 305 | The reference's Gemini-native `/v1beta/models/…:generateContent` audio route is not built: the chat route owns that path. Gemini speech is served through `/v1/audio/speech`. **Deferred** | One path, one owner; the TTS adapter already reaches the same model |
 | 298 | A no-auth service runs without a connection, and an existing connection is never reported or locked; the reference never touches credentials for these providers. **Built** | A local daemon's failure is not the account's, and a locked connection must not stop a service that needs none |
+| 306 | A video create leaves one metadata usage row; the reference records none. **Built** | Every request this router serves is accounted for (`design doc 16`) |
+| 307 | A refused video job answers a fixed word; the reference relays up to 2,000 characters of scrubbed provider text. **Built** | Client errors carry no internal detail (`design doc 19`) |
+| 308 | A video job id is 1-512 characters of `[A-Za-z0-9._~:-]`; the reference escapes any text into the path. **Built** | One id cannot rewrite the address |
 
 ---
 
@@ -70,4 +75,7 @@ One row per lesson; the decision is what the code does because of it.
 | An SSRF-safe WebSocket client had to be ours. | `app/protocol/websocket` is a minimal RFC 6455 client that takes the caller's dialer and TLS settings. |
 | Codex's native image endpoint accepts one shape only. | A tool model with a plain prompt, `n=1`, `size:auto` and a png; anything else is a 400. |
 | A Free-plan account is refused before the call, from the token's own claim. | It is passed over without locking the account. |
+| A video create is a billable job, so a re-send can pay twice. | It rotates only on 401, 403 or 429, the statuses a provider raises before it starts a job; a timeout or a 5xx is returned. |
+| A video job belongs to the account that created it. | A create answers the account id in two headers, and a poll pins that account and never rotates. |
+| A Veo job id is a resource path, not a flat id. | It is base64url-encoded on the way out and decoded only when it re-encodes byte for byte and matches the anchored operation shape. |
 

@@ -12,6 +12,13 @@ import (
 	"rllmx/app/platform/network"
 )
 
+// Actions a video create may name.
+const (
+	VideoGenerations = "generations"
+	VideoEdits       = "edits"
+	VideoExtensions  = "extensions"
+)
+
 // Request is one media call as its adapter sees it.
 type Request struct {
 	Kind string
@@ -34,6 +41,15 @@ type Request struct {
 	Upload *Upload
 	// ModelTransport is the per-model marker a task names (gemini-live).
 	ModelTransport string
+	// Action is the create a video request names: generations, edits or
+	// extensions.
+	Action string
+	// JobID is the async job a video poll reads; empty on a create.
+	JobID string
+	// ContentType is the body's own media type, forwarded as the client sent it.
+	ContentType string
+	// IdempotencyKey is the client's key for a billable create.
+	IdempotencyKey string
 	// Network is the guarded dialer's configuration, for an adapter that opens a
 	// socket of its own.
 	Network network.Options

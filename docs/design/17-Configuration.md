@@ -53,7 +53,7 @@ No code reads rows marked *planned* yet, so setting one in `.env` fails startup 
 | Upstream | `UPSTREAM_CONNECT_TIMEOUT` (60s, 1s to 10m), `UPSTREAM_ALLOW_PRIVATE` (empty: public targets only; host names, addresses or CIDRs; link-local and the cloud metadata addresses are refused even when listed), `UPSTREAM_TLS_CURVE` (`x25519` offers only that group, `default` offers the standard list; anything else fails the start) |
 | OAuth login | `OAUTH_CALLBACK_HOST` (127.0.0.1): an IP address, the bind address of the fixed-port login listener |
 | OAuth refresh | `OAUTH_BACKGROUND_REFRESH` (true) and `OAUTH_REFRESH_DELAY` (1500ms, 0s to 1m, pause between accounts), built. `OAUTH_REFRESH_GOOGLE_DELAY` (12s, 0s to 1m, the pause after an account of a provider that sets `slowRefresh`, plus 0 to 4 s of jitter), built |
-| Media | `MEDIA_VIDEO_TIMEOUT`, `MEDIA_SEARXNG_URL` (empty) (planned) |
+| Media | `MEDIA_VIDEO_TIMEOUT` (120s, 5s to 10m; one video create or poll), built. `MEDIA_SEARXNG_URL` (empty) (planned) |
 | Token savers | `SAVER_HEADROOM_URL` (`http://localhost:8787`) (planned) |
 | Catalog | `CATALOG_SYNC` (true; `false` turns sync off) (planned) |
 | Translator | `TRANSLATOR_ENABLED` (false) (planned) |
@@ -121,7 +121,7 @@ The status column is the v1 target, not the build state: behavior lands later. U
 | `NINEROUTER_TLS_ECDH_CURVE` | `UPSTREAM_TLS_CURVE` | same intent; this program's own name and only two values |
 | `FETCH_KEEPALIVE_TIMEOUT_MS` | — | not read: the Go pool's idle timeout is fixed and a dropped socket costs one replay |
 | `FETCH_FRESH_RETRY` | — | not read: the replay has no kill switch |
-| `VIDEO_FETCH_TIMEOUT_MS` | `MEDIA_VIDEO_TIMEOUT` | duration; planned, |
+| `VIDEO_FETCH_TIMEOUT_MS` | `MEDIA_VIDEO_TIMEOUT` | duration; built, |
 | `DISABLE_BACKGROUND_TOKEN_REFRESH` | `OAUTH_BACKGROUND_REFRESH` | polarity inverted: `true` enables, default `true` |
 | `BG_REFRESH_DELAY_MS` | `OAUTH_REFRESH_DELAY` | duration; pause between two accounts in a background pass (not a start delay; the first pass always waits 10 s) |
 | `BG_REFRESH_GOOGLE_DELAY_MS` | `OAUTH_REFRESH_GOOGLE_DELAY` | duration |

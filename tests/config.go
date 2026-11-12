@@ -60,6 +60,7 @@ func ServerValues() map[string]any {
 		"stream.first_chunk_timeout":      "200s",
 		"stream.stall_timeout":            "360s",
 		"stream.usage_wait":               "3s",
+		"media.video_timeout":             "120s",
 		"oauth.callback_host":             "127.0.0.1",
 		"oauth.background_refresh":        true,
 		"oauth.refresh_delay":             "1500ms",

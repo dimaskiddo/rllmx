@@ -38,7 +38,7 @@ func audioRig(t *testing.T, entry string, answer func(w http.ResponseWriter, r *
 	}
 	sink := &usage.Sink{}
 	p := gatewaymedia.New(gatewaymedia.Deps{
-		Registry: reg, Adapters: mediamux.New(), Client: gatewaymedia.HTTP{Client: srv.Client()},
+		Registry: reg, Adapters: mediamux.New(mediamux.Options{}), Client: gatewaymedia.HTTP{Client: srv.Client()},
 		Selector: account.NewSelector(account.SelectorOptions{Conns: st.Connections(), Settings: st.Settings()}),
 		Reporter: account.NewReporter(st.Connections(), &tests.Log{}, nil),
 		Usage:    sink, Now: time.Now,
@@ -110,7 +110,7 @@ func TestVoicesComeFromTheProviderData(t *testing.T) {
 	}
 	st := store.Migrated(t)
 	p := gatewaymedia.New(gatewaymedia.Deps{
-		Registry: reg, Adapters: mediamux.New(), Client: gatewaymedia.HTTP{Client: srv.Client()},
+		Registry: reg, Adapters: mediamux.New(mediamux.Options{}), Client: gatewaymedia.HTTP{Client: srv.Client()},
 		Selector: account.NewSelector(account.SelectorOptions{Conns: st.Connections(), Settings: st.Settings()}),
 		Reporter: account.NewReporter(st.Connections(), &tests.Log{}, nil), Usage: &usage.Sink{}, Now: time.Now,
 	})

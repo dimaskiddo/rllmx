@@ -178,3 +178,22 @@ func TestNanoBananaPollsTheRecord(t *testing.T) {
 		t.Fatalf("%s %v", out.Body, err)
 	}
 }
+
+func TestRunwaySendsAVideoModelToImageToVideo(t *testing.T) {
+	cfg := &upstream.MediaConfig{BaseURL: "https://api.dev.runwayml.com/v1"}
+	r := media.Request{
+		Kind: upstream.KindImage, Provider: "runwayml", Model: "gen4_turbo", WireModel: "gen4_turbo",
+		Config: cfg, Credential: "KEY",
+		Entry: upstream.Entry{Models: []upstream.Model{{ID: "gen4_turbo", Kind: upstream.KindVideo}}},
+		Body:  []byte(`{"prompt":"hi","size":"1280x720","image":"https://src/1.png"}`),
+	}
+	call, err := (Runway{}).Build(context.Background(), r, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := gjson.ParseBytes(call.Body)
+	if !strings.HasSuffix(call.URL, "/image_to_video") || body.Get("promptImage").String() != "https://src/1.png" ||
+		body.Get("duration").Int() != 5 || body.Get("ratio").String() != "1280:720" {
+		t.Fatalf("%s %s", call.URL, call.Body)
+	}
+}

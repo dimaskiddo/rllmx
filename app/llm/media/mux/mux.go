@@ -15,6 +15,7 @@ import (
 	"rllmx/app/llm/media/selfhosted"
 	"rllmx/app/llm/media/stt"
 	"rllmx/app/llm/media/tts"
+	"rllmx/app/llm/media/video"
 	"rllmx/app/llm/upstream"
 )
 
@@ -23,8 +24,14 @@ type Table struct {
 	adapters map[string]map[string]media.Adapter
 }
 
+// Options carries what an adapter needs from the program: the source that
+// trades a Vertex key for a token.
+type Options struct {
+	VertexTokens video.TokenSource
+}
+
 // New builds the table by explicit construction.
-func New() *Table {
+func New(o Options) *Table {
 	t := &Table{adapters: map[string]map[string]media.Adapter{}}
 
 	embeddings := openai.Embeddings{}
@@ -99,6 +106,10 @@ func New() *Table {
 	}
 	// A model marker picks a second adapter for the same provider.
 	t.adapters["gemini"]["stt|gemini-live"] = stt.GeminiLive{}
+
+	t.add(video.XAI{}, "xai")
+	t.add(video.OpenRouter{}, "openrouter")
+	t.add(video.Vertex{Tokens: o.VertexTokens}, "vertex")
 	return t
 }
 

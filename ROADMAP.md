@@ -53,7 +53,7 @@ Status words: **built** (implemented and tested), **partial** (some behavior mis
 | Embeddings | built |
 | Image generation | built |
 | Speech, transcription and voice lists | built |
-| Video generation | planned |
+| Video generation | built |
 | Web search and page fetch | planned |
 
 ## Dashboard

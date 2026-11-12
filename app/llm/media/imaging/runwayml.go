@@ -25,10 +25,25 @@ func (Runway) Build(_ context.Context, r media.Request, _ media.Client) (media.C
 		return media.Call{}, media.BadRequestf("the provider names no address")
 	}
 	body := gjson.ParseBytes(r.Body)
+	ratio := media.PixelRatio(body.Get("size").String())
+	prompt := body.Get("prompt").String()
+	if runwayVideo(r) {
+		// The reference serves a video model through the images route, on the
+		// image-to-video task, with a fixed five-second clip.
+		req := map[string]any{"promptText": prompt, "model": r.WireModel, "ratio": ratio, "duration": 5}
+		if img := body.Get("image").String(); img != "" {
+			req["promptImage"] = img
+		}
+		raw, err := json.Marshal(req)
+		if err != nil {
+			return media.Call{}, media.BadRequestf("the request cannot be built")
+		}
+		return media.Call{Method: http.MethodPost, URL: base + "/image_to_video", Header: runwayHeaders(r.Credential), Body: raw}, nil
+	}
 	req := map[string]any{
-		"promptText": body.Get("prompt").String(),
+		"promptText": prompt,
 		"model":      r.WireModel,
-		"ratio":      media.PixelRatio(body.Get("size").String()),
+		"ratio":      ratio,
 	}
 	if img := body.Get("image").String(); img != "" {
 		req["referenceImages"] = []map[string]string{{"uri": img}}
@@ -38,6 +53,25 @@ func (Runway) Build(_ context.Context, r media.Request, _ media.Client) (media.C
 		return media.Call{}, media.BadRequestf("the request cannot be built")
 	}
 	return media.Call{Method: http.MethodPost, URL: base + "/text_to_image", Header: runwayHeaders(r.Credential), Body: raw}, nil
+}
+
+// runwayVideo reports whether the model is one of the provider's video models.
+// The id is what the provider knows it by; the client's own name may carry a
+// provider prefix.
+func runwayVideo(r media.Request) bool {
+	id := r.WireModel
+	if id == "" {
+		id = r.Model
+	}
+	if _, rest, ok := strings.Cut(id, "/"); ok {
+		id = rest
+	}
+	for _, m := range r.Entry.Models {
+		if m.ID == id && m.Kind == upstream.KindVideo {
+			return true
+		}
+	}
+	return false
 }
 
 // Parse polls the task until it succeeds.
