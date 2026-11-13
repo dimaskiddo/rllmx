@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -231,6 +232,7 @@ func TestTheGuardDescriptionNamesNoTarget(t *testing.T) {
 func TestTheGuardRacesItsAddressesWithFastFallback(t *testing.T) {
 	// The first address never answers; the second is reached after one
 	// fallback delay rather than after the first one's whole timeout.
+	var mu sync.Mutex
 	var dialed []string
 	g := NewDialer(10*time.Second, nil)
 	g.allow = mustAllow(t, "public.example")
@@ -240,7 +242,9 @@ func TestTheGuardRacesItsAddressesWithFastFallback(t *testing.T) {
 	reached := make(chan time.Duration, 1)
 	start := time.Now()
 	g.dial = func(ctx context.Context, _, addr string) (net.Conn, error) {
+		mu.Lock()
 		dialed = append(dialed, addr)
+		mu.Unlock()
 		if strings.HasPrefix(addr, "10.0.0.1:") {
 			<-ctx.Done()
 			return nil, ctx.Err()
@@ -261,8 +265,11 @@ func TestTheGuardRacesItsAddressesWithFastFallback(t *testing.T) {
 	if elapsed < fallbackDelay/2 || elapsed > fallbackDelay*3 {
 		t.Fatalf("the second address was reached after %s, want about %s", elapsed, fallbackDelay)
 	}
-	if len(dialed) != 2 {
-		t.Fatalf("dialed %v", dialed)
+	mu.Lock()
+	got := append([]string(nil), dialed...)
+	mu.Unlock()
+	if len(got) != 2 {
+		t.Fatalf("dialed %v", got)
 	}
 }
 

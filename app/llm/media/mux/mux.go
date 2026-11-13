@@ -48,7 +48,7 @@ func New(o Options) *Table {
 
 	images := openai.Images{}
 	for _, id := range []string{
-		"openai", "minimax", "openrouter", "recraft", "vercel-ai-gateway", "xai", "sensenova",
+		"openai", "minimax", "openrouter", "recraft", "vercel-ai-gateway", "xai", "sensenova", "sensenova-intl",
 	} {
 		t.add(images, id)
 	}

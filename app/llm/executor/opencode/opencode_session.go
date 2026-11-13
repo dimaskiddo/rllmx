@@ -3,6 +3,8 @@ package opencode
 import (
 	"crypto/sha256"
 	"strconv"
+	"sync"
+	"time"
 )
 
 // The opencode session id's shape: "ses_", twelve hex of a descending time
@@ -79,4 +81,66 @@ func opencodeRequestID(now int64) string {
 func hexDigit(v byte) string {
 	const digits = "0123456789abcdef"
 	return string([]byte{digits[v>>4], digits[v&0xf]})
+}
+
+// sessionGens remembers a conversation's session generation after the upstream
+// rejected an id. The map is bounded and entries expire, so a long run cannot
+// grow it: one conversation keeps one id until the lane refuses it.
+type sessionGens struct {
+	mu      sync.Mutex
+	entries map[string]sessionGen
+}
+
+type sessionGen struct {
+	gen uint32
+	at  time.Time
+}
+
+const (
+	genSeedsMax = 4096
+	genTTL      = 24 * time.Hour
+)
+
+func (s *sessionGens) get(seed string, now time.Time) uint32 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e, ok := s.entries[seed]
+	if !ok || now.Sub(e.at) > genTTL {
+		return 0
+	}
+	return e.gen
+}
+
+func (s *sessionGens) bump(seed string, now time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.entries == nil {
+		s.entries = make(map[string]sessionGen, 16)
+	}
+	if len(s.entries) >= genSeedsMax {
+		s.expire(now)
+	}
+	s.entries[seed] = sessionGen{gen: s.entries[seed].gen + 1, at: now}
+}
+
+// expire drops entries past their life; a map still full afterwards is cleared
+// rather than grown, which only costs a conversation its earlier generation.
+func (s *sessionGens) expire(now time.Time) {
+	for k, e := range s.entries {
+		if now.Sub(e.at) > genTTL {
+			delete(s.entries, k)
+		}
+	}
+	if len(s.entries) >= genSeedsMax {
+		s.entries = make(map[string]sessionGen, 16)
+	}
+}
+
+// seedWithGen mixes the generation into the seed, so a bumped conversation
+// derives a different id.
+func seedWithGen(seed string, gen uint32) string {
+	if gen == 0 {
+		return seed
+	}
+	return seed + "\x00gen:" + strconv.FormatUint(uint64(gen), 10)
 }

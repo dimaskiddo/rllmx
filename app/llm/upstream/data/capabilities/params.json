@@ -101,6 +101,18 @@
       ]
     },
     {
+      "provider": "nvidia",
+      "drop": [
+        "client_metadata",
+        "prompt_cache_key",
+        "service_tier",
+        "anthropic_beta",
+        "thinking_budget",
+        "user_id",
+        "custom_field"
+      ]
+    },
+    {
       "provider": "mistral",
       "drop": [
         "client_metadata"

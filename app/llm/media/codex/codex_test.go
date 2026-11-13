@@ -21,7 +21,6 @@ func TestOnlyAPlainPromptOnAToolModelIsServed(t *testing.T) {
 	for name, body := range map[string]string{
 		"a size":             `{"prompt":"x","size":"1024x1024"}`,
 		"two images":         `{"prompt":"x","n":2}`,
-		"an edit":            `{"prompt":"x","image":"aGk="}`,
 		"a bad quality":      `{"prompt":"x","quality":"ultra"}`,
 		"a jpeg":             `{"prompt":"x","output_format":"jpeg"}`,
 		"output compression": `{"prompt":"x","output_compression":5}`,
@@ -87,5 +86,46 @@ func TestTheAnswerIsNormalized(t *testing.T) {
 	}
 	if _, err := (Images{}).Parse(context.Background(), media.Request{}, nil, 200, nil, []byte(`{"data":[]}`)); err == nil {
 		t.Fatal("an answer without an image was accepted")
+	}
+}
+
+func TestAnEditGoesToTheNativeEditsEndpoint(t *testing.T) {
+	cfg := &upstream.MediaConfig{BaseURL: "https://chatgpt.com/backend-api/codex/images/generations"}
+	call, err := (Images{}).Build(context.Background(), media.Request{
+		Kind: upstream.KindImage, WireModel: "gpt-image-2", Config: cfg, Credential: "tok",
+		Body: []byte(`{"prompt":"make it blue","images":["aGk=","https://x/i.png","data:image/jpeg;base64,QQ=="],"image":"aGk=","quality":"high"}`),
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if call.URL != "https://chatgpt.com/backend-api/codex/images/edits" {
+		t.Fatalf("%s", call.URL)
+	}
+	body := gjson.ParseBytes(call.Body)
+	if body.Get("model").String() != "gpt-image-2" || body.Get("prompt").String() != "make it blue" ||
+		body.Get("n").Int() != 1 || body.Get("size").String() != "auto" || body.Get("quality").String() != "high" ||
+		body.Get("background").String() != "auto" || body.Get("output_format").Exists() {
+		t.Fatalf("%s", call.Body)
+	}
+	images := body.Get("images").Array()
+	if len(images) != 4 {
+		t.Fatalf("%d images: %s", len(images), call.Body)
+	}
+	for i, want := range []string{"data:image/png;base64,aGk=", "https://x/i.png", "data:image/jpeg;base64,QQ==", "data:image/png;base64,aGk="} {
+		if got := images[i].Get("image_url").String(); got != want {
+			t.Errorf("image %d: %q, want %q", i, got, want)
+		}
+	}
+	// An edit with an output control still gets the 400 the native endpoint cannot honour.
+	for name, body := range map[string]string{
+		"a size":    `{"prompt":"x","image":"aGk=","size":"1024x1024"}`,
+		"a jpeg":    `{"prompt":"x","image":"aGk=","output_format":"jpeg"}`,
+		"two shots": `{"prompt":"x","image":"aGk=","n":2}`,
+	} {
+		if _, err := (Images{}).Build(context.Background(), media.Request{
+			Kind: upstream.KindImage, WireModel: "gpt-image-2", Config: cfg, Credential: "tok", Body: []byte(body),
+		}, nil); err == nil {
+			t.Errorf("%s: an edit with an output control was accepted", name)
+		}
 	}
 }

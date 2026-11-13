@@ -38,6 +38,9 @@ func (r *runner) passthrough(ctx context.Context) {
 			if !keep {
 				continue
 			}
+			if r.j.ReasoningAliasFields {
+				data = liftReasoning(data)
+			}
 		} else if !gjson.ValidBytes(data) {
 			continue
 		}
@@ -177,6 +180,22 @@ func worthSending(b []byte) bool {
 	return d.Get("content").String() != "" || d.Get("role").Exists() || c.Get("finish_reason").String() != "" ||
 		d.Get("tool_calls").Exists() || d.Get("reasoning_content").String() != "" || d.Get("reasoning").String() != "" ||
 		d.Get("reasoning_details").Exists() || !d.Exists()
+}
+
+// liftReasoning copies a string `reasoning` into `reasoning_content` on each
+// choice's delta that has none, for a client that reads only the second name. A
+// `reasoning` that is not a string is left as it came.
+func liftReasoning(data []byte) []byte {
+	for i := range gjson.GetBytes(data, "choices").Array() {
+		prefix := choicePath(i, "delta")
+		if gjson.GetBytes(data, prefix+".reasoning_content").Exists() {
+			continue
+		}
+		if v := gjson.GetBytes(data, prefix+".reasoning"); v.Type == gjson.String && v.String() != "" {
+			data, _ = sjson.SetBytes(data, prefix+".reasoning_content", v.String())
+		}
+	}
+	return data
 }
 
 // textReader pulls the text length and the finish out of passthrough events so

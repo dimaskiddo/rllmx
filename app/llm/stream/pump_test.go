@@ -577,3 +577,28 @@ func TestKindOfAndPageTitle(t *testing.T) {
 		t.Fatalf("markup survived: %q", got)
 	}
 }
+
+func TestTheReasoningAliasIsLiftedInPassthrough(t *testing.T) {
+	body := "data: {\"id\":\"chatcmpl-abc12345\",\"choices\":[{\"delta\":{\"reasoning\":\"think\"}}]}\n\n" +
+		"data: {\"id\":\"chatcmpl-abc12345\",\"choices\":[{\"delta\":{\"reasoning_content\":\"kept\",\"reasoning\":\"ignored\"}}]}\n\n" +
+		"data: [DONE]\n\n"
+	c := &fakeClient{}
+	j := job(sseBody(body), "openai", "openai", c)
+	j.ReasoningAliasFields = true
+	if res := Run(context.Background(), j); res.Err != nil {
+		t.Fatal(res.Err)
+	}
+	text := c.text()
+	if !strings.Contains(text, `"reasoning_content":"think"`) {
+		t.Fatalf("the alias was not lifted: %s", text)
+	}
+	if !strings.Contains(text, `"reasoning_content":"kept"`) || strings.Contains(text, `"reasoning_content":"ignored"`) {
+		t.Fatalf("an existing reasoning_content was overwritten: %s", text)
+	}
+	// Without the quirk the field is passed through untouched.
+	c2 := &fakeClient{}
+	Run(context.Background(), job(sseBody(body), "openai", "openai", c2))
+	if strings.Contains(c2.text(), `"reasoning_content":"think"`) {
+		t.Fatalf("lifted without the quirk: %s", c2.text())
+	}
+}

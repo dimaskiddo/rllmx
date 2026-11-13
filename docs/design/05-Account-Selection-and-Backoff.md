@@ -38,6 +38,7 @@ Serialized per provider by a mutex, so the usage counters it writes cannot race 
 |---|---|
 | Codex: `model is not supported when using codex with a chatgpt account` | 30 min |
 | `codebuddy-intl`: `request illegal`, `conversation id missing` | exponential backoff |
+| `nvidia`: `degraded` on a 400, the model cluster's own refusal | 15 min, the model only: the connection keeps its other models |
 | `no credentials`, `improperly formed request` | 2 min |
 | `request not allowed` | 5 s |
 | `insufficient credit`, `credit balance is too low` | exponential backoff |

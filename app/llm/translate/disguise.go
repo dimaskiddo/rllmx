@@ -11,6 +11,8 @@ import (
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 
+	"rllmx/app/llm/upstream"
+
 	"rllmx/app/store/dialect"
 	"rllmx/app/store/document"
 )
@@ -26,13 +28,15 @@ type Disguise struct {
 	Session string
 	// Tools renames the client's tools and adds the decoys.
 	Tools bool
+	// Version is the claude-cli/x.y.z the billing line names; empty uses the
+	// build's floor.
+	Version string
 }
 
 const (
-	toolSuffix     = "_ide"
-	billingPrefix  = "x-anthropic-billing-header:"
-	billingVersion = "2.1.280"
-	decoyNote      = "This tool is currently unavailable."
+	toolSuffix    = "_ide"
+	billingPrefix = "x-anthropic-billing-header:"
+	decoyNote     = "This tool is currently unavailable."
 )
 
 // Names of Claude Code's own tools. They are added unchanged as decoys, and a
@@ -59,7 +63,7 @@ func Cloak(body []byte, d *Disguise) ([]byte, map[string]string) {
 	if d == nil || !gjson.ValidBytes(body) || !gjson.ParseBytes(body).IsObject() {
 		return body, nil
 	}
-	out := withBilling(body)
+	out := withBilling(body, d.Version)
 	out = withUserID(out, d)
 	if !d.Tools {
 		return out, nil
@@ -69,14 +73,14 @@ func Cloak(body []byte, d *Disguise) ([]byte, map[string]string) {
 
 // withBilling puts the billing block first in the system prompt. The hash is
 // taken over the body as it stands, before tools are renamed.
-func withBilling(body []byte) []byte {
+func withBilling(body []byte, version string) []byte {
 	sys := gjson.GetBytes(body, "system")
 	if sys.IsArray() {
 		if first := sys.Get("0.text").String(); strings.HasPrefix(first, billingPrefix) {
 			return body
 		}
 	}
-	block := `{"type":"text","text":` + document.Encode(billingText(body)) + `}`
+	block := `{"type":"text","text":` + document.Encode(billingText(body, version)) + `}`
 	var blocks string
 	switch {
 	case sys.IsArray():
@@ -97,12 +101,15 @@ func withBilling(body []byte) []byte {
 	return out
 }
 
-func billingText(body []byte) string {
+func billingText(body []byte, version string) string {
+	if version == "" {
+		version = upstream.ClaudeCLIFloor
+	}
 	sum := sha256.Sum256(body)
 	build := make([]byte, 2)
 	_, _ = rand.Read(build)
 	return fmt.Sprintf("%s cc_version=%s.%s; cc_entrypoint=sdk-cli; cch=%s;",
-		billingPrefix, billingVersion, hex.EncodeToString(build)[:3], hex.EncodeToString(sum[:])[:5])
+		billingPrefix, version, hex.EncodeToString(build)[:3], hex.EncodeToString(sum[:])[:5])
 }
 
 // withUserID adds Claude Code's user id when the client sent none.

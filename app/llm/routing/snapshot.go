@@ -26,14 +26,19 @@ type Source interface {
 	Aliases(ctx context.Context) (map[string]string, error)
 	Nodes(ctx context.Context) ([]Node, error)
 	ComboNames(ctx context.Context) ([]string, error)
+	// ActiveProviders lists the provider ids that have an active connection,
+	// each once.
+	ActiveProviders(ctx context.Context) ([]string, error)
 }
 
-// Snapshot reads aliases, nodes and combo names through a Source, each at most
-// once per SnapshotTTL. A failed read is returned and not cached.
+// Snapshot reads aliases, nodes, combo names and active providers through a
+// Source, each at most once per SnapshotTTL. A failed read is returned and not
+// cached.
 type Snapshot struct {
 	aliases *ttl.Value[map[string]string]
 	nodes   *ttl.Value[[]Node]
 	combos  *ttl.Value[[]string]
+	active  *ttl.Value[[]string]
 }
 
 // loadTimeout bounds one read of stored data, which no caller's context owns.
@@ -45,6 +50,7 @@ func NewSnapshot(src Source, now func() time.Time) *Snapshot {
 		aliases: ttl.New(SnapshotTTL, now, src.Aliases),
 		nodes:   ttl.New(SnapshotTTL, now, src.Nodes),
 		combos:  ttl.New(SnapshotTTL, now, src.ComboNames),
+		active:  ttl.New(SnapshotTTL, now, src.ActiveProviders),
 	}
 }
 
@@ -53,6 +59,7 @@ func (s *Snapshot) Invalidate() {
 	s.aliases.Drop()
 	s.nodes.Drop()
 	s.combos.Drop()
+	s.active.Drop()
 }
 
 // Aliases returns the user's model aliases as stored JSON text per name.
@@ -66,6 +73,11 @@ func (s *Snapshot) Nodes(ctx context.Context) ([]Node, error) { return s.nodes.G
 // ComboNames returns the names of every combo.
 func (s *Snapshot) ComboNames(ctx context.Context) ([]string, error) {
 	return s.combos.Get(ctx, loadTimeout)
+}
+
+// ActiveProviders returns the provider ids that have an active connection.
+func (s *Snapshot) ActiveProviders(ctx context.Context) ([]string, error) {
+	return s.active.Get(ctx, loadTimeout)
 }
 
 type repositorySource struct{ store *repository.Store }
@@ -99,6 +111,24 @@ func (r repositorySource) ComboNames(ctx context.Context) ([]string, error) {
 	out := make([]string, 0, len(rows))
 	for _, c := range rows {
 		out = append(out, c.Name)
+	}
+	return out, nil
+}
+
+func (r repositorySource) ActiveProviders(ctx context.Context) ([]string, error) {
+	active := true
+	rows, err := r.store.Connections().List(ctx, repository.ConnFilter{IsActive: &active})
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[string]bool, len(rows))
+	out := make([]string, 0, len(rows))
+	for _, c := range rows {
+		if c.Provider == "" || seen[c.Provider] {
+			continue
+		}
+		seen[c.Provider] = true
+		out = append(out, c.Provider)
 	}
 	return out, nil
 }

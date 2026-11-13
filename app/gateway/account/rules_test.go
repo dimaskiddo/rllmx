@@ -59,6 +59,8 @@ func TestClassifyTable(t *testing.T) {
 		{"codex text for another provider", Input{Provider: "openai", Status: 400, Text: "model is not supported when using codex with a chatgpt account"}, false, true, 0, 0},
 		{"codebuddy-intl request illegal", Input{Provider: "codebuddy-intl", Status: 400, Text: "request illegal"}, true, false, 2 * time.Second, 1},
 		{"request illegal elsewhere", Input{Provider: "x", Status: 400, Text: "request illegal"}, false, true, 0, 0},
+		{"nvidia degraded cluster", Input{Provider: "nvidia", Status: 400, Text: "the model cluster is degraded"}, true, false, 15 * time.Minute, 0},
+		{"degraded elsewhere", Input{Provider: "x", Status: 400, Text: "degraded"}, false, true, 0, 0},
 	}
 	for _, c := range cases {
 		c.in.Now = t0

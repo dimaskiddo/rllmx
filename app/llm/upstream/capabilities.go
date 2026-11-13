@@ -257,7 +257,7 @@ func NewCapabilities(capData, thinkData, visionData, paramData []byte, reg *Regi
 			return nil, fmt.Errorf("upstream: params.json: rule %d has an exclusion and no pattern", i)
 		}
 		for _, f := range append(append([]string{}, r.Drop...), r.DropMessageFields...) {
-			if secretShaped(f) {
+			if !safeToDrop(f) {
 				return nil, fmt.Errorf("upstream: params.json: rule %d names a credential-shaped field", i)
 			}
 		}
@@ -271,6 +271,16 @@ func NewCapabilities(capData, thinkData, visionData, paramData []byte, reg *Regi
 		c.params = append(c.params, pc)
 	}
 	return c, nil
+}
+
+// dropSafeFields are names that read like a credential but are a cache hint, so
+// a rule may drop them. Every other credential-shaped name stays refused.
+var dropSafeFields = map[string]bool{"prompt_cache_key": true}
+
+// safeToDrop reports whether a rule may name the field, which it may not when the
+// name reads like a credential.
+func safeToDrop(name string) bool {
+	return dropSafeFields[name] || !secretShaped(name)
 }
 
 func secretShaped(name string) bool {

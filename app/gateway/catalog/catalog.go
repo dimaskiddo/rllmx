@@ -172,6 +172,7 @@ func (c *Catalog) entries(provider, owner string, models []Model, conns []reposi
 		}
 		out = append(out, Entry{
 			ID: owner + "/" + m.ID, Provider: provider, Model: m.ID, Name: m.Name, OwnedBy: owner, Caps: c.Caps.For(provider, m.ID),
+			Levels: c.Caps.Levels(provider, m.ID, nil),
 		})
 	}
 	return out

@@ -266,6 +266,10 @@ type Quirks struct {
 	// ClineEnvelope unwraps a non-stream answer shaped {"success":true,"data":{...}}
 	// to its data. Any other body passes unchanged.
 	ClineEnvelope bool `json:"clineEnvelope,omitempty"`
+	// ReasoningAliasFields copies a string `reasoning` into `reasoning_content` on
+	// a passed-through stream delta that carries no `reasoning_content` of its own,
+	// for an upstream that streams thinking under the other name.
+	ReasoningAliasFields bool `json:"reasoningAliasFields,omitempty"`
 }
 
 // Reasoning scopes a provider may name.

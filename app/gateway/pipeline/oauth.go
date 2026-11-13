@@ -113,12 +113,13 @@ func (c *call) prepare(conn repository.Connection) sent {
 	}
 	maps.Copy(headers, o.Headers)
 	maps.Copy(headers, o.Identity)
+	c.p.d.ClaudeCLI.Rewrite(headers)
 	if o.Beta != nil {
 		headers["anthropic-beta"] = betaList(o.Beta, c.dest.model, c.body, clientFlags(c.in.Header))
 	}
 	session := c.session(conn)
 	if o.Disguise && c.dest.format == upstream.FormatClaude && c.client != ClientClaude && strings.HasPrefix(token, claudeOAuthPrefix) {
-		body, names := translate.Cloak(c.body, &translate.Disguise{Seed: token, Session: session, Tools: true})
+		body, names := translate.Cloak(c.body, &translate.Disguise{Seed: token, Session: session, Tools: true, Version: c.p.d.ClaudeCLI.Version()})
 		out.body, out.names, out.cloaked = body, names, true
 	}
 	if o.Session != nil {

@@ -404,3 +404,57 @@ func TestAParallelToolTurnKeepsEveryResultBeforeItsText(t *testing.T) {
 		t.Fatalf("the note came last? %+v", req.Messages[2])
 	}
 }
+
+func TestUnsupportedSchemaKeywordsAreStripped(t *testing.T) {
+	schema := `{"type":"object","properties":{"a":{"type":"string","minLength":1,"maxLength":9,"format":"email",` +
+		`"uniqueItems":true,"prefixItems":[{"type":"string"}],"additionalItems":false,` +
+		`"deprecated":true,"readOnly":true,"writeOnly":true,"enumDescriptions":["x"],"default":"y",` +
+		`"optional":true,"~optional":true,"if":{},"then":{},"else":{},"contentMediaType":"text/plain",` +
+		`"cornerRadius":4,"fontSize":12,"errorMessage":"bad","markdownDescription":"d",` +
+		`"x-taplo":true,"doNotSuggest":true,"suggestSortText":"1","minProperties":1,"maxProperties":2,` +
+		`"dependencies":{},"dependentRequired":{},"unevaluatedItems":false,"contentSchema":{}}},` +
+		`"required":["a"]}`
+	out := string(CleanGeminiSchema(json.RawMessage(schema)))
+	for _, banned := range []string{"minLength", "maxLength", "format", "uniqueItems", "prefixItems", "additionalItems",
+		"deprecated", "readOnly", "writeOnly", "enumDescriptions", "default", "optional", "~optional", "if", "then", "else",
+		"contentMediaType", "cornerRadius", "fontSize", "errorMessage", "markdownDescription", "x-taplo", "doNotSuggest",
+		"suggestSortText", "minProperties", "maxProperties", "dependencies", "dependentRequired", "unevaluatedItems", "contentSchema"} {
+		if strings.Contains(out, banned) {
+			t.Errorf("%q survived: %s", banned, out)
+		}
+	}
+	// The keys a schema cannot do without stay.
+	for _, kept := range []string{`"properties"`, `"required"`, `"type"`} {
+		if !strings.Contains(out, kept) {
+			t.Errorf("%s was dropped: %s", kept, out)
+		}
+	}
+}
+
+func FuzzCleanGeminiSchema(f *testing.F) {
+	f.Add([]byte(`{"type":"object","properties":{"a":{"type":"string"}},"required":["a"]}`))
+	f.Add([]byte(`{"anyOf":[{"type":"null"},{"type":"string","format":"date"}]}`))
+	f.Add([]byte(`{"prefixItems":[{"type":"string"}],"~optional":true}`))
+	f.Add([]byte("0"))
+	f.Fuzz(func(t *testing.T, raw []byte) {
+		out := CleanGeminiSchema(raw)
+		if !json.Valid(out) {
+			t.Fatalf("not JSON: %s", out)
+		}
+		var v any
+		if json.Unmarshal(out, &v) != nil {
+			t.Fatalf("does not decode: %s", out)
+		}
+		// The cleaner is idempotent: a second pass means the same schema. The
+		// bytes may differ only in key order, which the fallback literal sets.
+		again := CleanGeminiSchema(out)
+		var first, second any
+		_ = json.Unmarshal(out, &first)
+		_ = json.Unmarshal(again, &second)
+		a, _ := json.Marshal(first)
+		b, _ := json.Marshal(second)
+		if string(a) != string(b) {
+			t.Fatalf("not idempotent:\n%s\n%s", out, again)
+		}
+	})
+}

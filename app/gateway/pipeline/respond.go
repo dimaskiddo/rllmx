@@ -194,7 +194,8 @@ func (c *call) relay(ctx context.Context, resp executor.Response, src stream.Sou
 	res := stream.Run(ctx, stream.Job{
 		Body: resp.Body, Source: src, UpstreamFormat: c.dest.format, ClientFormat: c.format, Ctx: c.tctx,
 		Client: lc, Timers: c.timers(), RequestBytes: len(c.body), Buffer: true, Now: c.p.d.Now,
-		Rewrite: c.restoreEvent(),
+		Rewrite:              c.restoreEvent(),
+		ReasoningAliasFields: c.dest.entry.Transport.Quirks.ReasoningAliasFields,
 	})
 	if errors.Is(res.Err, stream.ErrClientGone) {
 		c.setUsage(res.Usage)

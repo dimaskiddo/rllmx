@@ -74,6 +74,9 @@ func (s source) Aliases(context.Context) (map[string]string, error) {
 }
 func (s source) Nodes(context.Context) ([]routing.Node, error) { return nil, nil }
 func (s source) ComboNames(context.Context) ([]string, error)  { return s.combos, nil }
+func (s source) ActiveProviders(context.Context) ([]string, error) {
+	return nil, nil
+}
 
 type rig struct {
 	t    *testing.T

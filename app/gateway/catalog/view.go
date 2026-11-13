@@ -32,6 +32,9 @@ type Entry struct {
 	Name     string
 	OwnedBy  string
 	Caps     upstream.Capability
+	// Levels are the reasoning levels a client may ask for; empty for a model
+	// with no reasoning.
+	Levels []string
 }
 
 // OpenAIModel is an entry of GET /v1/models.
@@ -43,14 +46,21 @@ type OpenAIModel struct {
 	Capabilities        Capabilities `json:"capabilities"`
 	ContextLength       int          `json:"context_length"`
 	MaxCompletionTokens int          `json:"max_completion_tokens"`
+	// ThinkingLevels lets a client build its effort selector from the gateway
+	// instead of keeping a table per model.
+	ThinkingLevels []string `json:"thinking_levels,omitempty"`
 }
 
 // OpenAI renders the entry for the OpenAI list.
 func (e Entry) OpenAI(created int64) OpenAIModel {
-	return OpenAIModel{
+	m := OpenAIModel{
 		ID: e.ID, Object: "model", Created: created, OwnedBy: e.OwnedBy, Capabilities: capabilitiesOf(e.Caps),
 		ContextLength: e.Caps.ContextWindow, MaxCompletionTokens: e.Caps.MaxOutput,
 	}
+	if e.Caps.Reasoning && len(e.Levels) > 0 {
+		m.ThinkingLevels = e.Levels
+	}
+	return m
 }
 
 // Info is the answer of GET /v1/models/info.

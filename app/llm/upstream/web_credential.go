@@ -99,24 +99,15 @@ func cookiePairs(s string) (string, bool) {
 	return strings.Join(out, "; "), true
 }
 
-// jsonCredential reads the two JSON shapes a pasted credential arrives in: a
-// cookie-editor array of {name, value} entries, and a local-storage object
-// holding the token under "value".
-func jsonCredential(s string) (string, bool) {
-	if strings.HasPrefix(s, "{") {
-		var obj struct {
-			Value string `json:"value"`
-		}
-		if json.Unmarshal([]byte(s), &obj) != nil {
-			return "", false
-		}
-		return bareCredential(strings.TrimSpace(obj.Value))
-	}
-	var entries []struct {
-		Name  string `json:"name"`
-		Value string `json:"value"`
-	}
-	if json.Unmarshal([]byte(s), &entries) != nil || len(entries) == 0 {
+// cookieEntry is one entry of a Cookie-Editor export.
+type cookieEntry struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+// cookiesOf joins checked entries into one Cookie header value, keeping order.
+func cookiesOf(entries []cookieEntry) (string, bool) {
+	if len(entries) == 0 {
 		return "", false
 	}
 	out := make([]string, 0, len(entries))
@@ -127,6 +118,30 @@ func jsonCredential(s string) (string, bool) {
 		out = append(out, e.Name+"="+e.Value)
 	}
 	return strings.Join(out, "; "), true
+}
+
+// jsonCredential reads the shapes a pasted credential arrives in: a
+// cookie-editor array of {name, value} entries, a {"cookies":[…]} export, and a
+// local-storage object holding the token under "value".
+func jsonCredential(s string) (string, bool) {
+	if strings.HasPrefix(s, "{") {
+		var obj struct {
+			Value   string        `json:"value"`
+			Cookies []cookieEntry `json:"cookies"`
+		}
+		if json.Unmarshal([]byte(s), &obj) != nil {
+			return "", false
+		}
+		if obj.Cookies != nil {
+			return cookiesOf(obj.Cookies)
+		}
+		return bareCredential(strings.TrimSpace(obj.Value))
+	}
+	var entries []cookieEntry
+	if json.Unmarshal([]byte(s), &entries) != nil {
+		return "", false
+	}
+	return cookiesOf(entries)
 }
 
 // hasControlRune reports a C0 or C1 control character, which no header value

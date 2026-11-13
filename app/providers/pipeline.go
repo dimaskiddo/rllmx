@@ -98,6 +98,7 @@ func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.P
 		Targets:       zed.Targets{Client: h.Zed},
 		Catalog:       &catalog.Guard{Cache: cacheOrNil(app), Fetchers: catalog.Fetchers(h.Registry, client)},
 		Quota:         h.Google.Quota,
+		ClaudeCLI:     h.ClaudeCLI,
 		Timers:        stream.Timers{FirstChunk: h.Stream.FirstChunk, Stall: h.Stream.Stall, UsageWait: h.Stream.UsageWait},
 		Log:           log,
 	})

@@ -19,11 +19,6 @@
   },
   "models": [
     {
-      "id": "claude-fable-5-1",
-      "name": "Claude Fable 5.1",
-      "targetFormat": "claude"
-    },
-    {
       "id": "claude-opus-5",
       "name": "Claude Opus 5",
       "targetFormat": "claude"

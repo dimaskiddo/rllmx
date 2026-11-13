@@ -9,7 +9,10 @@
   "transport": {
     "baseUrl": "https://opencode.ai/inference/v1/chat/completions",
     "format": "openai",
-    "reasoningInject": "all"
+    "reasoningInject": "all",
+    "quirks": {
+      "reasoningAliasFields": true
+    }
   },
   "executor": "opencode",
   "forceStream": true,

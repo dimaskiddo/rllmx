@@ -18,5 +18,9 @@ func init() {
 		// default for the standard list. One group changes the ClientHello enough
 		// for a network that resets the standard offer.
 		"tls_curve": config.Env("UPSTREAM_TLS_CURVE", "x25519"),
+		// The claude-cli/x.y.z the Claude fingerprint advertises. Empty reads the
+		// latest published @anthropic-ai/claude-code from npm every six hours; a
+		// value pins it and turns the lookup off.
+		"claude_cli_version": config.Env("UPSTREAM_CLAUDE_CLI_VERSION", ""),
 	})
 }

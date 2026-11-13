@@ -44,8 +44,8 @@
     },
     "identity": {
       "originator": "codex_cli_rs",
-      "User-Agent": "codex_cli_rs/0.159.0",
-      "version": "0.159.0"
+      "User-Agent": "codex_cli_rs/0.167.1",
+      "version": "0.167.1"
     },
     "session": {
       "name": "session_id",

@@ -7,6 +7,7 @@ Built: `network.Classify`, `network.Allow`/`ParseAllow`, `network.NewDialer` (th
 Two deviations from the target below, both deliberate:
 
 - **The probe follows three redirects.** It followed none before; a relocation to the health path is what a load balancer does, so up to three hops are followed and a fourth refused. `app/http/probe_test.go` pins both.
+- **One host is not a provider.** The Claude Code version lookup reads `registry.npmjs.org` through the same guarded client, once at start and then every six hours (ten minutes after a failed read), with a three-second ceiling and a 256 KiB cap. It runs on its own timer, so no request waits on it (D309).
 - **The `/api/health` probe permits its own host.** The target comes from `SERVER_`/`APP_*` settings, not from a request, so the probe adds that one host to the allow list it uses. A redirect is still checked against that list, so the probe cannot be steered elsewhere.
 
 ### Transport

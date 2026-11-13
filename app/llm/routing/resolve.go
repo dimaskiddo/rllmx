@@ -83,15 +83,45 @@ func (r *Resolver) Resolve(ctx context.Context, input string) (Target, error) {
 		return Target{}, err
 	}
 	if p, m, ok := r.aliasTarget(aliases[name]); ok {
-		t.Provider, t.Model = p, m
+		provider, err := r.claudeOAuth(ctx, p)
+		if err != nil {
+			return Target{}, err
+		}
+		t.Provider, t.Model = provider, m
 		return t, nil
 	}
 	if p, m, ok := r.aliasTarget(`"` + builtinAliases[name] + `"`); ok {
-		t.Provider, t.Model = p, m
+		provider, err := r.claudeOAuth(ctx, p)
+		if err != nil {
+			return Target{}, err
+		}
+		t.Provider, t.Model = provider, m
 		return t, nil
 	}
-	t.Provider, t.Model = infer(name), name
+	provider, err := r.claudeOAuth(ctx, infer(name))
+	if err != nil {
+		return Target{}, err
+	}
+	t.Provider, t.Model = provider, name
 	return t, nil
+}
+
+// claudeOAuth offers a bare Claude model to the OAuth provider when the
+// API-key provider has no active connection and the OAuth one does, which is
+// where the reference sends a `claude-*` id. Any other provider, and a missing
+// answer on either side, leaves the provider as it was.
+func (r *Resolver) claudeOAuth(ctx context.Context, provider string) (string, error) {
+	if provider != "anthropic" {
+		return provider, nil
+	}
+	active, err := r.Snapshot.ActiveProviders(ctx)
+	if err != nil {
+		return "", err
+	}
+	if slices.Contains(active, "anthropic") || !slices.Contains(active, "claude") {
+		return provider, nil
+	}
+	return "claude", nil
 }
 
 // providerFor maps the prefix of `prefix/model`. A built-in name always wins:

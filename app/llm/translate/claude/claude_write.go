@@ -21,17 +21,19 @@ const maxCacheMarkers = 4
 
 // claudeBlock is one content block of a Messages request.
 type claudeBlock struct {
-	Type         string          `json:"type"`
-	Text         string          `json:"text,omitempty"`
-	Source       *claudeSource   `json:"source,omitempty"`
-	ID           string          `json:"id,omitempty"`
-	Name         string          `json:"name,omitempty"`
-	Input        json.RawMessage `json:"input,omitempty"`
-	ToolUseID    string          `json:"tool_use_id,omitempty"`
-	Content      any             `json:"content,omitempty"`
-	Thinking     string          `json:"thinking,omitempty"`
-	Signature    string          `json:"signature,omitempty"`
-	CacheControl *cacheMarker    `json:"cache_control,omitempty"`
+	Type      string          `json:"type"`
+	Text      string          `json:"text,omitempty"`
+	Source    *claudeSource   `json:"source,omitempty"`
+	ID        string          `json:"id,omitempty"`
+	Name      string          `json:"name,omitempty"`
+	Input     json.RawMessage `json:"input,omitempty"`
+	ToolUseID string          `json:"tool_use_id,omitempty"`
+	Content   any             `json:"content,omitempty"`
+	// IsError is always written on a tool_result: the Zed wire 400s without it.
+	IsError      *bool        `json:"is_error,omitempty"`
+	Thinking     string       `json:"thinking,omitempty"`
+	Signature    string       `json:"signature,omitempty"`
+	CacheControl *cacheMarker `json:"cache_control,omitempty"`
 }
 
 type claudeSource struct {
@@ -345,7 +347,7 @@ func claudeBlocks(m translate.Message, c *translate.Ctx) []claudeBlock {
 				inner = append(inner, claudeBlock{Type: "image", Source: imageSource(p)})
 			}
 		}
-		b := claudeBlock{Type: "tool_result", ToolUseID: m.ToolCallID}
+		b := claudeBlock{Type: "tool_result", ToolUseID: m.ToolCallID, IsError: &m.Error}
 		if len(inner) > 0 {
 			blocks := []any{}
 			if content != "" {

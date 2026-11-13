@@ -138,4 +138,6 @@ type Deps struct {
 	MaxAnswer int64
 	Log       log.Log
 	Now       func() time.Time
+	// ClaudeCLI is the claude-cli/x.y.z fingerprint; nil names the build's floor.
+	ClaudeCLI *upstream.ClaudeCLI
 }

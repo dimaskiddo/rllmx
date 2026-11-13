@@ -69,12 +69,13 @@ The Claude and Gemini placeholder thinking signatures are data in `thinking.json
 
 - The registry's `oauth.disguise` flag says which provider uses it (only `claude`).
 - Client headers never reach the upstream raw; the pipeline passes derived values.
-- The shape follows 9router 0.5.116 (Clean-Room). It changes only when a step says so, and the rows kept are the ones a security rule or a router improvement requires.
+- The shape follows 9router 0.5.119 (Clean-Room). It changes only when a step says so, and the rows kept are the ones a security rule or a router improvement requires.
 
 A request is adapted when all of these hold: the upstream format is Claude, the connection is a login of a provider whose data sets `disguise`, its token begins `sk-ant-oat`, and the client is not Claude Code (a Claude Code client is native: its body is already right). Then, in this order, on the finished body:
-1. a billing block becomes `system[0]` (a string system becomes two blocks; nothing is added if `system[0]` already starts with the prefix). Its `cch` is the first five hex characters of SHA-256 over the body as it stood before this step, the build part is three random hex characters, and the version is `.280`;
+1. a billing block becomes `system[0]` (a string system becomes two blocks; nothing is added if `system[0]` already starts with the prefix). Its `cch` is the first five hex characters of SHA-256 over the body as it stood before this step, the build part is three random hex characters, and the version is the one this router advertises (`UPSTREAM_CLAUDE_CLI_VERSION`, else the latest published Claude Code, never below the build's floor `.322`);
 2. `metadata.user_id` is added when the client sent none: `{"device_id":…,"account_uuid":…,"session_id":…}`, the ids derived from the token and the session from `app/gateway/conversation` with any `claude:` prefix removed;
-3. every client tool without a `type` is renamed with the suffix `_ide`, in the tool list, in every `tool_use` of the history and in a forced `tool_choice` that names a renamed tool; twenty placeholder tools follow. A body with no tools gets steps 1 and 2 only.
+3. every `tool_result` carries `is_error`, true when the client reported a failure and false otherwise, because the Zed wire refuses a block without it;
+4. every client tool without a `type` is renamed with the suffix `_ide`, in the tool list, in every `tool_use` of the history and in a forced `tool_choice` that names a renamed tool; twenty placeholder tools follow. A body with no tools gets steps 1, 2 and 3 only.
 
 | Item | Behavior |
 |---|---|
@@ -223,6 +224,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 193 | **Retired.** A trailing `_ide` is dropped from a tool name on every Claude answer when the map misses it, as the reference does; a placeholder name, or a name that strips back to one, is left alone | Recorded so the number stays citable. The map is still rebuilt for every attempt, so it is never lost across a retry |
 | 216 | The Claude request shape (tool suffix, placeholder tools, billing block, user id) was built with the Claude OAuth provider in instead of | It needs an OAuth account to exist and to test against; Claude preparation, which an API key needs, is Built (planned) |
 | 217 | Every writer holds its closing event until the usage report or `STREAM_USAGE_WAIT` | A usage trailer sent after the finish chunk reaches Claude and Gemini clients too |
+| 309 | The Claude Code version the fingerprint advertises is refreshed on a runner timer, not from a request: the value is read from memory and no request waits on npm | The reference's first caller after the cache expires starts the lookup in the background; a timer keeps the same freshness with no request path at all |
 | 218 | An upstream error event (Claude `error`, Responses `response.failed`, Gemini or Ollama error body, an OpenAI `error` object) fails the stream with the client's own error frame | The reference dropped it and the stream ended with no finish and no error |
 
 ---

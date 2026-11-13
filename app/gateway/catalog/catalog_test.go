@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -110,6 +111,9 @@ func (s routingSource) Nodes(context.Context) ([]routing.Node, error) {
 	return out, nil
 }
 func (s routingSource) ComboNames(context.Context) ([]string, error) { return nil, nil }
+func (s routingSource) ActiveProviders(context.Context) ([]string, error) {
+	return nil, nil
+}
 
 func (r *rig) custom(key, value string) {
 	if r.kv.scopes[repository.ScopeCustomModels] == nil {
@@ -399,4 +403,21 @@ func FuzzRegistryModels(f *testing.F) {
 			seen[m.ID] = true
 		}
 	})
+}
+
+func TestTheModelListPublishesThinkingLevels(t *testing.T) {
+	e := Entry{ID: "claude/claude-opus-5", OwnedBy: "claude", Caps: upstream.Capability{Reasoning: true}, Levels: []string{"low", "medium", "high"}}
+	if got := e.OpenAI(0).ThinkingLevels; len(got) != 3 || got[2] != "high" {
+		t.Fatalf("%v", got)
+	}
+	raw, _ := json.Marshal(e.OpenAI(0))
+	if !strings.Contains(string(raw), `"thinking_levels":["low","medium","high"]`) {
+		t.Fatalf("%s", raw)
+	}
+	// A model with no reasoning carries no field.
+	plain := Entry{ID: "p/m", OwnedBy: "p"}
+	raw, _ = json.Marshal(plain.OpenAI(0))
+	if strings.Contains(string(raw), "thinking_levels") {
+		t.Fatalf("%s", raw)
+	}
 }

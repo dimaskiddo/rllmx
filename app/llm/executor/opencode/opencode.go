@@ -1,10 +1,15 @@
 package opencode
 
 import (
+	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/tls"
+	"encoding/binary"
+	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/tidwall/gjson"
 
@@ -41,7 +46,23 @@ type OpenCodeFree struct {
 	// Client is the client this lane goes through: its TLS offer is part of the
 	// free gate. Nil takes the shared one.
 	Client *http.Client
+	// Now is the clock for a session generation's life; nil is time.Now.
+	Now func() time.Time
+	// Sleep is the overload wait's timer source; nil sleeps for real.
+	Sleep func(time.Duration) <-chan time.Time
+	// gens keeps a conversation's session generation after a rejection.
+	gens sessionGens
 }
+
+const (
+	// openCodeOverloadTries bounds the free lane's own retry of a 429 that means
+	// an overloaded backend rather than a spent account.
+	openCodeOverloadTries  = 8
+	openCodeOverloadBase   = 800 * time.Millisecond
+	openCodeOverloadCap    = 4 * time.Second
+	openCodeOverloadJitter = 250 * time.Millisecond
+	openCodeBodyPeek       = 4 << 10
+)
 
 // Execute sends to the lane the model is served on.
 func (o *OpenCodeFree) Execute(ctx context.Context, req executor.Request) (executor.Response, error) {
@@ -52,7 +73,8 @@ func (o *OpenCodeFree) Execute(ctx context.Context, req executor.Request) (execu
 		req.Renamed(renames)
 	}
 	req.Body = openCodeWithoutRenames(req.Body)
-	session := opencodeSessionID(openCodeSeed(req))
+	seed := openCodeSeed(req)
+	session := opencodeSessionID(seedWithGen(seed, o.gens.get(seed, o.now())))
 	d := o.Default
 	if o.Client != nil {
 		copied := *o.Default
@@ -75,7 +97,79 @@ func (o *OpenCodeFree) Execute(ctx context.Context, req executor.Request) (execu
 	if strings.HasSuffix(req.URL, "/messages") {
 		req.Auth.Headers["anthropic-version"] = openCodeMessagesVer
 	}
-	return d.Execute(ctx, req)
+	return o.send(ctx, d, req, seed)
+}
+
+// send retries a 429 that names an overloaded backend with a rising wait, and
+// retires the conversation's session id on any other refusal, so the next turn
+// asks for a fresh one.
+func (o *OpenCodeFree) send(ctx context.Context, d executor.Executor, req executor.Request, seed string) (executor.Response, error) {
+	for try := 1; ; try++ {
+		resp, err := d.Execute(ctx, req)
+		if err != nil {
+			return resp, err
+		}
+		switch resp.Status {
+		case http.StatusTooManyRequests:
+			body, overloaded := peekBody(resp.Body, openCodeBodyPeek)
+			resp.Body = body
+			if !overloaded {
+				o.gens.bump(seed, o.now())
+				return resp, nil
+			}
+			if try >= openCodeOverloadTries {
+				return resp, nil
+			}
+			executor.Drain(resp.Body)
+			if err := executor.Wait(ctx, openCodeOverloadWait(try), o.Sleep); err != nil {
+				return executor.Response{}, err
+			}
+		case http.StatusForbidden:
+			o.gens.bump(seed, o.now())
+			return resp, nil
+		default:
+			return resp, nil
+		}
+	}
+}
+
+func (o *OpenCodeFree) now() time.Time {
+	if o.Now != nil {
+		return o.Now()
+	}
+	return time.Now()
+}
+
+// openCodeOverloadWait is the wait after the given attempt: a linear ramp capped
+// at four seconds, plus up to 250 ms so two clients do not return together.
+func openCodeOverloadWait(try int) time.Duration {
+	d := time.Duration(try) * openCodeOverloadBase
+	if d > openCodeOverloadCap {
+		d = openCodeOverloadCap
+	}
+	var b [2]byte
+	if _, err := rand.Read(b[:]); err == nil {
+		d += time.Duration(binary.BigEndian.Uint16(b[:])%uint16(openCodeOverloadJitter/time.Millisecond)) * time.Millisecond
+	}
+	return d
+}
+
+// peekBody reads at most n bytes to read the body's start, then hands the rest
+// out unchanged. It reports whether the text names an overloaded backend.
+func peekBody(rc io.ReadCloser, n int) (io.ReadCloser, bool) {
+	if rc == nil {
+		return nil, false
+	}
+	head := make([]byte, n)
+	read, _ := io.ReadFull(rc, head)
+	head = head[:read]
+	overloaded := bytes.Contains(bytes.ToLower(head), []byte("overloaded"))
+	return readCloser{Reader: io.MultiReader(bytes.NewReader(head), rc), Closer: rc}, overloaded
+}
+
+type readCloser struct {
+	io.Reader
+	io.Closer
 }
 
 func (o *OpenCodeFree) lane() openCodeLane {

@@ -19,6 +19,8 @@ When a request completes, the pipeline enqueues one row to the analytics writer.
 
 Rates are dollars per million tokens: input, output, cached, reasoning, cache creation. A missing cached or cache-creation rate means the input rate; a missing reasoning rate means the output rate.
 
+A row exists wherever a model departs from its family pattern: `claude-fable-5-2` (8/40, below the fable pattern), `claude-haiku-5-5` (0.10/0.50, a tenth of the haiku pattern) and the `gemini-4-*` pattern (2/10, above the generic `gemini-*`). Claude Fable 5.1 left the catalogs but its pattern rate still bills an existing config.
+
 | Lookup order |
 |---|
 | Administrator override (`kv` scope `pricing`, `{provider: {model: rates}}`) |
@@ -35,7 +37,9 @@ Rates are dollars per million tokens: input, output, cached, reasoning, cache cr
 
 ### Quota
 
-The Antigravity limits are already read by `app/llm/quota` for the selector; `/api/usage/{connectionId}` (step) will show the same readings. Per-provider fetchers report live limits through `/api/usage/{connectionId}` (GitHub, Gemini CLI, Antigravity, Claude, Codex, Kiro, Qoder, iFlow, GLM, MiniMax, Kimi, DeepSeek, OpenCode, Zed, Cursor and others). API key quota limits are a separate feature (design doc 21).
+The Antigravity limits are already read by `app/llm/quota` for the selector; Gemini 4 Carbon counts toward the general Gemini pool, so its three tiers are among the models whose quota is kept.
+
+`/api/usage/{connectionId}` (step) will show the same readings. Per-provider fetchers report live limits through `/api/usage/{connectionId}` (GitHub, Gemini CLI, Antigravity, Claude, Codex, Kiro, Qoder, iFlow, GLM, MiniMax, Kimi, DeepSeek, OpenCode, Zed, Cursor and others). API key quota limits are a separate feature (design doc 21).
 
 ---
 

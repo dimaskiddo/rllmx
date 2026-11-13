@@ -24,7 +24,7 @@ func disguise() *Disguise {
 func TestTheBillingBlockComesFirstAndHashesTheBodyBeforeAnyRename(t *testing.T) {
 	out, _ := Cloak([]byte(cloakBody), disguise())
 	first := gjson.GetBytes(out, "system.0.text").String()
-	re := regexp.MustCompile(`^x-anthropic-billing-header: cc_version=2\.1\.280\.[0-9a-f]{3}; cc_entrypoint=sdk-cli; cch=([0-9a-f]{5});$`)
+	re := regexp.MustCompile(`^x-anthropic-billing-header: cc_version=2\.1\.322\.[0-9a-f]{3}; cc_entrypoint=sdk-cli; cch=([0-9a-f]{5});$`)
 	m := re.FindStringSubmatch(first)
 	if m == nil {
 		t.Fatalf("billing block = %q", first)
@@ -325,5 +325,14 @@ func TestTheDisguiseAddsNoCacheMarkerSoTheUpstreamLimitOfFourHolds(t *testing.T)
 	out, _ := Cloak([]byte(body), disguise())
 	if after := strings.Count(string(out), "cache_control"); after != before {
 		t.Fatalf("%d markers before, %d after", before, after)
+	}
+}
+
+func TestTheBillingVersionIsTheOneTheRouterAdvertises(t *testing.T) {
+	d := disguise()
+	d.Version = "9.9.9"
+	out, _ := Cloak([]byte(cloakBody), d)
+	if got := gjson.GetBytes(out, "system.0.text").String(); !strings.Contains(got, "cc_version=9.9.9.") {
+		t.Fatalf("%q", got)
 	}
 }

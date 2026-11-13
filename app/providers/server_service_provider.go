@@ -76,6 +76,8 @@ type HTTP struct {
 	Freebuff *freebuff.Sessions
 	// OAuthSettings is the checked OAUTH_* configuration.
 	OAuthSettings *settings.OAuth
+	// ClaudeCLI is the claude-cli/x.y.z fingerprint the Claude channel carries.
+	ClaudeCLI *upstream.ClaudeCLI
 }
 
 // HTTPOf returns the bound HTTP pieces. A missing binding means the provider is
@@ -194,6 +196,7 @@ func (r *ServerServiceProvider) Register(app foundation.Application) {
 			Google:        google,
 			Zed:           hosted,
 			Freebuff:      freebuff,
+			ClaudeCLI:     upstream.NewClaudeCLI(upstreamCfg.ClaudeCLIVersion),
 			OAuthSettings: oauthCfg,
 		}, nil
 	})
@@ -294,7 +297,7 @@ func (r *ServerServiceProvider) Runners(app foundation.Application) []foundation
 	route := app.MakeRoute()
 	server := apphttp.NewServer(h.Settings, apphttp.Rewrite(route), h.Guard, route.GetRoutes, app.MakeLog())
 	server.WaitFor(DataOf(app).Gate)
-	return []foundation.Runner{server, newOAuthRunner(app, h, h.OAuthSettings)}
+	return []foundation.Runner{server, newOAuthRunner(app, h, h.OAuthSettings), newClaudeRunner(app, h)}
 }
 
 // cacheOrNil returns the grouped cache, or nil when the cache provider is not

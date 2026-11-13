@@ -27,7 +27,7 @@ Router-LLM (RLLM, binary `rllmx`): LLM gateway in Go on Goravel Lite. One endpoi
 - Re-author data tables (providers, prices, capabilities, models) by hand from the reference. Never convert with a script.
 - Docs may name 9router. Code, comments, identifiers, tests and fixtures never do, except the on-disk compatibility surface (database identifiers, `modelLock_` keys, API key format) and the one response header existing video clients read, `x-9router-connection-id`.
 - **Reference first:** read how 9router does a mechanism before asking. Ask only when it is silent, ambiguous or conflicts with a rule here.
-- **Behavior follows 9router 0.5.116.** Translation and execution (translation shapes, the client-compatible headers a login's token carries, request shape, parameter rules, lane choice) follow the reference's behavior, written independently. Router improvements stay: cache, account selection, locks, backoff, 503 and capacity handling, and the Security rules. A kept difference keeps its divergence row.
+- **Behavior follows 9router 0.5.119.** Translation and execution (translation shapes, the client-compatible headers a login's token carries, request shape, parameter rules, lane choice) follow the reference's behavior, written independently. Router improvements stay: cache, account selection, locks, backoff, 503 and capacity handling, and the Security rules. A kept difference keeps its divergence row.
 - Never copy a reference bug. Fix it and record the divergence in the design doc's `Divergences` section, indexed in `docs/DIVERGENCES.md`.
 - Every parity row names the reference version and a status (`todo`, `partial`, `done`, `diverged`, `deferred`, `out`). A feature is `done` only when its tests pass and its row is updated in the same change.
 

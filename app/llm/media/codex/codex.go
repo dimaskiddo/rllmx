@@ -34,9 +34,6 @@ func (Images) Build(_ context.Context, r media.Request, _ media.Client) (media.C
 		return media.Call{}, media.BadRequestf("that model is not served here")
 	}
 	body := gjson.ParseBytes(r.Body)
-	if body.Get("image").Exists() || body.Get("images.0").Exists() {
-		return media.Call{}, media.BadRequestf("image editing is not served here")
-	}
 	if n := body.Get("n"); n.Type == gjson.Number && n.Int() != 1 {
 		return media.Call{}, media.BadRequestf("this model makes one image")
 	}
@@ -66,11 +63,28 @@ func (Images) Build(_ context.Context, r media.Request, _ media.Client) (media.C
 	if r.Config != nil && r.Config.BaseURL != "" {
 		target = r.Config.BaseURL
 	}
-	req := map[string]any{
-		"model": r.WireModel, "prompt": body.Get("prompt").String(), "n": 1, "size": "auto",
-		"quality":       defaultValue(body.Get("quality").String(), "auto"),
-		"background":    defaultValue(body.Get("background").String(), "auto"),
-		"output_format": "png",
+	refs := imageRefs(body)
+	var req map[string]any
+	if len(refs) > 0 {
+		// Codex CLI's own ImageEditRequest: the reference images ride as data
+		// URLs, and the endpoint picks its own size and one output.
+		target = strings.TrimSuffix(target, "/generations") + "/edits"
+		images := make([]map[string]string, len(refs))
+		for i, u := range refs {
+			images[i] = map[string]string{"image_url": u}
+		}
+		req = map[string]any{
+			"model": r.WireModel, "prompt": body.Get("prompt").String(), "images": images, "n": 1, "size": "auto",
+			"quality":    defaultValue(body.Get("quality").String(), "auto"),
+			"background": defaultValue(body.Get("background").String(), "auto"),
+		}
+	} else {
+		req = map[string]any{
+			"model": r.WireModel, "prompt": body.Get("prompt").String(), "n": 1, "size": "auto",
+			"quality":       defaultValue(body.Get("quality").String(), "auto"),
+			"background":    defaultValue(body.Get("background").String(), "auto"),
+			"output_format": "png",
+		}
 	}
 	raw, err := json.Marshal(req)
 	if err != nil {
@@ -155,4 +169,32 @@ func defaultValue(v, fallback string) string {
 		return fallback
 	}
 	return v
+}
+
+// imageRefs collects the reference images in the client's order: each entry of
+// `images`, then `image`.
+func imageRefs(body gjson.Result) []string {
+	var refs []string
+	for _, item := range body.Get("images").Array() {
+		if u := toDataURL(item.String()); u != "" {
+			refs = append(refs, u)
+		}
+	}
+	if u := toDataURL(body.Get("image").String()); u != "" {
+		refs = append(refs, u)
+	}
+	return refs
+}
+
+// toDataURL leaves a data URL or an http address as it is and wraps a bare
+// base64 as a png.
+func toDataURL(v string) string {
+	if v == "" {
+		return ""
+	}
+	low := strings.ToLower(v)
+	if strings.HasPrefix(low, "data:image/") || strings.HasPrefix(low, "http://") || strings.HasPrefix(low, "https://") {
+		return v
+	}
+	return "data:image/png;base64," + v
 }

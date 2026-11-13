@@ -2,9 +2,11 @@
   "free": ["cline-free/"],
   "models": {
     "claude-opus-5-5":            { "input": 4.00, "output": 20.00, "cached": 0.20, "cacheCreation": 5.00 },
+    "claude-fable-5-2":           { "input": 8.00, "output": 40.00, "cached": 0.20, "cacheCreation": 10.00 },
     "claude-fable-5":             { "input": 10.00, "output": 50.00, "cached": 1.00, "cacheCreation": 12.50 },
     "claude-sonnet-5-5":          { "input": 2.00, "output": 10.00, "cached": 0.20, "cacheCreation": 2.50 },
     "claude-sonnet-5":            { "input": 2.00, "output": 10.00, "cached": 0.20, "cacheCreation": 2.50 },
+    "claude-haiku-5-5":           { "input": 0.10, "output": 0.50, "cached": 0.01, "cacheCreation": 0.125 },
     "claude-haiku-4-5-20251001":  { "input": 1.00, "output": 5.00, "cached": 0.10, "cacheCreation": 1.25 },
 
     "gpt-4o":                     { "input": 2.50, "output": 10.00, "cached": 1.25 },
@@ -64,6 +66,7 @@
     { "pattern": "gemini-*-flash-lite",  "rates": { "input": 0.15, "output": 1.25, "cached": 0.015 } },
     { "pattern": "gemini-*-flash",       "rates": { "input": 0.30, "output": 2.50, "cached": 0.03 } },
     { "pattern": "gemini-*-pro",         "rates": { "input": 2.00, "output": 12.00, "cached": 0.25 } },
+    { "pattern": "gemini-4-*",           "rates": { "input": 2.00, "output": 10.00, "cached": 0.10, "cacheCreation": 0.1875 } },
     { "pattern": "gemini-3-*",           "rates": { "input": 0.50, "output": 3.00, "cached": 0.03 } },
     { "pattern": "gemini-2.5-*",         "rates": { "input": 0.30, "output": 2.50, "cached": 0.03 } },
     { "pattern": "gemini-*",             "rates": { "input": 0.50, "output": 3.00, "cached": 0.03 } },

@@ -20,7 +20,7 @@ Each endpoint resolves model and account as chat does, then calls a per-provider
 | Slice | Scope | Status |
 |---|---|---|
 | Foundations | Media schema, index, `media/mux`, `app/gateway/media`, embeddings, non-browser images, probes, one usage row per request | done |
-| Vendor images | Stability, BFL, fal, HuggingFace, ComfyUI, SD WebUI, Runway, Cloudflare, NanoBanana, plus the codex and antigravity bridges | done |
+| Vendor images | Stability, BFL, fal, HuggingFace, ComfyUI, SD WebUI, Runway, Cloudflare, NanoBanana, SenseNova intl, plus the codex and antigravity bridges | done |
 | Audio | TTS, STT, voice lists: `/v1/audio/speech`, `/v1/audio/transcriptions`, `/v1/audio/voices`, the two dashboard routes | done |
 | Video | `/v1/videos/generations\|edits\|extensions` and `GET /v1/videos/{id}`: xAI's shape, OpenRouter and Vertex (Veo) | done |
 | Search and fetch | `/v1/search` and `/v1/web/fetch`; the HTML-to-markdown library is an open decision; `MEDIA_SEARXNG_URL`; SSRF on every hop | todo |
@@ -73,7 +73,7 @@ One row per lesson; the decision is what the code does because of it.
 | Speech adapters must bound memory, and only a stream is not a file. | Every speech adapter reads its whole answer under the 64 MiB cap; only Gemini Live streams. |
 | A transcription upload must be read once and re-sent per account. | It is read into memory under a 25 MiB bound, so a fallback never re-reads the client. |
 | An SSRF-safe WebSocket client had to be ours. | `app/protocol/websocket` is a minimal RFC 6455 client that takes the caller's dialer and TLS settings. |
-| Codex's native image endpoint accepts one shape only. | A tool model with a plain prompt, `n=1`, `size:auto` and a png; anything else is a 400. |
+| Codex's native image endpoint accepts one shape only. | A tool model with a plain prompt, `n=1`, `size:auto` and a png; a request with reference images goes to the native `/images/edits` endpoint with those images as data URLs and the same controls; anything else is a 400. |
 | A Free-plan account is refused before the call, from the token's own claim. | It is passed over without locking the account. |
 | A video create is a billable job, so a re-send can pay twice. | It rotates only on 401, 403 or 429, the statuses a provider raises before it starts a job; a timeout or a 5xx is returned. |
 | A video job belongs to the account that created it. | A create answers the account id in two headers, and a poll pins that account and never rotates. |

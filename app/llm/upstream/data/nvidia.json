@@ -6,7 +6,8 @@
     "name": "NVIDIA NIM"
   },
   "transport": {
-    "baseUrl": "https://integrate.api.nvidia.com/v1/chat/completions"
+    "baseUrl": "https://integrate.api.nvidia.com/v1/chat/completions",
+    "timeoutMs": 90000
   },
   "auth": {
     "scheme": "bearer",
@@ -14,6 +15,38 @@
     "validateUrl": "https://integrate.api.nvidia.com/v1/models"
   },
   "models": [
+    {
+      "id": "nvidia/nemotron-3.5-lightning-30b-a3b",
+      "name": "Nemotron 3.5 Lightning"
+    },
+    {
+      "id": "nvidia/nemotron-3.5-bolt-e4b",
+      "name": "Nemotron 3.5 Bolt"
+    },
+    {
+      "id": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+      "name": "Nemotron 3 Nano Omni"
+    },
+    {
+      "id": "nvidia/nemotron-3-ultra-550b-a55b",
+      "name": "Nemotron 3 Ultra"
+    },
+    {
+      "id": "poolside/laguna-xs-2.1",
+      "name": "Laguna XS 2.1"
+    },
+    {
+      "id": "meta/llama-guard-4-12b",
+      "name": "Llama Guard 4 12B"
+    },
+    {
+      "id": "nvidia/riva-translate-4b-instruct-v2",
+      "name": "Riva Translate 4B v2"
+    },
+    {
+      "id": "meta/llama-3.3-70b-instruct",
+      "name": "Llama 3.3 70B Instruct"
+    },
     {
       "id": "minimaxai/minimax-m2.7",
       "name": "MiniMax M2.7"
@@ -38,16 +71,12 @@
       "id": "moonshotai/kimi-k2.6",
       "name": "Kimi K2.6"
     },
-    {
-      "id": "nvidia/nemotron-3-ultra-550b-a55b",
-      "name": "Nemotron 3 Ultra"
-    },
     { "id": "nvidia/nv-embedqa-e5-v5", "name": "NV EmbedQA E5 v5", "kind": "embedding" },
     { "id": "nvidia/parakeet-ctc-1.1b-asr", "name": "Parakeet CTC 1.1B", "kind": "stt", "params": ["language"] },
     { "id": "fastpitch", "name": "FastPitch", "kind": "tts" },
     { "id": "tacotron2", "name": "Tacotron2", "kind": "tts" }
   ],
-    "media": {
+  "media": {
     "serviceKinds": ["llm", "tts", "embedding"],
     "embeddingConfig": { "baseUrl": "https://integrate.api.nvidia.com/v1/embeddings", "authType": "apikey", "authHeader": "bearer" },
     "ttsConfig": { "baseUrl": "https://integrate.api.nvidia.com/v1/audio/speech", "authType": "apikey", "authHeader": "bearer", "format": "nvidia-tts" }

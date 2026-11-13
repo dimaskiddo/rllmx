@@ -16,6 +16,7 @@ type fakeSource struct {
 	aliases map[string]string
 	nodes   []Node
 	combos  []string
+	active  []string
 	err     error
 	reads   int
 }
@@ -26,6 +27,10 @@ func (f *fakeSource) Aliases(context.Context) (map[string]string, error) {
 }
 func (f *fakeSource) Nodes(context.Context) ([]Node, error)        { f.reads++; return f.nodes, f.err }
 func (f *fakeSource) ComboNames(context.Context) ([]string, error) { f.reads++; return f.combos, f.err }
+func (f *fakeSource) ActiveProviders(context.Context) ([]string, error) {
+	f.reads++
+	return f.active, f.err
+}
 
 func resolver(t *testing.T, src *fakeSource) *Resolver {
 	t.Helper()
@@ -283,5 +288,36 @@ func TestTheRepositorySourceReadsRealRows(t *testing.T) {
 	}
 	if g := resolve(t, r, "mine2/m"); g.Provider == "mine2" || g.Model != "m" {
 		t.Errorf("node: %+v", g)
+	}
+}
+
+func TestABareClaudeModelOffersTheOAuthProvider(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		active []string
+		want   string
+	}{
+		{"oauth only", []string{"claude"}, "claude"},
+		{"both", []string{"anthropic", "claude"}, "anthropic"},
+		{"api key only", []string{"anthropic"}, "anthropic"},
+		{"neither", nil, "anthropic"},
+		{"another provider active", []string{"openai"}, "anthropic"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := resolver(t, &fakeSource{active: c.active})
+			if g := resolve(t, r, "claude-opus-5"); g.Provider != c.want {
+				t.Fatalf("%+v", g)
+			}
+		})
+	}
+	r := resolver(t, &fakeSource{
+		active:  []string{"claude"},
+		aliases: map[string]string{"x": `"anthropic/claude-x"`},
+	})
+	if g := resolve(t, r, "x"); g.Provider != "claude" || g.Model != "claude-x" {
+		t.Fatalf("alias: %+v", g)
+	}
+	if g := resolve(t, r, "anthropic/claude-opus-5"); g.Provider != "anthropic" {
+		t.Fatalf("an explicit prefix was rewritten: %+v", g)
 	}
 }

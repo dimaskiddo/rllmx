@@ -21,6 +21,9 @@ func TestParseWebCredentialForms(t *testing.T) {
 		{"base64 padding kept", "token=aGVsbG8=", "token=aGVsbG8=", true},
 		{"trailing semicolon", "a=b;", "a=b", true},
 		{"cookie editor json", `[{"name":"sso","value":"abc","domain":".grok.com"}]`, "sso=abc", true},
+		{"cookie editor object", `{"cookies":[{"name":"sso","value":"abc","domain":".grok.com"}]}`, "sso=abc", true},
+		{"cookie object with an empty array", `{"cookies":[]}`, "", false},
+		{"cookie object entry with a bad name", `{"cookies":[{"name":"a b","value":"c"}]}`, "", false},
 		{"local storage json", `{"value":"deepseek-token","__version":"0"}`, "deepseek-token", true},
 		{"empty", "", "", false},
 		{"blank", "   ", "", false},
@@ -75,6 +78,7 @@ func FuzzParseWebCredential(f *testing.F) {
 	f.Add("sso=abc; cf_clearance=xyz")
 	f.Add(`{"value":"tok"}`)
 	f.Add(`[{"name":"a","value":"b"}]`)
+	f.Add(`{"cookies":[{"name":"a","value":"b"}]}`)
 	f.Add("Bearer tok")
 	f.Fuzz(func(t *testing.T, in string) {
 		out, ok := ParseWebCredential(in)

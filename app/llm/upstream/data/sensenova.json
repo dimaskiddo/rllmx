@@ -6,7 +6,10 @@
     "name": "SenseNova"
   },
   "transport": {
-    "baseUrl": "https://token.sensenova.cn/v1/chat/completions"
+    "baseUrl": "https://token.sensenova.cn/v1/chat/completions",
+    "quirks": {
+      "reasoningAliasFields": true
+    }
   },
   "auth": {
     "scheme": "bearer",

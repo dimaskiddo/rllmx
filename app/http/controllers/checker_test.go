@@ -478,3 +478,38 @@ func TestAProviderWithAChatModelKeepsItsLLMProbe(t *testing.T) {
 		t.Fatalf("a chat provider was probed as media")
 	}
 }
+
+func TestAFalKeyIsJudgedByItsModelCatalog(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		status  int
+		outcome Outcome
+	}{
+		{"accepted", 200, OutcomeValid},
+		{"refused", 401, OutcomeInvalidKey},
+		{"forbidden", 403, OutcomeInvalidKey},
+		{"server error", 503, OutcomeProviderError},
+		{"not found", 404, OutcomeNotFound},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			up := newUpstream(t, c.status, `{"models":[]}`)
+			chk := loopbackChecker(t)
+			chk.falURL = up.URL + "/v1/models?limit=1"
+			entry := upstream.Entry{ID: "fal-ai", Category: "apikey", Media: &upstream.Media{ServiceKinds: []string{upstream.KindImage}}}
+			got := chk.CheckRegistry(context.Background(), entry, "fal-key")
+			if got.Outcome != c.outcome || got.Method != "models" {
+				t.Fatalf("%+v", got)
+			}
+			key, _ := up.lastKey.Load().(string)
+			if up.hits.Load() != 1 || !strings.HasPrefix(key, "Key fal-key") || !strings.Contains(key, "limit=1") {
+				t.Fatalf("%d hits, %q", up.hits.Load(), key)
+			}
+		})
+	}
+	chk := loopbackChecker(t)
+	chk.falURL = "http://127.0.0.1:1/v1/models"
+	entry := upstream.Entry{ID: "fal-ai", Category: "apikey"}
+	if got := chk.CheckRegistry(context.Background(), entry, "  "); got.Outcome != OutcomeInvalidKey {
+		t.Fatalf("an empty key made a request: %+v", got)
+	}
+}

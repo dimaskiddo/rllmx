@@ -1,7 +1,6 @@
 package openai
 
 import (
-	"cmp"
 	"encoding/json"
 	"rllmx/app/llm/translate"
 	"strings"
@@ -85,7 +84,18 @@ func ReadOpenAIMessage(m gjson.Result) translate.Message {
 		msg.Role = translate.RoleSystem
 	}
 	msg.Content = ReadOpenAIContent(m.Get("content"))
-	msg.Reasoning = cmp.Or(m.Get("reasoning_content").String(), m.Get("reasoning").String())
+	// `reasoning` is the alias some providers stream; a non-string value (an
+	// object of provider details) is not thinking text.
+	reasoning := m.Get("reasoning_content").String()
+	if reasoning == "" {
+		if r := m.Get("reasoning"); r.Type == gjson.String {
+			reasoning = r.String()
+		}
+	}
+	msg.Reasoning = reasoning
+	if msg.Role == translate.RoleTool && (m.Get("is_error").Bool() || m.Get("status").String() == "error") {
+		msg.Error = true
+	}
 	for _, tc := range m.Get("tool_calls").Array() {
 		msg.ToolCalls = append(msg.ToolCalls, translate.ToolCall{
 			ID: tc.Get("id").String(), Name: tc.Get("function.name").String(),

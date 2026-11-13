@@ -3,6 +3,7 @@ package openai
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/tidwall/gjson"
 	"rllmx/app/llm/translate"
 	"strings"
 	"testing"
@@ -300,5 +301,33 @@ func TestConvertGoesThroughTheHub(t *testing.T) {
 func TestGeminiActionRefusesDotDotInsideASegment(t *testing.T) {
 	if _, _, ok := translate.GeminiAction("/v1beta/models/..0:generateContent"); ok {
 		t.Fatal("a segment with .. was accepted")
+	}
+}
+
+func TestReasoningIsReadFromTheAliasOnlyWhenItIsText(t *testing.T) {
+	for _, c := range []struct{ in, want string }{
+		{`{"role":"assistant","reasoning_content":"a","reasoning":"b"}`, "a"},
+		{`{"role":"assistant","reasoning":"b"}`, "b"},
+		{`{"role":"assistant","reasoning":{"summary":"s"}}`, ""},
+	} {
+		if got := ReadOpenAIMessage(gjson.Parse(c.in)).Reasoning; got != c.want {
+			t.Errorf("%s: %q", c.in, got)
+		}
+	}
+}
+
+func TestAToolMessageCarriesItsErrorState(t *testing.T) {
+	for _, c := range []struct {
+		in   string
+		want bool
+	}{
+		{`{"role":"tool","tool_call_id":"t","content":"x","is_error":true}`, true},
+		{`{"role":"tool","tool_call_id":"t","content":"x","status":"error"}`, true},
+		{`{"role":"tool","tool_call_id":"t","content":"x","is_error":false}`, false},
+		{`{"role":"tool","tool_call_id":"t","content":"x"}`, false},
+	} {
+		if got := ReadOpenAIMessage(gjson.Parse(c.in)).Error; got != c.want {
+			t.Errorf("%s: %v", c.in, got)
+		}
 	}
 }

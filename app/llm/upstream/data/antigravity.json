@@ -51,6 +51,26 @@
   },
   "models": [
     {
+      "id": "gemini-4-carbon-high",
+      "name": "Gemini 4 Carbon (High)",
+      "upstreamId": "gemini-4-carbon-high(high)"
+    },
+    {
+      "id": "gemini-4-carbon-medium",
+      "name": "Gemini 4 Carbon (Medium)",
+      "upstreamId": "gemini-4-carbon-medium(medium)"
+    },
+    {
+      "id": "gemini-4-carbon-low",
+      "name": "Gemini 4 Carbon (Low)",
+      "upstreamId": "gemini-4-carbon-low(low)"
+    },
+    {
+      "id": "gemini-4-carbon",
+      "name": "Gemini 4 Carbon",
+      "upstreamId": "gemini-4-carbon-medium(medium)"
+    },
+    {
       "id": "gemini-4-argon-high",
       "name": "Gemini 4 Argon (High)",
       "upstreamId": "gemini-4-argon-high(high)"

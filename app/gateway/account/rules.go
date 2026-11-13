@@ -29,6 +29,9 @@ var defaultRules = []Rule{
 	{Provider: "codex", Text: "model is not supported when using codex with a chatgpt account", Cooldown: maxReported},
 	{Provider: "codebuddy-intl", Text: "request illegal", Backoff: true},
 	{Provider: "codebuddy-intl", Text: "conversation id missing", Backoff: true},
+	// NIM answers 400 "degraded" for one unhealthy model cluster. A per-model
+	// lock, not an account-wide one, so the connection keeps its other models.
+	{Provider: "nvidia", Text: "degraded", Cooldown: 15 * time.Minute},
 	{Text: "no credentials", Cooldown: longCooldown},
 	{Text: "request not allowed", Cooldown: shortCooldown},
 	{Text: "improperly formed request", Cooldown: longCooldown},

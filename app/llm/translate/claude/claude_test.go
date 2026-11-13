@@ -538,3 +538,34 @@ func TestAClientMarkerOnAToolDefinitionNeverSurvivesWhereWeDidNotPutOne(t *testi
 		t.Error("a client marker on a raw tool survived")
 	}
 }
+
+func TestAToolResultAlwaysCarriesIsError(t *testing.T) {
+	in := `{"model":"m","max_tokens":10,"messages":[{"role":"user","content":"go"},` +
+		`{"role":"assistant","content":null,"tool_calls":[` +
+		`{"id":"c1","type":"function","function":{"name":"f","arguments":"{}"}},` +
+		`{"id":"c2","type":"function","function":{"name":"f","arguments":"{}"}}]},` +
+		`{"role":"tool","tool_call_id":"c1","content":"boom","is_error":true},` +
+		`{"role":"tool","tool_call_id":"c2","content":"ok"}]}`
+	out, req, err := translate.Convert(translate.FormatOpenAI, translate.FormatClaude, []byte(in), cctx())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(req.Messages) != 4 || !req.Messages[2].Error || req.Messages[3].Error {
+		t.Fatalf("hub: %+v", req.Messages)
+	}
+	body := string(out)
+	if !strings.Contains(body, `"is_error":true`) || !strings.Contains(body, `"is_error":false`) {
+		t.Fatalf("%s", body)
+	}
+	// A Claude client's own is_error survives the hub and is written again.
+	claudeIn := `{"model":"m","max_tokens":10,"messages":[{"role":"user","content":"go"},` +
+		`{"role":"assistant","content":[{"type":"tool_use","id":"c1","name":"f","input":{}}]},` +
+		`{"role":"user","content":[{"type":"tool_result","tool_use_id":"c1","content":"boom","is_error":true}]}]}`
+	_, hub, err := translate.Convert(translate.FormatClaude, translate.FormatClaude, []byte(claudeIn), cctx())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hub.Messages) != 3 || !hub.Messages[2].Error {
+		t.Fatalf("read: %+v", hub.Messages)
+	}
+}

@@ -57,6 +57,7 @@ func ServerValues() map[string]any {
 		"http.guard.trusted_proxies":      "",
 		"upstream.connect_timeout":        "60s",
 		"upstream.allow_private":          "",
+		"upstream.claude_cli_version":     "",
 		"stream.first_chunk_timeout":      "200s",
 		"stream.stall_timeout":            "360s",
 		"stream.usage_wait":               "3s",

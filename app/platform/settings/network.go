@@ -26,6 +26,9 @@ type Upstream struct {
 	// Curves is the key-exchange set an outbound call offers; empty is the
 	// standard list.
 	Curves []tls.CurveID
+	// ClaudeCLIVersion pins the claude-cli/x.y.z fingerprint. Empty reads the
+	// latest published version from npm and keeps the built-in floor.
+	ClaudeCLIVersion string
 }
 
 // LoadUpstream reads and checks the UPSTREAM_* settings. A bad allow-list entry
@@ -42,7 +45,34 @@ func LoadUpstream(cfg config.Config) (*Upstream, error) {
 	if u.Curves, err = curveSet(cfg.GetString("upstream.tls_curve")); err != nil {
 		return nil, err
 	}
+	if u.ClaudeCLIVersion, err = cliVersion(cfg.GetString("upstream.claude_cli_version")); err != nil {
+		return nil, err
+	}
 	return u, nil
+}
+
+// cliVersion reads the pinned Claude Code version: empty, or three dot-separated
+// numbers. The floor is applied where the version is used.
+func cliVersion(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	parts := strings.Split(raw, ".")
+	if len(parts) != 3 {
+		return "", fmt.Errorf("UPSTREAM_CLAUDE_CLI_VERSION must be x.y.z")
+	}
+	for _, p := range parts {
+		if p == "" || len(p) > 6 {
+			return "", fmt.Errorf("UPSTREAM_CLAUDE_CLI_VERSION must be x.y.z")
+		}
+		for _, r := range p {
+			if r < '0' || r > '9' {
+				return "", fmt.Errorf("UPSTREAM_CLAUDE_CLI_VERSION must be x.y.z")
+			}
+		}
+	}
+	return raw, nil
 }
 
 // curveSet reads the curve setting: x25519 offers only that group, default

@@ -8,11 +8,40 @@ import (
 )
 
 // unsupportedSchemaKeys are JSON Schema keywords Gemini's function declarations
-// reject.
-var unsupportedSchemaKeys = translate.Set("$schema", "$id", "$ref", "$defs", "definitions", "additionalProperties", "propertyNames",
-	"patternProperties", "unevaluatedProperties", "minProperties", "maxProperties", "const", "examples", "default", "title",
-	"exclusiveMinimum", "exclusiveMaximum", "multipleOf", "contentEncoding", "contentMediaType", "readOnly", "writeOnly",
-	"deprecated", "not", "if", "then", "else", "dependentRequired", "dependentSchemas")
+// reject with "Unknown name ...: Cannot find field", which fails the whole
+// request. Agent tool schemas carry them routinely. The list follows the
+// reference's own, by hand: one occurrence of any of these is enough to fail.
+var unsupportedSchemaKeys = translate.Set(
+	// Length, count and numeric bounds.
+	"minLength", "maxLength", "exclusiveMinimum", "exclusiveMaximum", "minItems", "maxItems", "format", "multipleOf",
+	// Array keywords the Gemini schema proto has no field for.
+	"uniqueItems", "contains",
+	// 2020-12 keywords with no Gemini equivalent.
+	"unevaluatedProperties", "unevaluatedItems", "contentSchema",
+	// Tuple-array keywords, stripped rather than converted to items.
+	"prefixItems", "additionalItems",
+	// Rejected in Claude's validated mode.
+	"default", "examples",
+	// JSON Schema meta keywords.
+	"$schema", "$id", "$defs", "definitions", "const", "$ref", "$comment",
+	// Annotation keywords.
+	"deprecated", "readOnly", "writeOnly",
+	// Object validation keywords.
+	"additionalProperties", "propertyNames", "patternProperties", "enumDescriptions", "minProperties", "maxProperties",
+	// Any left after the merge and collapse below, and `not`, which has no form.
+	"anyOf", "oneOf", "allOf", "not",
+	// Dependency keywords.
+	"dependencies", "dependentSchemas", "dependentRequired",
+	// Other unsupported keywords.
+	"title", "optional", "~optional", "if", "then", "else", "contentMediaType", "contentEncoding",
+	// UI and styling properties some clients put in a tool schema.
+	"cornerRadius", "fillColor", "fontFamily", "fontSize", "fontWeight",
+	"gap", "padding", "strokeColor", "strokeThickness", "textColor",
+	// Non-standard annotation and error keywords used by MCP tool schemas.
+	"errorMessage", "errorMessages", "x-errorMessage", "x-errorMessages",
+	"markdownDescription", "x-intellij-html-description",
+	"x-taplo-info", "x-taplo", "doNotSuggest", "suggestSortText",
+)
 
 // CleanGeminiSchema rewrites a JSON Schema to the subset Gemini accepts: a const
 // becomes a one-value string enum, enums are strings with an explicit type,

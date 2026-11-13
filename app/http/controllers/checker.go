@@ -93,7 +93,13 @@ const (
 type Checker struct {
 	client *nethttp.Client
 	cap    int64
+	// falURL judges a fal key. fal answers a ping on its queue host with a bare
+	// 404 before it reads the key, so only its model catalog distinguishes one.
+	falURL string
 }
+
+// falModelsURL lists one fal model, the one address that judges a fal key.
+const falModelsURL = "https://api.fal.ai/v1/models?limit=1"
 
 // NewChecker builds the checker on the shared guarded client. allow is the
 // operator's list of private addresses, or nil.
@@ -108,7 +114,7 @@ func NewChecker(allow *network.Allow) *Checker {
 		}
 		return inner(req, via)
 	}
-	return &Checker{client: c, cap: opts.BodyLimit()}
+	return &Checker{client: c, cap: opts.BodyLimit(), falURL: falModelsURL}
 }
 
 var errRedirected = errors.New("controllers: redirected to another address")
@@ -237,6 +243,9 @@ var mediaProbeKinds = []string{
 // request to its own address, where anything but a refused key means the key is
 // good. It reports false for a provider that also serves chat.
 func (c *Checker) checkMedia(ctx context.Context, e upstream.Entry, key string) (Result, bool) {
+	if e.ID == "fal-ai" {
+		return c.checkFal(ctx, key), true
+	}
 	if e.Media == nil || len(e.Media.ServiceKinds) == 0 {
 		return Result{}, false
 	}
@@ -298,6 +307,22 @@ func (c *Checker) checkMedia(ctx context.Context, e upstream.Entry, key string) 
 		return Result{Outcome: OutcomeValid, Method: kind}, true
 	}
 	return Result{Outcome: OutcomeUnsupported}, true
+}
+
+// checkFal asks fal's model catalog whether the key works. Only a refused key
+// is a bad key; a catalog that answers anything else means the key was read.
+func (c *Checker) checkFal(ctx context.Context, key string) Result {
+	if strings.TrimSpace(key) == "" {
+		return Result{Outcome: OutcomeInvalidKey, Method: "models"}
+	}
+	headers := map[string]string{"Authorization": "Key " + key}
+	status, _, out := c.do(ctx, nethttp.MethodGet, c.falURL, headers, nil)
+	if out != OutcomeValid {
+		return Result{Outcome: out, Method: "models"}
+	}
+	// fal judges a key only by its catalog's own answer: 2xx is a working key, a
+	// refusal is a bad one, and anything else says nothing either way.
+	return Result{Outcome: judge(status, defaultBad), Method: "models"}
 }
 
 // probeModel names the model a media probe sends: the config's default, else

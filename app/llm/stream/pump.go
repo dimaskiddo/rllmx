@@ -42,6 +42,9 @@ type Job struct {
 	Now func() time.Time
 	// MaxBytes caps what a translated stream may add up to; zero is MaxCollected.
 	MaxBytes int
+	// ReasoningAliasFields copies a string `reasoning` into `reasoning_content`
+	// on each passed-through OpenAI delta that carries none of its own.
+	ReasoningAliasFields bool
 }
 
 // Result is how a stream ended. Wrote tells whether any byte reached the
