@@ -31,7 +31,7 @@ Design and parity: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/PARITY
 *   **🧩 Combos:** Ordered list, rotation, router-model pick, judge-merged panel. ⏳
 *   **♻️ Account Rotation & Cooldown:** Many accounts per provider, fill-first or sticky round-robin, per-model locks, exponential backoff on 429.
 *   **🔑 OAuth & Tokens:** Claude Code, Codex, GitHub Copilot, Gemini CLI, Kiro; refresh before expiry, on 401, in background.
-*   **🖼️ Media:** Embeddings, images, speech, transcription, voice lists and video today; web search and fetch planned. ✅
+*   **🖼️ Media:** Embeddings, images, speech, transcription, voice lists, video, web search and page fetch. ✅
 *   **✂️ Token Savers & Skills:** RTK tool-output filters, two built-in prompt styles, custom prompt, optional Headroom sidecar, Skills Studio declarative rules (no code). ⏳
 *   **🩺 Health Aware:** Latency and success tracking, circuit breaker, model probes, ranked combo suggestions. ⏳
 *   **🗂️ Drop-In Database:** 9router SQLite schema for providers, keys, combos; SQLite default, PostgreSQL optional, credentials sealed.
@@ -192,6 +192,7 @@ Environment variables or `.env` through `config/`; the process environment wins.
 | `OAUTH_CLIENT_ID_<PROVIDER>` / `OAUTH_CLIENT_SECRET_<PROVIDER>` | empty in code; `.env.example` holds the vendors' published installed-app values | OAuth app credentials per provider. Empty: that login off. Replace any value with your own app when you register one |
 | `UPSTREAM_ALLOW_PRIVATE` | empty | Hosts, addresses, CIDRs reachable on a private network or this machine (`localhost` node, LAN host, private IdP). Link-local and cloud metadata always refused. Only this variable widens the list, never a dashboard session |
 | `UPSTREAM_CONNECT_TIMEOUT` | `60s` | Upstream response-header deadline |
+| `MEDIA_SEARXNG_URL` | empty | The SearXNG instance `/v1/search` sends to, e.g. `http://localhost:8888/search`. Empty serves no SearXNG. Its host is permitted for these calls, so a local instance needs no `UPSTREAM_ALLOW_PRIVATE` entry |
 
 Routing strategies, token savers and similar behavior: runtime database settings, dashboard-edited.
 

@@ -11,7 +11,7 @@ Each endpoint resolves model and account as chat does, then calls a per-provider
 | Audio | Speech, transcriptions, voice lists |
 | Video | Create, edit, extend, then poll by id |
 | Search | Normalizes results across search vendors; SearXNG through `MEDIA_SEARXNG_URL` |
-| Fetch | URL to markdown; every target goes through the SSRF guard |
+| Fetch | URL to markdown; a vendor extracts it, or the built-in reader converts it; every target goes through the SSRF guard |
 
 ---
 
@@ -23,10 +23,20 @@ Each endpoint resolves model and account as chat does, then calls a per-provider
 | Vendor images | Stability, BFL, fal, HuggingFace, ComfyUI, SD WebUI, Runway, Cloudflare, NanoBanana, SenseNova intl, plus the codex and antigravity bridges | done |
 | Audio | TTS, STT, voice lists: `/v1/audio/speech`, `/v1/audio/transcriptions`, `/v1/audio/voices`, the two dashboard routes | done |
 | Video | `/v1/videos/generations\|edits\|extensions` and `GET /v1/videos/{id}`: xAI's shape, OpenRouter and Vertex (Veo) | done |
-| Search and fetch | `/v1/search` and `/v1/web/fetch`; the HTML-to-markdown library is an open decision; `MEDIA_SEARXNG_URL`; SSRF on every hop | todo |
+| Search and fetch | `/v1/search` and `/v1/web/fetch`: 13 dedicated search vendors, 9 chat searches, 6 fetch vendors and the built-in reader; `MEDIA_SEARXNG_URL`; SSRF on every target | done |
 | Browser and web media | chatgpt-web, grok-web, gemini-web, muse-web, uc-web, veoaifree-web, and anything the earlier slices defer | todo |
 
-Bounds already built: a 25 MiB upload, a 32 KiB speech input, a 120 s speech timeout, a 300 s transcription timeout and a 120 s video round trip (`MEDIA_VIDEO_TIMEOUT`).
+Bounds already built: a 25 MiB upload, a 32 KiB speech input, a 120 s speech timeout, a 300 s transcription timeout, a 120 s video round trip (`MEDIA_VIDEO_TIMEOUT`), a 15 s search, a 2,000-byte query, and a 5 MiB page the built-in reader converts.
+
+A search or fetch names its provider in the body, because the provider is the model there. Its failure locks the account for `websearch:<id>` or `webfetch:<id>` only, so a spent search key never takes chat offline.
+
+A provider with no connection of its own borrows one (`credentialFallback`: ollama-search from ollama), and the reporter attributes the result to the owner.
+
+No search or fetch adapter sends a credential to an address a client chose. A fetch target is refused before any call when it resolves to a private or metadata address, because a vendor reads it from its own network, where our dialer never runs.
+
+The built-in reader is the one path that reads the target here: one GET through a guarded client that follows at most five redirects, each hop dialled through the guard, and a 5 MiB bound.
+
+`MEDIA_SEARXNG_URL` empty serves no SearXNG; when set, its host is permitted for these calls and nothing else. A local SearXNG therefore needs no `UPSTREAM_ALLOW_PRIVATE` entry of its own.
 
 A video create is a billable job. It moves to another account only on 401, 403 or 429, never after a network error, a timeout or a 5xx. Its answer carries `x-9router-connection-id` and `X-Rllm-Connection-Id`, and a poll reads the account from `x-connection-id`, then `?provider=`, then xAI. Runway's video models are served through the images route, as the reference does.
 
@@ -58,6 +68,12 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 306 | A video create leaves one metadata usage row; the reference records none. **Built** | Every request this router serves is accounted for (`design doc 16`) |
 | 307 | A refused video job answers a fixed word; the reference relays up to 2,000 characters of scrubbed provider text. **Built** | Client errors carry no internal detail (`design doc 19`) |
 | 308 | A video job id is 1-512 characters of `[A-Za-z0-9._~:-]`; the reference escapes any text into the path. **Built** | One id cannot rewrite the address |
+| 310 | `local-fetch` reads the target here: one guarded GET that follows at most five redirects, each hop dialled through the guard, then a local HTML-to-markdown conversion (`golang.org/x/net/html`). **Built** | The reference has no vendor-free path; a fetch that never leaves this process is the one that can be checked at every hop |
+| 311 | `MEDIA_SEARXNG_URL` is empty by default and serves no SearXNG; when set, its host is permitted for the media client only. The reference defaults to `http://localhost:8888/search`. **Built** | An unconfigured route is not a broken one, and the address comes from the operator, never a request |
+| 312 | `provider_options.baseUrl` from a client is ignored; the address comes from the provider's data or the setting. **Built** | The reference forwards the vendor's API key to a client-chosen public host |
+| 313 | A refused search or fetch answers a fixed word; the reference relays up to 200-500 characters of provider text. **Built** | Client errors carry no internal detail (`design doc 19`) |
+| 314 | A query is bounded at 2,000 bytes, a fetch target at 2,048, filters at 50, `max_characters` at the provider's own cap; the reference takes them as sent. **Built** | One request cannot exhaust memory (`AGENTS.md`) |
+| 315 | OpenAI chat search goes to the provider's own chat address when its data names no search endpoint. **Built** | The reference sends it to an empty address and fails every time |
 
 ---
 
@@ -78,4 +94,7 @@ One row per lesson; the decision is what the code does because of it.
 | A video create is a billable job, so a re-send can pay twice. | It rotates only on 401, 403 or 429, the statuses a provider raises before it starts a job; a timeout or a 5xx is returned. |
 | A video job belongs to the account that created it. | A create answers the account id in two headers, and a poll pins that account and never rotates. |
 | A Veo job id is a resource path, not a flat id. | It is base64url-encoded on the way out and decoded only when it re-encodes byte for byte and matches the anchored operation shape. |
+| A search provider is the model, and its failure is not the account's. | The route resolves the provider from the body and locks `websearch:<id>` / `webfetch:<id>`, so a spent search key leaves chat working. |
+| A vendor fetches the target from its own network, where our dialer never runs. | The target passes `network.CheckPublic` before any provider is called: scheme, host, and every resolved address. |
+| The provider's `searchViaChat.defaultModel` is the search model, not a client's. | The adapter fills the address's `{model}` from the entry, so a client cannot point a chat search at another model. |
 

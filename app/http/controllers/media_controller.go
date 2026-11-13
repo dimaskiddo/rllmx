@@ -23,7 +23,25 @@ type MediaController struct {
 	TranscribePipe func() (*gatewaymedia.Pipeline, error)
 	VoicesPipe     func() (*gatewaymedia.Pipeline, error)
 	VideosPipe     func() (*gatewaymedia.Pipeline, error)
+	SearchPipe     func() (*gatewaymedia.Pipeline, error)
+	FetchPipe      func() (*gatewaymedia.Pipeline, error)
 	Log            log.Log
+}
+
+// Search answers POST /v1/search: a query, and the provider that searches for it.
+func (m *MediaController) Search(ctx contractshttp.Context) contractshttp.Response {
+	r := ctx.Request().Origin()
+	return m.serve(ctx, m.SearchPipe, func(p *gatewaymedia.Pipeline, in gatewaymedia.Input) gatewaymedia.Output {
+		return p.Search(r.Context(), in)
+	})
+}
+
+// WebFetch answers POST /v1/web/fetch: a URL to read.
+func (m *MediaController) WebFetch(ctx contractshttp.Context) contractshttp.Response {
+	r := ctx.Request().Origin()
+	return m.serve(ctx, m.FetchPipe, func(p *gatewaymedia.Pipeline, in gatewaymedia.Input) gatewaymedia.Output {
+		return p.Fetch(r.Context(), in)
+	})
 }
 
 // VideoGenerations answers POST /v1/videos/generations.

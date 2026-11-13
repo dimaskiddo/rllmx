@@ -52,7 +52,8 @@ func Boot(version, commit string) contractsfoundation.Application {
 			media := providers.NewMediaSource(facades.App())
 			base.Media = &controllers.MediaController{
 				EmbeddingsPipe: media.Get, ImagesPipe: media.Get, SpeechPipe: media.Get,
-				TranscribePipe: media.Get, VoicesPipe: media.Get, VideosPipe: media.Get, Log: facades.Log(),
+				TranscribePipe: media.Get, VoicesPipe: media.Get, VideosPipe: media.Get,
+				SearchPipe: media.Get, FetchPipe: media.Get, Log: facades.Log(),
 			}
 			base.OAuth = &controllers.OAuthController{Service: h.OAuth, Auth: h.Auth, Server: h.Settings}
 			base.Callback = &controllers.CallbackController{Files: web.Static}

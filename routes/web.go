@@ -112,6 +112,8 @@ func Web(router route.Route, guard *apphttp.Guard, base Base) {
 		guard.Handle(router, apphttp.ClassLLM, nethttp.MethodPost, "/v1/videos/edits", m.VideoEdits)
 		guard.Handle(router, apphttp.ClassLLM, nethttp.MethodPost, "/v1/videos/extensions", m.VideoExtensions)
 		guard.Handle(router, apphttp.ClassLLM, nethttp.MethodGet, "/v1/videos/{id}", m.VideoJob)
+		guard.Handle(router, apphttp.ClassLLM, nethttp.MethodPost, "/v1/search", m.Search)
+		guard.Handle(router, apphttp.ClassLLM, nethttp.MethodPost, "/v1/web/fetch", m.WebFetch)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/media-providers/tts/voices", m.TTSVoices)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/media-providers/tts/{provider}/voices", m.ProviderVoices)
 	}

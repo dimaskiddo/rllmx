@@ -88,6 +88,18 @@ func Load(fsys fs.FS, dir string) (*Registry, error) {
 	if len(errs) > 0 {
 		return nil, errors.Join(errs...)
 	}
+	for _, id := range r.order {
+		fallback := r.entries[id].Media
+		if fallback == nil || fallback.CredentialFallback == "" {
+			continue
+		}
+		if target, ok := r.Resolve(fallback.CredentialFallback); !ok || target == id {
+			errs = append(errs, fmt.Errorf("upstream: %s.json: credentialFallback names no other provider", id))
+		}
+	}
+	if len(errs) > 0 {
+		return nil, errors.Join(errs...)
+	}
 	slices.Sort(r.order)
 	for kind := range r.byKind {
 		slices.SortStableFunc(r.byKind[kind], func(a, b MediaRef) int {

@@ -77,14 +77,17 @@ type Adapters interface {
 
 // Deps is what the endpoints need. Only Registry and Adapters are required.
 type Deps struct {
-	Registry  *upstream.Registry
-	Adapters  Adapters
-	Client    media.Client
-	Selector  Selector
-	Reporter  Reporter
-	Refresher Refresher
-	Minter    Minter
-	Nodes     Nodes
+	Registry *upstream.Registry
+	Adapters Adapters
+	Client   media.Client
+	// FetchClient reads a fetch target directly, for the built-in converter. It
+	// follows redirects, each hop through the same guard. Nil reuses Client.
+	FetchClient media.Client
+	Selector    Selector
+	Reporter    Reporter
+	Refresher   Refresher
+	Minter      Minter
+	Nodes       Nodes
 	// Connections looks up the account a video poll names.
 	Connections Connections
 	Voices      VoiceLister
@@ -98,6 +101,9 @@ type Deps struct {
 	Timeout time.Duration
 	// VideoTimeout bounds one video call; zero takes the reference's default.
 	VideoTimeout time.Duration
+	// SearxngURL is the instance a searxng search is sent to; empty serves none.
+	// The address is the operator's, never a client's.
+	SearxngURL string
 }
 
 // Input is one media request.
@@ -174,6 +180,10 @@ func (p *Pipeline) timeout(kind string, cfg *upstream.MediaConfig) time.Duration
 			return p.d.VideoTimeout
 		}
 		return 120 * time.Second
+	case upstream.KindSearch:
+		return searchBudget
+	case upstream.KindFetch:
+		return 30 * time.Second
 	}
 	return 60 * time.Second
 }
@@ -230,17 +240,8 @@ func parseJSON(body []byte) (parsed, Output, bool) {
 // run is the one path every endpoint takes: validate, resolve, pick an account,
 // call the adapter and record the request once.
 func (p *Pipeline) run(ctx context.Context, kind string, in Input, req parsed) Output {
-	row := analytics.Record{
-		Time: p.now(), RequestID: in.RequestID, APIKeyID: in.APIKeyID, APIKeyName: in.KeyName,
-		Endpoint: in.Path,
-	}
-	started := p.now()
-	defer func() {
-		row.LatencyMs = p.now().Sub(started).Milliseconds()
-		if p.d.Usage != nil {
-			p.d.Usage.Enqueue(row)
-		}
-	}()
+	row, done := p.record(in)
+	defer done()
 
 	bad := func(status int, msg string) Output {
 		row.Status, row.ErrorClass = status, classOf(status)
@@ -261,25 +262,60 @@ func (p *Pipeline) run(ctx context.Context, kind string, in Input, req parsed) O
 		req.modelTransport = p.modelTransport(ref)
 	}
 	cfg := entry.Media.Config(kind)
-	adapter, ok := p.d.Adapters.For(ref.Provider, kind, req.modelTransport)
-	if !ok || cfg == nil {
+	if cfg == nil {
 		return bad(http.StatusBadRequest, "This provider does not serve that model here")
 	}
+	return p.serve(ctx, kind, in, ref, entry, cfg, req, ref.Model, row)
+}
 
+// record starts the one usage row a request leaves behind; the returned
+// function finishes and queues it.
+func (p *Pipeline) record(in Input) (*analytics.Record, func()) {
+	row := &analytics.Record{
+		Time: p.now(), RequestID: in.RequestID, APIKeyID: in.APIKeyID, APIKeyName: in.KeyName,
+		Endpoint: in.Path,
+	}
+	started := p.now()
+	return row, func() {
+		row.LatencyMs = p.now().Sub(started).Milliseconds()
+		if p.d.Usage != nil {
+			p.d.Usage.Enqueue(*row)
+		}
+	}
+}
+
+// serve walks the provider's accounts for one resolved request. lockModel names
+// the scope a failure locks: the model itself, or a capability's own scope so a
+// failed search never takes chat offline.
+func (p *Pipeline) serve(ctx context.Context, kind string, in Input, ref upstream.MediaRef, entry upstream.Entry, cfg *upstream.MediaConfig, req parsed, lockModel string, row *analytics.Record) Output {
+	adapter, ok := p.d.Adapters.For(ref.Provider, kind, req.modelTransport)
+	if !ok {
+		row.Status, row.ErrorClass = http.StatusBadRequest, "invalid_request"
+		return failureOutput(http.StatusBadRequest, "This provider does not serve that model here")
+	}
 	exclude := map[string]bool{}
+	started := p.now()
 	var last *Output
 	for {
-		conn, out, ok := p.selectAccount(ctx, kind, entry, ref, model, in.ConnectionID, exclude, &row, last)
+		conn, out, ok := p.selectAccount(ctx, kind, entry, ref, req.model, lockModel, in.ConnectionID, exclude, row, last)
 		if !ok {
 			return out
 		}
+		// A borrowed connection is reported against the provider that owns it.
+		owner := ref
+		if conn.Provider != "" {
+			owner.Provider = conn.Provider
+		}
 		call := media.Request{
-			Kind: kind, Provider: ref.Provider, Model: model, WireModel: p.wireModel(entry, cfg, ref.Model),
+			Kind: kind, Provider: ref.Provider, Model: req.model, WireModel: p.wireModel(entry, cfg, ref.Model),
 			Entry: entry, Config: cfg, Body: req.body, Upload: req.upload, ModelTransport: req.modelTransport,
 			Action: req.action, ContentType: in.ContentType, IdempotencyKey: in.IdempotencyKey,
 		}
-		out, done := p.try(ctx, kind, adapter, entry, cfg, ref, conn, call, &row)
+		out, done := p.try(ctx, kind, adapter, entry, cfg, owner, lockModel, conn, call, row)
 		if done {
+			if kind == upstream.KindSearch || kind == upstream.KindFetch {
+				out = stampTiming(out, p.now().Sub(started).Milliseconds())
+			}
 			return videoPin(out, kind, conn)
 		}
 		if conn.ID == "" {
@@ -318,9 +354,10 @@ func videoPin(out Output, kind string, conn repository.Connection) Output {
 }
 
 // selectAccount picks the next account. A service that takes no credential runs
-// without one; every other one walks the provider's accounts. prefer pins the
+// without one; every other one walks the provider's accounts, and a provider that
+// borrows another's connection (ollama-search) falls back to it. prefer pins the
 // request to one account while it is a candidate.
-func (p *Pipeline) selectAccount(ctx context.Context, kind string, entry upstream.Entry, ref upstream.MediaRef, model, prefer string, exclude map[string]bool, row *analytics.Record, last *Output) (repository.Connection, Output, bool) {
+func (p *Pipeline) selectAccount(ctx context.Context, kind string, entry upstream.Entry, ref upstream.MediaRef, model, lockModel, prefer string, exclude map[string]bool, row *analytics.Record, last *Output) (repository.Connection, Output, bool) {
 	cfg := entry.Media.Config(kind)
 	noAuth := cfg != nil && (cfg.AuthType == "none" || (entry.Media != nil && entry.Media.NoAuth))
 	if p.d.Selector == nil {
@@ -329,7 +366,14 @@ func (p *Pipeline) selectAccount(ctx context.Context, kind string, entry upstrea
 		}
 		return repository.Connection{}, failureOutput(http.StatusNotFound, "No credentials for provider: "+ref.Provider), false
 	}
-	sel, err := p.d.Selector.Select(ctx, account.Request{Provider: ref.Provider, Model: ref.Model, RequestedModel: model, Exclude: exclude, Prefer: prefer})
+	req := account.Request{Provider: ref.Provider, Model: lockModel, RequestedModel: model, Exclude: exclude, Prefer: prefer}
+	sel, err := p.d.Selector.Select(ctx, req)
+	if err != nil && errors.Is(err, account.ErrNoConnections) && entry.Media != nil && entry.Media.CredentialFallback != "" && p.d.Registry != nil {
+		if id, ok := p.d.Registry.Resolve(entry.Media.CredentialFallback); ok {
+			req.Provider = id
+			sel, err = p.d.Selector.Select(ctx, req)
+		}
+	}
 	if err != nil {
 		// A service that takes no credential still runs without a connection; an
 		// existing one only supplies its address.
@@ -426,13 +470,13 @@ func (p *Pipeline) noAccount(ctx context.Context, err error, provider, model str
 
 // try runs the request on one account. done says the answer is final for this
 // request; otherwise another account is tried.
-func (p *Pipeline) try(ctx context.Context, kind string, adapter media.Adapter, entry upstream.Entry, cfg *upstream.MediaConfig, ref upstream.MediaRef, conn repository.Connection, call media.Request, row *analytics.Record) (Output, bool) {
+func (p *Pipeline) try(ctx context.Context, kind string, adapter media.Adapter, entry upstream.Entry, cfg *upstream.MediaConfig, ref upstream.MediaRef, lockModel string, conn repository.Connection, call media.Request, row *analytics.Record) (Output, bool) {
 	noAuth := cfg != nil && (cfg.AuthType == "none" || (entry.Media != nil && entry.Media.NoAuth))
 	oauthed := conn.ID != "" && conn.AuthType == "oauth" && entry.OAuth != nil
 	if oauthed && p.d.Refresher != nil {
 		fresh, err := p.d.Refresher.Ready(ctx, conn)
 		if err != nil {
-			return p.accountFailed(ctx, conn, ref, http.StatusUnauthorized, row, nil, "", noAuth)
+			return p.accountFailed(ctx, conn, ref, lockModel, http.StatusUnauthorized, row, nil, "", noAuth)
 		}
 		conn = fresh
 	}
@@ -441,7 +485,7 @@ func (p *Pipeline) try(ctx context.Context, kind string, adapter media.Adapter, 
 	if mints {
 		minted, err := p.d.Minter.Token(ctx, conn)
 		if err != nil {
-			return p.accountFailed(ctx, conn, ref, http.StatusUnauthorized, row, nil, "", noAuth)
+			return p.accountFailed(ctx, conn, ref, lockModel, http.StatusUnauthorized, row, nil, "", noAuth)
 		}
 		key = minted
 	}
@@ -451,12 +495,12 @@ func (p *Pipeline) try(ctx context.Context, kind string, adapter media.Adapter, 
 	if refused {
 		renewed, newKey, ok := p.renew(ctx, conn, entry, cfg, key, mints, row)
 		if !ok {
-			return p.accountFailed(ctx, conn, ref, http.StatusUnauthorized, row, nil, "", noAuth)
+			return p.accountFailed(ctx, conn, ref, lockModel, http.StatusUnauthorized, row, nil, "", noAuth)
 		}
 		conn, req.Credential = renewed, newKey
 		ans, refused, err = p.call(ctx, adapter, req)
 		if refused {
-			return p.accountFailed(ctx, conn, ref, http.StatusUnauthorized, row, nil, "", noAuth)
+			return p.accountFailed(ctx, conn, ref, lockModel, http.StatusUnauthorized, row, nil, "", noAuth)
 		}
 	}
 	if err != nil {
@@ -473,7 +517,7 @@ func (p *Pipeline) try(ctx context.Context, kind string, adapter media.Adapter, 
 		}
 		var pe *media.ProviderError
 		if errors.As(err, &pe) {
-			return p.accountFailed(ctx, conn, ref, pe.Status, row, nil, pe.Text, noAuth)
+			return p.accountFailed(ctx, conn, ref, lockModel, pe.Status, row, nil, pe.Text, noAuth)
 		}
 		row.Status, row.ErrorClass = http.StatusBadGateway, "network"
 		return failureOutput(http.StatusBadGateway, "The provider could not be reached"), true
@@ -485,7 +529,7 @@ func (p *Pipeline) try(ctx context.Context, kind string, adapter media.Adapter, 
 		row.PromptTokens, row.CompletionTokens = ans.Usage.Prompt, ans.Usage.Completion
 	}
 	if !noAuth {
-		p.succeed(ctx, conn, ref.Model)
+		p.succeed(ctx, conn, lockModel)
 	}
 	return out, true
 }
@@ -511,21 +555,25 @@ func (p *Pipeline) renew(ctx context.Context, conn repository.Connection, entry 
 }
 
 func (p *Pipeline) call(ctx context.Context, adapter media.Adapter, req media.Request) (media.Response, bool, error) {
-	if p.d.Client == nil {
+	client := p.d.Client
+	if req.Kind == upstream.KindFetch && p.d.FetchClient != nil {
+		client = p.d.FetchClient
+	}
+	if client == nil {
 		return media.Response{}, false, errors.New("media: no client")
 	}
 	cctx, cancel := context.WithTimeout(ctx, p.timeout(req.Kind, req.Config))
 	defer cancel()
 	req.Network = p.d.Network
 	if direct, ok := adapter.(media.Director); ok {
-		ans, err := direct.Direct(cctx, req, p.d.Client)
+		ans, err := direct.Direct(cctx, req, client)
 		return ans, false, err
 	}
-	call, err := adapter.Build(cctx, req, p.d.Client)
+	call, err := adapter.Build(cctx, req, client)
 	if err != nil {
 		return media.Response{}, false, err
 	}
-	status, header, body, err := p.d.Client.Do(cctx, call.Method, call.URL, call.Header, call.Body)
+	status, header, body, err := client.Do(cctx, call.Method, call.URL, call.Header, call.Body)
 	if err != nil {
 		if cctx.Err() != nil && ctx.Err() == nil {
 			return media.Response{}, false, &media.ProviderError{Status: http.StatusGatewayTimeout, Text: "The provider did not answer in time"}
@@ -542,12 +590,12 @@ func (p *Pipeline) call(ctx context.Context, adapter media.Adapter, req media.Re
 
 // accountFailed reports the failure and says whether this answer is final. A
 // refusal the reporter lets another account serve is not.
-func (p *Pipeline) accountFailed(ctx context.Context, conn repository.Connection, ref upstream.MediaRef, status int, row *analytics.Record, out *Output, msg string, noAuth bool) (Output, bool) {
+func (p *Pipeline) accountFailed(ctx context.Context, conn repository.Connection, ref upstream.MediaRef, lockModel string, status int, row *analytics.Record, out *Output, msg string, noAuth bool) (Output, bool) {
 	if noAuth || conn.ID == "" || p.d.Reporter == nil {
 		return p.refusalOutput(status, row, out, msg), true
 	}
 	res, err := p.d.Reporter.Fail(ctx, account.FailInput{
-		ConnID: conn.ID, Provider: ref.Provider, Model: ref.Model, Status: status,
+		ConnID: conn.ID, Provider: ref.Provider, Model: lockModel, Status: status,
 	})
 	if err == nil && res.Fallback {
 		row.Status, row.ErrorClass = clientStatus(status), classOf(status)
@@ -628,6 +676,8 @@ const (
 	MaxInputs    = 2048
 	MaxInputText = 32 << 10
 	MaxImages    = 10
+	// MaxFetchBytes bounds one page the built-in converter reads.
+	MaxFetchBytes = 5 << 20
 )
 
 // checkJSONBody refuses what an embeddings or image request cannot serve.

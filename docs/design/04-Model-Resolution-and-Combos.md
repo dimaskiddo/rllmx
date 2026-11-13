@@ -85,6 +85,7 @@ sequenceDiagram
 | `/api/translator/*` | `app/http/controllers` | todo |
 | `/api/media-providers/tts/*/voices` | `app/http/controllers`, `app/gateway` | done |
 | Media model resolution (bare id, slash id, `provider/model`, per-kind) | `app/llm/upstream` media index | done |
+| A search or fetch provider named in the body (`provider`, else `model`), and a connection borrowed from another provider (`credentialFallback`) | `app/gateway/media`, the provider's media block | done |
 | `/api/oauth/{provider}/authorize`, `exchange`, `callback`, `status`, `device-code`, `poll` and `/callback` | `app/llm/oauth`, `app/http/controllers`, `web` | partial (authorize, exchange, callback, status and `/callback` for claude and codex, D150-153; `device-code` and `poll` are); replaces `[provider]/[action]` |
 | `/api/oauth/*` importers (codex, grok-cli, cursor, kiro, zed, xiaomi-mimo, gitlab pat) plus Windsurf, Zed, Trae, Mimo callback shapes | `app/llm/oauth` | todo |
 

@@ -206,7 +206,7 @@ func (p *Pipeline) Voices(ctx context.Context, provider, lang string) Output {
 	}
 	if p.d.Voices != nil {
 		req := media.Request{Kind: upstream.KindTTS, Provider: id, Entry: entry, Config: cfg, Network: p.d.Network}
-		if conn, out, ok := p.selectAccount(ctx, upstream.KindTTS, entry, upstream.MediaRef{Provider: id, Kind: upstream.KindTTS}, provider, "", map[string]bool{}, &analytics.Record{}, nil); ok {
+		if conn, out, ok := p.selectAccount(ctx, upstream.KindTTS, entry, upstream.MediaRef{Provider: id, Kind: upstream.KindTTS}, provider, "", "", map[string]bool{}, &analytics.Record{}, nil); ok {
 			req.Credential = credential(conn, cfg)
 			req.Account = accountData(conn)
 		} else if len(list) == 0 {

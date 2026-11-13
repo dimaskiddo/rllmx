@@ -92,12 +92,12 @@ func (p *Pipeline) VideoJob(ctx context.Context, in Input, id string) Output {
 		Time: p.now(), RequestID: in.RequestID, APIKeyID: in.APIKeyID, APIKeyName: in.KeyName,
 		Endpoint: in.Path, Provider: provider,
 	}
-	conn, out, ok := p.selectAccount(ctx, upstream.KindVideo, entry, ref, "", in.ConnectionID, map[string]bool{}, &row, nil)
+	conn, out, ok := p.selectAccount(ctx, upstream.KindVideo, entry, ref, "", "", in.ConnectionID, map[string]bool{}, &row, nil)
 	if !ok {
 		return out
 	}
 	call := media.Request{Kind: upstream.KindVideo, Provider: provider, Entry: entry, Config: cfg, JobID: id}
-	out, done := p.try(ctx, upstream.KindVideo, adapter, entry, cfg, ref, conn, call, &row)
+	out, done := p.try(ctx, upstream.KindVideo, adapter, entry, cfg, ref, "", conn, call, &row)
 	if done {
 		return videoPin(out, upstream.KindVideo, conn)
 	}

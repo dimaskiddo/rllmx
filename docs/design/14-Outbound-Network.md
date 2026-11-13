@@ -2,7 +2,7 @@
 
 **Status:** partial
 
-Built: `network.Classify`, `network.Allow`/`ParseAllow`, `network.NewDialer` (the guard), `network.NewTransport`/`NewClient`, and the two consumers — the SSO identity-provider client and the health probe. Still: the provider executors, the key `Checker` and web fetch, which move onto the same client as they are built.
+Built: `network.Classify`, `network.Allow`/`ParseAllow`/`With`, `network.CheckPublic`, `network.NewDialer` (the guard), `network.NewTransport`/`NewClient`, and the consumers — the SSO identity-provider client, the health probe, the key `Checker`, web fetch and media. Still: the provider executors, which move onto the same client as they are built.
 
 Two deviations from the target below, both deliberate:
 
@@ -44,7 +44,8 @@ The guard lives in the dialer (`network.NewDialer`), so it covers every dial of 
 - IPv4 inside IPv6 (`::ffff:a.b.c.d`, NAT64 `64:ff9b::/96`, deprecated `::a.b.c.d`) is judged by the embedded address; a zone suffix is ignored.
 - The list is `UPSTREAM_ALLOW_PRIVATE`: host names (case and a trailing dot ignored; a listed name may resolve to internal addresses), single addresses and CIDR ranges. It comes from the environment on purpose, so a dashboard session cannot widen it. A bad entry stops the start and the error never repeats the value.
 - `network.ErrBlocked` names no address.
-- The guard covers provider nodes, key checks, web fetch, image prefetch, headroom and the SSO identity-provider client. A provider or IdP on a private network needs a list entry.
+- The guard covers provider nodes, key checks, media, web fetch, image prefetch, headroom and the SSO identity-provider client. A provider or IdP on a private network needs a list entry.
+- `network.CheckPublic` applies the same classes to an address a third party will fetch: scheme, host, and every resolved address. A search or fetch route runs it on the target before a vendor is called, because the vendor reads the page from its own network, where our dialer never dials.
 
 ### Key Checks & Model Lists (`app/http/controllers`)
 
@@ -72,7 +73,7 @@ One `Checker`, built once in the provider wiring (`app/providers`) on `network.N
 The dialer, the transport, the client, the redirect policy and the allow list are built; three consumers use them (SSO, the health probe, the key `Checker`).
 
 - [x] The key `Checker`
-- [ ] The provider executors and the web fetch move onto `network.NewClient`
+- [ ] The provider executors move onto `network.NewClient` (web fetch and media are there)
 - [ ] The image prefetch gets the operator's allow list
 - [ ] `UPSTREAM_CONNECT_TIMEOUT` governs the executors
 

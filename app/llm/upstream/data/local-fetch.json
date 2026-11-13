@@ -1,0 +1,11 @@
+{
+  "id": "local-fetch",
+  "alias": "local-fetch",
+  "category": "freeTier",
+  "display": { "name": "Local Web Fetch" },
+  "media": {
+    "serviceKinds": ["webFetch"],
+    "noAuth": true,
+    "fetchConfig": { "baseUrl": "local-fetch", "authType": "none", "costPerQuery": 0, "formats": ["markdown", "text", "html"], "maxCharacters": 200000, "timeoutMs": 30000 }
+  }
+}

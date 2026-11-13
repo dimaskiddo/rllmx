@@ -54,6 +54,9 @@ type Media struct {
 	NoAuth bool `json:"noAuth,omitempty"`
 	// MediaPriority orders providers offering the same kind.
 	MediaPriority int `json:"mediaPriority,omitempty"`
+	// CredentialFallback names a provider whose connection this one borrows when
+	// it has none of its own: one key serves chat and search (ollama).
+	CredentialFallback string `json:"credentialFallback,omitempty"`
 
 	Embedding *MediaConfig `json:"embeddingConfig,omitempty"`
 	Image     *MediaConfig `json:"imageConfig,omitempty"`
@@ -257,6 +260,9 @@ func (m *Media) validate(chatModels map[string]bool) error {
 		if changed {
 			return errors.New("noAuth with a credential config")
 		}
+	}
+	if m.CredentialFallback != "" && !idPattern.MatchString(m.CredentialFallback) {
+		return errors.New("a credential fallback has a bad name")
 	}
 	if m.SearchViaChat != nil {
 		sv := m.SearchViaChat

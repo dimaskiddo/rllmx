@@ -222,7 +222,7 @@ Every provider the references ship, with executor kind, status and the work that
 | default | done | gemini, openrouter |
 | default | done | coqui, tortoise |
 | default | out | edge-tts, google-tts, local-device (scraped pages or a spawned process; D299) |
-| default | todo | searxng |
+| default | done | searxng |
 | specialized | done | kimchi, vertex |
 
 ## OAuth Providers (`oauth`)

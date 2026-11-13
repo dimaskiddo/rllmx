@@ -7,11 +7,13 @@ import (
 	"rllmx/app/llm/media"
 	"rllmx/app/llm/media/antigravity"
 	"rllmx/app/llm/media/codex"
+	"rllmx/app/llm/media/fetch"
 	"rllmx/app/llm/media/github"
 	"rllmx/app/llm/media/google"
 	"rllmx/app/llm/media/imaging"
 	"rllmx/app/llm/media/ollama"
 	"rllmx/app/llm/media/openai"
+	"rllmx/app/llm/media/search"
 	"rllmx/app/llm/media/selfhosted"
 	"rllmx/app/llm/media/stt"
 	"rllmx/app/llm/media/tts"
@@ -110,6 +112,45 @@ func New(o Options) *Table {
 	t.add(video.XAI{}, "xai")
 	t.add(video.OpenRouter{}, "openrouter")
 	t.add(video.Vertex{Tokens: o.VertexTokens}, "vertex")
+
+	for _, a := range []struct {
+		adapter  media.Adapter
+		provider string
+	}{
+		{search.Serper{}, "serper"},
+		{search.Brave{}, "brave-search"},
+		{search.Exa{}, "exa"},
+		{search.Tavily{}, "tavily"},
+		{search.GooglePSE{}, "google-pse"},
+		{search.Linkup{}, "linkup"},
+		{search.SearchAPI{}, "searchapi"},
+		{search.YouCom{}, "youcom"},
+		{search.SearXNG{}, "searxng"},
+		{search.Xquik{}, "xquik"},
+		{search.TinyFish{}, "tinyfish"},
+		{search.OllamaSearch{}, "ollama-search"},
+		{search.GLM{}, "glm"},
+	} {
+		t.add(a.adapter, a.provider)
+	}
+	// A provider without a search endpoint of its own searches through chat.
+	t.add(search.Chat{}, "gemini", "antigravity", "openai", "xai", "kimi", "minimax",
+		"perplexity", "perplexity-agent", "vercel-ai-gateway")
+
+	for _, a := range []struct {
+		adapter  media.Adapter
+		provider string
+	}{
+		{fetch.Firecrawl{}, "firecrawl"},
+		{fetch.Jina{}, "jina-reader"},
+		{fetch.Tavily{}, "tavily"},
+		{fetch.Exa{}, "exa"},
+		{fetch.Ollama{}, "ollama"},
+		{fetch.TinyFish{}, "tinyfish"},
+		{fetch.Local{}, "local-fetch"},
+	} {
+		t.add(a.adapter, a.provider)
+	}
 	return t
 }
 

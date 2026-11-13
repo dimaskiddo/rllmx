@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"net/url"
 	"time"
 
 	"github.com/goravel/framework/contracts/foundation"
@@ -12,6 +13,16 @@ import (
 	"rllmx/app/llm/media/voice"
 	"rllmx/app/platform/network"
 )
+
+// hostOf is the host name of an operator-set address; the settings checked it,
+// so an unparsable value yields nothing to permit.
+func hostOf(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	return u.Hostname()
+}
 
 // MediaSource builds the media endpoints' pipeline on first use, for the same
 // reason the chat pipeline is lazy: the stores open after the routes are
@@ -36,14 +47,27 @@ func buildMedia(_ context.Context, app foundation.Application) (*gatewaymedia.Pi
 		return nil, ErrStoreNotOpen
 	}
 	log := app.MakeLog()
+	allow := h.Upstream.Allow
+	if h.Media != nil && h.Media.SearxngURL != "" {
+		// The operator named the instance; its host is permitted for these calls
+		// and for nothing else, the way the health probe permits its own host.
+		allow = allow.With(hostOf(h.Media.SearxngURL))
+	}
 	client := network.NewClient(network.Options{
-		ConnectTimeout: h.Upstream.ConnectTimeout, MaxRedirects: -1, Allow: h.Upstream.Allow, BodyCap: -1,
+		ConnectTimeout: h.Upstream.ConnectTimeout, MaxRedirects: -1, Allow: allow, BodyCap: -1,
+		Curves: h.Upstream.Curves,
+	})
+	// A fetch target is read directly for the built-in converter, so it follows
+	// up to five redirects: every hop dials through the same guard.
+	fetchClient := network.NewClient(network.Options{
+		ConnectTimeout: h.Upstream.ConnectTimeout, MaxRedirects: 5, Allow: allow, BodyCap: -1,
 		Curves: h.Upstream.Curves,
 	})
 	deps := gatewaymedia.Deps{
 		Registry:    h.Registry,
 		Adapters:    mediamux.New(mediamux.Options{VertexTokens: h.Google.Vertex}),
 		Client:      gatewaymedia.HTTP{Client: client},
+		FetchClient: gatewaymedia.HTTP{Client: fetchClient, Cap: gatewaymedia.MaxFetchBytes},
 		Selector:    account.NewSelector(account.SelectorOptions{Conns: store.Connections(), Settings: store.Settings(), Log: log}),
 		Reporter:    account.NewReporter(store.Connections(), log, nil),
 		Nodes:       store.Nodes(),
@@ -56,6 +80,7 @@ func buildMedia(_ context.Context, app foundation.Application) (*gatewaymedia.Pi
 	}
 	if h.Media != nil {
 		deps.VideoTimeout = h.Media.VideoTimeout
+		deps.SearxngURL = h.Media.SearxngURL
 	}
 	if h.Refresher != nil {
 		deps.Refresher = h.Refresher
