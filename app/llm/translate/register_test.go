@@ -6,7 +6,10 @@ package translate_test
 // Each move adds one line here.
 import (
 	_ "rllmx/app/llm/translate/claude"
+	_ "rllmx/app/llm/translate/commandcode"
+	_ "rllmx/app/llm/translate/cursor"
 	_ "rllmx/app/llm/translate/gemini"
+	_ "rllmx/app/llm/translate/kiro"
 	_ "rllmx/app/llm/translate/ollama"
 	_ "rllmx/app/llm/translate/openai"
 	_ "rllmx/app/llm/translate/responses"

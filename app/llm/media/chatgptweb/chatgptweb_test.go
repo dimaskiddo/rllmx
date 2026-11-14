@@ -8,62 +8,22 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"rllmx/app/llm/media"
+	mediatest "rllmx/tests/media"
 )
 
-// png is a one-pixel PNG, enough for the format check.
-var png = append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 32)...)
-
-// fake answers each path the flow calls.
-type fake struct {
-	routes map[string]func() (int, []byte)
-	calls  []string
-}
-
-func (f *fake) Do(_ context.Context, method, target string, _ map[string]string, _ []byte) (int, http.Header, []byte, error) {
-	f.calls = append(f.calls, method+" "+target)
-	// The longest matching prefix wins, so chat-requirements/prepare is not
-	// answered by chat-requirements.
-	best := ""
-	for prefix := range f.routes {
-		if strings.Contains(target, prefix) && len(prefix) > len(best) {
-			best = prefix
-		}
-	}
-	if best != "" {
-		status, body := f.routes[best]()
-		return status, http.Header{}, body, nil
-	}
-	return http.StatusNotFound, http.Header{}, nil, nil
-}
-
-func (f *fake) DoCapped(ctx context.Context, method, target string, h map[string]string, body []byte, _ int64) (int, http.Header, []byte, error) {
-	return f.Do(ctx, method, target, h, body)
-}
-
-func happy() *fake {
-	return &fake{routes: map[string]func() (int, []byte){
-		"/api/auth/session": func() (int, []byte) {
-			return 200, []byte(`{"accessToken":"tok-1"}`)
-		},
-		"chat-requirements/prepare": func() (int, []byte) {
-			return 200, []byte(`{"prepare_token":"prep"}`)
-		},
-		"chat-requirements": func() (int, []byte) {
-			return 200, []byte(`{"token":"tkn","proofofwork":{"required":true,"seed":"s","difficulty":"f"}}`)
-		},
-		"/backend-api/f/conversation/prepare": func() (int, []byte) {
-			return 200, []byte(`{"conduit_token":"c1"}`)
-		},
-		"/backend-api/f/conversation": func() (int, []byte) {
-			return 200, []byte(`{"conversation_id":"0b9a5c1e-1111-2222-3333-444455556666","x":"file-service://file_abc123"}`)
-		},
-		"/backend-api/files/file_abc123/download": func() (int, []byte) {
-			return 200, []byte(`{"download_url":"https://files.example/a.png"}`)
-		},
-		"files.example/a.png": func() (int, []byte) { return 200, png },
-	}}
+func happy() *mediatest.Routes {
+	return mediatest.NewRoutes(map[string]mediatest.Reply{
+		"/api/auth/session":                       mediatest.Of(200, []byte(`{"accessToken":"tok-1"}`)),
+		"chat-requirements/prepare":               mediatest.Of(200, []byte(`{"prepare_token":"prep"}`)),
+		"chat-requirements":                       mediatest.Of(200, []byte(`{"token":"tkn","proofofwork":{"required":true,"seed":"s","difficulty":"f"}}`)),
+		"/backend-api/f/conversation/prepare":     mediatest.Of(200, []byte(`{"conduit_token":"c1"}`)),
+		"/backend-api/f/conversation":             mediatest.Of(200, []byte(`{"conversation_id":"0b9a5c1e-1111-2222-3333-444455556666","x":"file-service://file_abc123"}`)),
+		"/backend-api/files/file_abc123/download": mediatest.Of(200, []byte(`{"download_url":"https://files.example/a.png"}`)),
+		"files.example/a.png":                     mediatest.Of(200, mediatest.PNG),
+	})
 }
 
 func request(t *testing.T, body string, credential string) media.Request {
@@ -80,7 +40,7 @@ func request(t *testing.T, body string, credential string) media.Request {
 func TestTheImageComesBackAsBase64(t *testing.T) {
 	f := happy()
 	r := request(t, `{"model":"gpt-image-2","prompt":"a red fox","n":1,"size":"1024x1024"}`, "sess=ok; other=1")
-	out, err := Images{}.Direct(context.Background(), r, f)
+	out, err := Images{Every: time.Millisecond}.Direct(context.Background(), r, f)
 	if err != nil {
 		t.Fatalf("Direct: %v", err)
 	}
@@ -98,18 +58,16 @@ func TestTheImageComesBackAsBase64(t *testing.T) {
 	if err := json.Unmarshal(out.Body, &answer); err != nil || len(answer.Data) != 1 {
 		t.Fatalf("answer is not one image: %v", err)
 	}
-	if raw, err := base64.StdEncoding.DecodeString(answer.Data[0].B64); err != nil || string(raw) != string(png) {
+	if raw, err := base64.StdEncoding.DecodeString(answer.Data[0].B64); err != nil || string(raw) != string(mediatest.PNG) {
 		t.Fatalf("image bytes do not match")
 	}
 }
 
 func TestATurnstileDemandIsRefused(t *testing.T) {
 	f := happy()
-	f.routes["/backend-api/f/conversation"] = func() (int, []byte) {
-		return 403, []byte(`{"error":{"message":"Turnstile required"}}`)
-	}
+	f.Set("/backend-api/f/conversation", mediatest.Of(403, []byte(`{"error":{"message":"Turnstile required"}}`)))
 	r := request(t, `{"prompt":"x"}`, "sess=secret-value")
-	_, err := Images{}.Direct(context.Background(), r, f)
+	_, err := Images{Every: time.Millisecond}.Direct(context.Background(), r, f)
 	var pe *media.ProviderError
 	if !errors.As(err, &pe) || pe.Status != 403 {
 		t.Fatalf("err = %v, want a 403 provider error", err)
@@ -131,13 +89,13 @@ func TestBadInputIsRefusedBeforeAnyCall(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			f := &fake{}
-			_, err := Images{}.Direct(context.Background(), request(t, tc.body, tc.cred), f)
+			f := mediatest.NewRoutes(nil)
+			_, err := Images{Every: time.Millisecond}.Direct(context.Background(), request(t, tc.body, tc.cred), f)
 			if err == nil {
 				t.Fatal("the request was accepted")
 			}
-			if len(f.calls) != 0 {
-				t.Fatalf("calls = %v, want none", f.calls)
+			if len(f.Calls()) != 0 {
+				t.Fatalf("calls = %v, want none", f.Calls())
 			}
 		})
 	}
@@ -163,14 +121,14 @@ func TestTheScraperFindsEveryKindOfID(t *testing.T) {
 func TestTheChallengeHashMatchesThePublishedShape(t *testing.T) {
 	// The challenge compares a hex prefix with the difficulty word, so a
 	// single-digit difficulty is always met on the first counter.
-	proof, err := solve("seed", "f")
+	proof, err := solve(context.Background(), "seed", "f")
 	if err != nil {
 		t.Fatalf("solve: %v", err)
 	}
 	if !strings.HasPrefix(proof, "gAAAAAB") || !strings.HasSuffix(proof, "~S") {
 		t.Fatalf("proof = %q", proof)
 	}
-	if _, err := solve("", ""); err == nil {
+	if _, err := solve(context.Background(), "", ""); err == nil {
 		t.Fatal("a challenge with no seed was solved")
 	}
 }
@@ -190,5 +148,29 @@ func TestThePrepareTokenCarriesTheFingerprint(t *testing.T) {
 	}
 	if slots[3].(float64) != 1 {
 		t.Fatalf("counter slot = %v, want 1", slots[3])
+	}
+}
+
+func TestAProofOfWorkStopsWhenTheRequestDoes(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	// "0" is below every hash, so no counter ever meets it: only the context ends this.
+	if _, err := solve(ctx, "seed", ""+"0"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want the context's", err)
+	}
+}
+
+func TestASessionThatExpiresMidPollIsAnAuthFailureAtOnce(t *testing.T) {
+	f := happy()
+	f.Set("/backend-api/f/conversation", mediatest.Of(200, []byte(`{"conversation_id":"0b9a5c1e-1111-2222-3333-444455556666"}`)))
+	f.Set("/backend-api/conversation/0b9a5c1e", mediatest.Of(401, nil))
+	started := time.Now()
+	_, err := Images{Every: time.Millisecond}.Direct(context.Background(), request(t, `{"prompt":"x"}`, "sess=ok"), f)
+	var pe *media.ProviderError
+	if !errors.As(err, &pe) || pe.Status != http.StatusUnauthorized {
+		t.Fatalf("err = %v, want a 401 provider error", err)
+	}
+	if took := time.Since(started); took > pollInterval+3*time.Second {
+		t.Fatalf("an expired session was polled for %s", took)
 	}
 }

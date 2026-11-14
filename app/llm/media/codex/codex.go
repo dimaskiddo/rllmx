@@ -3,11 +3,13 @@
 package codex
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 
 	"rllmx/app/llm/media"
@@ -34,62 +36,80 @@ func (Images) Build(_ context.Context, r media.Request, _ media.Client) (media.C
 		return media.Call{}, media.BadRequestf("that model is not served here")
 	}
 	body := gjson.ParseBytes(r.Body)
-	if n := body.Get("n"); n.Type == gjson.Number && n.Int() != 1 {
-		return media.Call{}, media.BadRequestf("this model makes one image")
-	}
-	if size := body.Get("size").String(); size != "" && size != "auto" {
-		return media.Call{}, media.BadRequestf("this model chooses its own size")
-	}
-	if format := strings.ToLower(body.Get("output_format").String()); format != "" && format != "png" {
-		return media.Call{}, media.BadRequestf("this model answers a png")
-	}
-	switch body.Get("background").String() {
-	case "", "auto", "opaque":
-	default:
-		return media.Call{}, media.BadRequestf("this model takes no transparency")
-	}
-	switch q := body.Get("quality").String(); q {
-	case "", "auto", "low", "medium", "high":
-	default:
-		return media.Call{}, media.BadRequestf("that quality is not served here")
-	}
-	if body.Get("output_compression").Exists() {
-		return media.Call{}, media.BadRequestf("compression is not served here")
+	if err := honour(body); err != nil {
+		return media.Call{}, err
 	}
 	if planType(r.Credential, r.Account) == "free" {
 		return media.Call{}, &media.NotEntitled{Reason: "no account entitled to image generation"}
 	}
+	target, raw, err := payload(r, body)
+	if err != nil {
+		return media.Call{}, err
+	}
+	return media.Call{Method: http.MethodPost, URL: target, Header: callHeaders(r), Body: raw}, nil
+}
+
+// honour refuses what the native endpoint cannot do: it makes one png at its own
+// size, takes no transparency and no compression.
+func honour(body gjson.Result) error {
+	if n := body.Get("n"); n.Type == gjson.Number && n.Int() != 1 {
+		return media.BadRequestf("this model makes one image")
+	}
+	if size := body.Get("size").String(); size != "" && size != "auto" {
+		return media.BadRequestf("this model chooses its own size")
+	}
+	if format := strings.ToLower(body.Get("output_format").String()); format != "" && format != "png" {
+		return media.BadRequestf("this model answers a png")
+	}
+	switch body.Get("background").String() {
+	case "", "auto", "opaque":
+	default:
+		return media.BadRequestf("this model takes no transparency")
+	}
+	switch body.Get("quality").String() {
+	case "", "auto", "low", "medium", "high":
+	default:
+		return media.BadRequestf("that quality is not served here")
+	}
+	if body.Get("output_compression").Exists() {
+		return media.BadRequestf("compression is not served here")
+	}
+	return nil
+}
+
+// payload is the endpoint and the body: a plain generation, or, when the request
+// carries reference images, Codex CLI's own ImageEditRequest with the images as
+// data URLs.
+func payload(r media.Request, body gjson.Result) (string, []byte, error) {
 	target := "https://chatgpt.com/backend-api/codex/images/generations"
 	if r.Config != nil && r.Config.BaseURL != "" {
 		target = r.Config.BaseURL
 	}
-	refs := imageRefs(body)
-	var req map[string]any
-	if len(refs) > 0 {
-		// Codex CLI's own ImageEditRequest: the reference images ride as data
-		// URLs, and the endpoint picks its own size and one output.
+	req := map[string]any{
+		"model": r.WireModel, "prompt": body.Get("prompt").String(), "n": 1, "size": "auto",
+		"quality":    cmp.Or(body.Get("quality").String(), "auto"),
+		"background": cmp.Or(body.Get("background").String(), "auto"),
+	}
+	if refs := imageRefs(body); len(refs) > 0 {
 		target = strings.TrimSuffix(target, "/generations") + "/edits"
 		images := make([]map[string]string, len(refs))
 		for i, u := range refs {
 			images[i] = map[string]string{"image_url": u}
 		}
-		req = map[string]any{
-			"model": r.WireModel, "prompt": body.Get("prompt").String(), "images": images, "n": 1, "size": "auto",
-			"quality":    defaultValue(body.Get("quality").String(), "auto"),
-			"background": defaultValue(body.Get("background").String(), "auto"),
-		}
+		req["images"] = images
 	} else {
-		req = map[string]any{
-			"model": r.WireModel, "prompt": body.Get("prompt").String(), "n": 1, "size": "auto",
-			"quality":       defaultValue(body.Get("quality").String(), "auto"),
-			"background":    defaultValue(body.Get("background").String(), "auto"),
-			"output_format": "png",
-		}
+		req["output_format"] = "png"
 	}
 	raw, err := json.Marshal(req)
 	if err != nil {
-		return media.Call{}, media.BadRequestf("the request cannot be built")
+		return "", nil, media.BadRequestf("the request cannot be built")
 	}
+	return target, raw, nil
+}
+
+// callHeaders are the identity of the Codex client the account's token belongs
+// to.
+func callHeaders(r media.Request) map[string]string {
 	account := strings.TrimSpace(r.Account["chatgptAccountId"])
 	if account == "" {
 		account = claimText(r.Credential, "chatgpt_account_id")
@@ -103,13 +123,13 @@ func (Images) Build(_ context.Context, r media.Request, _ media.Client) (media.C
 		"Authorization":       "Bearer " + r.Credential,
 		"originator":          "codex_cli_rs",
 		"user-agent":          ua,
-		"session_id":          media.UUID(),
-		"x-client-request-id": media.UUID(),
+		"session_id":          uuid.NewString(),
+		"x-client-request-id": uuid.NewString(),
 	}
 	if account != "" {
 		h["chatgpt-account-id"] = account
 	}
-	return media.Call{Method: http.MethodPost, URL: target, Header: h, Body: raw}, nil
+	return h
 }
 
 // Parse reads the generated image and its usage.
@@ -162,13 +182,6 @@ func claimText(token, name string) string {
 		return ""
 	}
 	return c.Get(`https://api\.openai\.com/auth.` + name).String()
-}
-
-func defaultValue(v, fallback string) string {
-	if v == "" {
-		return fallback
-	}
-	return v
 }
 
 // imageRefs collects the reference images in the client's order: each entry of

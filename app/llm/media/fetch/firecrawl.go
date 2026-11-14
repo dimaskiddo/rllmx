@@ -1,6 +1,7 @@
 package fetch
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -34,16 +35,6 @@ func (Firecrawl) Parse(_ context.Context, r media.Request, _ media.Client, statu
 		return media.Response{}, refused(status)
 	}
 	data := gjson.GetBytes(raw, "data")
-	text := firstOf(data.Get("markdown").String(), data.Get("html").String(), data.Get("text").String())
+	text := cmp.Or(data.Get("markdown").String(), data.Get("html").String(), data.Get("text").String())
 	return reply("firecrawl", target(r), format(r), data.Get("metadata.title").String(), text, nil, limit(r), cost(r))
-}
-
-// firstOf is the first non-empty value.
-func firstOf(values ...string) string {
-	for _, v := range values {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
 }

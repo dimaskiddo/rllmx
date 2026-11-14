@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/netip"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -43,6 +44,14 @@ type Server struct {
 	MaxBodyMB      int
 	TrustLoopback  bool
 	TrustedProxies []netip.Prefix
+
+	// Compression turns on gzip and Brotli for the answers worth compressing.
+	// A proxy that compresses already makes it redundant, not harmful: a
+	// response that carries an encoding is never compressed twice.
+	Compression bool
+	// H2C lets the plain listener speak HTTP/2 without TLS, for a reverse proxy
+	// that multiplexes streams to the router.
+	H2C bool
 }
 
 // LoadServer reads and checks the server settings. Errors name the variable and
@@ -80,10 +89,31 @@ func LoadServer(cfg config.Config) (*Server, error) {
 	if s.TrustedProxies, err = parseProxies(cfg.GetString("http.guard.trusted_proxies")); err != nil {
 		return nil, err
 	}
+	if s.Compression, err = switchOf(cfg, "http.compression", "HTTP_COMPRESSION", true); err != nil {
+		return nil, err
+	}
+	if s.H2C, err = switchOf(cfg, "http.h2c", "HTTP_H2C", false); err != nil {
+		return nil, err
+	}
 	if s.URL, err = parseURL(cfg.GetString("http.url")); err != nil {
 		return nil, err
 	}
 	return s, nil
+}
+
+// switchOf reads an on-or-off setting. The framework's own bool reader turns any
+// word it does not know into false, which would switch compression off on a
+// typo, so the text is read here and an unreadable one is refused by name.
+func switchOf(cfg config.Config, key, env string, def bool) (bool, error) {
+	raw := strings.TrimSpace(cfg.GetString(key, strconv.FormatBool(def)))
+	if raw == "" {
+		return def, nil
+	}
+	v, err := strconv.ParseBool(raw)
+	if err != nil {
+		return false, fmt.Errorf("settings: %s: must be true or false", env)
+	}
+	return v, nil
 }
 
 func duration(cfg config.Config, key, env string, lo, hi time.Duration) (time.Duration, error) {

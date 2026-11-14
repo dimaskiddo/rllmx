@@ -218,19 +218,26 @@ func TestConcurrentRefusalsShareOneFetch(t *testing.T) {
 	})
 	g.Now = func() time.Time { return t0 }
 	var wg sync.WaitGroup
+	var entered atomic.Int32
 	for range 10 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			entered.Add(1)
 			if _, ok := g.Refused(context.Background(), "a1", "T", "claude-opus-5-5-high"); !ok {
 				t.Error("a waiter did not see the reading")
 			}
 		}()
 	}
-	for calls.Load() == 0 {
+	// The one fetch blocks on release; every caller is in, behind it, before the
+	// fetch is let go.
+	deadline := time.Now().Add(5 * time.Second)
+	for entered.Load() != 10 || calls.Load() != 1 {
+		if time.Now().After(deadline) {
+			t.Fatalf("%d callers in, %d fetches", entered.Load(), calls.Load())
+		}
 		time.Sleep(time.Millisecond)
 	}
-	time.Sleep(20 * time.Millisecond)
 	close(release)
 	wg.Wait()
 	if calls.Load() != 1 {

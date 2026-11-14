@@ -1,6 +1,7 @@
 package search
 
 import (
+	"cmp"
 	"context"
 	"net/http"
 
@@ -8,6 +9,7 @@ import (
 
 	"rllmx/app/llm/media"
 	"rllmx/app/llm/upstream"
+	apptext "rllmx/app/platform/text"
 )
 
 // Exa searches Exa's neural index.
@@ -47,7 +49,7 @@ func (Exa) Parse(_ context.Context, r media.Request, _ media.Client, status int,
 			break
 		}
 		text := v.Get("text").String()
-		snippet := firstOf(v.Get("highlights.0").String(), truncateRunes(text, 300))
+		snippet := cmp.Or(v.Get("highlights.0").String(), apptext.CutRunes(text, 300))
 		out = append(out, item("exa", i+1, v.Get("title").String(), v.Get("url").String()).
 			withSnippet(snippet).
 			withScore(v.Get("score").Float()).

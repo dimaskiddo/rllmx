@@ -123,7 +123,8 @@ func item(provider string, position int, title, link string) result {
 	return r
 }
 
-// text and score set what each provider may or may not send.
+// withSnippet returns the result with its snippet set; the other with-methods
+// set one optional field each, so a provider sends only what it has.
 func (r result) withSnippet(s string) result { r.Snippet = s; return r }
 
 func (r result) withScore(v float64) result {
@@ -219,17 +220,6 @@ func call(method, target string, h map[string]string, payload any) (media.Call, 
 	return media.Call{Method: method, URL: target, Header: h, Body: raw}, nil
 }
 
-// firstOf is the first non-empty value, which is how a vendor's own answer is
-// read when it may carry one of two names for a field.
-func firstOf(values ...string) string {
-	for _, v := range values {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
-}
-
 // domainFilter splits the client's list the way every provider that takes one
 // does: an entry with a leading dash is an exclusion.
 func domainFilter(r media.Request) (includes, excludes []string) {
@@ -245,18 +235,6 @@ func domainFilter(r media.Request) (includes, excludes []string) {
 		includes = append(includes, s)
 	}
 	return includes, excludes
-}
-
-// truncateRunes cuts text to at most n runes.
-func truncateRunes(text string, n int) string {
-	if len(text) <= n {
-		return text
-	}
-	runes := []rune(text)
-	if len(runes) <= n {
-		return text
-	}
-	return string(runes[:n])
 }
 
 // base is the provider's address with no trailing slash.
@@ -276,7 +254,7 @@ func cost(r media.Request) *float64 {
 	return &v
 }
 
-// costOf is the providers that charge nothing per query.
+// free is the price of a provider that charges nothing per query.
 func free() *float64 {
 	v := 0.0
 	return &v

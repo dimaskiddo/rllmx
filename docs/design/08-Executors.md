@@ -190,8 +190,9 @@ Every provider the references ship, with executor kind, status and the work that
 | default | done | black-forest-labs, comfyui, fal-ai, huggingface, jina-ai, nanobanana, recraft, runwayml, sdwebui, stability-ai, voyage-ai |
 | default | done | assemblyai, cartesia, deepgram, elevenlabs, fish-audio, inworld, playht, selfhosted-stt, selfhosted-tts |
 | default | out | aws-polly (the reference has no handler; D300) |
-| default | todo | brave-search, exa, firecrawl, google-pse, jina-reader, linkup, ollama-search, searchapi, serper, tavily, tinyfish, youcom, xquik |
-| default | todo | nace, topaz, v1m |
+| default | done | brave-search, exa, firecrawl, google-pse, jina-reader, linkup, ollama-search, searchapi, serper, tavily, tinyfish, xquik, youcom |
+| default | deferred | nace, v1m (they serve `/v1/systemone`, the smart combo of step 2.4) |
+| default | out | topaz (its data lists an image service with no address and no handler; the reference has none either) |
 
 `nvidia` lists an STT model but has no `sttConfig` in the reference, so its transcription path is unreachable and no adapter exists here either.
 | specialized | done | azure |

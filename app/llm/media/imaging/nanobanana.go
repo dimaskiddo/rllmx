@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
-	"strings"
 
 	"github.com/tidwall/gjson"
 
@@ -21,7 +20,7 @@ func (NanoBanana) Kind() string { return upstream.KindImage }
 
 // Build makes the submit call.
 func (NanoBanana) Build(_ context.Context, r media.Request, _ media.Client) (media.Call, error) {
-	base := strings.TrimRight(media.BaseURL(r), "/")
+	base := media.BaseURL(r)
 	if base == "" || r.Config == nil || r.Config.PollURL == "" {
 		return media.Call{}, media.BadRequestf("the provider names no address")
 	}

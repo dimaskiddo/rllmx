@@ -30,28 +30,6 @@ type accountFail struct {
 	gated bool
 }
 
-func classOf(status int) string {
-	switch {
-	case status < 400:
-		return "none"
-	case status == http.StatusUnauthorized:
-		return "auth"
-	case status == http.StatusForbidden:
-		return "access_denied"
-	case status == http.StatusPaymentRequired:
-		return "quota"
-	case status == http.StatusTooManyRequests:
-		return "rate_limit"
-	case status == http.StatusNotFound:
-		return "not_found"
-	case status == http.StatusGatewayTimeout:
-		return "timeout"
-	case status >= 500:
-		return "upstream_5xx"
-	}
-	return "invalid_request"
-}
-
 func streamClass(err error) string {
 	switch {
 	case errors.Is(err, stream.ErrStall):
@@ -62,16 +40,6 @@ func streamClass(err error) string {
 		return "client_closed"
 	}
 	return "upstream_5xx"
-}
-
-// clientStatus is the status a client sees for an upstream status. A refused
-// credential is the router's problem, not the client's: a 401 would make the
-// client discard a good key.
-func clientStatus(status int) int {
-	if status < 400 || status == http.StatusUnauthorized || status == http.StatusForbidden {
-		return http.StatusBadGateway
-	}
-	return status
 }
 
 func (c *call) fail(status int, class, msg string) Output {

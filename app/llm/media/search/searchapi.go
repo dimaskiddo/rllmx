@@ -1,6 +1,7 @@
 package search
 
 import (
+	"cmp"
 	"context"
 	"net/http"
 	"net/url"
@@ -55,8 +56,8 @@ func (SearchAPI) Parse(_ context.Context, r media.Request, _ media.Client, statu
 			break
 		}
 		out = append(out, item("searchapi", i+1, v.Get("title").String(), v.Get("link").String()).
-			withSnippet(firstOf(v.Get("snippet").String(), v.Get("description").String())).
-			withPublished(firstOf(v.Get("date").String(), v.Get("published_at").String())).
+			withSnippet(cmp.Or(v.Get("snippet").String(), v.Get("description").String())).
+			withPublished(cmp.Or(v.Get("date").String(), v.Get("published_at").String())).
 			withFavicon(v.Get("favicon").String()).
 			withAuthor(v.Get("source").String()).
 			withImage(v.Get("thumbnail").String()))

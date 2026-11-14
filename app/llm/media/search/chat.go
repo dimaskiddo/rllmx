@@ -1,6 +1,7 @@
 package search
 
 import (
+	"cmp"
 	"context"
 	"net/http"
 	"strings"
@@ -156,7 +157,7 @@ func geminiAnswer(data gjson.Result, provider string) (string, []result) {
 	out := []result{}
 	for i, chunk := range candidate.Get("groundingMetadata.groundingChunks").Array() {
 		web := chunk.Get("web")
-		link := firstOf(web.Get("uri").String(), web.Get("url").String())
+		link := cmp.Or(web.Get("uri").String(), web.Get("url").String())
 		if link == "" {
 			continue
 		}
@@ -181,7 +182,7 @@ func antigravityAnswer(data gjson.Result, provider string) (string, []result) {
 	order := []int{}
 	for i, chunk := range chunks {
 		web := chunk.Get("web")
-		link := firstOf(web.Get("uri").String(), web.Get("url").String())
+		link := cmp.Or(web.Get("uri").String(), web.Get("url").String())
 		if link == "" {
 			continue
 		}
@@ -208,10 +209,10 @@ func antigravityAnswer(data gjson.Result, provider string) (string, []result) {
 	out := []result{}
 	for _, i := range order {
 		src := index[i]
-		snippet := firstOf(strings.Join(src.snippets, " | "), src.title)
+		snippet := cmp.Or(strings.Join(src.snippets, " | "), src.title)
 		out = append(out, item(provider, len(out)+1, src.title, src.link).
 			withSnippet(snippet).
-			withContent("text", firstOf(strings.Join(src.contexts, "\n\n"), snippet)))
+			withContent("text", cmp.Or(strings.Join(src.contexts, "\n\n"), snippet)))
 	}
 	return text, out
 }
@@ -236,7 +237,7 @@ func responsesAnswer(data gjson.Result, provider string) (string, []result) {
 			}
 		}
 		for _, hit := range block.Get("results").Array() {
-			link := firstOf(hit.Get("url").String(), hit.Get("link").String())
+			link := cmp.Or(hit.Get("url").String(), hit.Get("link").String())
 			if link == "" {
 				continue
 			}
@@ -277,12 +278,12 @@ func toolCallsAnswer(data gjson.Result, provider string) (string, []result) {
 			items = args.Get("references")
 		}
 		for _, v := range items.Array() {
-			link := firstOf(v.Get("url").String(), v.Get("link").String())
+			link := cmp.Or(v.Get("url").String(), v.Get("link").String())
 			if link == "" {
 				continue
 			}
 			out = append(out, item(provider, len(out)+1, v.Get("title").String(), link).
-				withSnippet(firstOf(v.Get("snippet").String(), v.Get("summary").String())))
+				withSnippet(cmp.Or(v.Get("snippet").String(), v.Get("summary").String())))
 		}
 	}
 	return message.Get("content").String(), out
@@ -292,12 +293,12 @@ func toolCallsAnswer(data gjson.Result, provider string) (string, []result) {
 func minimaxAnswer(data gjson.Result, provider string) (string, []result) {
 	out := []result{}
 	for _, v := range data.Get("web_search_results").Array() {
-		link := firstOf(v.Get("url").String(), v.Get("link").String())
+		link := cmp.Or(v.Get("url").String(), v.Get("link").String())
 		if link == "" {
 			continue
 		}
 		out = append(out, item(provider, len(out)+1, v.Get("title").String(), link).
-			withSnippet(firstOf(v.Get("snippet").String(), v.Get("summary").String())))
+			withSnippet(cmp.Or(v.Get("snippet").String(), v.Get("summary").String())))
 	}
 	message := data.Get("choices.0.message")
 	if len(out) > 0 {

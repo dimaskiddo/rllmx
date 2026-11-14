@@ -128,3 +128,14 @@ func TestFirstNonEmptySkipsBlanks(t *testing.T) {
 		t.Fatalf("%q", got)
 	}
 }
+
+func TestAControlCharacterIsAnyC0DelOrC1(t *testing.T) {
+	for in, want := range map[string]bool{
+		"plain": false, "tab\there": true, "line\nbreak": true, "nul\x00": true,
+		"del\x7f": true, "c1\u0085": true, "c1\u009f": true, "latin é": false, "": false,
+	} {
+		if got := HasControl(in); got != want {
+			t.Errorf("HasControl(%q) = %v, want %v", in, got, want)
+		}
+	}
+}

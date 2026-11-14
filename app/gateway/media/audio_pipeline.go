@@ -1,6 +1,7 @@
 package media
 
 import (
+	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -44,9 +45,9 @@ var transcriptFields = map[string]bool{
 func (p *Pipeline) Speech(ctx context.Context, in Input) Output {
 	req, bad, ok := parseJSON(in.Body)
 	if !ok {
-		return bad
+		return p.reject(in, bad)
 	}
-	format := strings.ToLower(strings.TrimSpace(firstNonEmpty(in.ResponseFormat, gjson.GetBytes(req.body, "response_format").String())))
+	format := strings.ToLower(strings.TrimSpace(cmp.Or(in.ResponseFormat, gjson.GetBytes(req.body, "response_format").String())))
 	if format == "" {
 		format = "mp3"
 	}
@@ -69,11 +70,11 @@ func (p *Pipeline) Speech(ctx context.Context, in Input) Output {
 // Transcriptions serves POST /v1/audio/transcriptions.
 func (p *Pipeline) Transcriptions(ctx context.Context, in Input) Output {
 	if in.Form == nil || len(in.Form.Audio) == 0 {
-		return failureOutput(http.StatusBadRequest, "The request names no file")
+		return p.reject(in, failureOutput(http.StatusBadRequest, "The request names no file"))
 	}
 	model := strings.TrimSpace(in.Form.Fields["model"])
 	if model == "" {
-		return failureOutput(http.StatusBadRequest, "The request names no model")
+		return p.reject(in, failureOutput(http.StatusBadRequest, "The request names no model"))
 	}
 	req := parsed{
 		model: model,
@@ -175,13 +176,6 @@ func (p *Pipeline) checkBody(kind string, req parsed) error {
 		return checkJSONBody(kind, req.body)
 	}
 	return nil
-}
-
-func firstNonEmpty(a, b string) string {
-	if a != "" {
-		return a
-	}
-	return b
 }
 
 // Voices serves GET /v1/audio/voices: the provider's voices from its data, or

@@ -129,38 +129,22 @@ func InlineImage(ctx context.Context, c Client, raw string) (string, error) {
 	return raw, nil
 }
 
-// FetchImage fetches an image URL through the guarded client and bounds it at
-// 10 MiB, the same limit the request prefetch uses.
+// imageCap bounds one source image, the same limit the request prefetch uses.
+const imageCap = 10 << 20
+
+// FetchImage fetches a client-named image URL through the guarded client. Every
+// way it can fail is the client's input, never the account's: a foreign server's
+// status must not reach the account's lock rules.
 func FetchImage(ctx context.Context, c Client, target string) (string, error) {
 	if c == nil {
 		return "", errors.New("no client")
 	}
-	var status int
-	var body []byte
-	var err error
-	const imageCap = 10 << 20
-	if capped, ok := c.(interface {
-		DoCapped(ctx context.Context, method, target string, header map[string]string, body []byte, limit int64) (int, http.Header, []byte, error)
-	}); ok {
-		status, _, body, err = capped.DoCapped(ctx, http.MethodGet, target, nil, nil, imageCap)
-	} else {
-		status, _, body, err = c.Do(ctx, http.MethodGet, target, nil, nil)
+	status, _, body, err := Capped(ctx, c, http.MethodGet, target, nil, nil, imageCap)
+	if ctx.Err() != nil {
+		return "", ctx.Err()
 	}
-	switch {
-	case err != nil:
-		return "", err
-	}
-	if err != nil {
-		return "", err
-	}
-	if status < 200 || status > 299 {
-		return "", &ProviderError{Status: status, Text: "the image could not be fetched"}
-	}
-	if len(body) > 10<<20 {
-		return "", &ProviderError{Status: http.StatusBadGateway, Text: "the image is too large"}
-	}
-	if appfile.ImageMIME(body) == "" {
-		return "", &ProviderError{Status: http.StatusBadGateway, Text: "the answer is not an image"}
+	if err != nil || status < 200 || status > 299 || len(body) > imageCap || appfile.ImageMIME(body) == "" {
+		return "", BadRequestf("the source image could not be fetched")
 	}
 	return base64.StdEncoding.EncodeToString(body), nil
 }

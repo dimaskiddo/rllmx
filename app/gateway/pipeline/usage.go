@@ -3,6 +3,7 @@ package pipeline
 import (
 	"rllmx/app/llm/translate"
 	"rllmx/app/llm/upstream"
+	"rllmx/app/platform/failure"
 )
 
 // setUsage puts the upstream's own counts and their price in the row. The
@@ -29,7 +30,7 @@ func (c *call) finish(out Output) {
 	}
 	r.ErrorClass = c.errClass
 	if r.ErrorClass == "" {
-		r.ErrorClass = classOf(out.Status)
+		r.ErrorClass = failure.ClassOf(out.Status)
 	}
 	r.LatencyMs = c.p.d.Now().Sub(c.start).Milliseconds()
 	c.p.d.Usage.Enqueue(*r)

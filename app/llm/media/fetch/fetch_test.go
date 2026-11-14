@@ -11,6 +11,7 @@ import (
 
 	"rllmx/app/llm/media"
 	"rllmx/app/llm/upstream"
+	apptext "rllmx/app/platform/text"
 )
 
 func req(provider, body string, cfg *upstream.MediaConfig) media.Request {
@@ -126,8 +127,8 @@ func TestAPageIsCutToTheCharacterLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len([]rune(truncate(text, 50))) != 50 {
-		t.Fatalf("%d runes", len([]rune(truncate(text, 50))))
+	if len([]rune(apptext.CutRunes(text, 50))) != 50 {
+		t.Fatalf("%d runes", len([]rune(apptext.CutRunes(text, 50))))
 	}
 }
 

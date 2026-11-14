@@ -5,6 +5,7 @@
 package ucweb
 
 import (
+	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -18,6 +19,7 @@ import (
 	"github.com/tidwall/gjson"
 
 	"rllmx/app/llm/media"
+	"rllmx/app/llm/oauth"
 
 	"rllmx/app/llm/upstream"
 	appfile "rllmx/app/platform/file"
@@ -27,8 +29,6 @@ const (
 	origin      = "https://uncensored.com"
 	clerkAPI    = "https://clerk.uncensored.com"
 	clerkJS     = "5.127.1"
-	userAgent   = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"
-	maxPrompt   = 8000
 	maxImage    = 100 << 20
 	maxVideo    = 100 << 20
 	mintBudget  = 20 * time.Second
@@ -45,11 +45,13 @@ var aspectSizes = map[string][2]string{
 	"21:9": {"1344", "576"},
 }
 
-// Images is the image adapter.
-type Images struct{}
+// Images is the image adapter. Every is how long it waits between looks at the
+// result; zero is the provider's own pace, which only a test changes.
+type Images struct{ Every time.Duration }
 
-// Videos is the video adapter.
-type Videos struct{}
+// Videos is the video adapter. Every is how long it waits between looks at the
+// result; zero is the provider's own pace, which only a test changes.
+type Videos struct{ Every time.Duration }
 
 // Kind is the service the image adapter serves.
 func (Images) Kind() string { return upstream.KindImage }
@@ -58,27 +60,24 @@ func (Images) Kind() string { return upstream.KindImage }
 func (Videos) Kind() string { return upstream.KindVideo }
 
 // Direct runs one image generation.
-func (Images) Direct(ctx context.Context, r media.Request, c media.Client) (media.Response, error) {
-	return run(ctx, r, c, upstream.KindImage)
+func (i Images) Direct(ctx context.Context, r media.Request, c media.Client) (media.Response, error) {
+	return run(ctx, r, c, upstream.KindImage, i.Every)
 }
 
 // Direct runs one video generation.
-func (Videos) Direct(ctx context.Context, r media.Request, c media.Client) (media.Response, error) {
-	return run(ctx, r, c, upstream.KindVideo)
+func (v Videos) Direct(ctx context.Context, r media.Request, c media.Client) (media.Response, error) {
+	return run(ctx, r, c, upstream.KindVideo, v.Every)
 }
 
 // run is the one path both services take.
-func run(ctx context.Context, r media.Request, c media.Client, kind string) (media.Response, error) {
+func run(ctx context.Context, r media.Request, c media.Client, kind string, every time.Duration) (media.Response, error) {
 	if c == nil {
 		return media.Response{}, errors.New("uc-web: no client")
 	}
 	body := gjson.ParseBytes(r.Body)
-	prompt := strings.TrimSpace(body.Get("prompt").String())
-	if prompt == "" || len(prompt) > maxPrompt {
-		return media.Response{}, media.BadRequestf("the prompt is empty or too long")
-	}
-	if n := body.Get("n"); n.Exists() && n.Int() != 1 {
-		return media.Response{}, media.BadRequestf("this provider makes one item per request")
+	prompt, err := media.WebPrompt(r.Body)
+	if err != nil {
+		return media.Response{}, err
 	}
 	jar, err := media.ParseCookie(r.Credential)
 	if err != nil {
@@ -91,23 +90,22 @@ func run(ctx context.Context, r media.Request, c media.Client, kind string) (med
 	if err != nil {
 		return media.Response{}, err
 	}
+	mint.every = every
 	ans := media.Response{Status: http.StatusOK, Header: map[string]string{"Content-Type": "application/json"}}
 	if mint.rotated != "" {
 		if err := jar.Set("__client", mint.rotated); err == nil {
 			ans.NewCredential = jar.Header()
 		}
 	}
+	// A failure after the mint still hands the rotated cookie back: the old one
+	// is already retired, so losing the new one would lock the account out.
+	produce := video
 	if kind == upstream.KindImage {
-		raw, err := image(ctx, c, r, body, prompt, mint)
-		if err != nil {
-			return media.Response{}, err
-		}
-		ans.Body = raw
-		return ans, nil
+		produce = image
 	}
-	raw, err := video(ctx, c, r, body, prompt, mint)
+	raw, err := produce(ctx, c, r, body, prompt, mint)
 	if err != nil {
-		return media.Response{}, err
+		return media.Response{NewCredential: ans.NewCredential}, err
 	}
 	ans.Body = raw
 	return ans, nil
@@ -118,6 +116,8 @@ type session struct {
 	jwt     string
 	uid     string
 	rotated string
+	// every is the wait between looks at a result; zero takes pollEvery.
+	every time.Duration
 }
 
 // mintSession trades the durable client cookie for a short-lived session token.
@@ -126,12 +126,12 @@ func mintSession(ctx context.Context, c media.Client, jar *media.CookieJar) (ses
 	defer cancel()
 	headers := map[string]string{
 		"Accept": "application/json", "Cookie": jar.Header(),
-		"Origin": origin, "Referer": origin + "/", "User-Agent": userAgent,
+		"Origin": origin, "Referer": origin + "/", "User-Agent": media.WebUserAgent,
 	}
 	sid := claim(jar.Get("__client"), "sid")
 	rotated := ""
 	if sid == "" {
-		status, header, body, err := call(cctx, c, http.MethodGet, clerkAPI+"/v1/client?_clerk_js_version="+clerkJS, headers, nil, 1<<20)
+		status, header, body, err := media.Capped(cctx, c, http.MethodGet, clerkAPI+"/v1/client?_clerk_js_version="+clerkJS, headers, nil, 1<<20)
 		if err != nil {
 			return session{}, err
 		}
@@ -164,11 +164,11 @@ func mintSession(ctx context.Context, c media.Client, jar *media.CookieJar) (ses
 	if sid == "" {
 		return session{}, &media.ProviderError{Status: http.StatusUnauthorized, Text: "The stored cookie has no active session"}
 	}
-	status, header, body, err := call(cctx, c, http.MethodPost,
+	status, header, body, err := media.Capped(cctx, c, http.MethodPost,
 		clerkAPI+"/v1/client/sessions/"+url.PathEscape(sid)+"/tokens?_clerk_js_version="+clerkJS,
 		map[string]string{
 			"Content-Type": "application/x-www-form-urlencoded", "Cookie": jar.Header(),
-			"Origin": origin, "Referer": origin + "/", "User-Agent": userAgent,
+			"Origin": origin, "Referer": origin + "/", "User-Agent": media.WebUserAgent,
 		}, []byte{}, 1<<20)
 	if err != nil {
 		return session{}, err
@@ -205,7 +205,7 @@ func image(ctx context.Context, c media.Client, r media.Request, body gjson.Resu
 	if err != nil {
 		return nil, err
 	}
-	raw, mime, err := await(ctx, c, target, maxImage)
+	raw, mime, err := await(ctx, c, target, maxImage, s.every)
 	if err != nil {
 		return nil, err
 	}
@@ -248,7 +248,7 @@ func video(ctx context.Context, c media.Client, r media.Request, body gjson.Resu
 	if err != nil {
 		return nil, err
 	}
-	_, mime, err := await(ctx, c, target, maxVideo)
+	_, mime, err := await(ctx, c, target, maxVideo, s.every)
 	if err != nil {
 		return nil, err
 	}
@@ -273,7 +273,7 @@ func create(ctx context.Context, c media.Client, s session, target string, paylo
 	}
 	cctx, cancel := context.WithTimeout(ctx, createWait)
 	defer cancel()
-	status, _, body, err := call(cctx, c, http.MethodPost, target, authHeaders(s.jwt), raw, 1<<20)
+	status, _, body, err := media.Capped(cctx, c, http.MethodPost, target, authHeaders(s.jwt), raw, 1<<20)
 	if err != nil {
 		return "", err
 	}
@@ -283,6 +283,9 @@ func create(ctx context.Context, c media.Client, s session, target string, paylo
 	if status == http.StatusTooManyRequests {
 		return "", &media.ProviderError{Status: status, Text: "The provider's quota is spent"}
 	}
+	if status >= 500 {
+		return "", &media.ProviderError{Status: http.StatusBadGateway, Text: "The provider did not answer"}
+	}
 	if status < 200 || status > 299 {
 		return "", media.BadRequestf("the request was refused")
 	}
@@ -290,7 +293,7 @@ func create(ctx context.Context, c media.Client, s session, target string, paylo
 	if link == "" {
 		return "", &media.ProviderError{Status: http.StatusBadGateway, Text: "The provider named no result address"}
 	}
-	if err := public(link); err != nil {
+	if err := media.HTTPSOnly(link); err != nil {
 		return "", err
 	}
 	return link, nil
@@ -315,7 +318,7 @@ func upload(ctx context.Context, c media.Client, s session, src string) (string,
 	}
 	cctx, cancel := context.WithTimeout(ctx, createWait)
 	defer cancel()
-	status, _, body, err := call(cctx, c, http.MethodPost, "https://internal-6.pubyar.com/generate-signed-url", authHeaders(s.jwt), payload, 1<<20)
+	status, _, body, err := media.Capped(cctx, c, http.MethodPost, "https://internal-6.pubyar.com/generate-signed-url", authHeaders(s.jwt), payload, 1<<20)
 	if err != nil {
 		return "", err
 	}
@@ -327,10 +330,10 @@ func upload(ctx context.Context, c media.Client, s session, src string) (string,
 	if signed == "" || blob == "" {
 		return "", &media.ProviderError{Status: http.StatusBadGateway, Text: "The provider named no upload address"}
 	}
-	if err := public(signed); err != nil {
+	if err := media.HTTPSOnly(signed); err != nil {
 		return "", err
 	}
-	status, _, _, err = call(cctx, c, http.MethodPut, signed, map[string]string{"Content-Type": "image/png"}, raw, 1<<20)
+	status, _, _, err = media.Capped(cctx, c, http.MethodPut, signed, map[string]string{"Content-Type": "image/png"}, raw, 1<<20)
 	if err != nil {
 		return "", err
 	}
@@ -341,30 +344,23 @@ func upload(ctx context.Context, c media.Client, s session, src string) (string,
 }
 
 // await polls the result address until it serves the asset, then reads it.
-func await(ctx context.Context, c media.Client, target string, limit int64) ([]byte, string, error) {
-	if err := public(target); err != nil {
+func await(ctx context.Context, c media.Client, target string, limit int64, every time.Duration) ([]byte, string, error) {
+	if err := media.HTTPSOnly(target); err != nil {
 		return nil, "", err
 	}
-	deadline := time.NewTimer(pollCeiling)
-	defer deadline.Stop()
-	for {
+	// The first look comes after one wait, as the provider's own client does.
+	err := media.PollEvery(ctx, cmp.Or(every, pollEvery), pollCeiling, func(ctx context.Context) (bool, error) {
 		cctx, cancel := context.WithTimeout(ctx, createWait)
-		status, _, _, err := call(cctx, c, http.MethodHead, target, map[string]string{"Referer": origin + "/", "User-Agent": userAgent}, nil, 1)
-		cancel()
-		if err == nil && status >= 200 && status < 300 {
-			break
-		}
-		select {
-		case <-ctx.Done():
-			return nil, "", ctx.Err()
-		case <-deadline.C:
-			return nil, "", &media.ProviderError{Status: http.StatusGatewayTimeout, Text: "The provider's result did not become available in time"}
-		case <-time.After(pollEvery):
-		}
+		defer cancel()
+		status, _, _, err := media.Capped(cctx, c, http.MethodHead, target, map[string]string{"Referer": origin + "/", "User-Agent": media.WebUserAgent}, nil, 1)
+		return err == nil && status >= 200 && status < 300, nil
+	}, &media.ProviderError{Status: http.StatusGatewayTimeout, Text: "The provider's result did not become available in time"})
+	if err != nil {
+		return nil, "", err
 	}
 	cctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
-	status, header, body, err := call(cctx, c, http.MethodGet, target, map[string]string{"Referer": origin + "/", "User-Agent": userAgent}, nil, limit)
+	status, header, body, err := media.Capped(cctx, c, http.MethodGet, target, map[string]string{"Referer": origin + "/", "User-Agent": media.WebUserAgent}, nil, limit)
 	if err != nil {
 		return nil, "", err
 	}
@@ -385,27 +381,17 @@ func await(ctx context.Context, c media.Client, target string, limit int64) ([]b
 	return body, mime, nil
 }
 
-// public refuses an address that is not an https URL with a host and no
-// embedded credential.
-func public(raw string) error {
-	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil {
-		return &media.ProviderError{Status: http.StatusBadGateway, Text: "The provider named an address this router does not read"}
-	}
-	return nil
-}
-
 // authHeaders are the internal calls' headers.
 func authHeaders(jwt string) map[string]string {
 	return map[string]string{
 		"Authorization": "Bearer " + jwt, "Origin": origin, "Referer": origin + "/",
-		"Content-Type": "application/json", "User-Agent": userAgent,
+		"Content-Type": "application/json", "User-Agent": media.WebUserAgent,
 	}
 }
 
 // base is the service address from the provider's config.
 func base(r media.Request) string {
-	return strings.TrimRight(media.BaseURL(r), "/")
+	return media.BaseURL(r)
 }
 
 // wireModel is the model the provider knows.
@@ -490,23 +476,6 @@ func source(body gjson.Result) string {
 	return ""
 }
 
-// call sends one request, reading the answer under limit when the client caps.
-func call(ctx context.Context, c media.Client, method, target string, h map[string]string, body []byte, limit int64) (int, http.Header, []byte, error) {
-	if capped, ok := c.(interface {
-		DoCapped(ctx context.Context, method, target string, header map[string]string, body []byte, limit int64) (int, http.Header, []byte, error)
-	}); ok {
-		return capped.DoCapped(ctx, method, target, h, body, limit)
-	}
-	status, header, raw, err := c.Do(ctx, method, target, h, body)
-	if err != nil {
-		return 0, nil, nil, err
-	}
-	if int64(len(raw)) > limit {
-		return 0, nil, nil, &media.ProviderError{Status: http.StatusBadGateway, Text: "The provider answered more than this router reads"}
-	}
-	return status, header, raw, nil
-}
-
 // setCookie reads one cookie's new value from a response's Set-Cookie headers.
 func setCookie(h http.Header, name string) string {
 	for _, line := range h.Values("Set-Cookie") {
@@ -519,17 +488,14 @@ func setCookie(h http.Header, name string) string {
 	return ""
 }
 
-// claim reads one string claim out of a JWT payload.
+// claim reads one string claim out of a JWT payload, or "" for a token that is
+// not one.
 func claim(token, name string) string {
-	parts := strings.Split(token, ".")
-	if len(parts) != 3 {
+	c, ok := oauth.Claims(token)
+	if !ok {
 		return ""
 	}
-	raw, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
-		return ""
-	}
-	return gjson.GetBytes(raw, name).String()
+	return c.Get(name).String()
 }
 
 var _ media.Director = Images{}

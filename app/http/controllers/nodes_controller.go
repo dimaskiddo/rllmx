@@ -12,6 +12,7 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 
 	"rllmx/app/llm/upstream"
+	"rllmx/app/platform/text"
 	"rllmx/app/store/document"
 	"rllmx/app/store/repository"
 )
@@ -200,14 +201,14 @@ func (c *NodesController) Delete(ctx contractshttp.Context) contractshttp.Respon
 func (c *NodesController) validate(typ string, b nodeBody, creating bool) (name, prefix, base, msg string) {
 	// Control characters are judged before any trimming: TrimSpace would strip a
 	// stray U+0085 or tab at the ends and let it through.
-	if hasControl(b.BaseURL) || hasControl(b.Name) || hasControl(b.Prefix) {
+	if text.HasControl(b.BaseURL) || text.HasControl(b.Name) || text.HasControl(b.Prefix) {
 		return "", "", "", "Invalid characters in the request"
 	}
 	name = strings.TrimSpace(b.Name)
 	if name == "" {
 		return "", "", "", "Name is required"
 	}
-	if len(name) > maxNameBytes || hasControl(name) {
+	if len(name) > maxNameBytes || text.HasControl(name) {
 		return "", "", "", "Invalid name"
 	}
 	prefix = strings.TrimSpace(b.Prefix)
@@ -232,7 +233,7 @@ func (c *NodesController) validate(typ string, b nodeBody, creating bool) (name,
 // could carry a credential or redirect, and drops the endpoint suffix a user
 // pasted so it is not appended twice.
 func cleanBaseURL(typ, raw string) (string, string) {
-	if len(raw) > maxBaseURL || hasControl(raw) {
+	if len(raw) > maxBaseURL || text.HasControl(raw) {
 		return "", "Invalid base URL"
 	}
 	u, err := url.Parse(raw)

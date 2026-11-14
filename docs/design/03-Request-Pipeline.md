@@ -65,12 +65,12 @@ flowchart TD
 | `POST /v1beta/models/{m}:generateContent`, `:streamGenerateContent` | `app/http/controllers` | done |
 | `GET /v1/models`, `/v1/models/info`, `/v1/models/{m}`, `GET /v1beta/models` | `app/http/controllers`, `app/gateway/catalog` | done |
 | `POST /v1/api/chat` (Ollama) | `app/http/controllers` | done (NDJSON by default, JSON for `stream:false` or `Accept: application/json`; D136) |
-| `POST /v1/embeddings` | `app/gateway` | todo |
-| `POST /v1/images/generations` | `app/gateway` | todo |
-| `POST /v1/audio/speech`, `/transcriptions`, `GET /v1/audio/voices` | `app/gateway` | todo |
-| `POST /v1/videos/*`, `GET /v1/videos/{id}` | `app/gateway` | todo |
-| `POST /v1/search`, `POST /v1/web/fetch` | `app/gateway` | todo |
-| `POST /v1/systemone` | `app/gateway` | todo |
+| `POST /v1/embeddings` | `app/gateway/media` | done |
+| `POST /v1/images/generations` | `app/gateway/media` | done |
+| `POST /v1/audio/speech`, `/transcriptions`, `GET /v1/audio/voices` | `app/gateway/media` | done |
+| `POST /v1/videos/*`, `GET /v1/videos/{id}` | `app/gateway/media` | done (a web video answers the completed job and a poll of it is a 404, D317) |
+| `POST /v1/search`, `POST /v1/web/fetch` | `app/gateway/media` | done |
+| `POST /v1/systemone` | `app/gateway` | todo (the smart combo, step 2.4) |
 | URL rewrites (`/codex/*`, `/responses`, `/v1/v1/*`, `/systemone`; ref `next.config.mjs`) | `app/http` | done (pre-guard; non-canonical paths refused) |
 
 ---
@@ -80,7 +80,7 @@ flowchart TD
 | Stage | Reference | Package | Status |
 |---|---|---|---|
 | Guard (key, session, loopback) | `dashboardGuard.js`, `sse/services/auth.js` | `app/http`, `app/access/auth` | partial |
-| Key access restriction | `sse/services/keyAccess.js` | `app/access` | todo |
+| Key access restriction | `sse/services/keyAccess.js` | `app/access` | partial (a restricted key is refused with 403 on every spending route until step 2.2 checks the list per request, D325) |
 | Session identity | `utils/sessionManager.js` | `app/gateway/conversation` | Built (client-named id by reference priority, else opening assistant text, else per connection, two-hour life; `Bound` keyed hash; the pipeline reads it, once an account is chosen: the Claude user id and session header, and a keyed hash for Codex's `session_id`; continuity store) |
 | Bypass (warmup, title) | `utils/bypassHandler.js` | `app/gateway/pipeline` | done |
 | Capability detection (current-turn needs: vision, pdf, audio, video) | `services/combo.js` (`detectRequiredCapabilities`) | `app/llm/translate` | todo (`DetectNeeds`, `Needs.Met`; combo step calls it) |
@@ -95,7 +95,7 @@ flowchart TD
 | Token refresh: proactive, reactive, background, dedup | `services/tokenRefresh*`, `sse/services/backgroundTokenRefresh.js` | `app/llm/oauth` | done |
 | Format detection, transport, target format | `services/provider.js` | `app/gateway/pipeline` | Built (endpoint decides the client format; a model's `targetFormat`, else the transport format; nodes by type and `apiType`) |
 | Native passthrough | `utils/clientDetector.js` | `app/gateway/pipeline` | partial (the stream layer passes through when client and upstream formats are equal, whatever the client tool; client tool detection from headers, from an allow-listed header set (`pipeline.PickHeaders`); a Claude Code client keeps its own shape; Claude normalization in `app/llm/translate`, D142; the Codex and Gemini CLI body shapes) |
-| Claude request preparation (`prepareClaudeRequest`) | `translator/formats/claude.js` | `app/llm/translate` | todo (D118) |
+| Claude request preparation (`prepareClaudeRequest`) | `translator/formats/claude.js` | `app/llm/translate` | done (D118) |
 | Tool-name adaptation | `utils/claudeCloaking.js` | `app/llm/translate`, `app/gateway/pipeline` | done |
 | Executor base, retry, URL fallback | `executors/base.js` | `app/llm/executor` | Built; the `baseUrls` fallback (D291) (in-place retry by status, data overrides, 2 s default delay; `baseUrls` fallback never tried: no shipped provider needs it, D102; a 401 or 403 on a login renews its token and retries once, D222 retired) |
 | Streaming: SSE parse and emit, usage, timers | `utils/stream.js`, `streamHandler.js` | `app/llm/stream` | done |
@@ -103,7 +103,7 @@ flowchart TD
 | Usage save, daily aggregate, cost | `src/lib/db/repos/usageRepo.js` | `app/store/analytics`, `app/gateway/pipeline` | partial (one row per request on every path with price and error class, built; the writer is wired; `app/store` query surface unbuilt) |
 | Response cache (opt-in, per key and global, no streams or tool-call answers) | none in the references | `app/gateway/pipeline`, `app/providers` | done (lookup after resolution and before translation, store in `deliver` after the account accepted; a hit selects no account and its row is `cached` at cost 0; D24, D148) |
 | Request details (body dumps) | `src/lib/db/repos/requestDetailsRepo.js` | none | out |
-| Live-catalog guards: kiro, codex, cursor, kimchi, qoder (extended) | `handlers/chatCore.js` | `app/gateway/catalog` | todo |
+| Live-catalog guards: kiro, codex, cursor, kimchi, qoder (extended) | `handlers/chatCore.js` | `app/gateway/catalog` | done (`app/llm/catalog`) |
 
 ---
 

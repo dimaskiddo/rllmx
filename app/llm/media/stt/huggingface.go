@@ -23,7 +23,7 @@ func (HuggingFace) Build(_ context.Context, r media.Request, _ media.Client) (me
 	if strings.Contains(model, "..") || strings.Contains(model, "//") || strings.ContainsAny(model, "?#") {
 		return media.Call{}, media.BadRequestf("the model names an address")
 	}
-	target := strings.TrimRight(media.BaseURL(r), "/") + "/" + model
+	target := media.BaseURL(r) + "/" + model
 	h := bearer(r)
 	h["Content-Type"] = audioMIME(r)
 	return media.Call{Method: http.MethodPost, URL: target, Header: h, Body: r.Upload.Audio}, nil

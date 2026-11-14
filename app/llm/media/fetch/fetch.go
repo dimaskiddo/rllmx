@@ -10,6 +10,7 @@ import (
 	"github.com/tidwall/gjson"
 
 	"rllmx/app/llm/media"
+	apptext "rllmx/app/platform/text"
 )
 
 // envelope is the route's answer.
@@ -54,7 +55,9 @@ func reply(provider, target, format, title, text string, links []string, limit i
 
 // build assembles one page's answer without its timing.
 func build(provider, target, format, title, text string, links []string, limit int, cost *float64) envelope {
-	text = truncate(text, limit)
+	if limit > 0 {
+		text = apptext.CutRunes(text, limit)
+	}
 	out := envelope{
 		Provider: provider, URL: target, Content: content{Format: format, Text: text, Length: len(text)},
 		Usage: usage{FetchCost: cost}, Links: links,
@@ -100,16 +103,4 @@ func cost(r media.Request) *float64 {
 	}
 	v := r.Config.CostPerQuery
 	return &v
-}
-
-// truncate cuts text to at most limit runes; a zero limit keeps it whole.
-func truncate(text string, limit int) string {
-	if limit <= 0 || len(text) <= limit {
-		return text
-	}
-	runes := []rune(text)
-	if len(runes) <= limit {
-		return text
-	}
-	return string(runes[:limit])
 }

@@ -38,22 +38,37 @@ type Options struct {
 // New builds the table by explicit construction.
 func New(o Options) *Table {
 	t := &Table{adapters: map[string]map[string]media.Handler{}}
+	t.embeddings()
+	t.images()
+	t.audio()
+	t.video(o)
+	t.web()
+	t.search()
+	t.fetch()
+	return t
+}
 
-	embeddings := openai.Embeddings{}
+// embeddings registers the vector services.
+func (t *Table) embeddings() {
+	shared := openai.Embeddings{}
 	for _, id := range []string{
 		"openai", "openrouter", "mistral", "voyage-ai", "fireworks", "together",
-		"nebius", "nvidia", "jina-ai", "vercel-ai-gateway",
+		"nebius", "nvidia", "jina-ai", "vercel-ai-gateway", "tokenrouter", "venice",
 	} {
-		t.add(embeddings, id)
+		t.add(shared, id)
 	}
 	t.add(google.Embeddings{}, "gemini")
 	t.add(github.Embeddings{}, "github")
 	t.add(ollama.Embeddings{}, "ollama-local")
 	t.add(selfhosted.Embeddings{}, "selfhosted-embedding")
+}
 
+// images registers the image services of the vendors and the bridges.
+func (t *Table) images() {
 	images := openai.Images{}
 	for _, id := range []string{
 		"openai", "minimax", "openrouter", "recraft", "vercel-ai-gateway", "xai", "sensenova", "sensenova-intl",
+		"tokenrouter", "venice",
 	} {
 		t.add(images, id)
 	}
@@ -76,7 +91,10 @@ func New(o Options) *Table {
 	} {
 		t.add(a.adapter, a.provider)
 	}
+}
 
+// audio registers speech and transcription.
+func (t *Table) audio() {
 	for _, a := range []struct {
 		adapter  media.Adapter
 		provider string
@@ -111,19 +129,27 @@ func New(o Options) *Table {
 	}
 	// A model marker picks a second adapter for the same provider.
 	t.adapters["gemini"]["stt|gemini-live"] = stt.GeminiLive{}
+}
 
+// video registers the video services.
+func (t *Table) video(o Options) {
 	t.add(video.XAI{}, "xai")
 	t.add(video.OpenRouter{}, "openrouter")
 	t.add(video.Vertex{Tokens: o.VertexTokens}, "vertex")
+}
 
-	// Web session providers: one director runs the whole exchange. A provider
-	// whose session needs a browser or a TLS fingerprint is not registered.
+// web registers the providers that run on a pasted web session. A session that
+// needs a browser or a TLS fingerprint is not registered.
+func (t *Table) web() {
 	t.add(chatgptweb.Images{}, "chatgpt-web")
 	t.add(ucweb.Images{}, "uc-web")
 	t.add(ucweb.Videos{}, "uc-web")
 	t.add(veoaifree.Images{}, "veoaifree-web")
 	t.add(veoaifree.Videos{}, "veoaifree-web")
+}
 
+// search registers the dedicated search vendors and the chat searches.
+func (t *Table) search() {
 	for _, a := range []struct {
 		adapter  media.Adapter
 		provider string
@@ -147,7 +173,10 @@ func New(o Options) *Table {
 	// A provider without a search endpoint of its own searches through chat.
 	t.add(search.Chat{}, "gemini", "antigravity", "openai", "xai", "kimi", "minimax",
 		"perplexity", "perplexity-agent", "vercel-ai-gateway")
+}
 
+// fetch registers the page readers.
+func (t *Table) fetch() {
 	for _, a := range []struct {
 		adapter  media.Adapter
 		provider string
@@ -162,7 +191,6 @@ func New(o Options) *Table {
 	} {
 		t.add(a.adapter, a.provider)
 	}
-	return t
 }
 
 // add registers one adapter for providers of the kind it serves.
@@ -194,8 +222,3 @@ func (t *Table) For(provider, kind, transport string) (media.Handler, bool) {
 	}
 	return nil, false
 }
-
-// Adapter is the table as the gateway sees it.
-var _ interface {
-	For(provider, kind, transport string) (media.Handler, bool)
-} = (*Table)(nil)

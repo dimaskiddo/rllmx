@@ -20,7 +20,7 @@ func (HuggingFace) Kind() string { return upstream.KindImage }
 
 // Build resolves the router path and the body for the model's task.
 func (HuggingFace) Build(ctx context.Context, r media.Request, c media.Client) (media.Call, error) {
-	base := strings.TrimRight(media.BaseURL(r), "/")
+	base := media.BaseURL(r)
 	target := ""
 	task := "text-to-image"
 	if custom := strings.TrimRight(r.Account["baseUrl"], "/"); custom != "" {

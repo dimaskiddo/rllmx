@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	neturl "net/url"
 	"testing"
 	"time"
 
@@ -157,3 +158,31 @@ func TestEncodeAndDecodeRoundTrip(t *testing.T) {
 }
 
 var _ = time.Second
+
+func TestAProfileIsEscapedInTheQuery(t *testing.T) {
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.URL.RawQuery
+		_, _ = w.Write([]byte(`{"models":[{"id":"m"}]}`))
+	}))
+	defer srv.Close()
+	e := upstream.Entry{ID: "kiro", Transport: upstream.Transport{BaseURL: srv.URL}}
+	s := store.Migrated(t)
+	c, err := s.Connections().Create(context.Background(), repository.ConnInput{
+		Provider: "kiro", AuthType: "oauth", Name: "k", Fields: map[string]string{"accessToken": `"tok"`},
+		PSD: `{"profileArn":"arn:aws:x/y&origin=EVIL#z"}`,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := kiroFetcher(e, srv.Client())(context.Background(), c); err != nil {
+		t.Fatalf("fetch: %v", err)
+	}
+	q, err := neturl.ParseQuery(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if q.Get("profileArn") != `arn:aws:x/y&origin=EVIL#z` || q.Get("origin") != "AI_EDITOR" {
+		t.Fatalf("query %q: the profile broke out of its parameter", got)
+	}
+}

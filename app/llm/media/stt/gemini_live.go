@@ -18,11 +18,10 @@ import (
 )
 
 const (
-	liveChunk     = 16384
-	liveSetup     = 10 * time.Second
-	liveTurn      = 60 * time.Second
-	liveMaxTimer  = 300 * time.Second
-	liveReconnect = 1
+	liveChunk    = 16384
+	liveSetup    = 10 * time.Second
+	liveTurn     = 60 * time.Second
+	liveMaxTimer = 300 * time.Second
 )
 
 // GeminiLive streams the audio to Gemini's bidi endpoint over a WebSocket.
@@ -61,7 +60,7 @@ func (GeminiLive) Direct(ctx context.Context, r media.Request, _ media.Client) (
 
 // liveURL is the bidi address from the provider's base and the model.
 func liveURL(r media.Request) (string, error) {
-	base := strings.TrimRight(media.BaseURL(r), "/")
+	base := media.BaseURL(r)
 	if base == "" {
 		return "", media.BadRequestf("the provider names no address")
 	}

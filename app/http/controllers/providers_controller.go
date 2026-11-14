@@ -7,7 +7,6 @@ import (
 	nethttp "net/http"
 	"strconv"
 	"strings"
-	"unicode"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
 	"github.com/tidwall/gjson"
@@ -210,7 +209,7 @@ func (c *ProvidersController) createConn(rc context.Context, st *repository.Stor
 	if strings.TrimSpace(b.APIKey) == "" {
 		return repository.Connection{}, &createErr{status: nethttp.StatusBadRequest, msg: secretName + " is required"}
 	}
-	if len(b.APIKey) > maxSecretBytes || hasControl(b.APIKey) {
+	if len(b.APIKey) > maxSecretBytes || text.HasControl(b.APIKey) {
 		return repository.Connection{}, &createErr{status: nethttp.StatusBadRequest, msg: "Invalid " + strings.ToLower(secretName)}
 	}
 	secret := b.APIKey
@@ -224,7 +223,7 @@ func (c *ProvidersController) createConn(rc context.Context, st *repository.Stor
 		secret = parsed
 	}
 
-	if hasControl(b.Name) || hasControl(b.DisplayName) || hasControl(b.Provider) {
+	if text.HasControl(b.Name) || text.HasControl(b.DisplayName) || text.HasControl(b.Provider) {
 		return repository.Connection{}, &createErr{status: nethttp.StatusBadRequest, msg: "Invalid characters in the request"}
 	}
 	name := strings.TrimSpace(text.FirstNonEmpty(b.Name, b.DisplayName))
@@ -238,7 +237,7 @@ func (c *ProvidersController) createConn(rc context.Context, st *repository.Stor
 	if name == "" {
 		return repository.Connection{}, &createErr{status: nethttp.StatusBadRequest, msg: "Name is required"}
 	}
-	if len(name) > maxNameBytes || hasControl(name) {
+	if len(name) > maxNameBytes || text.HasControl(name) {
 		return repository.Connection{}, &createErr{status: nethttp.StatusBadRequest, msg: "Invalid name"}
 	}
 
@@ -251,13 +250,13 @@ func (c *ProvidersController) createConn(rc context.Context, st *repository.Stor
 	}
 
 	fields := map[string]string{"apiKey": document.Encode(secret), "testStatus": `"unknown"`}
-	if v := strings.TrimSpace(b.DisplayName); v != "" && len(v) <= maxNameBytes && !hasControl(v) {
+	if v := strings.TrimSpace(b.DisplayName); v != "" && len(v) <= maxNameBytes && !text.HasControl(v) {
 		fields["displayName"] = document.Encode(v)
 	}
 	if b.GlobalPriority != nil {
 		fields["globalPriority"] = strconv.FormatInt(*b.GlobalPriority, 10)
 	}
-	if b.DefaultModel != nil && len(*b.DefaultModel) <= maxNameBytes && !hasControl(*b.DefaultModel) {
+	if b.DefaultModel != nil && len(*b.DefaultModel) <= maxNameBytes && !text.HasControl(*b.DefaultModel) {
 		fields["defaultModel"] = document.Encode(*b.DefaultModel)
 	}
 	authType := "apikey"
@@ -408,7 +407,7 @@ func (c *ProvidersController) Update(ctx contractshttp.Context) contractshttp.Re
 		switch key {
 		case "name":
 			var s string
-			if json.Unmarshal(val, &s) != nil || strings.TrimSpace(s) == "" || len(s) > maxNameBytes || hasControl(s) {
+			if json.Unmarshal(val, &s) != nil || strings.TrimSpace(s) == "" || len(s) > maxNameBytes || text.HasControl(s) {
 				return flat(ctx, nethttp.StatusBadRequest, "Invalid name")
 			}
 			s = strings.TrimSpace(s)
@@ -437,7 +436,7 @@ func (c *ProvidersController) Update(ctx contractshttp.Context) contractshttp.Re
 			}
 		case "defaultModel", "displayName":
 			var v *string
-			if json.Unmarshal(val, &v) != nil || (v != nil && (len(*v) > maxNameBytes || hasControl(*v))) {
+			if json.Unmarshal(val, &v) != nil || (v != nil && (len(*v) > maxNameBytes || text.HasControl(*v))) {
 				return flat(ctx, nethttp.StatusBadRequest, "Invalid "+key)
 			}
 			if v == nil {
@@ -447,7 +446,7 @@ func (c *ProvidersController) Update(ctx contractshttp.Context) contractshttp.Re
 			}
 		case "apiKey":
 			var v string
-			if json.Unmarshal(val, &v) != nil || len(v) > maxSecretBytes || hasControl(v) {
+			if json.Unmarshal(val, &v) != nil || len(v) > maxSecretBytes || text.HasControl(v) {
 				return flat(ctx, nethttp.StatusBadRequest, "Invalid api key")
 			}
 			// An empty key keeps the saved one: the edit form cannot read it back.
@@ -608,7 +607,7 @@ func cleanHeaders(in map[string]any) (map[string]string, string) {
 		if blockedHeaders[strings.ToLower(name)] {
 			return nil, "Header " + name + " cannot be overridden"
 		}
-		if hasControl(s) {
+		if text.HasControl(s) {
 			return nil, "Invalid value for header " + name
 		}
 		if len(s) > maxHeaderValue {
@@ -643,9 +642,6 @@ func safeName(n string) string {
 	}
 	return "(invalid name)"
 }
-
-// hasControl reports any control character, C1 included.
-func hasControl(s string) bool { return strings.IndexFunc(s, unicode.IsControl) >= 0 }
 
 // bindJSON decodes the request body into v, refusing one over 1 MiB.
 func bindJSON(ctx contractshttp.Context, v any) error {

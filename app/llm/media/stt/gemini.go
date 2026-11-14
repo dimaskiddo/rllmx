@@ -37,7 +37,7 @@ func (Gemini) Build(_ context.Context, r media.Request, _ media.Client) (media.C
 	if err != nil {
 		return media.Call{}, media.BadRequestf("the upload cannot be built")
 	}
-	base := strings.TrimRight(media.BaseURL(r), "/")
+	base := media.BaseURL(r)
 	if base == "" {
 		return media.Call{}, media.BadRequestf("the provider names no address")
 	}

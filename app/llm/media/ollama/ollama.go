@@ -23,7 +23,7 @@ func (Embeddings) Build(_ context.Context, r media.Request, _ media.Client) (med
 	// endpoint, and either way the call goes to /v1/embeddings.
 	base := strings.TrimRight(r.Account["baseUrl"], "/")
 	if base == "" {
-		base = strings.TrimRight(media.BaseURL(r), "/")
+		base = media.BaseURL(r)
 	}
 	if base == "" {
 		base = "http://localhost:11434"

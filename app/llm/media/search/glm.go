@@ -1,6 +1,7 @@
 package search
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -56,9 +57,9 @@ func (GLM) Parse(_ context.Context, r media.Request, _ media.Client, status int,
 		if i >= count(r, "max_results") {
 			break
 		}
-		out = append(out, item("glm", i+1, v.Get("title").String(), firstOf(v.Get("link").String(), v.Get("url").String())).
+		out = append(out, item("glm", i+1, v.Get("title").String(), cmp.Or(v.Get("link").String(), v.Get("url").String())).
 			withSnippet(v.Get("content").String()).
-			withPublished(firstOf(v.Get("publish_date").String(), v.Get("published_at").String())).
+			withPublished(cmp.Or(v.Get("publish_date").String(), v.Get("published_at").String())).
 			withFavicon(v.Get("icon").String()).
 			withSource(v.Get("media").String()))
 	}

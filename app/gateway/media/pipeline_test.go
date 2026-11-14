@@ -261,10 +261,11 @@ func TestARefusedKeyIsAnsweredAndRecorded(t *testing.T) {
 		Usage:    sink, Now: time.Now,
 	})
 	out := p.Embeddings(context.Background(), gatewaymedia.Input{Path: "/v1/embeddings", Body: []byte(`{"model":"text-embedding-3-small","input":"hi"}`)})
-	if out.Status != http.StatusUnauthorized {
+	// A refused credential is the router's problem: the client keeps its good key.
+	if out.Status != http.StatusBadGateway {
 		t.Fatalf("%d %s", out.Status, out.Body)
 	}
-	if row := sink.All(); len(row) != 1 || row[0].Status != http.StatusUnauthorized || row[0].ErrorClass != "auth" {
+	if row := sink.All(); len(row) != 1 || row[0].Status != http.StatusBadGateway || row[0].ErrorClass != "auth" {
 		t.Fatalf("%+v", row)
 	}
 }

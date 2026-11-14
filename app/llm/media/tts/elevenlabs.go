@@ -29,7 +29,7 @@ func (ElevenLabs) Build(_ context.Context, r media.Request, _ media.Client) (med
 	if err != nil {
 		return media.Call{}, err
 	}
-	base := strings.TrimRight(media.BaseURL(r), "/")
+	base := media.BaseURL(r)
 	if base == "" {
 		base = "https://api.elevenlabs.io/v1/text-to-speech"
 	}

@@ -400,3 +400,27 @@ func TestUnavailableKeepsTheUpstreamHintsButNotItsRetryAfter(t *testing.T) {
 		t.Error("the caller's headers must not be changed")
 	}
 }
+
+func TestAnUpstreamStatusReadsTheSameOnEveryRoute(t *testing.T) {
+	for status, want := range map[int]struct {
+		class  string
+		client int
+	}{
+		200: {"none", 502},
+		400: {"invalid_request", 400},
+		401: {"auth", 502},
+		402: {"quota", 402},
+		403: {"access_denied", 502},
+		404: {"not_found", 404},
+		429: {"rate_limit", 429},
+		500: {"upstream_5xx", 500},
+		504: {"timeout", 504},
+	} {
+		if got := ClassOf(status); got != want.class {
+			t.Errorf("ClassOf(%d) = %q, want %q", status, got, want.class)
+		}
+		if got := ClientStatus(status); got != want.client {
+			t.Errorf("ClientStatus(%d) = %d, want %d", status, got, want.client)
+		}
+	}
+}

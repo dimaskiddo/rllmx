@@ -12,6 +12,7 @@ import (
 	"rllmx/app/gateway/catalog"
 	"rllmx/app/llm/oauth"
 	"rllmx/app/llm/upstream"
+	"rllmx/app/platform/text"
 	"rllmx/app/store/document"
 )
 
@@ -69,7 +70,7 @@ func (c *ProvidersController) Validate(ctx contractshttp.Context) contractshttp.
 	if err := bindJSON(ctx, &b); err != nil {
 		return flat(ctx, nethttp.StatusBadRequest, "Invalid request body")
 	}
-	if hasControl(b.Provider) || hasControl(b.ModelID) || len(b.ModelID) > maxNameBytes || len(b.APIKey) > maxSecretBytes || hasControl(b.APIKey) {
+	if text.HasControl(b.Provider) || text.HasControl(b.ModelID) || len(b.ModelID) > maxNameBytes || len(b.APIKey) > maxSecretBytes || text.HasControl(b.APIKey) {
 		return flat(ctx, nethttp.StatusBadRequest, "Invalid request body")
 	}
 	provider := strings.TrimSpace(b.Provider)
@@ -232,7 +233,7 @@ func (c *NodesController) Validate(ctx contractshttp.Context) contractshttp.Resp
 	if strings.TrimSpace(b.BaseURL) == "" || strings.TrimSpace(b.APIKey) == "" {
 		return flat(ctx, nethttp.StatusBadRequest, "Base URL and API key required")
 	}
-	if hasControl(b.BaseURL) || hasControl(b.APIKey) || hasControl(b.ModelID) || len(b.ModelID) > maxNameBytes || len(b.APIKey) > maxSecretBytes {
+	if text.HasControl(b.BaseURL) || text.HasControl(b.APIKey) || text.HasControl(b.ModelID) || len(b.ModelID) > maxNameBytes || len(b.APIKey) > maxSecretBytes {
 		return flat(ctx, nethttp.StatusBadRequest, "Invalid request body")
 	}
 	typ := b.Type

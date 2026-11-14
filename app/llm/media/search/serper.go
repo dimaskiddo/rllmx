@@ -1,6 +1,7 @@
 package search
 
 import (
+	"cmp"
 	"context"
 	"net/http"
 	"strings"
@@ -49,7 +50,7 @@ func (Serper) Parse(_ context.Context, r media.Request, _ media.Client, status i
 			break
 		}
 		out = append(out, item("serper", i+1, v.Get("title").String(), v.Get("link").String()).
-			withSnippet(firstOf(v.Get("snippet").String(), v.Get("description").String())).
+			withSnippet(cmp.Or(v.Get("snippet").String(), v.Get("description").String())).
 			withPublished(v.Get("date").String()))
 	}
 	var total *int

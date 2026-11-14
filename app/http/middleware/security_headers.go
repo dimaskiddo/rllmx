@@ -8,11 +8,32 @@ import (
 
 // SecurityHeaders sets the headers every response carries. The reference sets
 // none of them, because a browser only ever loads its dashboard from the same
-// origin; behind a reverse proxy that is not true here.
+// origin; behind a reverse proxy that is not true here. A page and the dashboard
+// API get the full set; the client API gets only what leaves its open CORS alone.
 type SecurityHeaders struct {
 	// Trust decides whether the caller arrived over HTTPS, so HSTS is sent only
 	// where it can be honoured and a plain-HTTP caller is never told to upgrade.
 	Trust apphttp.Trust
+}
+
+const (
+	// pagePolicy lets a page load only from its own origin and forbids what a
+	// dashboard never needs: a base address, a plug-in object, a form that posts
+	// elsewhere and being framed.
+	pagePolicy = "default-src 'self'; base-uri 'none'; form-action 'self'; object-src 'none'; frame-ancestors 'none'"
+	// permissions turns off every browser capability the dashboard has no use for.
+	permissions = "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
+)
+
+// isolate keeps a page and the dashboard API to their own origin: no other
+// window shares its browsing context, no other site embeds its answers, and no
+// frame holds it. The client API is left out, because its CORS is open on
+// purpose and a cross-origin policy would close it again.
+func isolate(ctx contractshttp.Context) {
+	ctx.Response().Header("Permissions-Policy", permissions)
+	ctx.Response().Header("Cross-Origin-Opener-Policy", "same-origin")
+	ctx.Response().Header("Cross-Origin-Resource-Policy", "same-origin")
+	ctx.Response().Header("X-Frame-Options", "DENY")
 }
 
 // Signature is how the stack names this middleware.
@@ -29,10 +50,12 @@ func (m *SecurityHeaders) Handle(ctx contractshttp.Context) {
 	switch {
 	case apphttp.IsDashboardAPI(r.URL.Path):
 		ctx.Response().Header("Cache-Control", "no-store")
+		isolate(ctx)
 	case apphttp.IsClientAPI(r.URL.Path):
 	default:
-		ctx.Response().Header("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'")
+		ctx.Response().Header("Content-Security-Policy", pagePolicy)
 		ctx.Response().Header("Referrer-Policy", "no-referrer")
+		isolate(ctx)
 	}
 
 	if m.Trust.SecureRequest(r) {

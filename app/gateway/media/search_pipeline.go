@@ -12,6 +12,7 @@ import (
 	"golang.org/x/text/unicode/norm"
 
 	"rllmx/app/llm/upstream"
+	appfailure "rllmx/app/platform/failure"
 	"rllmx/app/platform/network"
 	apptext "rllmx/app/platform/text"
 )
@@ -44,7 +45,7 @@ func (p *Pipeline) service(ctx context.Context, kind string, in Input) Output {
 	row, done := p.record(in)
 	defer done()
 	bad := func(status int, msg string) Output {
-		row.Status, row.ErrorClass = status, classOf(status)
+		row.Status, row.ErrorClass = status, appfailure.ClassOf(status)
 		return failureOutput(status, msg)
 	}
 
@@ -163,7 +164,7 @@ func (p *Pipeline) fetchBody(ctx context.Context, body gjson.Result, cfg *upstre
 	if target == "" || len(target) > maxFetchURL || apptext.HasASCIIControl(target) {
 		return nil, "The request names no address"
 	}
-	if err := network.CheckPublic(ctx, target, p.d.Network.Allow); err != nil {
+	if err := network.CheckPublic(ctx, target, nil); err != nil {
 		return nil, "The address is not one a fetch may reach"
 	}
 	format := strings.ToLower(strings.TrimSpace(body.Get("format").String()))

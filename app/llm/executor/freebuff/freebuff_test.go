@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/tidwall/gjson"
 
@@ -121,5 +122,19 @@ func TestFreebuffAKeylessCallSendsNothing(t *testing.T) {
 	}
 	if len(up.Calls()) != 0 {
 		t.Fatal("a call went out")
+	}
+}
+
+func TestFreebuffDoesNotHoldAGoneClientForTheClose(t *testing.T) {
+	// The closing call hangs. A client that has already left must not wait the
+	// full bound for it.
+	up := tests.NewUpstream(t, tests.Reply{Hang: true})
+	f := &Freebuff{Default: &executor.Default{Client: up.Server.Client()}, Sessions: &freebuffSessions{id: "inst-1"}}
+	ctx, cancel := context.WithCancel(context.Background())
+	started := time.Now()
+	time.AfterFunc(50*time.Millisecond, cancel)
+	f.finish(ctx, freebuffReq(up), "run-1", "completed")
+	if took := time.Since(started); took > 3*time.Second {
+		t.Fatalf("finish held a gone client for %s", took)
 	}
 }

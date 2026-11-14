@@ -281,14 +281,18 @@ func TestTwoSimultaneousPollsMakeOneProviderCall(t *testing.T) {
 	s := r.start(t)
 	r.advance(6 * time.Second)
 	var wg sync.WaitGroup
+	var entered atomic.Int32
 	for range 8 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			entered.Add(1)
 			r.svc.PollDevice(context.Background(), s.State, "bind")
 		}()
 	}
-	time.Sleep(100 * time.Millisecond)
+	// The one call that reaches the provider blocks on pollWait; the others
+	// wait behind it. Every caller is in before the provider is released.
+	waitFor(t, func() bool { return entered.Load() == 8 && r.p.tokens.Load() == 1 })
 	close(r.p.pollWait)
 	wg.Wait()
 	if n := r.p.tokens.Load(); n != 1 {
@@ -379,5 +383,18 @@ func TestTheMintSendsOnlyItsOwnHeaders(t *testing.T) {
 	}
 	if got.Get("Copilot-Integration-Id") != "" {
 		t.Fatal("a chat header went to the mint")
+	}
+}
+
+// waitFor polls a condition until it holds, so a test waits for a state, not for
+// a guessed length of time.
+func waitFor(t *testing.T, ok func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for !ok() {
+		if time.Now().After(deadline) {
+			t.Fatal("the awaited state was never reached")
+		}
+		time.Sleep(time.Millisecond)
 	}
 }

@@ -108,7 +108,7 @@ func TestEveryWriterProducesValidJSONForEveryReaderOutput(t *testing.T) {
 
 func TestEveryFormatIsRegistered(t *testing.T) {
 	got := strings.Join(Formats(), ",")
-	if got != "claude,gemini,gemini-cli,ollama,openai,openai-responses,vertex" {
+	if got != "claude,commandcode,cursor,gemini,gemini-cli,kiro,ollama,openai,openai-responses,vertex" {
 		t.Fatalf("formats %s", got)
 	}
 	if w := strings.Join(WriteFormats(), ","); w != "claude,gemini,gemini-cli,ollama,openai,openai-responses,vertex" {

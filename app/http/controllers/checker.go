@@ -17,6 +17,7 @@ import (
 	"rllmx/app/llm/upstream"
 	"rllmx/app/platform/file"
 	"rllmx/app/platform/network"
+	"rllmx/app/platform/text"
 )
 
 // Outcome is the closed set of answers a key check can give. Each has one fixed
@@ -552,7 +553,7 @@ func parseModels(data []byte) ([]ModelEntry, Outcome) {
 		}
 		id, _ := it["id"].(string)
 		name, _ := it["name"].(string)
-		if id == "" || len(id) > maxModelIDLen || hasControl(id) || len(name) > maxModelIDLen || hasControl(name) {
+		if id == "" || len(id) > maxModelIDLen || text.HasControl(id) || len(name) > maxModelIDLen || text.HasControl(name) {
 			continue
 		}
 		out = append(out, ModelEntry{ID: id, Name: name})

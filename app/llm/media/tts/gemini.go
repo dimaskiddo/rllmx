@@ -39,7 +39,7 @@ func (Gemini) Build(_ context.Context, r media.Request, _ media.Client) (media.C
 	if err != nil {
 		return media.Call{}, err
 	}
-	base := strings.TrimRight(media.BaseURL(r), "/")
+	base := media.BaseURL(r)
 	if base == "" {
 		base = "https://generativelanguage.googleapis.com/v1beta/models"
 	}

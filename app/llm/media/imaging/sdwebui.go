@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"strings"
 
 	"github.com/tidwall/gjson"
 
@@ -20,7 +19,7 @@ func (SDWebUI) Kind() string { return upstream.KindImage }
 
 // Build makes the txt2img call.
 func (SDWebUI) Build(_ context.Context, r media.Request, _ media.Client) (media.Call, error) {
-	base := strings.TrimRight(media.BaseURL(r), "/")
+	base := media.BaseURL(r)
 	if base == "" {
 		return media.Call{}, media.BadRequestf("the provider names no address")
 	}
@@ -43,7 +42,7 @@ func (SDWebUI) Build(_ context.Context, r media.Request, _ media.Client) (media.
 }
 
 // Parse reads the base64 images.
-func (SDWebUI) Parse(_ context.Context, _ media.Request, _ media.Client, status int, header http.Header, body []byte) (media.Response, error) {
+func (SDWebUI) Parse(_ context.Context, _ media.Request, _ media.Client, status int, _ http.Header, body []byte) (media.Response, error) {
 	if status < 200 || status > 299 {
 		return media.Response{}, &media.ProviderError{Status: status, Text: "the provider refused the image"}
 	}
@@ -56,6 +55,5 @@ func (SDWebUI) Parse(_ context.Context, _ media.Request, _ media.Client, status 
 	if len(images) == 0 {
 		return media.Response{}, &media.ProviderError{Status: http.StatusBadGateway, Text: "the provider answered no image"}
 	}
-	_ = header
 	return imageList(images), nil
 }

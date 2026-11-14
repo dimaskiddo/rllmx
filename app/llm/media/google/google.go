@@ -7,9 +7,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 
 	"rllmx/app/llm/media"
 	"rllmx/app/llm/upstream"
@@ -23,7 +25,7 @@ func (Embeddings) Kind() string { return upstream.KindEmbedding }
 
 // Build makes one call for a string input and a batch call for a list.
 func (Embeddings) Build(_ context.Context, r media.Request, _ media.Client) (media.Call, error) {
-	base := strings.TrimRight(media.BaseURL(r), "/")
+	base := media.BaseURL(r)
 	if base == "" {
 		return media.Call{}, media.BadRequestf("the provider names no address")
 	}
@@ -73,7 +75,11 @@ func (Embeddings) Build(_ context.Context, r media.Request, _ media.Client) (med
 		return media.Call{}, media.BadRequestf("the request cannot be built")
 	}
 	if d := gjson.GetBytes(r.Body, "dimensions"); d.Type == gjson.Number {
-		body, _ = setDimensions(body, d.Int(), len(texts))
+		resized, err := setDimensions(body, d.Int())
+		if err != nil {
+			return media.Call{}, media.BadRequestf("the request cannot be built")
+		}
+		body = resized
 	}
 	return media.Call{Method: http.MethodPost, URL: withQuery(target, q), Header: h, Body: body}, nil
 }
@@ -107,7 +113,7 @@ func (Images) Kind() string { return upstream.KindImage }
 
 // Build makes the generateContent call.
 func (Images) Build(_ context.Context, r media.Request, _ media.Client) (media.Call, error) {
-	base := strings.TrimRight(media.BaseURL(r), "/")
+	base := media.BaseURL(r)
 	if base == "" {
 		return media.Call{}, media.BadRequestf("the provider names no address")
 	}
@@ -142,23 +148,24 @@ func (Images) Parse(_ context.Context, r media.Request, _ media.Client, status i
 	if len(data) == 0 {
 		return media.Response{}, &media.ProviderError{Status: http.StatusBadGateway, Text: "the provider answered no image"}
 	}
-	out, _ := json.Marshal(map[string]any{"created": 0, "data": data})
+	out, _ := json.Marshal(map[string]any{"created": media.NowSec(), "data": data})
 	return media.Response{Status: http.StatusOK, Header: map[string]string{"Content-Type": "application/json"}, Body: out}, nil
 }
 
-func setDimensions(body []byte, d int64, _ int) ([]byte, error) {
-	var obj map[string]any
-	if err := json.Unmarshal(body, &obj); err != nil {
-		return nil, err
+// setDimensions asks for a smaller vector: on every request of a batch, or on
+// the single request.
+func setDimensions(body []byte, d int64) ([]byte, error) {
+	reqs := gjson.GetBytes(body, "requests")
+	if !reqs.IsArray() {
+		return sjson.SetBytes(body, "outputDimensionality", d)
 	}
-	if reqs, ok := obj["requests"].([]any); ok {
-		for _, r := range reqs {
-			r.(map[string]any)["outputDimensionality"] = d
+	var err error
+	for i := range reqs.Array() {
+		if body, err = sjson.SetBytes(body, "requests."+strconv.Itoa(i)+".outputDimensionality", d); err != nil {
+			return nil, err
 		}
-		return json.Marshal(obj)
 	}
-	obj["outputDimensionality"] = d
-	return json.Marshal(obj)
+	return body, nil
 }
 
 func withQuery(base string, q url.Values) string {

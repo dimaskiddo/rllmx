@@ -1,6 +1,7 @@
 package search
 
 import (
+	"cmp"
 	"context"
 	"net/http"
 	"net/url"
@@ -61,10 +62,10 @@ func (SearXNG) Parse(_ context.Context, r media.Request, _ media.Client, status 
 			engines = append(engines, e.String())
 		}
 		out = append(out, item("searxng", i+1, v.Get("title").String(), v.Get("url").String()).
-			withSnippet(firstOf(v.Get("content").String(), v.Get("snippet").String())).
-			withPublished(firstOf(v.Get("publishedDate").String(), v.Get("published_date").String())).
-			withSource(firstOf(strings.Join(engines, ", "), v.Get("engine").String(), v.Get("category").String())).
-			withImage(firstOf(v.Get("thumbnail").String(), v.Get("img_src").String())))
+			withSnippet(cmp.Or(v.Get("content").String(), v.Get("snippet").String())).
+			withPublished(cmp.Or(v.Get("publishedDate").String(), v.Get("published_date").String())).
+			withSource(cmp.Or(strings.Join(engines, ", "), v.Get("engine").String(), v.Get("category").String())).
+			withImage(cmp.Or(v.Get("thumbnail").String(), v.Get("img_src").String())))
 	}
 	total := len(out)
 	return reply("searxng", field(r, "query"), out, nil, usage{QueriesUsed: 1, SearchCost: free()}, &total, nil)

@@ -31,7 +31,7 @@ func (Cloudflare) Kind() string { return upstream.KindImage }
 
 // Build makes the call, multipart for the models that need it.
 func (Cloudflare) Build(ctx context.Context, r media.Request, c media.Client) (media.Call, error) {
-	base := strings.TrimRight(media.BaseURL(r), "/")
+	base := media.BaseURL(r)
 	account := strings.TrimSpace(r.Account["accountId"])
 	if base == "" || account == "" || strings.ContainsAny(account, "/?#") {
 		return media.Call{}, media.BadRequestf("the connection names no account")

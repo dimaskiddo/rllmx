@@ -30,7 +30,7 @@ func (MiniMax) Build(_ context.Context, r media.Request, _ media.Client) (media.
 	if err != nil {
 		return media.Call{}, err
 	}
-	base := strings.TrimRight(media.BaseURL(r), "/")
+	base := media.BaseURL(r)
 	if base == "" {
 		base = "https://api.minimax.io"
 	}

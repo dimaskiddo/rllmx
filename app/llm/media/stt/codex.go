@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/tidwall/gjson"
+
 	"rllmx/app/llm/media"
 )
 
@@ -66,9 +68,9 @@ func (c *Codex) Direct(ctx context.Context, r media.Request, cl media.Client) (m
 		return media.Response{}, refusal(status, "the provider refused the transcription")
 	}
 	if field(r, "response_format") == "text" {
-		return media.Response{Status: http.StatusOK, Header: map[string]string{"Content-Type": "text/plain", "Cache-Control": "no-store"}, Body: []byte(gjsonText(body))}, nil
+		return media.Response{Status: http.StatusOK, Header: map[string]string{"Content-Type": "text/plain", "Cache-Control": "no-store"}, Body: []byte(gjson.GetBytes(body, "text").String())}, nil
 	}
-	raw, _ := json.Marshal(map[string]string{"text": gjsonText(body)})
+	raw, _ := json.Marshal(map[string]string{"text": gjson.GetBytes(body, "text").String()})
 	return media.Response{Status: http.StatusOK, Header: map[string]string{"Content-Type": "application/json", "Cache-Control": "no-store"}, Body: raw}, nil
 }
 
@@ -118,12 +120,4 @@ func wav24kMono(b []byte) bool {
 		off += off % 2
 	}
 	return false
-}
-
-func gjsonText(body []byte) string {
-	var v struct {
-		Text string `json:"text"`
-	}
-	_ = json.Unmarshal(body, &v)
-	return v.Text
 }

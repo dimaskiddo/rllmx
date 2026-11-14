@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"net/http"
+	neturl "net/url"
 	"strings"
 
 	"rllmx/app/llm/executor/cursor"
@@ -47,7 +48,7 @@ func kiroFetcher(e upstream.Entry, client *http.Client) Fetcher {
 		profile := accountValue(conn, "profileArn")
 		url := joinURL(e.Transport.BaseURL, "/ListAvailableModels?origin=AI_EDITOR")
 		if profile != "" {
-			url += "&profileArn=" + profile
+			url += "&profileArn=" + neturl.QueryEscape(profile)
 		}
 		raw, err := readGet(ctx, client, url, token, map[string]string{"x-amzn-kiro-agent-mode": "vibe"})
 		if err != nil {

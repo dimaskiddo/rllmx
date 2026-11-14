@@ -76,6 +76,54 @@ func TestSecurityHeadersOnEveryResponse(t *testing.T) {
 	}
 }
 
+// hardening is the set a page and the dashboard API carry and the client API
+// does not: the client API is read by other origins on purpose.
+var hardening = map[string]string{
+	"Permissions-Policy":           "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()",
+	"Cross-Origin-Opener-Policy":   "same-origin",
+	"Cross-Origin-Resource-Policy": "same-origin",
+	"X-Frame-Options":              "DENY",
+}
+
+func TestSecurityHeadersHardenPagesAndTheDashboardAPIButNotTheClientAPI(t *testing.T) {
+	for _, path := range []string{"/api/thing", "/", "/dashboard/home"} {
+		rec := getOnly(t, path, &SecurityHeaders{}, nil)
+		for name, want := range hardening {
+			if got := rec.Header().Get(name); got != want {
+				t.Errorf("%s %s = %q, want %q", path, name, got, want)
+			}
+		}
+	}
+	for _, path := range []string{"/v1/chat/completions", "/v1beta/models"} {
+		rec := getOnly(t, path, &SecurityHeaders{}, nil)
+		for name := range hardening {
+			if got := rec.Header().Get(name); got != "" {
+				t.Errorf("%s carries %s %q, which would break a browser client's CORS call", path, name, got)
+			}
+		}
+	}
+}
+
+func TestThePagePolicyForbidsBaseObjectAndForeignFormTargets(t *testing.T) {
+	csp := getOnly(t, "/", &SecurityHeaders{}, nil).Header().Get("Content-Security-Policy")
+	for _, want := range []string{"default-src 'self'", "base-uri 'none'", "form-action 'self'", "object-src 'none'", "frame-ancestors 'none'"} {
+		if !strings.Contains(csp, want) {
+			t.Errorf("the page policy lacks %q: %s", want, csp)
+		}
+	}
+}
+
+func TestNoResponseNamesTheServer(t *testing.T) {
+	for _, path := range []string{"/api/thing", "/v1/chat/completions", "/"} {
+		h := getOnly(t, path, &SecurityHeaders{}, nil).Header()
+		for _, name := range []string{"Server", "X-Powered-By"} {
+			if got := h.Get(name); got != "" {
+				t.Errorf("%s sent %s %q", path, name, got)
+			}
+		}
+	}
+}
+
 func TestSecurityHeadersSendHSTSOnlyWhenTheCallerArrivedOverHTTPS(t *testing.T) {
 	proxy := apphttp.NewTrust([]netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")})
 	cases := []struct {

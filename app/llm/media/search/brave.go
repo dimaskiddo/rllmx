@@ -1,6 +1,7 @@
 package search
 
 import (
+	"cmp"
 	"context"
 	"net/http"
 	"net/url"
@@ -55,8 +56,8 @@ func (Brave) Parse(_ context.Context, r media.Request, _ media.Client, status in
 		}
 		out = append(out, item("brave-search", i+1, v.Get("title").String(), v.Get("url").String()).
 			withSnippet(v.Get("description").String()).
-			withPublished(firstOf(v.Get("page_age").String(), v.Get("age").String())).
-			withFavicon(firstOf(v.Get("meta_url.favicon").String(), v.Get("favicon").String())))
+			withPublished(cmp.Or(v.Get("page_age").String(), v.Get("age").String())).
+			withFavicon(cmp.Or(v.Get("meta_url.favicon").String(), v.Get("favicon").String())))
 	}
 	var total *int
 	if t := container.Get("totalCount"); t.Type == gjson.Number {

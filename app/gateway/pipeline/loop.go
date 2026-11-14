@@ -102,9 +102,9 @@ func (c *call) noAccount(ctx context.Context, err error, last *accountFail, sawE
 func (c *call) upstreamFail(f *accountFail) Output {
 	class := f.class
 	if class == "" {
-		class = classOf(f.status)
+		class = failure.ClassOf(f.status)
 	}
-	return c.fail(clientStatus(f.status), class, f.text)
+	return c.fail(failure.ClientStatus(f.status), class, f.text)
 }
 
 // expired answers a request that found only accounts to be reconnected. It is

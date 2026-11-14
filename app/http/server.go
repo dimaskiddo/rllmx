@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -94,21 +95,35 @@ func (s *Server) ShouldRun() bool { return true }
 // ShutdownPriority orders the stop: groups go in ascending order.
 func (s *Server) ShutdownPriority() int { return shutdownPriority }
 
-// handler counts the requests in flight, so a stop can wait for them.
+// handler counts the requests in flight, so a stop can wait for them, and puts
+// the compressed writer below everything the router builds, so both a handler's
+// answer and a stream pass through it.
 func (s *Server) handler() nethttp.Handler {
+	next := Compress(s.settings.Compression, s.next)
 	return nethttp.HandlerFunc(func(w nethttp.ResponseWriter, r *nethttp.Request) {
 		s.inflight.Add(1)
 		defer s.inflight.Add(-1)
-		s.next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r)
 	})
 }
 
 func (s *Server) build() *nethttp.Server {
+	protocols := new(nethttp.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetHTTP2(true)
+	// The plain listener speaks HTTP/2 only when the operator asks: a proxy that
+	// multiplexes streams wants it, and anything else is a client that meant
+	// HTTP/1.
+	protocols.SetUnencryptedHTTP2(s.settings.H2C)
 	return &nethttp.Server{
 		Handler:           s.handler(),
 		ReadHeaderTimeout: s.settings.ReadHeaderTimeout,
 		IdleTimeout:       s.settings.IdleTimeout,
 		MaxHeaderBytes:    s.settings.HeaderLimitKiB << 10,
+		Protocols:         protocols,
+		// A stated floor instead of Go's own: TLS 1.2 is the oldest this router
+		// answers on, in case a future default moves.
+		TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12},
 	}
 }
 

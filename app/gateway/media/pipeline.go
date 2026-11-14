@@ -18,6 +18,7 @@ import (
 	"rllmx/app/gateway/account"
 	"rllmx/app/llm/executor"
 	"rllmx/app/llm/media"
+	"rllmx/app/llm/oauth"
 	"rllmx/app/llm/upstream"
 	appfailure "rllmx/app/platform/failure"
 	appfile "rllmx/app/platform/file"
@@ -104,8 +105,6 @@ type Deps struct {
 	// Network is the guarded dialer's configuration, for an adapter that opens a
 	// socket of its own.
 	Network network.Options
-	// Timeout bounds one media call; zero takes the kind's own bound.
-	Timeout time.Duration
 	// VideoTimeout bounds one video call; zero takes the reference's default.
 	VideoTimeout time.Duration
 	// SearxngURL is the instance a searxng search is sent to; empty serves none.
@@ -170,9 +169,6 @@ func (p *Pipeline) timeout(kind string, cfg *upstream.MediaConfig) time.Duration
 	if cfg != nil && cfg.TimeoutMs > 0 {
 		return time.Duration(cfg.TimeoutMs) * time.Millisecond
 	}
-	if p.d.Timeout > 0 {
-		return p.d.Timeout
-	}
 	switch kind {
 	case upstream.KindImage:
 		return 150 * time.Second
@@ -199,7 +195,7 @@ func (p *Pipeline) timeout(kind string, cfg *upstream.MediaConfig) time.Duration
 func (p *Pipeline) Embeddings(ctx context.Context, in Input) Output {
 	parsed, out, ok := parseJSON(in.Body)
 	if !ok {
-		return out
+		return p.reject(in, out)
 	}
 	return p.run(ctx, upstream.KindEmbedding, in, parsed)
 }
@@ -209,7 +205,7 @@ func (p *Pipeline) Embeddings(ctx context.Context, in Input) Output {
 func (p *Pipeline) Images(ctx context.Context, in Input) Output {
 	parsed, bad, ok := parseJSON(in.Body)
 	if !ok {
-		return bad
+		return p.reject(in, bad)
 	}
 	out := p.run(ctx, upstream.KindImage, in, parsed)
 	if !in.Binary || out.Status < 200 || out.Status > 299 {
@@ -251,7 +247,7 @@ func (p *Pipeline) run(ctx context.Context, kind string, in Input, req parsed) O
 	defer done()
 
 	bad := func(status int, msg string) Output {
-		row.Status, row.ErrorClass = status, classOf(status)
+		row.Status, row.ErrorClass = status, appfailure.ClassOf(status)
 		return failureOutput(status, msg)
 	}
 
@@ -289,6 +285,15 @@ func (p *Pipeline) record(in Input) (*analytics.Record, func()) {
 			p.d.Usage.Enqueue(*row)
 		}
 	}
+}
+
+// reject answers a request refused before any account was chosen, and leaves
+// the one usage row every request owns.
+func (p *Pipeline) reject(in Input, out Output) Output {
+	row, done := p.record(in)
+	row.Status, row.ErrorClass = out.Status, appfailure.ClassOf(out.Status)
+	done()
+	return out
 }
 
 // serve walks the provider's accounts for one resolved request. lockModel names
@@ -478,21 +483,31 @@ func (p *Pipeline) noAccount(ctx context.Context, err error, provider, model str
 // try runs the request on one account. done says the answer is final for this
 // request; otherwise another account is tried.
 func (p *Pipeline) try(ctx context.Context, kind string, adapter media.Handler, entry upstream.Entry, cfg *upstream.MediaConfig, ref upstream.MediaRef, lockModel string, conn repository.Connection, call media.Request, row *analytics.Record) (Output, bool) {
-	noAuth := cfg != nil && (cfg.AuthType == "none" || (entry.Media != nil && entry.Media.NoAuth))
+	started := p.now()
+	// A video poll reads a job the client names: a refusal says the id or the
+	// job is wrong, never that the account is, so nothing is reported.
+	// noReport covers it too, with a service that takes no credential.
+	noReport := call.JobID != "" || (cfg != nil && (cfg.AuthType == "none" || (entry.Media != nil && entry.Media.NoAuth)))
 	oauthed := conn.ID != "" && conn.AuthType == "oauth" && entry.OAuth != nil
 	if oauthed && p.d.Refresher != nil {
+		// Only a dead account stops the request: a token that looks due may still be
+		// accepted, so any other failure goes on with the one it has.
 		fresh, err := p.d.Refresher.Ready(ctx, conn)
-		if err != nil {
-			return p.accountFailed(ctx, conn, ref, lockModel, http.StatusUnauthorized, row, nil, "", noAuth)
+		switch {
+		case err == nil:
+			conn = fresh
+		case errors.Is(err, oauth.ErrExpired):
+			return p.accountFailed(ctx, conn, ref, lockModel, http.StatusUnauthorized, row, nil, "", noReport)
+		default:
+			p.logRefresh(ref, err)
 		}
-		conn = fresh
 	}
 	mints := oauthed && entry.OAuth.Mint != "" && p.d.Minter != nil
 	key := credential(conn, cfg)
 	if mints {
 		minted, err := p.d.Minter.Token(ctx, conn)
 		if err != nil {
-			return p.accountFailed(ctx, conn, ref, lockModel, http.StatusUnauthorized, row, nil, "", noAuth)
+			return p.mintFailed(ctx, err, conn, ref, lockModel, row, noReport)
 		}
 		key = minted
 	}
@@ -502,14 +517,15 @@ func (p *Pipeline) try(ctx context.Context, kind string, adapter media.Handler, 
 	if refused {
 		renewed, newKey, ok := p.renew(ctx, conn, entry, cfg, key, mints, row)
 		if !ok {
-			return p.accountFailed(ctx, conn, ref, lockModel, http.StatusUnauthorized, row, nil, "", noAuth)
+			return p.accountFailed(ctx, conn, ref, lockModel, http.StatusUnauthorized, row, nil, "", noReport)
 		}
 		conn, req.Credential = renewed, newKey
 		ans, refused, err = p.call(ctx, adapter, req)
 		if refused {
-			return p.accountFailed(ctx, conn, ref, lockModel, http.StatusUnauthorized, row, nil, "", noAuth)
+			return p.accountFailed(ctx, conn, ref, lockModel, http.StatusUnauthorized, row, nil, "", noReport)
 		}
 	}
+	p.keepRotated(ctx, conn, ref, ans)
 	if err != nil {
 		var br *media.BadRequest
 		if errors.As(err, &br) {
@@ -524,26 +540,64 @@ func (p *Pipeline) try(ctx context.Context, kind string, adapter media.Handler, 
 		}
 		var pe *media.ProviderError
 		if errors.As(err, &pe) {
-			return p.accountFailed(ctx, conn, ref, lockModel, pe.Status, row, nil, pe.Text, noAuth)
+			return p.accountFailed(ctx, conn, ref, lockModel, pe.Status, row, nil, pe.Text, noReport)
+		}
+		if ctx.Err() != nil {
+			row.Status, row.ErrorClass = 499, "client_closed"
+			return failureOutput(499, "The client closed the request"), true
 		}
 		row.Status, row.ErrorClass = http.StatusBadGateway, "network"
 		return failureOutput(http.StatusBadGateway, "The provider could not be reached"), true
 	}
 	out := Output{Status: ans.Status, Header: ans.Header, Body: ans.Body}
-	if ans.NewCredential != "" && conn.ID != "" && p.d.Credentials != nil {
-		// A web session hands back a fresh cookie; the answer already succeeded, so
-		// a store fault leaves the old value rather than failing the request.
-		_ = p.d.Credentials.UpdateApiKey(ctx, conn.ID, ans.NewCredential)
-	}
 	row.Status = out.Status
 	row.ErrorClass = "none"
 	if ans.Usage.Known {
 		row.PromptTokens, row.CompletionTokens = ans.Usage.Prompt, ans.Usage.Completion
 	}
-	if !noAuth {
-		p.succeed(ctx, conn, lockModel)
+	if !noReport {
+		p.succeed(ctx, conn, lockModel, started)
 	}
 	return out, true
+}
+
+// mintFailed answers a failed token mint. An unreachable token service is not
+// the account's fault, so it neither locks nor reports it; a refusal is.
+func (p *Pipeline) mintFailed(ctx context.Context, err error, conn repository.Connection, ref upstream.MediaRef, lockModel string, row *analytics.Record, noReport bool) (Output, bool) {
+	if ctx.Err() != nil {
+		row.Status, row.ErrorClass = http.StatusGatewayTimeout, "timeout"
+		return failureOutput(http.StatusGatewayTimeout, "The provider did not answer in time"), true
+	}
+	p.logRefresh(ref, err)
+	if oauth.ClassOf(err) == oauth.ClassTransport {
+		row.Status, row.ErrorClass = http.StatusBadGateway, "network"
+		return failureOutput(http.StatusBadGateway, "The provider could not be reached"), true
+	}
+	return p.accountFailed(ctx, conn, ref, lockModel, http.StatusUnauthorized, row, nil, "", noReport)
+}
+
+// logRefresh records a failed token call by its class, never its text.
+func (p *Pipeline) logRefresh(ref upstream.MediaRef, err error) {
+	if p.d.Log == nil {
+		return
+	}
+	class := string(oauth.ClassOf(err))
+	if class == "" {
+		class = "other"
+	}
+	p.d.Log.Warningf("media: token call failed: provider=%s class=%s", ref.Provider, class)
+}
+
+// keepRotated stores a credential the provider rotated during the call. The
+// provider has already retired the old value, so it is kept whether the call
+// then succeeded or not; a store fault is logged and leaves the old value.
+func (p *Pipeline) keepRotated(ctx context.Context, conn repository.Connection, ref upstream.MediaRef, ans media.Response) {
+	if ans.NewCredential == "" || conn.ID == "" || p.d.Credentials == nil {
+		return
+	}
+	if err := p.d.Credentials.UpdateApiKey(ctx, conn.ID, ans.NewCredential); err != nil && p.d.Log != nil {
+		p.d.Log.Warningf("media: storing a rotated credential failed: provider=%s", ref.Provider)
+	}
 }
 
 // renew replaces a refused credential once: a mint is reminted, a login is
@@ -579,7 +633,7 @@ func (p *Pipeline) call(ctx context.Context, adapter media.Handler, req media.Re
 	req.Network = p.d.Network
 	if direct, ok := adapter.(media.Director); ok {
 		ans, err := direct.Direct(cctx, req, client)
-		return ans, false, err
+		return ans, false, p.timedOut(ctx, cctx, err)
 	}
 	a, ok := adapter.(media.Adapter)
 	if !ok {
@@ -591,10 +645,7 @@ func (p *Pipeline) call(ctx context.Context, adapter media.Handler, req media.Re
 	}
 	status, header, body, err := client.Do(cctx, call.Method, call.URL, call.Header, call.Body)
 	if err != nil {
-		if cctx.Err() != nil && ctx.Err() == nil {
-			return media.Response{}, false, &media.ProviderError{Status: http.StatusGatewayTimeout, Text: "The provider did not answer in time"}
-		}
-		return media.Response{}, false, err
+		return media.Response{}, false, p.timedOut(ctx, cctx, err)
 	}
 	if status == http.StatusUnauthorized || status == http.StatusForbidden {
 		// The adapter never reads a refusal: the gateway renews and retries.
@@ -602,6 +653,20 @@ func (p *Pipeline) call(ctx context.Context, adapter media.Handler, req media.Re
 	}
 	out, err := a.Parse(cctx, req, p.d.Client, status, header, body)
 	return out, false, err
+}
+
+// timedOut maps an error to the deadline that caused it. A call that outran its
+// own bound is the provider being slow: a 504. A request whose client has gone
+// stays the context's error, which try answers as a closed client.
+func (p *Pipeline) timedOut(ctx, cctx context.Context, err error) error {
+	if err == nil || ctx.Err() != nil || cctx.Err() == nil {
+		return err
+	}
+	var pe *media.ProviderError
+	if errors.As(err, &pe) {
+		return err
+	}
+	return &media.ProviderError{Status: http.StatusGatewayTimeout, Text: "The provider did not answer in time"}
 }
 
 // accountFailed reports the failure and says whether this answer is final. A
@@ -614,8 +679,8 @@ func (p *Pipeline) accountFailed(ctx context.Context, conn repository.Connection
 		ConnID: conn.ID, Provider: ref.Provider, Model: lockModel, Status: status,
 	})
 	if err == nil && res.Fallback {
-		row.Status, row.ErrorClass = clientStatus(status), classOf(status)
-		return failureOutput(clientStatus(status), refusalText(msg)), false
+		row.Status, row.ErrorClass = appfailure.ClientStatus(status), appfailure.ClassOf(status)
+		return failureOutput(appfailure.ClientStatus(status), refusalText(msg)), false
 	}
 	return p.refusalOutput(status, row, out, msg), true
 }
@@ -625,8 +690,8 @@ func (p *Pipeline) refusalOutput(status int, row *analytics.Record, out *Output,
 	if out != nil {
 		return *out
 	}
-	client := clientStatus(status)
-	row.Status, row.ErrorClass = client, classOf(status)
+	client := appfailure.ClientStatus(status)
+	row.Status, row.ErrorClass = client, appfailure.ClassOf(status)
 	return failureOutput(client, refusalText(msg))
 }
 
@@ -638,11 +703,15 @@ func refusalText(msg string) string {
 	return "The provider refused the request"
 }
 
-func (p *Pipeline) succeed(ctx context.Context, conn repository.Connection, model string) {
+// succeed clears what an older failure left. started is when the attempt began,
+// so a failure a concurrent request wrote meanwhile is not cleared by it.
+func (p *Pipeline) succeed(ctx context.Context, conn repository.Connection, model string, started time.Time) {
 	if conn.ID == "" || p.d.Reporter == nil {
 		return
 	}
-	_ = p.d.Reporter.Succeed(ctx, conn.ID, model, p.now())
+	if err := p.d.Reporter.Succeed(ctx, conn.ID, model, started); err != nil && p.d.Log != nil {
+		p.d.Log.Warningf("media: clearing an account's failure state failed: provider=%s", conn.Provider)
+	}
 }
 
 func failureOutput(status int, msg string) Output {
@@ -658,29 +727,6 @@ func failureHeaders() map[string]string {
 		}
 	}
 	return out
-}
-
-func classOf(status int) string {
-	switch {
-	case status == 401 || status == 403:
-		return "auth"
-	case status == 404:
-		return "not_found"
-	case status == 429:
-		return "rate_limit"
-	case status >= 500:
-		return "upstream_5xx"
-	case status >= 400:
-		return "invalid_request"
-	}
-	return "unknown"
-}
-
-func clientStatus(status int) int {
-	if status >= 400 && status <= 499 {
-		return status
-	}
-	return http.StatusBadGateway
 }
 
 // sizePattern is a width and a height, as OpenAI's sizes and the vendors' own

@@ -26,6 +26,8 @@ Package status lives in `ROADMAP.md`, feature status in the parity tables.
 | `/api/cli-tools/*` config writers | deferred |
 | `/api/pxpipe/*`, `/api/tunnel/*` (tailscale), `/api/mcp/{plugin}/sse`, `/message`, `/api/providers/web-login` | deferred |
 | `/api/headroom/{start,stop,restart,update,auto-setup}`, `/api/skills/install`, `/api/autostart`, `/api/plugins/hermes/*` | out |
+| `/api/headroom/{status,detect-port,extras}`, `/api/headroom/proxy/*` | out (the reverse proxy to a spawned process; nothing is spawned, so nothing is proxied) |
+| `/api/oauth/iflow/cookie` | out (iflow is not built, D279) |
 | `/api/tunnel/update`, `/api/pxpipe/update`, `/api/plugins/update-check` | out |
 
 ---

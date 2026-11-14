@@ -3,7 +3,7 @@ package cursor
 import (
 	"io"
 	"regexp"
-	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -14,8 +14,7 @@ type peer struct {
 	pr *io.PipeReader
 	pw *io.PipeWriter
 
-	mu     sync.Mutex
-	closed bool
+	closed atomic.Bool
 }
 
 // newPeer is a pipe nothing has written yet.
@@ -27,25 +26,24 @@ func newPeer() *peer {
 // reader is the body the request carries.
 func (p *peer) reader() io.Reader { return p.pr }
 
-// write sends one frame, or drops it once the exchange is over.
+// write sends one frame, or drops it once the exchange is over. It holds no lock
+// across the pipe write: a stalled stream blocks it, and close is what frees it.
 func (p *peer) write(b []byte) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.closed {
+	if p.closed.Load() {
 		return nil
 	}
 	_, err := p.pw.Write(b)
+	if err != nil && p.closed.Load() {
+		return nil
+	}
 	return err
 }
 
-// close ends the request body.
+// close ends the request body and releases a write waiting on it.
 func (p *peer) close() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.closed {
+	if p.closed.Swap(true) {
 		return
 	}
-	p.closed = true
 	_ = p.pw.CloseWithError(io.ErrClosedPipe)
 }
 
@@ -54,6 +52,7 @@ func (p *peer) close() {
 type startReader struct {
 	src   io.Reader
 	ch    chan readChunk
+	done  chan struct{}
 	first bool
 	buf   []byte
 	err   error
@@ -67,17 +66,21 @@ type readChunk struct {
 
 // newStartReader starts reading the turn.
 func newStartReader(r io.Reader) *startReader {
-	s := &startReader{src: r, ch: make(chan readChunk, 1), first: true}
+	s := &startReader{src: r, ch: make(chan readChunk, 1), done: make(chan struct{}), first: true}
 	go s.pump()
 	return s
 }
 
-// pump reads the turn until it ends.
+// pump reads the turn until it ends or the reader is closed.
 func (s *startReader) pump() {
 	for {
 		buf := make([]byte, 8<<10)
 		n, err := s.src.Read(buf)
-		s.ch <- readChunk{data: buf[:n], err: err}
+		select {
+		case s.ch <- readChunk{data: buf[:n], err: err}:
+		case <-s.done:
+			return
+		}
 		if err != nil {
 			return
 		}
@@ -114,10 +117,15 @@ func (s *startReader) Wait(p []byte, idle time.Duration) (int, error) {
 	}
 }
 
-// close releases the goroutine's read.
+// close ends the read ahead: the pump stops waiting to hand over a chunk, and
+// the source is closed so a read it is blocked in returns.
 func (s *startReader) close() {
-	switch c := s.src.(type) {
-	case io.Closer:
+	select {
+	case <-s.done:
+	default:
+		close(s.done)
+	}
+	if c, ok := s.src.(io.Closer); ok {
 		_ = c.Close()
 	}
 }

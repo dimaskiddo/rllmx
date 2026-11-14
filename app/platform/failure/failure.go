@@ -286,3 +286,38 @@ func Frame(f Format, status int, msg string) []byte {
 	}
 	return nil
 }
+
+// ClassOf is the short code a usage row carries for a status. Both gateways use
+// it, so one failure never reads differently in the stored rows by the route it
+// took.
+func ClassOf(status int) string {
+	switch {
+	case status < 400:
+		return "none"
+	case status == http.StatusUnauthorized:
+		return "auth"
+	case status == http.StatusForbidden:
+		return "access_denied"
+	case status == http.StatusPaymentRequired:
+		return "quota"
+	case status == http.StatusTooManyRequests:
+		return "rate_limit"
+	case status == http.StatusNotFound:
+		return "not_found"
+	case status == http.StatusGatewayTimeout:
+		return "timeout"
+	case status >= 500:
+		return "upstream_5xx"
+	}
+	return "invalid_request"
+}
+
+// ClientStatus is the status a client sees for an upstream status. A refused
+// credential is the router's problem, not the client's: a 401 or 403 would make
+// the client discard a good key.
+func ClientStatus(status int) int {
+	if status < 400 || status == http.StatusUnauthorized || status == http.StatusForbidden {
+		return http.StatusBadGateway
+	}
+	return status
+}

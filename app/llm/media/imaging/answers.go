@@ -9,7 +9,7 @@ import (
 	"rllmx/app/llm/media"
 )
 
-// inlineList is the answer for a provider that returns its images inline.
+// imageList is the answer for a provider that returns its images inline.
 func imageList(images []string) media.Response {
 	data := make([]map[string]string, 0, len(images))
 	for _, b := range images {

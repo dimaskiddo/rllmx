@@ -173,6 +173,8 @@ Environment variables or `.env` through `config/`; the process environment wins.
 | `APP_PORT` / `APP_HOST` | `20128` / `127.0.0.1` | Listen port, address (container: `0.0.0.0`) |
 | `HTTP_SERVER_SHUTDOWN_GRACE` | `30s` | Shutdown grace for running requests; second signal exits at once |
 | `HTTP_SERVER_READ_HEADER_TIMEOUT` / `HTTP_SERVER_IDLE_TIMEOUT` | `10s` / `120s` | Request-header deadline; idle connection lifetime |
+| `HTTP_COMPRESSION` | `true` | Brotli or gzip for answers worth compressing; never for streams, audio, video or images. `false` behind a proxy that compresses |
+| `HTTP_H2C` | `false` | HTTP/2 on the plain listener, for a reverse proxy that multiplexes to the router |
 | `SERVER_MAX_BODY_MB` | `128` | Largest client API request body |
 | `SERVER_TRUST_LOOPBACK` | `true` | Local = this machine. `false` behind a same-machine tunnel or reverse proxy (cloudflared, ngrok, `tailscale serve`, nginx): traffic arrives from 127.0.0.1 |
 | `SERVER_TRUSTED_PROXIES` | empty (loopback only) | Reverse proxies whose `X-Forwarded-For` and `X-Forwarded-Proto` are believed |
@@ -259,6 +261,8 @@ Open an issue to discuss a change before a large pull request; small fixes are w
 ## 🧩 Compatibility
 
 Router-LLM opens an existing 9router database (schema version 2 and later, migrated by 9router itself) as a drop-in replacement: providers, keys, nodes, combos, aliases and settings read unchanged, and unmodified rows stay byte-identical. The client APIs are OpenAI, Anthropic (Messages), Gemini (`/v1beta`), OpenAI Responses and Ollama. Builds for Linux, macOS and Windows on amd64 and arm64; no CGO.
+
+A key limited to a list of models in 9router is refused with 403 on every chat and media route until the per-key check is built. It still lists its models.
 
 ## ⚖️ License
 

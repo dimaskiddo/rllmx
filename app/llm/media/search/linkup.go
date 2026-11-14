@@ -1,6 +1,7 @@
 package search
 
 import (
+	"cmp"
 	"context"
 	"net/http"
 	"strings"
@@ -55,10 +56,10 @@ func (Linkup) Parse(_ context.Context, r media.Request, _ media.Client, status i
 			break
 		}
 		text := v.Get("content").String()
-		out = append(out, item("linkup", i+1, firstOf(v.Get("name").String(), v.Get("title").String()), v.Get("url").String()).
-			withSnippet(firstOf(text, v.Get("snippet").String())).
-			withSource(firstOf(v.Get("type").String(), "web")).
-			withImage(firstOf(v.Get("image_url").String(), v.Get("imageUrl").String())).
+		out = append(out, item("linkup", i+1, cmp.Or(v.Get("name").String(), v.Get("title").String()), v.Get("url").String()).
+			withSnippet(cmp.Or(text, v.Get("snippet").String())).
+			withSource(cmp.Or(v.Get("type").String(), "web")).
+			withImage(cmp.Or(v.Get("image_url").String(), v.Get("imageUrl").String())).
 			withContent("text", text))
 	}
 	total := len(out)

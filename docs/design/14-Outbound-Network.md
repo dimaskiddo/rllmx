@@ -73,7 +73,7 @@ One `Checker`, built once in the provider wiring (`app/providers`) on `network.N
 The dialer, the transport, the client, the redirect policy and the allow list are built; three consumers use them (SSO, the health probe, the key `Checker`).
 
 - [x] The key `Checker`
-- [ ] The provider executors move onto `network.NewClient` (web fetch and media are there)
+- [x] Web fetch and media run on `network.NewClient`; the provider executors that dial their own clients are the open part
 - [ ] The image prefetch gets the operator's allow list
 - [ ] `UPSTREAM_CONNECT_TIMEOUT` governs the executors
 
@@ -96,6 +96,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 31, 75, 76 | Guard is the dialer: resolve once, keep permitted addresses, dial that address, every redirect hop too; covers every user-defined base URL. Link-local, metadata always refused; loopback, private only via `UPSTREAM_ALLOW_PRIVATE`. **(partial)**image prefetch has no allow list (stricter); web fetch | No rebinding window; cannot be forgotten on a new route |
 | 96, 97 | Every probe uses guarded client; redirect to another host, port, scheme refused | Local request not a trusted target; typed key stays at one address |
 | 126 | The key `Checker` follows no redirect, and when the shared client follows one it refuses any hop that downgrades to plain HTTP | Credential never reaches another host or crosses to clear text |
+| 326 | The built-in page reader ignores `UPSTREAM_ALLOW_PRIVATE`: a page a client names is read only when it is public, on every hop, even when the operator listed a private range for a provider. **Built** | The list names providers the operator runs, not pages a caller may read and have handed back |
 
 ---
 

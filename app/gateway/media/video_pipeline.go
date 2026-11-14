@@ -23,11 +23,11 @@ func (p *Pipeline) Videos(ctx context.Context, in Input, action string) Output {
 	switch action {
 	case media.VideoGenerations, media.VideoEdits, media.VideoExtensions:
 	default:
-		return failureOutput(http.StatusBadRequest, "The request names no video action")
+		return p.reject(in, failureOutput(http.StatusBadRequest, "The request names no video action"))
 	}
 	name, body, out, ok := p.videoTarget(in)
 	if !ok {
-		return out
+		return p.reject(in, out)
 	}
 	return p.run(ctx, upstream.KindVideo, in, parsed{model: name, body: body, action: action})
 }

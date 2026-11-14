@@ -102,11 +102,13 @@ func TestAFiftyRequestBurstMintsOnce(t *testing.T) {
 	g.hold = make(chan struct{})
 	c := g.account(t, nil, "")
 	var wg sync.WaitGroup
+	var entered atomic.Int32
 	got := make(chan string, 50)
 	for range 50 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			entered.Add(1)
 			tok, err := g.m.Token(context.Background(), c)
 			if err != nil {
 				t.Error(err)
@@ -114,7 +116,8 @@ func TestAFiftyRequestBurstMintsOnce(t *testing.T) {
 			got <- tok
 		}()
 	}
-	time.Sleep(150 * time.Millisecond)
+	// One mint reaches the provider and blocks on hold; the rest wait behind it.
+	waitFor(t, func() bool { return entered.Load() == 50 && g.calls.Load() == 1 })
 	close(g.hold)
 	wg.Wait()
 	close(got)

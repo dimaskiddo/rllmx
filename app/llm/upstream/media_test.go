@@ -30,9 +30,6 @@ func TestAMediaModelResolvesBareAndPrefixed(t *testing.T) {
 	if ref, ok := reg.Media("jina-ai/jina-embeddings-v3", KindEmbedding); !ok || ref.Model != "jina-embeddings-v3" {
 		t.Fatalf("%+v %v", ref, ok)
 	}
-	if list := reg.MediaModels(KindEmbedding); len(list) != 1 || list[0].Model != "jina-embeddings-v3" {
-		t.Fatalf("%v", list)
-	}
 }
 
 func TestAMediaIdTwoProvidersClaimIsAmbiguousBare(t *testing.T) {

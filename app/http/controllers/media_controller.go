@@ -87,9 +87,9 @@ func (m *MediaController) Speech(ctx contractshttp.Context) contractshttp.Respon
 func (m *MediaController) Transcriptions(ctx contractshttp.Context) contractshttp.Response {
 	r := ctx.Request().Origin()
 	w := ctx.Response().Writer()
-	caller, ok := apphttp.CallerFrom(ctx)
+	caller, status, ok := apphttp.ModelCaller(ctx)
 	if !ok {
-		failure.Write(w, failure.OpenAI, nethttp.StatusUnauthorized, "API key required")
+		failure.Write(w, failure.OpenAI, status, refusalText(status))
 		return nil
 	}
 	form, status, msg := parseUpload(r)
@@ -121,8 +121,8 @@ func (m *MediaController) Transcriptions(ctx contractshttp.Context) contractshtt
 func (m *MediaController) Voices(ctx contractshttp.Context) contractshttp.Response {
 	r := ctx.Request().Origin()
 	w := ctx.Response().Writer()
-	if _, ok := apphttp.CallerFrom(ctx); !ok {
-		failure.Write(w, failure.OpenAI, nethttp.StatusUnauthorized, "API key required")
+	if _, status, ok := apphttp.ModelCaller(ctx); !ok {
+		failure.Write(w, failure.OpenAI, status, refusalText(status))
 		return nil
 	}
 	p, err := m.VoicesPipe()
@@ -204,9 +204,9 @@ func (m *MediaController) Images(ctx contractshttp.Context) contractshttp.Respon
 func (m *MediaController) serve(ctx contractshttp.Context, source func() (*gatewaymedia.Pipeline, error), call func(*gatewaymedia.Pipeline, gatewaymedia.Input) gatewaymedia.Output) contractshttp.Response {
 	r := ctx.Request().Origin()
 	w := ctx.Response().Writer()
-	caller, ok := apphttp.CallerFrom(ctx)
+	caller, status, ok := apphttp.ModelCaller(ctx)
 	if !ok {
-		failure.Write(w, failure.OpenAI, nethttp.StatusUnauthorized, "API key required")
+		failure.Write(w, failure.OpenAI, status, refusalText(status))
 		return nil
 	}
 	p, err := source()

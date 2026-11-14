@@ -3,6 +3,8 @@ package ucweb
 import (
 	"net/url"
 	"testing"
+
+	"rllmx/app/llm/media"
 )
 
 func FuzzClaim(f *testing.F) {
@@ -17,7 +19,7 @@ func FuzzPublic(f *testing.F) {
 	f.Add("https://cdn.example/a.png")
 	f.Add("http://127.0.0.1/a")
 	f.Fuzz(func(t *testing.T, raw string) {
-		if err := public(raw); err != nil {
+		if err := media.HTTPSOnly(raw); err != nil {
 			return
 		}
 		u, err := url.Parse(raw)

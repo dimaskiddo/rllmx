@@ -37,7 +37,7 @@ func (Xiaomi) Build(_ context.Context, r media.Request, _ media.Client) (media.C
 	if err != nil {
 		return media.Call{}, err
 	}
-	base := strings.TrimRight(media.BaseURL(r), "/")
+	base := media.BaseURL(r)
 	if base == "" {
 		base = "https://api.xiaomimimo.com/v1/chat/completions"
 	}

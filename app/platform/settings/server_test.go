@@ -34,6 +34,37 @@ func TestLoadServerDefaults(t *testing.T) {
 	if s.CertFile != "" || s.KeyFile != "" {
 		t.Errorf("tls = %+v", s)
 	}
+	if !s.Compression || s.H2C {
+		t.Errorf("compression %v, h2c %v: want on and off", s.Compression, s.H2C)
+	}
+}
+
+func TestCompressionAndH2CTakeOnlyABoolean(t *testing.T) {
+	for _, tc := range []struct {
+		key, env string
+		field    func(*Server) bool
+	}{
+		{"http.compression", "HTTP_COMPRESSION", func(s *Server) bool { return s.Compression }},
+		{"http.h2c", "HTTP_H2C", func(s *Server) bool { return s.H2C }},
+	} {
+		for text, want := range map[string]bool{"true": true, "false": false, "1": true, "0": false, "TRUE": true} {
+			s, err := loadWith(t, map[string]any{tc.key: text})
+			if err != nil || tc.field(s) != want {
+				t.Errorf("%s=%s: got %v, %v", tc.env, text, s, err)
+			}
+		}
+		// A typo must not silently switch compression off (its default is on) or
+		// h2c on, so an unreadable word is refused, by name and never by value.
+		for _, bad := range []string{"maybe", "yes please", "enable", "nope"} {
+			_, err := loadWith(t, map[string]any{tc.key: bad})
+			if err == nil || !strings.Contains(err.Error(), tc.env) {
+				t.Errorf("%s=%s: error = %v", tc.env, bad, err)
+			}
+			if err != nil && strings.Contains(err.Error(), bad) {
+				t.Errorf("%s=%s: the error quotes the value: %v", tc.env, bad, err)
+			}
+		}
+	}
 }
 
 func TestServerDurationBounds(t *testing.T) {

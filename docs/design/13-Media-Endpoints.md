@@ -88,6 +88,8 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 320 | A web image makes one item per request; `n` above one is refused. **Built** | One web turn produces one picture; a longer `n` would repeat a billable conversation |
 | 321 | A cookie provider's probe answers "test not supported yet" without a call. **Planned** | Validating a web session needs a real render, which the probe will not start |
 | 322 | grok-web (Chrome-TLS) and gemini-web, muse-web (browser DOM) stay deferred. **Recorded** | A TLS-fingerprint or browser client is a spawned process or an impersonation path (`design doc 22`) |
+| 323 | tokenrouter and venice are served through the OpenAI embeddings and images adapters, and GitHub's Copilot embeddings are served with the login's identity headers. The reference lists the configs and answers "does not support" for the first two, and has no data path for the third. **Built** | A provider whose data lists a service answers it |
+| 324 | A media refusal of 401 or 403 reaches the client as 502, and the stored row keeps the `auth` or `access_denied` class, as chat does. The reference passes the provider's status on. **Built** | A client keeps a good key when the router's own credential is the one refused |
 
 ---
 

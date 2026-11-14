@@ -23,7 +23,7 @@ func (Embeddings) Kind() string { return upstream.KindEmbedding }
 
 // Build makes the embeddings call.
 func (Embeddings) Build(_ context.Context, r media.Request, _ media.Client) (media.Call, error) {
-	base := strings.TrimRight(media.BaseURL(r), "/")
+	base := media.BaseURL(r)
 	if base == "" {
 		return media.Call{}, media.BadRequestf("the provider names no address")
 	}
@@ -57,7 +57,7 @@ func (Images) Kind() string { return upstream.KindImage }
 
 // Build makes the generation call.
 func (Images) Build(_ context.Context, r media.Request, _ media.Client) (media.Call, error) {
-	base := strings.TrimRight(media.BaseURL(r), "/")
+	base := media.BaseURL(r)
 	if base == "" {
 		return media.Call{}, media.BadRequestf("the provider names no address")
 	}

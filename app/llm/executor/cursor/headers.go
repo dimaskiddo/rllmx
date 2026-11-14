@@ -16,7 +16,7 @@ import (
 // The identity this router presents. The version and commit are the service's
 // own client, because the service refuses an unknown one; the operating system
 // and architecture are the build target's, never the host's, so nothing about
-// the machine leaves it (D268).
+// the machine leaves it.
 const (
 	clientVersion = "3.12.17"
 	clientCommit  = "0fb762053c34788bb7760d5673f8a6d4c8589d50"

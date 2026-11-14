@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"strings"
 
 	"rllmx/app/llm/media"
 )
@@ -25,7 +24,7 @@ var jobIDPattern = regexp.MustCompile(`^[A-Za-z0-9._~:-]{1,512}$`)
 
 // base is the service address, or a refusal when the provider names none.
 func base(r media.Request) (string, error) {
-	b := strings.TrimRight(media.BaseURL(r), "/")
+	b := media.BaseURL(r)
 	if b == "" {
 		return "", media.BadRequestf("the provider names no address")
 	}

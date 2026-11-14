@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"io"
 	"maps"
@@ -82,6 +83,31 @@ func TestTheHTTPServerCarriesTheConfiguredTimeoutsAndNoWholeRequestTimeout(t *te
 	}
 	if srv.ReadTimeout != 0 || srv.WriteTimeout != 0 {
 		t.Fatalf("ReadTimeout %v WriteTimeout %v: a stream runs for minutes", srv.ReadTimeout, srv.WriteTimeout)
+	}
+}
+
+func TestTheListenerSpeaksTheProtocolsTheConfiguredOnes(t *testing.T) {
+	s := NewServer(serverSettings(t, nil), nethttp.NotFoundHandler(), NewGuard(nil, true), noRoutes, &tests.Log{})
+	if p := s.build().Protocols; p == nil || p.UnencryptedHTTP2() {
+		t.Fatalf("h2c is on by default: %+v", p)
+	}
+	s = NewServer(serverSettings(t, map[string]any{"http.h2c": true}), nethttp.NotFoundHandler(), NewGuard(nil, true), noRoutes, &tests.Log{})
+	// Build twice: the settings are read once, so a second server is the shape a
+	// test can ask about.
+	s2 := NewServer(serverSettings(t, map[string]any{"http.h2c": true}), nethttp.NotFoundHandler(), NewGuard(nil, true), noRoutes, &tests.Log{})
+	if p := s2.build().Protocols; p == nil || !p.UnencryptedHTTP2() {
+		t.Fatalf("h2c was asked for and is not offered: %+v", p)
+	}
+	if p := s.build().Protocols; p == nil || !p.UnencryptedHTTP2() {
+		t.Fatalf("h2c was asked for and is not offered: %+v", p)
+	}
+}
+
+func TestTheTLSFloorIsOnePointTwoWhateverTheDefaultIs(t *testing.T) {
+	s := NewServer(serverSettings(t, map[string]any{"http.tls.ssl.cert": "/c.pem", "http.tls.ssl.key": "/k.pem"}), nethttp.NotFoundHandler(), NewGuard(nil, true), noRoutes, &tests.Log{})
+	srv := s.build()
+	if srv.TLSConfig == nil || srv.TLSConfig.MinVersion != tls.VersionTLS12 {
+		t.Fatalf("TLS floor: %+v", srv.TLSConfig)
 	}
 }
 

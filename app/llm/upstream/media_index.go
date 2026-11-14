@@ -78,14 +78,3 @@ func (r *Registry) Media(name, kind string) (MediaRef, bool) {
 
 // mediaKindList is every service kind, for a lookup that does not name one.
 var mediaKindList = []string{KindEmbedding, KindImage, KindTTS, KindSTT, KindVideo, KindSearch, KindFetch}
-
-// MediaModel is one provider's own listing of a media model, by kind.
-func (r *Registry) MediaModel(provider, id, kind string) (MediaRef, bool) {
-	ref, ok := r.mediaKey[provider+"/"+id+"/"+kind]
-	return ref, ok
-}
-
-// MediaModels returns the models of one kind in provider order.
-func (r *Registry) MediaModels(kind string) []MediaRef {
-	return append([]MediaRef(nil), r.byKind[kind]...)
-}

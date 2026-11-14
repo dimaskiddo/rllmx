@@ -1,6 +1,7 @@
 package search
 
 import (
+	"cmp"
 	"context"
 	"net/http"
 	"net/url"
@@ -61,7 +62,7 @@ func (GooglePSE) Parse(_ context.Context, r media.Request, _ media.Client, statu
 		}
 		out = append(out, item("google-pse", i+1, v.Get("title").String(), v.Get("link").String()).
 			withSnippet(v.Get("snippet").String()).
-			withImage(firstOf(v.Get("pagemap.cse_image.0.src").String(), v.Get("pagemap.cse_thumbnail.0.src").String(), v.Get("pagemap.metatags.0.og:image").String())))
+			withImage(cmp.Or(v.Get("pagemap.cse_image.0.src").String(), v.Get("pagemap.cse_thumbnail.0.src").String(), v.Get("pagemap.metatags.0.og:image").String())))
 	}
 	var total *int
 	if t := gjson.GetBytes(raw, "searchInformation.totalResults"); t.Exists() {

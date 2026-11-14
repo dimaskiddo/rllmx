@@ -1,6 +1,7 @@
 package deepseek
 
 import (
+	"cmp"
 	"encoding/json"
 	"strconv"
 	"strings"
@@ -105,7 +106,7 @@ func toolConversation(messages []gjson.Result, manifest string) string {
 			if name == "" {
 				name = "tool"
 			}
-			lines = append(lines, "Tool result ("+name+"): "+orDefault(text, "(no output)"))
+			lines = append(lines, "Tool result ("+name+"): "+cmp.Or(text, "(no output)"))
 			active = true
 		}
 	}
@@ -187,14 +188,6 @@ func offeredNames(tools gjson.Result) map[string]bool {
 func quote(s string) string {
 	raw, _ := json.Marshal(s)
 	return string(raw)
-}
-
-// orDefault returns s, or fallback when s is empty.
-func orDefault(s, fallback string) string {
-	if s == "" {
-		return fallback
-	}
-	return s
 }
 
 // buildPlan is the request's prompt and tool contract, computed once.

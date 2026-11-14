@@ -62,10 +62,26 @@ func TestHealthIsPublicThroughTheGuard(t *testing.T) {
 	}
 }
 
+// declared names every route the driver holds, by method and path. The driver
+// keeps that table for the whole process, so it is read before and after a build
+// to tell what the build added.
+func declared(t *testing.T) map[string]bool {
+	t.Helper()
+	held := map[string]bool{}
+	for _, info := range tests.NewRoute(t).GetRoutes() {
+		held[info.Method+" "+info.Path] = true
+	}
+	return held
+}
+
 func TestEveryRouteWebDeclaresIsInTheGuardTable(t *testing.T) {
+	// A repeated or shuffled run finds routes other tests declared on guards of
+	// their own, so only what this build adds is held against its guard. On a
+	// clean process that is every route.
+	before := declared(t)
 	r, g := build(t)
 	for _, info := range r.GetRoutes() {
-		if !strings.HasPrefix(info.Path, "/api/") {
+		if !strings.HasPrefix(info.Path, "/api/") || before[info.Method+" "+info.Path] {
 			continue
 		}
 		if missing := g.Unclassified([]contractshttp.Info{info}); len(missing) != 0 {

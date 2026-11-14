@@ -39,6 +39,20 @@ const chatEntry = `{"id":"openai","category":"apikey","display":{"name":"OpenAI"
 // connection per key in the order given.
 func videoRig(t *testing.T, handler http.HandlerFunc, keys ...string) (*gatewaymedia.Pipeline, *usage.Sink, *httptest.Server) {
 	t.Helper()
+	p, sink, _, srv := videoRigStore(t, handler, keys...)
+	return p, sink, srv
+}
+
+// videoRigWithStore is videoRig that also hands back the connections, for a
+// test that reads what a request wrote to them.
+func videoRigWithStore(t *testing.T, handler http.HandlerFunc, keys ...string) (*gatewaymedia.Pipeline, *usage.Sink, *repository.ConnectionsRepo) {
+	t.Helper()
+	p, sink, conns, _ := videoRigStore(t, handler, keys...)
+	return p, sink, conns
+}
+
+func videoRigStore(t *testing.T, handler http.HandlerFunc, keys ...string) (*gatewaymedia.Pipeline, *usage.Sink, *repository.ConnectionsRepo, *httptest.Server) {
+	t.Helper()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 	reg, err := upstream.Load(fstest.MapFS{
@@ -64,7 +78,7 @@ func videoRig(t *testing.T, handler http.HandlerFunc, keys ...string) (*gatewaym
 		Usage:    sink, Now: time.Now,
 		Connections: st.Connections(),
 	})
-	return p, sink, srv
+	return p, sink, st.Connections(), srv
 }
 
 // videoCreate is the client's body for a create.
@@ -127,7 +141,7 @@ func TestAVideoCreateIsNotSentAgainAfterAServerError(t *testing.T) {
 	if calls != 1 {
 		t.Fatalf("the create was sent %d times", calls)
 	}
-	if out.Status != http.StatusBadGateway {
+	if out.Status != http.StatusInternalServerError {
 		t.Fatalf("%d %s", out.Status, out.Body)
 	}
 }
@@ -157,7 +171,7 @@ func TestAVideoCreateTimesOutOnce(t *testing.T) {
 		VideoTimeout: 20 * time.Millisecond,
 	})
 	out := p.Videos(context.Background(), videoCreate("grok-imagine-video"), media.VideoGenerations)
-	if calls.Load() != 1 || out.Status != http.StatusBadGateway {
+	if calls.Load() != 1 || out.Status != http.StatusGatewayTimeout {
 		t.Fatalf("%d calls=%d %s", calls.Load(), out.Status, out.Body)
 	}
 }
@@ -277,5 +291,66 @@ func TestAnImagesRequestReachesAProvidersVideoModel(t *testing.T) {
 	}
 	if submit != "/image_to_video" {
 		t.Fatalf("submit reached %s", submit)
+	}
+}
+
+// locked reads the lock keys a connection carries.
+func locked(t *testing.T, st *repository.ConnectionsRepo) []string {
+	t.Helper()
+	all, err := st.List(context.Background(), repository.ConnFilter{})
+	if err != nil || len(all) == 0 {
+		t.Fatalf("connections: %v (%d)", err, len(all))
+	}
+	var keys []string
+	d := all[0].Doc()
+	for _, k := range d.Keys() {
+		if strings.HasPrefix(k, repository.LockPrefix) {
+			if raw, _ := d.GetRaw(k); raw != "" && raw != "null" {
+				keys = append(keys, k)
+			}
+		}
+	}
+	return keys
+}
+
+func TestAnUnknownVideoJobNeverLocksTheAccountForChat(t *testing.T) {
+	p, _, conns := videoRigWithStore(t, func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}, "KEY")
+	for i := 0; i < 3; i++ {
+		out := p.VideoJob(context.Background(), gatewaymedia.Input{Path: "/v1/videos/ghost"}, "ghost")
+		if out.Status != http.StatusNotFound {
+			t.Fatalf("poll %d: %d %s", i, out.Status, out.Body)
+		}
+	}
+	if keys := locked(t, conns); len(keys) != 0 {
+		t.Fatalf("a poll locked the account: %v", keys)
+	}
+}
+
+func TestASlowSuccessDoesNotClearAFailureThatLandedMeanwhile(t *testing.T) {
+	var conns *repository.ConnectionsRepo
+	var model string
+	p, _, conns := videoRigWithStore(t, func(w http.ResponseWriter, r *http.Request) {
+		// While this call is in flight, a concurrent request on the same account
+		// is refused with a rate limit, which locks the model.
+		all, err := conns.List(context.Background(), repository.ConnFilter{})
+		if err != nil || len(all) == 0 {
+			t.Errorf("connections: %v", err)
+			return
+		}
+		rep := account.NewReporter(conns, &tests.Log{}, nil)
+		if _, err := rep.Fail(context.Background(), account.FailInput{ConnID: all[0].ID, Provider: "xai", Model: model, Status: http.StatusTooManyRequests}); err != nil {
+			t.Errorf("fail: %v", err)
+		}
+		_, _ = w.Write([]byte(`{"request_id":"r1"}`))
+	}, "KEY")
+	model = "grok-imagine-video"
+	out := p.Videos(context.Background(), videoCreate("xai/grok-imagine-video"), media.VideoGenerations)
+	if out.Status != 200 {
+		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+	if keys := locked(t, conns); len(keys) == 0 {
+		t.Fatal("an older success cleared a failure that was recorded after it began")
 	}
 }

@@ -24,8 +24,6 @@ import (
 )
 
 const (
-	userAgent   = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"
-	maxPrompt   = 8000
 	maxArtifact = 100 << 20
 	nonceBudget = 20 * time.Second
 	jobBudget   = 30 * time.Minute
@@ -40,8 +38,9 @@ const (
 // Images is the image adapter.
 type Images struct{}
 
-// Videos is the video adapter.
-type Videos struct{}
+// Videos is the video adapter. Every is how long it waits between looks at a
+// render; zero is the service's own pace, which only a test changes.
+type Videos struct{ Every time.Duration }
 
 // Kind is the service the image adapter serves.
 func (Images) Kind() string { return upstream.KindImage }
@@ -51,32 +50,29 @@ func (Videos) Kind() string { return upstream.KindVideo }
 
 // Direct runs one image generation.
 func (Images) Direct(ctx context.Context, r media.Request, c media.Client) (media.Response, error) {
-	return run(ctx, r, c, upstream.KindImage)
+	return run(ctx, r, c, upstream.KindImage, 0)
 }
 
 // Direct runs one video generation.
-func (Videos) Direct(ctx context.Context, r media.Request, c media.Client) (media.Response, error) {
-	return run(ctx, r, c, upstream.KindVideo)
+func (v Videos) Direct(ctx context.Context, r media.Request, c media.Client) (media.Response, error) {
+	return run(ctx, r, c, upstream.KindVideo, v.Every)
 }
 
 // run is the one path both services take.
-func run(ctx context.Context, r media.Request, c media.Client, kind string) (media.Response, error) {
+func run(ctx context.Context, r media.Request, c media.Client, kind string, every time.Duration) (media.Response, error) {
 	if c == nil {
 		return media.Response{}, errors.New("veoaifree: no client")
 	}
 	body := gjson.ParseBytes(r.Body)
-	prompt := strings.TrimSpace(body.Get("prompt").String())
-	if prompt == "" || len(prompt) > maxPrompt {
-		return media.Response{}, media.BadRequestf("the prompt is empty or too long")
+	prompt, err := media.WebPrompt(r.Body)
+	if err != nil {
+		return media.Response{}, err
 	}
-	if n := body.Get("n"); n.Exists() && n.Int() != 1 {
-		return media.Response{}, media.BadRequestf("this provider makes one item per request")
-	}
-	base := strings.TrimRight(media.BaseURL(r), "/")
+	base := media.BaseURL(r)
 	if base == "" {
 		return media.Response{}, errors.New("veoaifree: no address")
 	}
-	s := &session{base: base}
+	s := &session{base: base, every: every}
 	nonce, err := s.nonce(ctx, c)
 	if err != nil {
 		return media.Response{}, err
@@ -92,13 +88,24 @@ func run(ctx context.Context, r media.Request, c media.Client, kind string) (med
 type session struct {
 	base    string
 	cookies []string
+	// every is how long a poll waits between looks and a download between
+	// retries; zero takes the service's own pace. A test sets it small.
+	every time.Duration
+}
+
+// pace is the wait between looks at a render, or between reads of its file.
+func (s *session) pace(own time.Duration) time.Duration {
+	if s.every > 0 {
+		return s.every
+	}
+	return own
 }
 
 // nonce reads the page and scrapes the request token.
 func (s *session) nonce(ctx context.Context, c media.Client) (string, error) {
 	cctx, cancel := context.WithTimeout(ctx, nonceBudget)
 	defer cancel()
-	status, header, body, err := call(cctx, c, http.MethodGet, s.base+"/", map[string]string{"User-Agent": userAgent}, nil, 2<<20)
+	status, header, body, err := media.Capped(cctx, c, http.MethodGet, s.base+"/", map[string]string{"User-Agent": media.WebUserAgent}, nil, 2<<20)
 	if err != nil {
 		return "", err
 	}
@@ -182,21 +189,15 @@ func (s *session) video(ctx context.Context, c media.Client, nonce, prompt, aspe
 
 // await polls the scene until the service names a finished video.
 func (s *session) await(ctx context.Context, c media.Client, scene string) (string, error) {
-	deadline := time.NewTimer(jobBudget)
-	defer deadline.Stop()
-	for attempt := 0; attempt < pollLimit; attempt++ {
-		if link := s.pollOnce(ctx, c, scene); link != "" {
-			return link, nil
-		}
-		select {
-		case <-ctx.Done():
-			return "", ctx.Err()
-		case <-deadline.C:
-			return "", &media.ProviderError{Status: http.StatusGatewayTimeout, Text: "The service did not finish the video in time"}
-		case <-time.After(pollEvery):
-		}
+	var link string
+	err := media.PollEvery(ctx, s.pace(pollEvery), min(jobBudget, pollEvery*pollLimit), func(ctx context.Context) (bool, error) {
+		link = s.pollOnce(ctx, c, scene)
+		return link != "", nil
+	}, &media.ProviderError{Status: http.StatusGatewayTimeout, Text: "The service did not finish the video in time"})
+	if err != nil {
+		return "", err
 	}
-	return "", &media.ProviderError{Status: http.StatusGatewayTimeout, Text: "The service did not finish the video in time"}
+	return link, nil
 }
 
 // pollOnce asks once whether the scene's video is ready.
@@ -213,7 +214,7 @@ func (s *session) pollOnce(ctx context.Context, c media.Client, scene string) st
 	if link == "" {
 		return ""
 	}
-	if err := public(link); err != nil {
+	if err := media.HTTPSOnly(link); err != nil {
 		return ""
 	}
 	return link
@@ -222,12 +223,12 @@ func (s *session) pollOnce(ctx context.Context, c media.Client, scene string) st
 // save reads the asset once, retrying while the service reports it is not ready,
 // and refuses anything that is not an mp4.
 func (s *session) save(ctx context.Context, c media.Client, target string) error {
-	if err := public(target); err != nil {
+	if err := media.HTTPSOnly(target); err != nil {
 		return err
 	}
 	for attempt := 0; attempt < readyLimit; attempt++ {
 		cctx, cancel := context.WithTimeout(ctx, nonceBudget)
-		status, header, body, err := call(cctx, c, http.MethodGet, target, map[string]string{"Referer": s.base + "/", "User-Agent": userAgent}, nil, maxArtifact)
+		status, header, body, err := media.Capped(cctx, c, http.MethodGet, target, map[string]string{"Referer": s.base + "/", "User-Agent": media.WebUserAgent}, nil, maxArtifact)
 		cancel()
 		if err == nil && status >= 200 && status <= 299 && len(body) > 12 {
 			mime := strings.Split(header.Get("Content-Type"), ";")[0]
@@ -242,10 +243,8 @@ func (s *session) save(ctx context.Context, c media.Client, target string) error
 		if err == nil && !retryable(status) {
 			return &media.ProviderError{Status: http.StatusBadGateway, Text: "The service's result could not be read"}
 		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(readyRetry):
+		if err := media.Sleep(ctx, s.pace(readyRetry)); err != nil {
+			return err
 		}
 	}
 	return &media.ProviderError{Status: http.StatusGatewayTimeout, Text: "The service's result did not become available in time"}
@@ -255,12 +254,12 @@ func (s *session) save(ctx context.Context, c media.Client, target string) error
 func (s *session) post(ctx context.Context, c media.Client, form url.Values) (string, error) {
 	h := map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded", "Origin": s.base,
-		"Referer": s.base + "/", "User-Agent": userAgent,
+		"Referer": s.base + "/", "User-Agent": media.WebUserAgent,
 	}
 	if len(s.cookies) > 0 {
 		h["Cookie"] = strings.Join(s.cookies, "; ")
 	}
-	status, header, body, err := call(ctx, c, http.MethodPost, s.base+"/wp-admin/admin-ajax.php", h, []byte(form.Encode()), 8<<20)
+	status, header, body, err := media.Capped(ctx, c, http.MethodPost, s.base+"/wp-admin/admin-ajax.php", h, []byte(form.Encode()), 8<<20)
 	if err != nil {
 		return "", err
 	}
@@ -385,16 +384,6 @@ func aspectOf(size string) string {
 	return "SQUARE"
 }
 
-// public refuses an address that is not an https URL with a host and no
-// embedded credential.
-func public(raw string) error {
-	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil {
-		return &media.ProviderError{Status: http.StatusBadGateway, Text: "The service named an address this router does not read"}
-	}
-	return nil
-}
-
 // retryable reports a status that means the asset is still being produced.
 func retryable(status int) bool {
 	switch status {
@@ -402,23 +391,6 @@ func retryable(status int) bool {
 		return true
 	}
 	return false
-}
-
-// call sends one request, reading the answer under limit when the client caps.
-func call(ctx context.Context, c media.Client, method, target string, h map[string]string, body []byte, limit int64) (int, http.Header, []byte, error) {
-	if capped, ok := c.(interface {
-		DoCapped(ctx context.Context, method, target string, header map[string]string, body []byte, limit int64) (int, http.Header, []byte, error)
-	}); ok {
-		return capped.DoCapped(ctx, method, target, h, body, limit)
-	}
-	status, header, raw, err := c.Do(ctx, method, target, h, body)
-	if err != nil {
-		return 0, nil, nil, err
-	}
-	if int64(len(raw)) > limit {
-		return 0, nil, nil, &media.ProviderError{Status: http.StatusBadGateway, Text: "The service answered more than this router reads"}
-	}
-	return status, header, raw, nil
 }
 
 // noncePattern reads the page's request token.

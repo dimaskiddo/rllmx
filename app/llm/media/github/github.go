@@ -6,7 +6,6 @@ import (
 	"context"
 	"net/http"
 	"net/url"
-	"strings"
 
 	"rllmx/app/llm/media"
 	"rllmx/app/llm/upstream"
@@ -20,7 +19,7 @@ func (Embeddings) Kind() string { return upstream.KindEmbedding }
 
 // Build makes the call with the account's Copilot token and the client headers.
 func (Embeddings) Build(_ context.Context, r media.Request, _ media.Client) (media.Call, error) {
-	base := strings.TrimRight(media.BaseURL(r), "/")
+	base := media.BaseURL(r)
 	if base == "" {
 		base = "https://api.githubcopilot.com/embeddings"
 	}
@@ -30,8 +29,11 @@ func (Embeddings) Build(_ context.Context, r media.Request, _ media.Client) (med
 	}
 	q := url.Values{}
 	h := media.Headers(r, q)
-	for k, v := range r.Entry.Transport.Headers {
-		h[k] = v
+	if o := r.Entry.OAuth; o != nil {
+		// The identity headers of the login the Copilot token belongs to.
+		for k, v := range o.Headers {
+			h[k] = v
+		}
 	}
 	h["Content-Type"] = "application/json"
 	return media.Call{Method: http.MethodPost, URL: media.WithQuery(base, q), Header: h, Body: body}, nil

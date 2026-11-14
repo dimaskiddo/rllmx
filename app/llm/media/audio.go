@@ -1,11 +1,6 @@
 package media
 
-import (
-	"encoding/base64"
-	"net/http"
-	"strconv"
-	"strings"
-)
+import "strings"
 
 // Upload is the one file a transcription request carries.
 type Upload struct {
@@ -77,38 +72,4 @@ func ParseModelVoice(name, defaultModel, defaultVoice string, known []string) (m
 		defaultVoice = name
 	}
 	return defaultModel, defaultVoice
-}
-
-// PassRaw is the answer of an adapter that returns text or audio bytes: a
-// refusal is a provider error, anything else passes with its own type.
-func PassRaw(status int, header http.Header, body []byte, contentType, refusal string) (Response, error) {
-	if status < 200 || status > 299 {
-		return Response{}, &ProviderError{Status: status, Text: refusal}
-	}
-	if len(body) == 0 {
-		return Response{}, &ProviderError{Status: http.StatusBadGateway, Text: refusal}
-	}
-	h := map[string]string{}
-	if ct := header.Get("Content-Type"); ct != "" {
-		h["Content-Type"] = ct
-	} else {
-		h["Content-Type"] = contentType
-	}
-	return Response{Status: status, Header: h, Body: body}, nil
-}
-
-// AudioAnswer wraps raw audio in the client's shape: bare bytes with their
-// type, or the JSON envelope a caller asked for.
-func AudioAnswer(audio []byte, format string, asJSON bool) (Response, error) {
-	if len(audio) < 100 {
-		return Response{}, &ProviderError{Status: http.StatusBadGateway, Text: "the provider returned no audio"}
-	}
-	if asJSON {
-		body := []byte(`{"audio":"` + base64.StdEncoding.EncodeToString(audio) + `","format":"` + format + `"}`)
-		return Response{Status: http.StatusOK, Header: map[string]string{"Content-Type": "application/json"}, Body: body}, nil
-	}
-	return Response{Status: http.StatusOK, Header: map[string]string{
-		"Content-Type":   AudioMIME(format),
-		"Content-Length": strconv.Itoa(len(audio)),
-	}, Body: audio}, nil
 }

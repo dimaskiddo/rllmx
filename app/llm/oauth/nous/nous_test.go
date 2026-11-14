@@ -40,7 +40,7 @@ func FuzzAgentKeyAnswer(f *testing.F) {
 		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(body) }))
 		defer srv.Close()
 		fl := oauth.Flow{OAuth: upstream.OAuth{Endpoints: map[string]string{upstream.EndpointAgentKey: srv.URL}}}
-		key, until, id := mintAgentKey(context.Background(), &oauth.TokenClient{HTTP: srv.Client()}, fl, "AT", nil)
+		key, until, id, _ := mintAgentKey(context.Background(), &oauth.TokenClient{HTTP: srv.Client()}, fl, "AT", nil)
 		if key != "" && (len(key) > oauth.MaxCredential || strings.ContainsAny(key, "\x00\r\n")) {
 			t.Fatalf("accepted key %q", key)
 		}
@@ -157,5 +157,37 @@ func TestAFailedAgentKeyKeepsTheKeyTheAccountHasAndStillStoresTheTokens(t *testi
 	}
 	if v, _ := d.GetString("refreshToken"); v != "NEW-RT" {
 		t.Fatalf("refresh token %q", v)
+	}
+}
+
+func TestAMintFailureSaysWhyItFailed(t *testing.T) {
+	down := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	url := down.URL
+	client := down.Client()
+	down.Close()
+	for name, tc := range map[string]struct {
+		target string
+		serve  func(http.ResponseWriter, *http.Request)
+		client *http.Client
+		want   oauth.Class
+	}{
+		"an unreachable service":  {target: url, client: client, want: oauth.ClassTransport},
+		"a refusing service":      {serve: func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusForbidden) }, want: oauth.ClassRejected},
+		"a body that is not json": {serve: func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("<html>")) }, want: oauth.ClassMalformed},
+		"an answer with no key":   {serve: func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`{}`)) }, want: oauth.ClassMalformed},
+	} {
+		t.Run(name, func(t *testing.T) {
+			target, hc := tc.target, tc.client
+			if tc.serve != nil {
+				srv := httptest.NewTLSServer(http.HandlerFunc(tc.serve))
+				defer srv.Close()
+				target, hc = srv.URL, srv.Client()
+			}
+			fl := oauth.Flow{OAuth: upstream.OAuth{Endpoints: map[string]string{upstream.EndpointAgentKey: target}}}
+			_, err := Renewal(context.Background(), &oauth.TokenClient{HTTP: hc}, fl, oauth.Tokens{Access: "AT"}, nil)
+			if got := oauth.ClassOf(err); got != tc.want {
+				t.Fatalf("class %q, want %q (%v)", got, tc.want, err)
+			}
+		})
 	}
 }

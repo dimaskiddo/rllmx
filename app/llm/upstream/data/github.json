@@ -11,6 +11,10 @@
     "format": "openai",
     "headers": { "anthropic-version": "2023-06-01" }
   },
+  "media": {
+    "serviceKinds": ["llm", "embedding"],
+    "embeddingConfig": { "baseUrl": "https://api.githubcopilot.com/embeddings", "authType": "apikey", "authHeader": "bearer" }
+  },
   "oauth": {
     "flow": "device",
     "deviceUrl": "https://github.com/login/device/code",
@@ -60,6 +64,8 @@
     { "id": "gemini-3.8-flash", "name": "Gemini 3.8 Flash" },
     { "id": "gemini-4-argon", "name": "Gemini 4 Argon" },
     { "id": "kimi-k3", "name": "Kimi K3" },
-    { "id": "mai-code-1.1-flash", "name": "MAI-Code-1.1-Flash" }
+    { "id": "mai-code-1.1-flash", "name": "MAI-Code-1.1-Flash" },
+    { "id": "text-embedding-3-small", "name": "Text Embedding 3 Small (GitHub)", "kind": "embedding" },
+    { "id": "text-embedding-ada-002", "name": "Text Embedding Ada 002 (GitHub)", "kind": "embedding" }
   ]
 }

@@ -2,6 +2,7 @@ package upstream
 
 import (
 	"encoding/json"
+	"rllmx/app/platform/text"
 	"strings"
 )
 
@@ -20,7 +21,7 @@ const MaxWebCredential = 16 << 10
 // header can carry.
 func ParseWebCredential(raw string) (string, bool) {
 	s := strings.TrimSpace(raw)
-	if s == "" || len(s) > MaxWebCredential || hasControlRune(s) {
+	if s == "" || len(s) > MaxWebCredential || text.HasControl(s) {
 		return "", false
 	}
 	if v, ok := strings.CutPrefix(s, "Bearer "); ok {
@@ -70,7 +71,7 @@ func CookieValue(s string) bool {
 
 // bareCredential validates a value with no name around it.
 func bareCredential(s string) (string, bool) {
-	if s == "" || hasControlRune(s) || strings.ContainsAny(s, " \t\";,") {
+	if s == "" || text.HasControl(s) || strings.ContainsAny(s, " \t\";,") {
 		return "", false
 	}
 	return s, true
@@ -142,10 +143,4 @@ func jsonCredential(s string) (string, bool) {
 		return "", false
 	}
 	return cookiesOf(entries)
-}
-
-// hasControlRune reports a C0 or C1 control character, which no header value
-// may carry.
-func hasControlRune(s string) bool {
-	return strings.IndexFunc(s, func(r rune) bool { return r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) }) >= 0
 }

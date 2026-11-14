@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"strings"
 
 	"github.com/tidwall/gjson"
 
@@ -20,7 +19,7 @@ func (ComfyUI) Kind() string { return upstream.KindImage }
 
 // Build makes the submit call.
 func (ComfyUI) Build(_ context.Context, r media.Request, _ media.Client) (media.Call, error) {
-	base := strings.TrimRight(media.BaseURL(r), "/")
+	base := media.BaseURL(r)
 	if base == "" {
 		return media.Call{}, media.BadRequestf("the provider names no address")
 	}

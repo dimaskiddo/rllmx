@@ -66,92 +66,115 @@ func (w *writer) walk(n *html.Node, depth int) {
 }
 
 func (w *writer) element(n *html.Node, depth int) {
-	var before, after string
-	block := false
+	if w.leaf(n) {
+		return
+	}
+	f := w.frame(n)
+	defer f.undo()
+	if f.block {
+		w.block()
+	}
+	w.raw(f.before)
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		w.walk(c, depth+1)
+	}
+	w.raw(f.after)
+	if f.block {
+		w.block()
+	}
+}
+
+// leaf writes an element that has no children to walk and says it did.
+func (w *writer) leaf(n *html.Node) bool {
 	switch n.Data {
 	case "br":
 		w.newline()
-		return
 	case "hr":
 		w.block()
 		w.raw("---")
 		w.block()
-		return
 	case "img":
 		if src := w.safeURL(attr(n, "src")); src != "" && w.markup {
 			w.raw("![" + attr(n, "alt") + "](" + src + ")")
 		}
-		return
+	default:
+		return false
+	}
+	return true
+}
+
+// frame is what an element writes around its children, and how to undo the
+// state it set while they are written.
+type frame struct {
+	before, after string
+	block         bool
+	undo          func()
+}
+
+// frame decides what surrounds an element's children.
+func (w *writer) frame(n *html.Node) frame {
+	f := frame{undo: func() {}}
+	switch n.Data {
 	case "h1", "h2", "h3", "h4", "h5", "h6":
-		block = true
+		f.block = true
 		if w.markup {
-			level := int(n.Data[1] - '0')
-			before = strings.Repeat("#", level) + " "
+			f.before = strings.Repeat("#", int(n.Data[1]-'0')) + " "
 		}
 	case "p", "div", "section", "article", "header", "footer", "main", "aside", "figure", "figcaption", "form", "table", "tr":
-		block = true
+		f.block = true
 	case "blockquote":
-		block = true
+		f.block = true
 		if w.markup {
 			w.quotes++
-			defer func() { w.quotes-- }()
+			f.undo = func() { w.quotes-- }
 		}
 	case "ul", "ol":
-		block = true
-		w.lists = append(w.lists, 0)
+		f.block = true
+		depth := 0
 		if n.Data == "ul" {
-			w.lists[len(w.lists)-1] = -1
+			depth = -1
 		}
-		defer func() { w.lists = w.lists[:len(w.lists)-1] }()
+		w.lists = append(w.lists, depth)
+		f.undo = func() { w.lists = w.lists[:len(w.lists)-1] }
 	case "li":
 		w.newline()
 		if len(w.lists) > 0 && w.lists[len(w.lists)-1] >= 0 {
 			w.lists[len(w.lists)-1]++
-			before = strconv.Itoa(w.lists[len(w.lists)-1]) + ". "
+			f.before = strconv.Itoa(w.lists[len(w.lists)-1]) + ". "
 		} else {
-			before = "- "
+			f.before = "- "
 		}
 	case "pre":
-		block = true
+		f.block = true
 		if w.markup {
-			before, after = "```\n", "\n```"
+			f.before, f.after = "```\n", "\n```"
 			w.pre = true
-			defer func() { w.pre = false }()
+			f.undo = func() { w.pre = false }
 		}
 	case "td", "th":
 		if w.markup {
-			before, after = " ", " |"
+			f.before, f.after = " ", " |"
 		}
 	case "strong", "b":
 		if w.markup {
-			before, after = "**", "**"
+			f.before, f.after = "**", "**"
 		}
 	case "em", "i":
 		if w.markup {
-			before, after = "*", "*"
+			f.before, f.after = "*", "*"
 		}
 	case "code":
 		if w.markup && !w.pre {
-			before, after = "`", "`"
+			f.before, f.after = "`", "`"
 		}
 	case "a":
 		if w.markup {
 			if href := w.safeURL(attr(n, "href")); href != "" {
-				before, after = "[", "]("+href+")"
+				f.before, f.after = "[", "]("+href+")"
 			}
 		}
 	}
-	if block {
-		w.block()
-	}
-	w.raw(before)
-	for c := n.FirstChild; c != nil; c = c.NextSibling {
-		w.walk(c, depth+1)
-	}
-	w.raw(after)
-	if block {
-		w.block()
-	}
+	return f
 }
 
 // inline writes a text node with its runs of whitespace collapsed and the space

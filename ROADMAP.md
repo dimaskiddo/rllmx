@@ -55,6 +55,7 @@ Status words: **built** (implemented and tested), **partial** (some behavior mis
 | Speech, transcription and voice lists | built |
 | Video generation | built |
 | Web search and page fetch | built |
+| Compression (gzip, Brotli), security headers, HTTP/2 on the plain listener | built |
 | Web image and video providers | built for chatgpt-web, uc-web and veoaifree-web; grok-web, gemini-web and muse-web deferred |
 
 ## Dashboard

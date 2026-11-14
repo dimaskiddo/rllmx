@@ -1,6 +1,10 @@
 package media
 
-import "testing"
+import (
+	"testing"
+
+	apptext "rllmx/app/platform/text"
+)
 
 func TestAPasteIsReadBackInOrder(t *testing.T) {
 	j, err := ParseCookie("__client=abc; sso=def; __Secure-next-auth.session-token=ghi")
@@ -47,4 +51,28 @@ func TestAnInjectedValueIsRefused(t *testing.T) {
 	if err := j.Set("b c", "v"); err == nil {
 		t.Fatal("a name with a space was accepted")
 	}
+}
+
+// FuzzParseCookie reads any pasted text as a cookie header. It must never
+// panic, and whatever it accepts is one it will send: no control character,
+// every name set, and a header that parses back to the same jar.
+func FuzzParseCookie(f *testing.F) {
+	f.Add("a=1; b=2")
+	f.Add("__client=abc")
+	f.Add("a=1\r\nInjected: x")
+	f.Add(";;;=;")
+	f.Fuzz(func(t *testing.T, raw string) {
+		jar, err := ParseCookie(raw)
+		if err != nil {
+			return
+		}
+		header := jar.Header()
+		if apptext.HasASCIIControl(header) || header == "" {
+			t.Fatalf("accepted %q into an unsendable header %q", raw, header)
+		}
+		again, err := ParseCookie(header)
+		if err != nil || again.Header() != header {
+			t.Fatalf("not a fixed point: %q -> %q -> %v", raw, header, err)
+		}
+	})
 }

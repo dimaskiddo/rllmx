@@ -208,22 +208,27 @@ func (f *Freebuff) run(ctx context.Context, req executor.Request, action, runID,
 	return id, nil
 }
 
-// finish closes a run, in a goroutine the request does not wait on and that is
-// bounded in time. A failed close is not an error: the run ends server-side.
+// finish closes a run before the answer is handed over, so a request that ends
+// early never leaves one open. The close is best effort: it is bounded in time,
+// it stops waiting when the client has gone, and a failed close is not an error,
+// because the run ends server-side.
 func (f *Freebuff) finish(ctx context.Context, req executor.Request, runID, status string) {
 	if runID == "" {
 		return
 	}
+	// The call outlives a cancelled request, so the run still closes; only the
+	// wait for it ends with the client.
+	closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), freebuffRunFinish)
+	defer cancel()
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), freebuffRunFinish)
-		defer cancel()
-		_, _ = f.run(ctx, req, "FINISH", runID, status)
+		_, _ = f.run(closeCtx, req, "FINISH", runID, status)
 	}()
 	select {
 	case <-done:
-	case <-time.After(freebuffRunFinish):
+	case <-ctx.Done():
+	case <-closeCtx.Done():
 	}
 }
 

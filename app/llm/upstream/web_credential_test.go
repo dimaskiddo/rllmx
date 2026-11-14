@@ -3,6 +3,8 @@ package upstream
 import (
 	"strings"
 	"testing"
+
+	"rllmx/app/platform/text"
 )
 
 func TestParseWebCredentialForms(t *testing.T) {
@@ -91,7 +93,7 @@ func FuzzParseWebCredential(f *testing.F) {
 		if !ok2 || again != out {
 			t.Fatalf("not idempotent: %q -> (%q, %v) -> (%q, %v)", in, out, ok, again, ok2)
 		}
-		if hasControlRune(out) {
+		if text.HasControl(out) {
 			t.Fatalf("control character survived: %q", out)
 		}
 	})

@@ -20,7 +20,7 @@ func (Runway) Kind() string { return upstream.KindImage }
 
 // Build makes the submit call.
 func (Runway) Build(_ context.Context, r media.Request, _ media.Client) (media.Call, error) {
-	base := strings.TrimRight(media.BaseURL(r), "/")
+	base := media.BaseURL(r)
 	if base == "" {
 		return media.Call{}, media.BadRequestf("the provider names no address")
 	}
@@ -83,7 +83,7 @@ func (Runway) Parse(ctx context.Context, r media.Request, c media.Client, status
 	if id == "" || strings.ContainsAny(id, "/?#") {
 		return media.Response{}, &media.ProviderError{Status: http.StatusBadGateway, Text: "the provider answered no job"}
 	}
-	base := strings.TrimRight(media.BaseURL(r), "/")
+	base := media.BaseURL(r)
 	var out media.Response
 	err := media.Poll(ctx, func(ctx context.Context) (bool, error) {
 		st, _, raw, err := c.Do(ctx, http.MethodGet, base+"/tasks/"+id, runwayHeaders(r.Credential), nil)

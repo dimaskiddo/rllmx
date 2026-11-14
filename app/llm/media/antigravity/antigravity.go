@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 
 	"rllmx/app/llm/media"
@@ -73,14 +74,14 @@ func (Images) Build(ctx context.Context, r media.Request, c media.Client) (media
 		"model":       model,
 		"userAgent":   "antigravity",
 		"requestType": "image_gen",
-		"requestId":   "agent/" + media.UUID() + "/" + strconv.FormatInt(time.Now().UnixMilli(), 10) + "/" + media.UUID() + "/1",
+		"requestId":   "agent/" + uuid.NewString() + "/" + strconv.FormatInt(time.Now().UnixMilli(), 10) + "/" + uuid.NewString() + "/1",
 		"request": map[string]any{
 			"contents": []map[string]any{{"role": "user", "parts": parts}},
 			"generationConfig": map[string]any{
 				"temperature": 1.0, "topP": 0.95, "topK": 40, "maxOutputTokens": 8192,
 				"imageConfig": map[string]string{"aspectRatio": ratio},
 			},
-			"sessionId": media.UUID(),
+			"sessionId": uuid.NewString(),
 		},
 	}
 	raw, err := json.Marshal(reqBody)

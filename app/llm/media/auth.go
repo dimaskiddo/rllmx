@@ -70,14 +70,11 @@ func staticHeaders(cfg *upstream.MediaConfig) map[string]string {
 	return cfg.Headers
 }
 
-// BaseURL is the service address: the config's own, else the account's, else
-// the provider's transport base for a service without one.
+// BaseURL is the service address with no trailing slash: the config's own, else
+// the account's.
 func BaseURL(r Request) string {
 	if r.Config != nil && r.Config.BaseURL != "" {
-		return r.Config.BaseURL
+		return strings.TrimRight(r.Config.BaseURL, "/")
 	}
-	if b := r.Account["baseUrl"]; b != "" {
-		return strings.TrimRight(b, "/")
-	}
-	return ""
+	return strings.TrimRight(r.Account["baseUrl"], "/")
 }

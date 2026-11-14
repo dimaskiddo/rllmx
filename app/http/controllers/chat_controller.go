@@ -32,9 +32,9 @@ func (c *ChatController) Serve(ctx contractshttp.Context) contractshttp.Response
 	w := ctx.Response().Writer()
 	format := failure.ForPath(r.URL.Path)
 
-	caller, ok := apphttp.CallerFrom(ctx)
+	caller, status, ok := apphttp.ModelCaller(ctx)
 	if !ok {
-		failure.Write(w, format, nethttp.StatusUnauthorized, "API key required")
+		failure.Write(w, format, status, refusalText(status))
 		return nil
 	}
 	body, err := io.ReadAll(r.Body)
@@ -102,8 +102,8 @@ func (c *ChatController) CountTokens(ctx contractshttp.Context) contractshttp.Re
 	r := ctx.Request().Origin()
 	w := ctx.Response().Writer()
 	format := failure.ForPath(r.URL.Path)
-	if _, ok := apphttp.CallerFrom(ctx); !ok {
-		failure.Write(w, format, nethttp.StatusUnauthorized, "API key required")
+	if _, status, ok := apphttp.ModelCaller(ctx); !ok {
+		failure.Write(w, format, status, refusalText(status))
 		return nil
 	}
 	body, err := io.ReadAll(r.Body)
@@ -125,4 +125,13 @@ func (c *ChatController) CountTokens(ctx contractshttp.Context) contractshttp.Re
 	w.WriteHeader(nethttp.StatusOK)
 	_, _ = w.Write([]byte(`{"input_tokens":` + strconv.FormatInt(translate.CountTokens(req), 10) + `}`))
 	return nil
+}
+
+// refusalText is what a caller is told when it may not spend a model: it has no
+// key, or its key is limited to a model list this route does not check yet.
+func refusalText(status int) string {
+	if status == nethttp.StatusForbidden {
+		return "This key is limited to a list of models"
+	}
+	return "API key required"
 }

@@ -50,7 +50,7 @@ const (
 )
 
 // The identity the web client presents. Every value is a fixed word: nothing
-// about the machine or the operator goes on the wire (D268).
+// about the machine or the operator goes on the wire.
 const (
 	clientBundle = "com.deepseek.chat"
 	clientLocale = "en-US"

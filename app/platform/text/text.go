@@ -65,6 +65,10 @@ func HasASCIIControl(s string) bool {
 	return strings.ContainsFunc(s, func(r rune) bool { return r < 0x20 || r == 0x7f })
 }
 
+// HasControl reports any control character, C1 included: no header value, name
+// or secret may carry one.
+func HasControl(s string) bool { return strings.ContainsFunc(s, unicode.IsControl) }
+
 // DataLine reads one line of an event stream or of plain lines: it trims the
 // space around it and a leading "data:" field name if there is one. had says
 // whether the name was there, for a caller that only accepts a framed line.

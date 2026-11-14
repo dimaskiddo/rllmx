@@ -72,9 +72,11 @@ func buildMedia(_ context.Context, app foundation.Application) (*gatewaymedia.Pi
 		Curves: h.Upstream.Curves,
 	})
 	// A fetch target is read directly for the built-in converter, so it follows
-	// up to five redirects: every hop dials through the same guard.
+	// up to five redirects: every hop dials through the guard. A client names the
+	// page and gets its text back, so the operator's private list does not apply
+	// here: it names providers the operator runs, not pages a caller may read.
 	fetchClient := network.NewClient(network.Options{
-		ConnectTimeout: h.Upstream.ConnectTimeout, MaxRedirects: 5, Allow: allow, BodyCap: -1,
+		ConnectTimeout: h.Upstream.ConnectTimeout, MaxRedirects: 5, BodyCap: -1,
 		Curves: h.Upstream.Curves,
 	})
 	deps := gatewaymedia.Deps{

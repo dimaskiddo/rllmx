@@ -8,42 +8,16 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"rllmx/app/llm/media"
+	mediatest "rllmx/tests/media"
 )
-
-var png = append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 32)...)
-var mp4 = append([]byte{0, 0, 0, 24}, append([]byte("ftypisom"), make([]byte, 24)...)...)
-
-// fake answers each path the flow calls.
-type fake struct {
-	routes map[string]func() (int, http.Header, []byte)
-	forms  []string
-}
-
-func (f *fake) Do(_ context.Context, method, target string, _ map[string]string, body []byte) (int, http.Header, []byte, error) {
-	f.forms = append(f.forms, string(body))
-	best := ""
-	for prefix := range f.routes {
-		if strings.Contains(target, prefix) && len(prefix) > len(best) {
-			best = prefix
-		}
-	}
-	if best == "" {
-		return http.StatusNotFound, http.Header{}, nil, nil
-	}
-	status, header, out := f.routes[best]()
-	return status, header, out, nil
-}
-
-func (f *fake) DoCapped(ctx context.Context, method, target string, h map[string]string, body []byte, _ int64) (int, http.Header, []byte, error) {
-	return f.Do(ctx, method, target, h, body)
-}
 
 const page = `<html><script>window.data = {"nonce":"9f8e7d6c"};</script></html>`
 
-func rig() *fake {
-	return &fake{routes: map[string]func() (int, http.Header, []byte){
+func rig() *mediatest.Routes {
+	return mediatest.NewRoutes(map[string]mediatest.Reply{
 		"veoaifree.com/": func() (int, http.Header, []byte) {
 			h := http.Header{}
 			h.Add("Set-Cookie", "sess=one; Path=/")
@@ -52,7 +26,7 @@ func rig() *fake {
 		"/wp-admin/admin-ajax.php": func() (int, http.Header, []byte) {
 			return 200, http.Header{}, []byte("ok")
 		},
-	}}
+	})
 }
 
 func req(kind, body string) media.Request {
@@ -61,7 +35,7 @@ func req(kind, body string) media.Request {
 }
 
 func TestAnImageAnswerIsNormalized(t *testing.T) {
-	encoded := base64.StdEncoding.EncodeToString(png)
+	encoded := base64.StdEncoding.EncodeToString(mediatest.PNG)
 	cases := []struct {
 		name  string
 		reply string
@@ -73,9 +47,9 @@ func TestAnImageAnswerIsNormalized(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			f := rig()
-			f.routes["/wp-admin/admin-ajax.php"] = func() (int, http.Header, []byte) {
+			f.Set("/wp-admin/admin-ajax.php", func() (int, http.Header, []byte) {
 				return 200, http.Header{}, []byte(tc.reply)
-			}
+			})
 			out, err := Images{}.Direct(context.Background(), req("image", `{"model":"nano-banana","prompt":"a fox","size":"1792x1024"}`), f)
 			if err != nil {
 				t.Fatalf("Direct: %v", err)
@@ -100,13 +74,13 @@ func TestAnImageAnswerIsBounded(t *testing.T) {
 
 func TestTheFormCarriesTheNonceAndOrientation(t *testing.T) {
 	f := rig()
-	f.routes["/wp-admin/admin-ajax.php"] = func() (int, http.Header, []byte) {
+	f.Set("/wp-admin/admin-ajax.php", func() (int, http.Header, []byte) {
 		return 200, http.Header{}, []byte("https://cdn.example/a.png")
-	}
+	})
 	if _, err := (Images{}).Direct(context.Background(), req("image", `{"prompt":"a fox","size":"1792x1024"}`), f); err != nil {
 		t.Fatalf("Direct: %v", err)
 	}
-	form := f.forms[len(f.forms)-1]
+	form := last(f)
 	for _, want := range []string{"nonce=9f8e7d6c", "actionType=banan-image-generator", "IMAGE_ASPECT_RATIO_LANDSCAPE"} {
 		if !strings.Contains(form, want) {
 			t.Fatalf("form = %s, want %s", form, want)
@@ -116,16 +90,16 @@ func TestTheFormCarriesTheNonceAndOrientation(t *testing.T) {
 
 func TestAVideoIsPolledAndItsAssetChecked(t *testing.T) {
 	f := rig()
-	f.routes["/wp-admin/admin-ajax.php"] = func() (int, http.Header, []byte) {
-		if strings.Contains(f.forms[len(f.forms)-1], "final-video-results") {
+	f.Set("/wp-admin/admin-ajax.php", func() (int, http.Header, []byte) {
+		if strings.Contains(last(f), "final-video-results") {
 			return 200, http.Header{}, []byte(`{"videoUrl":"https://cdn.example/one.mp4"}`)
 		}
 		return 200, http.Header{}, []byte(`{"sceneData":"scene-1"}`)
-	}
-	f.routes["cdn.example/one.mp4"] = func() (int, http.Header, []byte) {
-		return 200, http.Header{"Content-Type": []string{"video/mp4"}}, mp4
-	}
-	out, err := Videos{}.Direct(context.Background(), req("video", `{"model":"veo","prompt":"a wave","size":"1024x1792"}`), f)
+	})
+	f.Set("cdn.example/one.mp4", func() (int, http.Header, []byte) {
+		return 200, http.Header{"Content-Type": []string{"video/mp4"}}, mediatest.MP4
+	})
+	out, err := Videos{Every: time.Millisecond}.Direct(context.Background(), req("video", `{"model":"veo","prompt":"a wave","size":"1024x1792"}`), f)
 	if err != nil {
 		t.Fatalf("Direct: %v", err)
 	}
@@ -138,7 +112,7 @@ func TestAVideoIsPolledAndItsAssetChecked(t *testing.T) {
 	if err := json.Unmarshal(out.Body, &answer); err != nil || answer.Status != "completed" || answer.Video.URL != "https://cdn.example/one.mp4" {
 		t.Fatalf("answer = %s (%v)", out.Body, err)
 	}
-	forms := strings.Join(f.forms, "\n")
+	forms := f.Sent()
 	if !strings.Contains(forms, "VIDEO_ASPECT_RATIO_PORTRAIT") || !strings.Contains(forms, "actionType=full-video-generate") {
 		t.Fatalf("forms = %s", forms)
 	}
@@ -149,16 +123,16 @@ func TestAVideoIsPolledAndItsAssetChecked(t *testing.T) {
 
 func TestARedirectIsRefused(t *testing.T) {
 	f := rig()
-	f.routes["/wp-admin/admin-ajax.php"] = func() (int, http.Header, []byte) {
-		if strings.Contains(f.forms[len(f.forms)-1], "final-video-results") {
+	f.Set("/wp-admin/admin-ajax.php", func() (int, http.Header, []byte) {
+		if strings.Contains(last(f), "final-video-results") {
 			return 200, http.Header{}, []byte(`{"videoUrl":"https://cdn.example/one.mp4"}`)
 		}
 		return 200, http.Header{}, []byte(`{"sceneData":"scene-1"}`)
-	}
-	f.routes["cdn.example/one.mp4"] = func() (int, http.Header, []byte) {
+	})
+	f.Set("cdn.example/one.mp4", func() (int, http.Header, []byte) {
 		return http.StatusFound, http.Header{"Location": []string{"http://127.0.0.1/x.mp4"}}, nil
-	}
-	_, err := Videos{}.Direct(context.Background(), req("video", `{"prompt":"x"}`), f)
+	})
+	_, err := Videos{Every: time.Millisecond}.Direct(context.Background(), req("video", `{"prompt":"x"}`), f)
 	if err == nil {
 		t.Fatal("the redirect was followed")
 	}
@@ -166,16 +140,16 @@ func TestARedirectIsRefused(t *testing.T) {
 
 func TestAnAssetThatIsNotAnMp4IsRefused(t *testing.T) {
 	f := rig()
-	f.routes["/wp-admin/admin-ajax.php"] = func() (int, http.Header, []byte) {
-		if strings.Contains(f.forms[len(f.forms)-1], "final-video-results") {
+	f.Set("/wp-admin/admin-ajax.php", func() (int, http.Header, []byte) {
+		if strings.Contains(last(f), "final-video-results") {
 			return 200, http.Header{}, []byte(`{"videoUrl":"https://cdn.example/one.mp4"}`)
 		}
 		return 200, http.Header{}, []byte(`{"sceneData":"scene-1"}`)
-	}
-	f.routes["cdn.example/one.mp4"] = func() (int, http.Header, []byte) {
+	})
+	f.Set("cdn.example/one.mp4", func() (int, http.Header, []byte) {
 		return 200, http.Header{"Content-Type": []string{"text/html"}}, []byte("<html>nope</html>")
-	}
-	_, err := Videos{}.Direct(context.Background(), req("video", `{"prompt":"x"}`), f)
+	})
+	_, err := Videos{Every: time.Millisecond}.Direct(context.Background(), req("video", `{"prompt":"x"}`), f)
 	var pe *media.ProviderError
 	if !errors.As(err, &pe) {
 		t.Fatalf("err = %v, want a provider error", err)
@@ -184,7 +158,7 @@ func TestAnAssetThatIsNotAnMp4IsRefused(t *testing.T) {
 
 func TestAMissingTokenIsRefused(t *testing.T) {
 	f := rig()
-	f.routes["veoaifree.com/"] = func() (int, http.Header, []byte) { return 200, http.Header{}, []byte("<html>nothing</html>") }
+	f.Set("veoaifree.com/", func() (int, http.Header, []byte) { return 200, http.Header{}, []byte("<html>nothing</html>") })
 	_, err := Images{}.Direct(context.Background(), req("image", `{"prompt":"x"}`), f)
 	var pe *media.ProviderError
 	if !errors.As(err, &pe) || pe.Status != http.StatusBadGateway {
@@ -197,9 +171,9 @@ func TestAMissingTokenIsRefused(t *testing.T) {
 
 func TestAQuotaRefusalIsItsStatus(t *testing.T) {
 	f := rig()
-	f.routes["/wp-admin/admin-ajax.php"] = func() (int, http.Header, []byte) {
+	f.Set("/wp-admin/admin-ajax.php", func() (int, http.Header, []byte) {
 		return http.StatusTooManyRequests, http.Header{}, []byte("slow down")
-	}
+	})
 	_, err := Images{}.Direct(context.Background(), req("image", `{"prompt":"x"}`), f)
 	var pe *media.ProviderError
 	if !errors.As(err, &pe) || pe.Status != http.StatusTooManyRequests {
@@ -214,4 +188,10 @@ func TestTheOrientationIsReadFromTheSize(t *testing.T) {
 			t.Fatalf("aspectOf(%q) = %s, want %s", size, got, want)
 		}
 	}
+}
+
+// last is the body of the most recent call.
+func last(f *mediatest.Routes) string {
+	b := f.Bodies()
+	return b[len(b)-1]
 }

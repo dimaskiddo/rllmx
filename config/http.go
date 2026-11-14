@@ -33,6 +33,10 @@ func init() {
 			"idle_timeout":        config.Env("HTTP_SERVER_IDLE_TIMEOUT", "120s"),
 			"shutdown_grace":      config.Env("HTTP_SERVER_SHUTDOWN_GRACE", "30s"),
 		},
+		// Compression turns gzip and Brotli on for the answers worth it; h2c lets
+		// the plain listener speak HTTP/2 to a reverse proxy.
+		"compression": config.Env("HTTP_COMPRESSION", true),
+		"h2c":         config.Env("HTTP_H2C", false),
 		// Request guard
 		//
 		// max_body_mb bounds a client API body, trust_loopback lets a request from

@@ -1,6 +1,7 @@
 package search
 
 import (
+	"cmp"
 	"context"
 	"net/http"
 	"net/url"
@@ -67,7 +68,7 @@ func (Xquik) Parse(_ context.Context, r media.Request, _ media.Client, status in
 		out = append(out, item("xquik", i+1, title, link).
 			withSnippet(text).
 			withPublished(v.Get("createdAt").String()).
-			withAuthor(firstOf(user, v.Get("author.name").String())).
+			withAuthor(cmp.Or(user, v.Get("author.name").String())).
 			withImage(v.Get("media.0.mediaUrl").String()).
 			withSource("x_post").
 			withContent("text", text))

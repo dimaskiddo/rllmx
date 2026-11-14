@@ -185,27 +185,18 @@ func TestAFetchRefusesAPrivateTargetBeforeAnyCall(t *testing.T) {
 	}
 }
 
-func TestTheBuiltInReaderConvertsThePage(t *testing.T) {
-	f := &fakeServer{body: `<html><head><title>Doc</title></head><body><h1>Title</h1><p>Hello <a href="/more">there</a>.</p><script>bad()</script></body></html>`}
+func TestAFetchTargetOnTheOperatorsPrivateListIsStillRefused(t *testing.T) {
+	// The operator's list names providers they run, not pages a client may ask
+	// this router to read and hand back.
+	f := &fakeServer{body: `secret`}
 	allow, err := network.ParseAllow("127.0.0.1")
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := newServiceRig(t, f, allow, map[string]string{"local-fetch": localFetchEntry})
-	page := r.server.URL + "/page"
-	out := r.p.Fetch(context.Background(), gatewaymedia.Input{Path: "/v1/web/fetch", Body: []byte(`{"provider":"local-fetch","url":"` + page + `"}`)})
-	if out.Status != 200 {
-		t.Fatalf("%d %s", out.Status, out.Body)
-	}
-	if got := gjson.GetBytes(out.Body, "title").String(); got != "Doc" {
-		t.Fatalf("title %q", got)
-	}
-	text := gjson.GetBytes(out.Body, "content.text").String()
-	if !strings.Contains(text, "# Title") || !strings.Contains(text, "[there]("+r.server.URL+"/more)") || strings.Contains(text, "bad()") {
-		t.Fatalf("markdown:\n%s", text)
-	}
-	if gjson.GetBytes(out.Body, "content.format").String() != "markdown" {
-		t.Fatalf("format %s", out.Body)
+	out := r.p.Fetch(context.Background(), gatewaymedia.Input{Path: "/v1/web/fetch", Body: []byte(`{"provider":"local-fetch","url":"` + r.server.URL + `/kv"}`)})
+	if out.Status != http.StatusBadRequest || len(f.calls) != 0 {
+		t.Fatalf("%d %s after %d calls", out.Status, out.Body, len(f.calls))
 	}
 }
 

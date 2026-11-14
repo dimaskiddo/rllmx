@@ -25,6 +25,26 @@ func CallerFrom(ctx contractshttp.Context) (identity.Caller, bool) {
 	return c, ok
 }
 
+// WithCaller records who a request acts as. The guard calls it for every client
+// API route; a test calls it to stand in for the guard.
+func WithCaller(ctx contractshttp.Context, c identity.Caller) {
+	ctx.WithValue(callerKey{}, c)
+}
+
+// ModelCaller is CallerFrom for a route that spends a model: a key limited to
+// a list of models is refused, because only the model listing reads that list
+// until per-request enforcement is built.
+func ModelCaller(ctx contractshttp.Context) (identity.Caller, int, bool) {
+	c, ok := CallerFrom(ctx)
+	switch {
+	case !ok:
+		return c, nethttp.StatusUnauthorized, false
+	case c.Restricted:
+		return c, nethttp.StatusForbidden, false
+	}
+	return c, 0, true
+}
+
 // Guard decides who may reach which route. Every route is declared through
 // Handle, which records its class; Protect, installed as global middleware,
 // reads the class and the socket peer, never the framework's client IP.
@@ -163,7 +183,7 @@ func (g *Guard) Protect(ctx contractshttp.Context) {
 	switch decide(class, local, session, anonymousOK, keyOK) {
 	case verdictAllow:
 		if class == ClassLLM {
-			ctx.WithValue(callerKey{}, caller)
+			WithCaller(ctx, caller)
 		}
 		ctx.Request().Next()
 	case verdictUnauthorized:

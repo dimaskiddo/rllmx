@@ -19,7 +19,7 @@ func (AssemblyAI) Kind() string { return kind() }
 
 // Build uploads the audio; Parse submits and polls.
 func (AssemblyAI) Build(_ context.Context, r media.Request, _ media.Client) (media.Call, error) {
-	base := strings.TrimRight(media.BaseURL(r), "/")
+	base := media.BaseURL(r)
 	if base == "" {
 		return media.Call{}, media.BadRequestf("the provider names no address")
 	}
@@ -39,7 +39,7 @@ func (AssemblyAI) Parse(ctx context.Context, r media.Request, c media.Client, st
 	if uploadURL == "" {
 		return media.Response{}, refusal(http.StatusBadGateway, "the provider answered no upload")
 	}
-	base := strings.TrimRight(media.BaseURL(r), "/")
+	base := media.BaseURL(r)
 	h := map[string]string{"Content-Type": "application/json"}
 	if r.Credential != "" {
 		h["Authorization"] = r.Credential

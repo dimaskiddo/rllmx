@@ -1,6 +1,7 @@
 package search
 
 import (
+	"cmp"
 	"context"
 	"net/http"
 
@@ -44,7 +45,7 @@ func (OllamaSearch) Parse(_ context.Context, r media.Request, _ media.Client, st
 		}
 		text := v.Get("content").String()
 		out = append(out, item("ollama-search", i+1, v.Get("title").String(), v.Get("url").String()).
-			withSnippet(firstOf(text, v.Get("snippet").String())).
+			withSnippet(cmp.Or(text, v.Get("snippet").String())).
 			withContent("text", text).
 			withPublished(v.Get("published_at").String()).
 			withSource(v.Get("source").String()))

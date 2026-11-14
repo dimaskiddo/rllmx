@@ -79,7 +79,6 @@ type SearchViaChat struct {
 	FreeTier     string `json:"freeTier,omitempty"`
 }
 
-// MediaConfig is one service's address, credential shape and model list.
 // Voice is one voice a speech service offers.
 type Voice struct {
 	ID     string `json:"id"`
@@ -88,6 +87,7 @@ type Voice struct {
 	Gender string `json:"gender,omitempty"`
 }
 
+// MediaConfig is one service's address, credential shape and model list.
 type MediaConfig struct {
 	BaseURL string `json:"baseUrl,omitempty"`
 	// Path is appended to the base address for a service whose model is a path
@@ -187,20 +187,6 @@ func (m *Media) Config(kind string) *MediaConfig {
 	return nil
 }
 
-// Serves reports a declared service kind.
-func (m *Media) Serves(kind string) bool {
-	return m != nil && len(m.ServiceKinds) > 0 && contains(m.ServiceKinds, kind)
-}
-
-func contains(list []string, want string) bool {
-	for _, s := range list {
-		if s == want {
-			return true
-		}
-	}
-	return false
-}
-
 // validate checks the media block of one entry. chatModels are the entry's own
 // chat model ids, used to keep a media id from colliding with one.
 func (m *Media) validate(chatModels map[string]bool) error {
@@ -239,7 +225,7 @@ func (m *Media) validate(chatModels map[string]bool) error {
 			// itself (an executor-driven web provider) or one it never serves.
 			continue
 		}
-		if err := cfg.validate(k, chatModels); err != nil {
+		if err := cfg.validate(chatModels); err != nil {
 			return err
 		}
 	}
@@ -281,7 +267,23 @@ func (m *Media) validate(chatModels map[string]bool) error {
 	return nil
 }
 
-func (c *MediaConfig) validate(kind string, chatModels map[string]bool) error {
+func (c *MediaConfig) validate(chatModels map[string]bool) error {
+	for _, check := range []func() error{
+		c.validateAddress,
+		c.validateFields,
+		func() error { return c.validateModels(chatModels) },
+		c.validateHeaders,
+		c.validateLimits,
+	} {
+		if err := check(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateAddress checks the credential shape and every address the config names.
+func (c *MediaConfig) validateAddress() error {
 	if !mediaAuthTypes[c.AuthType] {
 		return errors.New("unknown media auth type")
 	}
@@ -323,6 +325,11 @@ func (c *MediaConfig) validate(kind string, chatModels map[string]bool) error {
 			return errors.New("a media response format has a bad name")
 		}
 	}
+	return nil
+}
+
+// validateFields checks the free-text knobs, the list sizes and the path.
+func (c *MediaConfig) validateFields() error {
 	if len(c.Path) > maxNameBytes || text.HasASCIIControl(c.Path) {
 		return errors.New("a media path has a bad value")
 	}
@@ -338,6 +345,11 @@ func (c *MediaConfig) validate(kind string, chatModels map[string]bool) error {
 	if len(c.Models) > maxMediaModels || len(c.ModelMap) > maxModelMap {
 		return errors.New("a media config has too many models")
 	}
+	return nil
+}
+
+// validateModels checks the model list, the model map and the voices.
+func (c *MediaConfig) validateModels(chatModels map[string]bool) error {
 	seen := map[string]bool{}
 	for _, m := range c.Models {
 		if m.ID == "" || len(m.ID) > maxNameBytes || text.HasASCIIControl(m.ID) {
@@ -373,6 +385,11 @@ func (c *MediaConfig) validate(kind string, chatModels map[string]bool) error {
 			return err
 		}
 	}
+	return nil
+}
+
+// validateHeaders checks the static headers a request may carry.
+func (c *MediaConfig) validateHeaders() error {
 	for name, value := range c.Headers {
 		if !headerNameOK(name) || len(value) > maxNameBytes || text.HasASCIIControl(value) {
 			return errors.New("a media header has a bad name or value")
@@ -383,6 +400,11 @@ func (c *MediaConfig) validate(kind string, chatModels map[string]bool) error {
 			return errors.New("a media header names a reserved header")
 		}
 	}
+	return nil
+}
+
+// validateLimits checks the numeric limits and the format list.
+func (c *MediaConfig) validateLimits() error {
 	if c.CostPerQuery < 0 || c.FreeMonthly < 0 || c.DefaultResults < 0 || c.MaxResults < 0 || c.CacheTTLMs < 0 || c.MaxCharacters < 0 || c.MaxCharacters > 10<<20 ||
 		c.DefaultResults > 1000 || c.MaxResults > 1000 || c.CacheTTLMs > 24*60*60*1000 {
 		return errors.New("a media search limit is out of range")
@@ -392,7 +414,6 @@ func (c *MediaConfig) validate(kind string, chatModels map[string]bool) error {
 			return errors.New("a media format list has a bad entry")
 		}
 	}
-	_ = kind
 	return nil
 }
 
