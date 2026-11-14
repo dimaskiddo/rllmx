@@ -6,6 +6,7 @@ package mux
 import (
 	"rllmx/app/llm/media"
 	"rllmx/app/llm/media/antigravity"
+	"rllmx/app/llm/media/chatgptweb"
 	"rllmx/app/llm/media/codex"
 	"rllmx/app/llm/media/fetch"
 	"rllmx/app/llm/media/github"
@@ -17,13 +18,15 @@ import (
 	"rllmx/app/llm/media/selfhosted"
 	"rllmx/app/llm/media/stt"
 	"rllmx/app/llm/media/tts"
+	"rllmx/app/llm/media/ucweb"
+	"rllmx/app/llm/media/veoaifree"
 	"rllmx/app/llm/media/video"
 	"rllmx/app/llm/upstream"
 )
 
 // Table is the adapter table. It is read-only after New.
 type Table struct {
-	adapters map[string]map[string]media.Adapter
+	adapters map[string]map[string]media.Handler
 }
 
 // Options carries what an adapter needs from the program: the source that
@@ -34,7 +37,7 @@ type Options struct {
 
 // New builds the table by explicit construction.
 func New(o Options) *Table {
-	t := &Table{adapters: map[string]map[string]media.Adapter{}}
+	t := &Table{adapters: map[string]map[string]media.Handler{}}
 
 	embeddings := openai.Embeddings{}
 	for _, id := range []string{
@@ -113,6 +116,14 @@ func New(o Options) *Table {
 	t.add(video.OpenRouter{}, "openrouter")
 	t.add(video.Vertex{Tokens: o.VertexTokens}, "vertex")
 
+	// Web session providers: one director runs the whole exchange. A provider
+	// whose session needs a browser or a TLS fingerprint is not registered.
+	t.add(chatgptweb.Images{}, "chatgpt-web")
+	t.add(ucweb.Images{}, "uc-web")
+	t.add(ucweb.Videos{}, "uc-web")
+	t.add(veoaifree.Images{}, "veoaifree-web")
+	t.add(veoaifree.Videos{}, "veoaifree-web")
+
 	for _, a := range []struct {
 		adapter  media.Adapter
 		provider string
@@ -155,10 +166,10 @@ func New(o Options) *Table {
 }
 
 // add registers one adapter for providers of the kind it serves.
-func (t *Table) add(a media.Adapter, providers ...string) {
+func (t *Table) add(a media.Handler, providers ...string) {
 	for _, id := range providers {
 		if t.adapters[id] == nil {
-			t.adapters[id] = map[string]media.Adapter{}
+			t.adapters[id] = map[string]media.Handler{}
 		}
 		t.adapters[id][a.Kind()] = a
 	}
@@ -167,7 +178,7 @@ func (t *Table) add(a media.Adapter, providers ...string) {
 // For returns the adapter of one provider and service. A transport marker may
 // pick a second adapter (gemini-live); a user node speaks the OpenAI body for
 // both node kinds that serve embeddings.
-func (t *Table) For(provider, kind, transport string) (media.Adapter, bool) {
+func (t *Table) For(provider, kind, transport string) (media.Handler, bool) {
 	if transport != "" {
 		if a, ok := t.adapters[provider][kind+"|"+transport]; ok {
 			return a, true
@@ -186,5 +197,5 @@ func (t *Table) For(provider, kind, transport string) (media.Adapter, bool) {
 
 // Adapter is the table as the gateway sees it.
 var _ interface {
-	For(provider, kind, transport string) (media.Adapter, bool)
+	For(provider, kind, transport string) (media.Handler, bool)
 } = (*Table)(nil)

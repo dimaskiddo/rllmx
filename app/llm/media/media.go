@@ -62,6 +62,10 @@ type Response struct {
 	Body   []byte
 	// Usage is set only when the provider reported exact integer counts.
 	Usage Usage
+	// NewCredential is a credential the provider rotated during the call, for a
+	// web session that hands back a fresh cookie. Empty leaves the stored one
+	// untouched.
+	NewCredential string
 }
 
 // Usage is the token count a media provider reported, when it reported one.
@@ -89,6 +93,12 @@ type Call struct {
 // one HTTP request and a parsed answer.
 type Director interface {
 	Direct(ctx context.Context, r Request, c Client) (Response, error)
+}
+
+// Handler is what a provider table stores: an adapter, or a director that runs
+// its own exchange. Both name the service they serve.
+type Handler interface {
+	Kind() string
 }
 
 // Adapter is one provider family's media wire shape.

@@ -201,7 +201,7 @@ Every provider the references ship, with executor kind, status and the work that
 | specialized | done | vertex-partner |
 | specialized | done | bedrock-xai |
 | specialized | done | commandcode, opencode-go, opencode-zen |
-| specialized | todo | veoaifree-web |
+| specialized | done | veoaifree-web |
 
 ## Free Providers (`free`)
 
@@ -247,9 +247,10 @@ Every provider the references ship, with executor kind, status and the work that
 | Executor | Status | Providers |
 |---|---|---|
 | specialized | done | deepseek-web |
-| specialized | todo | chatgpt-web, grok-web (their image and video paths; their chat is parked by the reference) |
+| specialized | done | chatgpt-web |
 | specialized | deferred | perplexity-web (the reference offers it for no service kind) |
-| specialized | todo | uc-web |
+| specialized | done | uc-web |
+| specialized | deferred | grok-web |
 | specialized | deferred | gemini-web, muse-web |
 
 Auth: pasted credential over a plain HTTP client. Browser or TLS-fingerprint clients deferred (design doc 22).
@@ -258,8 +259,8 @@ Auth: pasted credential over a plain HTTP client. Browser or TLS-fingerprint cli
 
 - **trae, windsurf out.** Reference ships both disabled: registry imports commented out, neither supports tool calling. Scope cut.
 - **devin-cli out.** Spawns a process; only the filter-gated `git clone` may be spawned (`design doc 11`, `design doc 22`).
-- **gemini-web, muse-web deferred.** Both drive a browser. chatgpt-web uses only plain HTTP and Sentinel; a Turnstile check returns an error, no browser.
-- **chatgpt-web, grok-web chat parked.** 0.5.116 sets `serviceKinds: ["image"]` and `["image","video"]`, so its dashboard never offers them for chat: chatgpt awaits "more mileage" and a Turnstile demand needs a browser, grok's web chat is rate-gated and the plain-TLS path needs Chrome impersonation. Both arrive with their media models. The extended fork clears the flags, but core follows 0.5.116.
+- **grok-web, gemini-web, muse-web deferred.** grok-web needs a Chrome-TLS client and the other two drive a browser (D322). chatgpt-web, uc-web and veoaifree-web are plain HTTP: their media calls run in `app/llm/media/{chatgptweb,ucweb,veoaifree}`, registered in `media/mux`. A web video is rendered inside the create, so no job follows it (D317).
+- **chatgpt-web, grok-web chat parked.** 0.5.116 sets `serviceKinds: ["image"]` and `["image","video"]`, so its dashboard never offers them for chat: chatgpt awaits "more mileage" and a Turnstile demand needs a browser, grok's web chat is rate-gated and the plain-TLS path needs Chrome impersonation. chatgpt-web's image models are built; grok-web's stay deferred with its TLS client. The extended fork clears the flags, but core follows 0.5.116.
 - **perplexity-web deferred.** 0.5.116 sets `serviceKinds: []`, so it offers nothing. The extended fork serves chat with no browser and no impersonation, which is the shape this router could take at a Parity Sync.
 - **uc-web, veoaifree-web:.** Reference refuses their chat call; they exist for image and video.
 - **Media-only ids:.** huggingface, nace, v1m, xquik, local-device carry no chat model. dahl is a chat provider,.

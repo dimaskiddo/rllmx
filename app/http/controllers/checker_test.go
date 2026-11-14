@@ -467,6 +467,21 @@ func TestAMediaProviderThatTakesNoKeyIsTestedWithoutACall(t *testing.T) {
 	}
 }
 
+func TestACookieProviderIsNotTestedAndMakesNoRequest(t *testing.T) {
+	u := newUpstream(t, 200, canary)
+	e := upstream.Entry{ID: "chatgpt-web", Category: upstream.CategoryCookie, Display: upstream.Display{Name: "C"},
+		Media: &upstream.Media{ServiceKinds: []string{upstream.KindImage},
+			Image: &upstream.MediaConfig{BaseURL: u.URL, AuthType: "cookie"}}}
+	e.Models = []upstream.Model{{ID: "gpt-image-2", Kind: upstream.KindImage}}
+	res := loopbackChecker(t).CheckRegistry(context.Background(), e, "sess=secret")
+	if res.Outcome != OutcomeUnsupported || u.hits.Load() != 0 {
+		t.Fatalf("%+v, %d calls", res, u.hits.Load())
+	}
+	if strings.Contains(fmt.Sprint(res), "sess=secret") {
+		t.Fatal("the cookie reached the result")
+	}
+}
+
 func TestAProviderWithAChatModelKeepsItsLLMProbe(t *testing.T) {
 	u := newUpstream(t, 401, canary)
 	e := mediaEntryFor(u.URL, &upstream.MediaConfig{BaseURL: u.URL + "/v1/embeddings", AuthType: "apikey", AuthHeader: "bearer"})

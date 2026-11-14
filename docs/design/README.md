@@ -18,7 +18,7 @@ One file per area. Each carries its status, the design, its parity table against
 | 10 | [Token Savers](10-Token-Savers.md) | todo |
 | 11 | [Skills, Session & Auto Plan](11-Skills-Session-and-Auto-Plan.md) | todo |
 | 12 | [Health, Circuit Breaker & Probe](12-Health-Circuit-Breaker-and-Probe.md) | todo |
-| 13 | [Media Endpoints](13-Media-Endpoints.md) | partial |
+| 13 | [Media Endpoints](13-Media-Endpoints.md) | done |
 | 14 | [Outbound Network](14-Outbound-Network.md) | partial |
 | 15 | [Storage](15-Storage.md) | partial |
 | 16 | [Usage, Pricing & Quota](16-Usage-Pricing-and-Quota.md) | partial |

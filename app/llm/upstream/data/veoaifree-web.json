@@ -3,7 +3,12 @@
   "alias": "veoaifree-web",
   "category": "apikey",
   "display": { "name": "Veo AI Free (Web)" },
-  "media": { "serviceKinds": ["image", "video"], "noAuth": true, "videoConfig": { "executorDriven": true } },
+  "media": {
+    "serviceKinds": ["image", "video"],
+    "noAuth": true,
+    "imageConfig": { "baseUrl": "https://veoaifree.com", "authType": "none", "timeoutMs": 300000 },
+    "videoConfig": { "executorDriven": true, "baseUrl": "https://veoaifree.com", "authType": "none", "timeoutMs": 660000 }
+  },
   "models": [
     { "id": "veo", "name": "VEO 3.1 (Free)", "kind": "video", "params": ["seconds", "size"] },
     { "id": "seedance", "name": "Seedance (Free)", "kind": "video", "params": ["seconds", "size"] },

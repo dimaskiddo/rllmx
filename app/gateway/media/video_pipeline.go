@@ -83,6 +83,11 @@ func (p *Pipeline) VideoJob(ctx context.Context, in Input, id string) Output {
 		return failureOutput(http.StatusBadRequest, "That provider does not serve video")
 	}
 	cfg := entry.Media.Video
+	if cfg.ExecutorDriven {
+		// A web session renders the video inside the create; there is no job to
+		// read back.
+		return failureOutput(http.StatusNotFound, "No provider serves that video job")
+	}
 	adapter, ok := p.d.Adapters.For(provider, upstream.KindVideo, "")
 	if !ok {
 		return failureOutput(http.StatusBadRequest, "That provider does not serve video here")

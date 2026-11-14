@@ -3,7 +3,11 @@
   "alias": "uc-web",
   "category": "webCookie",
   "display": { "name": "UC Web" },
-  "media": { "serviceKinds": ["image", "video"], "videoConfig": { "executorDriven": true } },
+  "media": {
+    "serviceKinds": ["image", "video"],
+    "imageConfig": { "baseUrl": "https://internal.chatuncensored.ai", "authType": "cookie" },
+    "videoConfig": { "executorDriven": true, "baseUrl": "https://internal.chatuncensored.ai", "authType": "cookie", "timeoutMs": 360000 }
+  },
   "models": [
     { "id": "seedream-v4.5", "name": "Seedream v4.5 (UC)", "kind": "image", "params": ["n", "size"] },
     { "id": "seedream-v5", "name": "Seedream v5 (UC)", "kind": "image", "params": ["n", "size"] },

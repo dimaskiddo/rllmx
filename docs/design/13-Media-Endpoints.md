@@ -1,6 +1,6 @@
 # Design 13 — Media Endpoints (`app/gateway/`)
 
-**Status:** partial
+**Status:** done
 
 Each endpoint resolves model and account as chat does, then calls a per-provider adapter registered by provider id and modality. Usage rows carry the modality in `endpoint`.
 
@@ -24,9 +24,11 @@ Each endpoint resolves model and account as chat does, then calls a per-provider
 | Audio | TTS, STT, voice lists: `/v1/audio/speech`, `/v1/audio/transcriptions`, `/v1/audio/voices`, the two dashboard routes | done |
 | Video | `/v1/videos/generations\|edits\|extensions` and `GET /v1/videos/{id}`: xAI's shape, OpenRouter and Vertex (Veo) | done |
 | Search and fetch | `/v1/search` and `/v1/web/fetch`: 13 dedicated search vendors, 9 chat searches, 6 fetch vendors and the built-in reader; `MEDIA_SEARXNG_URL`; SSRF on every target | done |
-| Browser and web media | chatgpt-web, grok-web, gemini-web, muse-web, uc-web, veoaifree-web, and anything the earlier slices defer | todo |
+| Browser and web media | chatgpt-web image, uc-web and veoaifree-web image and video, over a pasted web session; the rotated cookie is written back; grok-web, gemini-web and muse-web stay deferred | done |
 
 Bounds already built: a 25 MiB upload, a 32 KiB speech input, a 120 s speech timeout, a 300 s transcription timeout, a 120 s video round trip (`MEDIA_VIDEO_TIMEOUT`), a 15 s search, a 2,000-byte query, and a 5 MiB page the built-in reader converts.
+
+A web provider adds its own bounds: an 8,000-byte image prompt, a 100 MiB artifact, and a 300 s session.
 
 A search or fetch names its provider in the body, because the provider is the model there. Its failure locks the account for `websearch:<id>` or `webfetch:<id>` only, so a spent search key never takes chat offline.
 
@@ -39,6 +41,12 @@ The built-in reader is the one path that reads the target here: one GET through 
 `MEDIA_SEARXNG_URL` empty serves no SearXNG; when set, its host is permitted for these calls and nothing else. A local SearXNG therefore needs no `UPSTREAM_ALLOW_PRIVATE` entry of its own.
 
 A video create is a billable job. It moves to another account only on 401, 403 or 429, never after a network error, a timeout or a 5xx. Its answer carries `x-9router-connection-id` and `X-Rllm-Connection-Id`, and a poll reads the account from `x-connection-id`, then `?provider=`, then xAI. Runway's video models are served through the images route, as the reference does.
+
+A web provider runs on its pasted session cookie over the plain HTTP client. chatgpt-web trades the cookie for an access token, solves the Sentinel challenge and reads one picture_v2 conversation; a Turnstile demand answers a fixed word, never a browser.
+
+uc-web mints a Clerk session per call and writes the rotated client cookie back to the connection. veoaifree-web sends its page nonce and takes no credential. Every result address is checked for https and a host before the guarded client reads it.
+
+A web video is rendered inside the create: the answer is the completed generation and no job follows, so a poll reads nothing. The answer keeps the provider's https address rather than inlining the bytes as a data URL.
 
 **Done when:** every endpoint passes its end-to-end test against fake providers, and oversized uploads and SSRF targets are rejected.
 ---
@@ -74,6 +82,12 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 313 | A refused search or fetch answers a fixed word; the reference relays up to 200-500 characters of provider text. **Built** | Client errors carry no internal detail (`design doc 19`) |
 | 314 | A query is bounded at 2,000 bytes, a fetch target at 2,048, filters at 50, `max_characters` at the provider's own cap; the reference takes them as sent. **Built** | One request cannot exhaust memory (`AGENTS.md`) |
 | 315 | OpenAI chat search goes to the provider's own chat address when its data names no search endpoint. **Built** | The reference sends it to an empty address and fails every time |
+| 317 | A web video answers the completed generation and keeps no job; a poll answers 404. The reference is synchronous too, but its answer inlines the bytes. **Built** | A synchronous render has no job to read, and one answer shape is enough |
+| 318 | A web artifact redirect is refused rather than followed three times as the reference does. **Built** | A redirect is the simplest way to leave the checked host; the guarded dialer sees every hop it makes, and this path makes none |
+| 319 | A web video answer keeps the provider's https address instead of `data:<mime>;base64`. **Built** | A 100 MiB video as base64 costs three times the memory for no gain |
+| 320 | A web image makes one item per request; `n` above one is refused. **Built** | One web turn produces one picture; a longer `n` would repeat a billable conversation |
+| 321 | A cookie provider's probe answers "test not supported yet" without a call. **Planned** | Validating a web session needs a real render, which the probe will not start |
+| 322 | grok-web (Chrome-TLS) and gemini-web, muse-web (browser DOM) stay deferred. **Recorded** | A TLS-fingerprint or browser client is a spawned process or an impersonation path (`design doc 22`) |
 
 ---
 
@@ -97,4 +111,8 @@ One row per lesson; the decision is what the code does because of it.
 | A search provider is the model, and its failure is not the account's. | The route resolves the provider from the body and locks `websearch:<id>` / `webfetch:<id>`, so a spent search key leaves chat working. |
 | A vendor fetches the target from its own network, where our dialer never runs. | The target passes `network.CheckPublic` before any provider is called: scheme, host, and every resolved address. |
 | The provider's `searchViaChat.defaultModel` is the search model, not a client's. | The adapter fills the address's `{model}` from the entry, so a client cannot point a chat search at another model. |
+| A web photo path is many calls, not one. | A web provider is a `media.Director`: the session, challenge, conversation, poll and download run inside one exchange. |
+| A web session rotates its cookie in the middle of a call. | The answer carries the fresh value and the pipeline writes it back through one store method, never through the OAuth refresher. |
+| Turnstile cannot be solved without a browser. | A demand answers a fixed word; the reference falls back to Playwright, and spawning a browser is outside this router's rules. |
+| A web video is rendered inside the create. | The create answers the completed generation, and the job route refuses with a fixed word. |
 

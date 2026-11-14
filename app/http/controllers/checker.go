@@ -262,6 +262,11 @@ func (c *Checker) checkMedia(ctx context.Context, e upstream.Entry, key string) 
 		if e.Media.NoAuth || cfg.AuthType == "none" {
 			return Result{Outcome: OutcomeValid, Method: kind}, true
 		}
+		if cfg.AuthType == "cookie" {
+			// A web session cookie is validated by a real render, which the probe
+			// will not start; the generic body would send it as a bearer token.
+			return Result{Outcome: OutcomeUnsupported, Method: kind}, true
+		}
 		if strings.TrimSpace(key) == "" {
 			return Result{Outcome: OutcomeInvalidKey, Method: kind}, true
 		}

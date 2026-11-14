@@ -60,6 +60,11 @@ type Connections interface {
 	Get(ctx context.Context, id string) (repository.Connection, bool, error)
 }
 
+// Credentials stores a credential a provider rotated during a call.
+type Credentials interface {
+	UpdateApiKey(ctx context.Context, connID, key string) error
+}
+
 // VoiceLister asks a provider for its own voice list.
 type VoiceLister func(ctx context.Context, provider string, r media.Request, c media.Client) ([]upstream.Voice, error)
 
@@ -72,7 +77,7 @@ type Usage interface {
 // A provider absent from it has no adapter for that service; a transport marker
 // may pick a second one (gemini-live).
 type Adapters interface {
-	For(provider, kind, transport string) (media.Adapter, bool)
+	For(provider, kind, transport string) (media.Handler, bool)
 }
 
 // Deps is what the endpoints need. Only Registry and Adapters are required.
@@ -90,6 +95,8 @@ type Deps struct {
 	Nodes       Nodes
 	// Connections looks up the account a video poll names.
 	Connections Connections
+	// Credentials stores a credential the provider rotated during the call.
+	Credentials Credentials
 	Voices      VoiceLister
 	Usage       Usage
 	Log         log.Log
@@ -470,7 +477,7 @@ func (p *Pipeline) noAccount(ctx context.Context, err error, provider, model str
 
 // try runs the request on one account. done says the answer is final for this
 // request; otherwise another account is tried.
-func (p *Pipeline) try(ctx context.Context, kind string, adapter media.Adapter, entry upstream.Entry, cfg *upstream.MediaConfig, ref upstream.MediaRef, lockModel string, conn repository.Connection, call media.Request, row *analytics.Record) (Output, bool) {
+func (p *Pipeline) try(ctx context.Context, kind string, adapter media.Handler, entry upstream.Entry, cfg *upstream.MediaConfig, ref upstream.MediaRef, lockModel string, conn repository.Connection, call media.Request, row *analytics.Record) (Output, bool) {
 	noAuth := cfg != nil && (cfg.AuthType == "none" || (entry.Media != nil && entry.Media.NoAuth))
 	oauthed := conn.ID != "" && conn.AuthType == "oauth" && entry.OAuth != nil
 	if oauthed && p.d.Refresher != nil {
@@ -523,6 +530,11 @@ func (p *Pipeline) try(ctx context.Context, kind string, adapter media.Adapter, 
 		return failureOutput(http.StatusBadGateway, "The provider could not be reached"), true
 	}
 	out := Output{Status: ans.Status, Header: ans.Header, Body: ans.Body}
+	if ans.NewCredential != "" && conn.ID != "" && p.d.Credentials != nil {
+		// A web session hands back a fresh cookie; the answer already succeeded, so
+		// a store fault leaves the old value rather than failing the request.
+		_ = p.d.Credentials.UpdateApiKey(ctx, conn.ID, ans.NewCredential)
+	}
 	row.Status = out.Status
 	row.ErrorClass = "none"
 	if ans.Usage.Known {
@@ -554,7 +566,7 @@ func (p *Pipeline) renew(ctx context.Context, conn repository.Connection, entry 
 	return conn, "", false
 }
 
-func (p *Pipeline) call(ctx context.Context, adapter media.Adapter, req media.Request) (media.Response, bool, error) {
+func (p *Pipeline) call(ctx context.Context, adapter media.Handler, req media.Request) (media.Response, bool, error) {
 	client := p.d.Client
 	if req.Kind == upstream.KindFetch && p.d.FetchClient != nil {
 		client = p.d.FetchClient
@@ -569,7 +581,11 @@ func (p *Pipeline) call(ctx context.Context, adapter media.Adapter, req media.Re
 		ans, err := direct.Direct(cctx, req, client)
 		return ans, false, err
 	}
-	call, err := adapter.Build(cctx, req, client)
+	a, ok := adapter.(media.Adapter)
+	if !ok {
+		return media.Response{}, false, errors.New("media: the provider's handler serves neither shape")
+	}
+	call, err := a.Build(cctx, req, client)
 	if err != nil {
 		return media.Response{}, false, err
 	}
@@ -584,7 +600,7 @@ func (p *Pipeline) call(ctx context.Context, adapter media.Adapter, req media.Re
 		// The adapter never reads a refusal: the gateway renews and retries.
 		return media.Response{}, true, nil
 	}
-	out, err := adapter.Parse(cctx, req, p.d.Client, status, header, body)
+	out, err := a.Parse(cctx, req, p.d.Client, status, header, body)
 	return out, false, err
 }
 

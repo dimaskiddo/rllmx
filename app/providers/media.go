@@ -12,6 +12,8 @@ import (
 	mediamux "rllmx/app/llm/media/mux"
 	"rllmx/app/llm/media/voice"
 	"rllmx/app/platform/network"
+	"rllmx/app/store/document"
+	"rllmx/app/store/repository"
 )
 
 // hostOf is the host name of an operator-set address; the settings checked it,
@@ -22,6 +24,18 @@ func hostOf(raw string) string {
 		return ""
 	}
 	return u.Hostname()
+}
+
+// rotatedCredential stores a cookie a web provider rotated during a call. It is
+// the one writer the media pipeline needs; every other credential is written by
+// its own controller.
+type rotatedCredential struct{ conns *repository.ConnectionsRepo }
+
+func (r rotatedCredential) UpdateApiKey(ctx context.Context, connID, key string) error {
+	_, err := r.conns.Update(ctx, connID, repository.ConnPatch{
+		Fields: map[string]string{"apiKey": document.Encode(key)},
+	})
+	return err
 }
 
 // MediaSource builds the media endpoints' pipeline on first use, for the same
@@ -72,6 +86,7 @@ func buildMedia(_ context.Context, app foundation.Application) (*gatewaymedia.Pi
 		Reporter:    account.NewReporter(store.Connections(), log, nil),
 		Nodes:       store.Nodes(),
 		Connections: store.Connections(),
+		Credentials: rotatedCredential{conns: store.Connections()},
 		Voices:      voice.List,
 		Usage:       writer,
 		Log:         log,
