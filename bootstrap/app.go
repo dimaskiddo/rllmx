@@ -11,6 +11,7 @@ import (
 	"github.com/goravel/framework/contracts/schedule"
 	"github.com/goravel/framework/foundation"
 
+	"rllmx/app/access/identity"
 	"rllmx/app/access/saml"
 	"rllmx/app/access/sso"
 	"rllmx/app/facades"
@@ -57,6 +58,12 @@ func Boot(version, commit string) contractsfoundation.Application {
 			}
 			base.OAuth = &controllers.OAuthController{Service: h.OAuth, Auth: h.Auth, Server: h.Settings}
 			base.Callback = &controllers.CallbackController{Files: web.Static}
+			base.Keys = &controllers.KeysController{
+				DB: db, Codec: identity.NewKeys(facades.Config().GetString("auth.api_key_secret")),
+				Machine: identity.NewMachine(facades.Config().GetString("auth.machine_id_salt")),
+				Dir:     facades.Config().GetString("app.data_dir"),
+				Changed: h.Auth.Keys.Changed, Log: facades.Log(),
+			}
 			routes.Web(facades.Route(), h.Guard, base)
 		}).
 		WithProviders(Providers(version)).

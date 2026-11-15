@@ -23,7 +23,7 @@ Static files embedded with `go:embed`: one HTML shell per page, hand-written CSS
 |---|---|
 | i18n | `web/static/i18n/en.json` and `id.json`, key-based; the locale cookie is set by `/api/locale`. A new locale is a new JSON file |
 | Escaping | Dynamic text uses `textContent` or escaped attributes, never `innerHTML` from data |
-| Secrets | The API masks them; the dashboard never receives raw tokens |
+| Secrets | The API masks them and the dashboard never receives raw tokens. The one exception is a deliberate reveal: a signed-in operator asks for one key by id and the answer is logged (D330) |
 
 ### Provider Routes (`app/http/controllers`)
 

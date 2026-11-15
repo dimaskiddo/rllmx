@@ -323,3 +323,23 @@ func TestMediaRoutesAreLLMRoutesThatNeedAKey(t *testing.T) {
 		t.Errorf("dashboard voices: class = %d ok=%v", class, ok)
 	}
 }
+
+func TestEveryKeyRouteNeedsASessionEvenWhenLoginIsOff(t *testing.T) {
+	// A key is a secret; the always-protected class is the one the account logins
+	// use, and it refuses an anonymous local caller even with requireLogin off.
+	r := tests.NewRoute(t)
+	g := apphttp.NewGuard(nil, true)
+	r.SetGlobalMiddleware([]contractshttp.Middleware{&middleware.RequestID{}, &middleware.Guard{Guard: g}})
+	Web(r, g, Base{Keys: &controllers.KeysController{}})
+	for _, rt := range [][2]string{
+		{"GET", "/api/keys"}, {"POST", "/api/keys"},
+		{"GET", "/api/keys/{id}"}, {"PUT", "/api/keys/{id}"}, {"DELETE", "/api/keys/{id}"},
+	} {
+		if class, ok := g.RouteClass(rt[0], rt[1]); !ok || class != apphttp.ClassAlwaysProtected {
+			t.Errorf("%s %s: class = %d ok=%v", rt[0], rt[1], class, ok)
+		}
+	}
+	if rec := call(r, nethttp.MethodGet, "/api/keys"); rec.Code != nethttp.StatusUnauthorized {
+		t.Fatalf("an anonymous key listing: %d", rec.Code)
+	}
+}

@@ -119,7 +119,7 @@ func (c *KeysList) Handle(ctx console.Context) error {
 		if !row.Unreadable {
 			class = codec.Classify(row.Key).String()
 		}
-		table = append(table, []string{row.ID, row.Name, maskKey(row.Key), class, state, row.CreatedAt})
+		table = append(table, []string{row.ID, row.Name, auth.MaskKey(row.Key), class, state, row.CreatedAt})
 	}
 	ctx.Table([]string{"id", "name", "key", "checksum", "state", "created"}, table)
 	return nil
@@ -154,21 +154,6 @@ func (c *KeysRevoke) Handle(ctx console.Context) error {
 	}
 	ctx.Line("key revoked: " + row.Name + " (" + row.ID + ")")
 	return nil
-}
-
-// maskKey shows the class and the last four characters, never the whole value.
-func maskKey(key string) string {
-	if key == "" {
-		return "(unreadable)"
-	}
-	class := ""
-	if i := strings.LastIndex(key, "-"); i >= 0 && i+1 < len(key) {
-		class = "…" + key[i+1:]
-	}
-	if len(key) <= 12 {
-		return "…" + key[len(key)/2:] + class
-	}
-	return key[:5] + "…" + key[len(key)-4:]
 }
 
 // PasswordReset replaces the dashboard password and ends every session.

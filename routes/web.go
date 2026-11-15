@@ -36,6 +36,8 @@ type Base struct {
 	OAuth *controllers.OAuthController
 	// Callback serves the page a provider redirects the browser to.
 	Callback *controllers.CallbackController
+	// Keys is the client-key management handler; nil leaves its routes out.
+	Keys *controllers.KeysController
 }
 
 // Web declares the route tables. Every route goes through guard.Handle, which
@@ -68,6 +70,16 @@ func Web(router route.Route, guard *apphttp.Guard, base Base) {
 		guard.Handle(router, apphttp.ClassPublic, nethttp.MethodGet, "/api/auth/saml/start", m.Start)
 		guard.Handle(router, apphttp.ClassPublic, nethttp.MethodPost, "/api/auth/saml/acs", m.ACS)
 		guard.Handle(router, apphttp.ClassPublic, nethttp.MethodGet, "/api/auth/saml/metadata", m.Metadata)
+	}
+
+	// A key is a secret, so its routes need a dashboard session even when
+	// requireLogin is off: the class the account logins use.
+	if k := base.Keys; k != nil {
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/keys", k.List)
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodPost, "/api/keys", k.Create)
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/keys/{id}", k.Show)
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodPut, "/api/keys/{id}", k.Update)
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodDelete, "/api/keys/{id}", k.Delete)
 	}
 
 	if p := base.Providers; p != nil {

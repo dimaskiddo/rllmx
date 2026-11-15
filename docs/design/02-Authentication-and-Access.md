@@ -194,7 +194,7 @@ Anything the dashboard asks the router to do against its own endpoints (model te
 | `keys:create`, `keys:list`, `keys:revoke`, `password:reset`, `db:export-plain` | `app/console/commands`, `app/access/identity` | done |
 | `/api/auth/oidc/test`, `/api/auth/saml/test` | none | deferred |
 | `/api/settings` (database export/import, the other settings) | `app/http/controllers` | todo (require-login is built) |
-| `/api/keys/*` | `app/http/controllers` | todo |
+| `/api/keys/*` (list, create, reveal, rename, enable/disable, delete) | `app/http/controllers`, `app/access/auth` | done (a dashboard session even when `requireLogin` is off; the list is masked and only the reveal and the create answer a whole key) |
 | `/api/locale`, `/api/tags` | `app/http/controllers` | todo |
 
 ---
@@ -203,7 +203,7 @@ Anything the dashboard asks the router to do against its own endpoints (model te
 
  are built: password login with its session and limiter, API keys, OIDC, SAML and the five commands. The design doc is `partial` because four parity rows above are still open, each owned by a later step:
 
-- [ ] The key management API (`/api/keys/*`) and the rest of `/api/settings` — planned
+- [x] The key management API (`/api/keys/*`); `/api/settings` stays with the settings step
 - [ ] `/api/auth/oidc/test`, `/api/auth/saml/test`, `/api/locale`, `/api/tags` — planned
 - [ ] The per-key model allow-list and quota the `Caller` already carries —, (`design doc 21`)
 - **Done when:** a revoked or disabled key is rejected within the cache TTL and immediately after explicit invalidation — that holds today and a test proves it. What keeps the design doc open is the management surface and the two limits, not the guard.
@@ -241,6 +241,9 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 66 | **(not built)**, with the SSRF-guarded client | Needs the guard (planned) |
 | 207 | A session carries `pv`, an HMAC of the stored hash and the session epoch, so a password change or a "logout everywhere" ends every issued session at once | The reference has no revocation: a stolen cookie stays valid for its full 24 h after a password change |
 | 208 | The login limiter keys an IPv6 caller by its /64, and a burst of comparisons is bounded by one slot per CPU with a 2 s wait then 503 | Addressing rotation within one prefix buys no fresh budget, and a guess storm cannot spend every core |
+| 330 | The key list answers a masked value and only `GET /api/keys/{id}` returns one key whole, on a session, with a line in the log. The reference's list carries every key's full value and the browser masks it. **Built** | A secret does not leave the API in a listing; one deliberate reveal is auditable, a page race is not |
+| 331 | `PUT /api/keys/{id}` renames; the reference's takes only `isActive` and `access`. **Built** | Renaming is what an operator means; delete and create would change the key and its usage history |
+| 332 | The last active key may be disabled or deleted, as the reference allows | The reference behaves the same, and an operator on this machine recovers through `keys:create`; a lockout rule here would be a behaviour nobody asked for (trade-off) |
 
 ---
 
@@ -253,4 +256,4 @@ One row per lesson; the decision is what the code does because of it.
 | `goxmldsig`'s `Validate` returns the element it verified, not the document it was handed. | Every claim check runs on that returned value; the envelope supplies only status and destination. |
 | Inclusive C14N pulls in-scope namespace declarations, so a signature made while attached can fail once detached. | The verifier reads only what it proved, never the re-serialised document. |
 | The ACS parses the certificate on every sign-in, and the stored value changes only when the row does. | `saml.ParseCertificate` caches one certificate keyed by the stored text. |
-
+| A revocation must not wait for the key cache. | Every mutation calls `Keys.Changed`, and a test looks a key up before disabling it and expects the next lookup to fail; the ten-second TTL is not the answer. |

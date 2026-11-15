@@ -20,6 +20,7 @@
 **Steps and.** Nothing built.
 
 - [x] The model list filtered by the allow-list ( `app/gateway/catalog`: each entry resolved through the resolver, exact comparison); reuses that matching for the per-request check
+- [x] The allow-list is **stored** from the key API (`app/access/auth.ValidateAccess`, 200 entries of 256 characters, normalized) and nothing reads it yet
 - [ ] Per-key model allow-list, enforced per request; a reroute is re-checked against it. The response cache looks up before account selection, so the check must run before the lookup, or a restricted key could read an answer for a model it may not call
 - [ ] Per-key quota: request and token budgets, reset window, 429 `insufficient_quota`
 
