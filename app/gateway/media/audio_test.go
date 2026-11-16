@@ -12,6 +12,7 @@ import (
 
 	"github.com/tidwall/gjson"
 
+	"rllmx/app/access/identity"
 	"rllmx/app/gateway/account"
 	gatewaymedia "rllmx/app/gateway/media"
 	mediamux "rllmx/app/llm/media/mux"
@@ -114,16 +115,16 @@ func TestVoicesComeFromTheProviderData(t *testing.T) {
 		Selector: account.NewSelector(account.SelectorOptions{Conns: st.Connections(), Settings: st.Settings()}),
 		Reporter: account.NewReporter(st.Connections(), &tests.Log{}, nil), Usage: &usage.Sink{}, Now: time.Now,
 	})
-	out := p.Voices(context.Background(), "openai", "")
+	out := p.Voices(context.Background(), identity.Caller{}, "openai", "")
 	if out.Status != 200 || len(gjson.GetBytes(out.Body, "data").Array()) != 2 ||
 		gjson.GetBytes(out.Body, "data.0.model").String() != "openai/alloy" {
 		t.Fatalf("%d %s", out.Status, out.Body)
 	}
-	filtered := p.Voices(context.Background(), "openai", "en-US")
+	filtered := p.Voices(context.Background(), identity.Caller{}, "openai", "en-US")
 	if len(gjson.GetBytes(filtered.Body, "data").Array()) != 1 {
 		t.Fatalf("%s", filtered.Body)
 	}
-	if out := p.Voices(context.Background(), "nope", ""); out.Status != http.StatusBadRequest {
+	if out := p.Voices(context.Background(), identity.Caller{}, "nope", ""); out.Status != http.StatusBadRequest {
 		t.Fatalf("%d", out.Status)
 	}
 }

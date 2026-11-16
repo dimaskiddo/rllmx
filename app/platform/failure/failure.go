@@ -208,6 +208,12 @@ func jsonHeaders(h http.Header) {
 	h.Set("Cache-Control", "no-store")
 }
 
+// NotAllowed names the model a key may not call. The name is the client's own
+// string, so repeating it reveals nothing internal.
+func NotAllowed(model string) string {
+	return "This API key is not allowed to use model \"" + model + "\""
+}
+
 // Write sends an error response in the given format.
 func Write(w http.ResponseWriter, f Format, status int, msg string) {
 	WriteWith(w, f, status, msg, nil)

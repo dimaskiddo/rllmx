@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"slices"
 	"strings"
 	"time"
@@ -288,27 +287,20 @@ func (c *Catalog) fetch(ctx context.Context, n repository.Node, conns []reposito
 }
 
 // visible keeps what the caller may call. A key that is not restricted sees
-// everything; a restricted one sees the listed models, each written in any form
-// the resolver understands. The comparison is exact, as the resolver's is, so a
-// model is never shown under a spelling the pipeline would route elsewhere.
+// everything; a restricted one sees the models its list names. The matcher is
+// the one a request is checked with, so the list and the routing cannot
+// disagree.
 func (c *Catalog) visible(ctx context.Context, caller identity.Caller, list []Entry) ([]Entry, error) {
 	if !caller.Restricted {
 		return list, nil
 	}
-	allow := map[string]bool{}
-	for _, a := range caller.Allow {
-		t, err := c.Resolver.Resolve(ctx, a)
-		switch {
-		case err == nil && t.Combo == "":
-			allow[t.Provider+"/"+t.Model] = true
-		case err == nil, errors.Is(err, routing.ErrEmpty), errors.Is(err, routing.ErrTooLong), errors.Is(err, routing.ErrBadInput):
-		default:
-			return nil, err
-		}
+	allow, err := routing.NewAllow(ctx, c.Resolver, c.Registry, caller.Allow)
+	if err != nil {
+		return nil, err
 	}
 	out := make([]Entry, 0, len(list))
 	for _, e := range list {
-		if allow[e.Provider+"/"+e.Model] {
+		if allow.Target(routing.Target{Provider: e.Provider, Model: e.Model}) {
 			out = append(out, e)
 		}
 	}

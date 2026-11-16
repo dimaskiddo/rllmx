@@ -68,6 +68,10 @@ func (p *Pipeline) service(ctx context.Context, kind string, in Input) Output {
 	if !servesKind(entry.Media, kind) {
 		return bad(http.StatusBadRequest, "That provider does not serve this service")
 	}
+	// The provider is the model here, so the list names it as a bare provider.
+	if !p.mayCall(in.Caller, upstream.MediaRef{Provider: id, Kind: kind}) {
+		return bad(http.StatusForbidden, appfailure.NotAllowed(name))
+	}
 	cfg := entry.Media.Config(kind)
 	if cfg == nil {
 		// A provider that searches through chat has no endpoint of its own; the

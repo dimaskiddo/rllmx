@@ -35,6 +35,18 @@ func (c *call) resolve(ctx context.Context) (Output, bool) {
 	case err != nil:
 		return c.internal(ctx, err), false
 	}
+	// The key is checked on the resolved target, before the response cache and
+	// before any account: a check after the cache would let a restricted key read
+	// an answer cached for a model it may not call.
+	if c.in.Caller.Restricted {
+		allow, err := routing.NewAllow(ctx, c.p.d.Resolver, c.p.d.Registry, c.in.Caller.Allow)
+		if err != nil {
+			return c.internal(ctx, err), false
+		}
+		if !allow.Target(t) {
+			return c.refuseModel(), false
+		}
+	}
 	c.row.Provider, c.row.Model = t.Provider, t.Model
 	// A media model is never a chat model: the two areas share one registry, so
 	// the kind decides.

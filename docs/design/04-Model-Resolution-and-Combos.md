@@ -19,7 +19,7 @@ Then:
 | Combo name (a combo name with a slash is never reached), then user alias (`kv` scope `modelAliases`, value `"provider/model"` or `{"provider","model"}`; the result is **not** looked up as an alias again, so aliases cannot chain or loop; any other shape is ignored), then the built-in alias `grok-build` to `gcli/grok-build`, then prefix inference |
 | Inference | On the lower-cased name, first match wins: `codex-auto-review`, `gpt-5.x`, `gpt-6-`, `gpt-daybreak-`, `gpt-reserve...` is codex; `claude-` anthropic; `us\|eu\|ap\|global` + `anthropic\|meta\|amazon\|mistral\|xai` bedrock; `gemini-` gemini; `gpt-`, `o1`, `o3`, `o4` openai; `deepseek-` openrouter; anything else openai |
 | A name that resolves to `anthropic` with no active `anthropic` connection, when a `claude` connection is active, is served by `claude`: the reference sends a bare `claude-*` id there rather than failing with no credentials. An explicit `provider/model` prefix is never rewritten |
-| The resolver does not decide access. Key allow lists check the resolved target afterwards |
+| The resolver does not decide access. `routing.NewAllow` checks the resolved target afterwards, in the pipeline before the response cache and in the catalog for the listing |
 
 Stored data comes through a `Snapshot` that reads aliases, nodes and combo names at most once every 5 s each (`Invalidate` drops them at once). A failed read is an error, never a guess, and is not cached. A node whose data is not JSON, or whose prefix is not a string, has an empty prefix.
 

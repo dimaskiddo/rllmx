@@ -24,7 +24,7 @@ func withCaller(c identity.Caller, h contractshttp.HandlerFunc) contractshttp.Ha
 	}
 }
 
-func TestAKeyLimitedToModelsCannotSpendThem(t *testing.T) {
+func TestNoCallerIsAnsweredWithAPIKeyRequired(t *testing.T) {
 	chat := &ChatController{}
 	media := &MediaController{}
 	routes := map[string]contractshttp.HandlerFunc{
@@ -43,36 +43,62 @@ func TestAKeyLimitedToModelsCannotSpendThem(t *testing.T) {
 	}
 	for path, handler := range routes {
 		t.Run(path, func(t *testing.T) {
-			restricted := identity.Caller{ID: "k1", Restricted: true, Allow: []string{"openai/gpt-4o"}}
 			r := tests.NewRoute(t)
 			r.SetGlobalMiddleware(nil)
-			r.Post(path, withCaller(restricted, handler))
+			r.Post(path, handler)
 			rec := httptest.NewRecorder()
 			req := httptest.NewRequest(nethttp.MethodPost, path, strings.NewReader(`{"model":"m"}`))
 			req.RemoteAddr = "203.0.113.9:9999"
 			r.ServeHTTP(rec, req)
-			if rec.Code != nethttp.StatusForbidden {
-				t.Fatalf("restricted key: %d %s", rec.Code, rec.Body.String())
-			}
-			if strings.Contains(rec.Body.String(), "gpt-4o") {
-				t.Fatal("the refusal named the key's own list")
+			if rec.Code != nethttp.StatusUnauthorized {
+				t.Fatalf("%d %s", rec.Code, rec.Body.String())
 			}
 		})
 	}
 }
 
-func TestAnOpenKeyReachesThePipelineGate(t *testing.T) {
-	open := identity.Caller{ID: "k2"}
-	unavailable := func() (*gatewaymedia.Pipeline, error) { return nil, errors.New("stores not open") }
+func TestARestrictedKeyReachesThePipelineRatherThanBeingRefusedWholesale(t *testing.T) {
+	// The list is enforced by the pipeline now, so the controller lets a
+	// restricted key through; with no pipeline wired the answer is 503, not 403.
+	restricted := identity.Caller{ID: "k1", Restricted: true, Allow: []string{"openai/gpt-4o"}}
 	r := tests.NewRoute(t)
 	r.SetGlobalMiddleware(nil)
-	r.Post("/v1/embeddings", withCaller(open, (&MediaController{EmbeddingsPipe: unavailable}).Embeddings))
+	down := func() (*gatewaymedia.Pipeline, error) { return nil, errors.New("stores not open") }
+	r.Post("/v1/embeddings", withCaller(restricted, (&MediaController{EmbeddingsPipe: down}).Embeddings))
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(nethttp.MethodPost, "/v1/embeddings", strings.NewReader(`{"model":"m"}`))
 	req.RemoteAddr = "203.0.113.9:9999"
 	r.ServeHTTP(rec, req)
-	// No pipeline is wired, so an allowed caller is answered 503, not 401 or 403.
 	if rec.Code != nethttp.StatusServiceUnavailable {
-		t.Fatalf("open key: %d", rec.Code)
+		t.Fatalf("a restricted key was refused by the controller: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCountTokensIsCheckedAgainstTheList(t *testing.T) {
+	body := `{"model":"` + chatModel + `","max_tokens":50,"messages":[{"role":"user","content":"hi"}]}`
+	cases := []struct {
+		name string
+		key  identity.Caller
+		want int
+	}{
+		{"listed", identity.Caller{ID: "k1", Restricted: true, Allow: []string{chatModel}}, nethttp.StatusOK},
+		{"unlisted", identity.Caller{ID: "k1", Restricted: true, Allow: []string{"openai/gpt-4o"}}, nethttp.StatusForbidden},
+		{"unrestricted", identity.Caller{ID: "k1"}, nethttp.StatusOK},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newChatRigFor(t, tc.key, 1<<20)
+			rec := r.postTo(t.Context(), "/v1/messages/count_tokens", body, nil)
+			if rec.Code != tc.want {
+				t.Fatalf("%d %s", rec.Code, rec.Body.String())
+			}
+			if tc.want == nethttp.StatusForbidden && !strings.Contains(rec.Body.String(), chatModel) {
+				t.Fatalf("the refusal does not name the requested model: %s", rec.Body.String())
+			}
+			// Counting spends nothing: no provider was called whatever the answer.
+			if calls := len(r.up.Calls()); calls != 0 {
+				t.Fatalf("%d upstream calls", calls)
+			}
+		})
 	}
 }

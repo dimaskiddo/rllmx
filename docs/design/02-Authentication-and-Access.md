@@ -217,7 +217,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | # | What we do differently | Why it is better |
 |---|---|---|
 | 94 | Any control character refused (write, send) | The rest are as harmful |
-| 325 | A key limited to a list of models is refused with 403 on every chat and media route until per-request enforcement lands; only the model listings read the list. The reference checks the list on each request. **Temporary** | Failing closed is safer than letting a restricted key call every model |
+| 325 | **Retired.** A key limited to a list was refused wholesale until per-request enforcement landed in 2.2; the list is now checked on the resolved model | The temporary rule is gone |
 | 231 | A remote caller whose API keys are refused five times in a row is locked out by the same progressive limiter as the dashboard login (key `key:<address>`, so its budget is its own); while locked, any call that presents a key gets `429` with `Retry-After`, a valid key included. A call with no key, and a local caller, are never counted | The reference lets a client try keys without limit; the key id is six characters from 36, so an unthrottled caller can walk it (improvement) |
 | 232 | One client address may hold at most 50 single sign-in flows open, and the pending store drops expired flows from the old end instead of scanning all of them. The cap is per address, so the store cannot be filled from one place | `oidc/start` and `saml/start` are public; without a per-address cap, ten thousand calls made every real sign-in fail for ten minutes (improvement) |
 | 51 | Only `/v1beta`, first source wins | Query keys out of proxies and logs |
@@ -244,6 +244,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 330 | The key list answers a masked value and only `GET /api/keys/{id}` returns one key whole, on a session, with a line in the log. The reference's list carries every key's full value and the browser masks it. **Built** | A secret does not leave the API in a listing; one deliberate reveal is auditable, a page race is not |
 | 331 | `PUT /api/keys/{id}` renames; the reference's takes only `isActive` and `access`. **Built** | Renaming is what an operator means; delete and create would change the key and its usage history |
 | 332 | The last active key may be disabled or deleted, as the reference allows | The reference behaves the same, and an operator on this machine recovers through `keys:create`; a lockout rule here would be a behaviour nobody asked for (trade-off) |
+| 333 | The allow list compares exactly on the resolved identity, not lowercased as the reference does; a combo is checked by name alone until 2.4 expands its members. **Built** | A case-folded model id can route to a different upstream model, and a member is only a target once a combo expands it |
 
 ---
 

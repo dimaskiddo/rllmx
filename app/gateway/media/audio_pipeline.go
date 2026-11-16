@@ -14,8 +14,10 @@ import (
 
 	"github.com/tidwall/gjson"
 
+	"rllmx/app/access/identity"
 	"rllmx/app/llm/media"
 	"rllmx/app/llm/upstream"
+	appfailure "rllmx/app/platform/failure"
 )
 
 // Bounds on what one audio request may carry.
@@ -180,7 +182,7 @@ func (p *Pipeline) checkBody(kind string, req parsed) error {
 
 // Voices serves GET /v1/audio/voices: the provider's voices from its data, or
 // from its own API when it has a lister.
-func (p *Pipeline) Voices(ctx context.Context, provider, lang string) Output {
+func (p *Pipeline) Voices(ctx context.Context, caller identity.Caller, provider, lang string) Output {
 	id, ok := p.d.Registry.Resolve(provider)
 	if !ok {
 		return failureOutput(http.StatusBadRequest, "Unknown provider")
@@ -189,6 +191,9 @@ func (p *Pipeline) Voices(ctx context.Context, provider, lang string) Output {
 	cfg := entry.Media.Config(upstream.KindTTS)
 	if cfg == nil {
 		return failureOutput(http.StatusBadRequest, "That provider has no voices")
+	}
+	if !p.mayCall(caller, upstream.MediaRef{Provider: id, Kind: upstream.KindTTS}) {
+		return failureOutput(http.StatusForbidden, appfailure.NotAllowed(provider))
 	}
 	var list []upstream.Voice
 	list = append(list, cfg.Voices...)

@@ -53,6 +53,11 @@ func (c *call) closed() Output {
 }
 
 // internal answers a failure of the router's own, with nothing of the cause.
+// refuseModel answers a key that may not call the model it named.
+func (c *call) refuseModel() Output {
+	return c.fail(http.StatusForbidden, "access_denied", failure.NotAllowed(c.requested))
+}
+
 func (c *call) internal(ctx context.Context, err error) Output {
 	if ctx.Err() != nil {
 		return c.closed()

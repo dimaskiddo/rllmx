@@ -13,7 +13,8 @@ Status words: **built** (implemented and tested), **partial** (some behavior mis
 | Password login, dashboard sessions, API keys | built |
 | OIDC and SAML single sign-on | built |
 | API key management API | built |
-| Per-key model allow-lists and budgets | planned |
+| Per-key model allow-lists | built |
+| Per-key request and token budgets | planned |
 | Health, circuit breaker and model probes | partial |
 
 ## Storage and usage

@@ -9,6 +9,7 @@ import (
 
 	"rllmx/app/llm/media"
 	"rllmx/app/llm/upstream"
+	appfailure "rllmx/app/platform/failure"
 	"rllmx/app/store/analytics"
 )
 
@@ -81,6 +82,11 @@ func (p *Pipeline) VideoJob(ctx context.Context, in Input, id string) Output {
 	entry, found := p.d.Registry.ByID(provider)
 	if !found || entry.Media == nil || entry.Media.Video == nil {
 		return failureOutput(http.StatusBadRequest, "That provider does not serve video")
+	}
+	// A poll is a read of a job the client names, and it belongs to the provider
+	// it names, so a key needs that provider on its list.
+	if !p.mayCall(in.Caller, upstream.MediaRef{Provider: provider, Kind: upstream.KindVideo}) {
+		return failureOutput(http.StatusForbidden, appfailure.NotAllowed(provider))
 	}
 	cfg := entry.Media.Video
 	if cfg.ExecutorDriven {

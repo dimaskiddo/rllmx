@@ -48,6 +48,27 @@ type chatRig struct {
 	rows *usage.Sink
 	pipe func() (*pipeline.Pipeline, error)
 	h    nethttp.Handler
+	// auth answers for the key the routes see; nil uses the fixed key.
+	auth apphttp.Authenticator
+}
+
+// fixedCaller answers with one caller, for a test about a restricted key.
+type fixedCaller struct{ c identity.Caller }
+
+func (fixedCaller) Session(*nethttp.Request) bool { return true }
+func (f fixedCaller) APIKey(*nethttp.Request) identity.KeyResult {
+	return identity.KeyResult{Status: identity.KeyValid, Caller: f.c}
+}
+func (fixedCaller) RequireLogin(context.Context) bool  { return true }
+func (fixedCaller) RequireAPIKey(context.Context) bool { return true }
+
+// newChatRigFor is newChatRig whose routes see one specific key.
+func newChatRigFor(t *testing.T, caller identity.Caller, limit int64, steps ...tests.Reply) *chatRig {
+	t.Helper()
+	r := newChatRig(t, limit, steps...)
+	r.auth = fixedCaller{c: caller}
+	r.mount(limit)
+	return r
 }
 
 func newChatRig(t *testing.T, limit int64, steps ...tests.Reply) *chatRig {
@@ -107,7 +128,11 @@ func newChatRigWith(t *testing.T, limit int64, edit func(*pipeline.Deps), steps 
 
 func (r *chatRig) mount(limit int64) {
 	route := tests.NewRoute(r.t)
-	g := apphttp.NewGuard(keyed{}, true)
+	auth := r.auth
+	if auth == nil {
+		auth = keyed{}
+	}
+	g := apphttp.NewGuard(auth, true)
 	route.SetGlobalMiddleware([]contractshttp.Middleware{
 		&middleware.RequestID{}, &middleware.BodyLimit{ClientMax: limit}, &middleware.Guard{Guard: g},
 	})

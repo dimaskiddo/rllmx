@@ -15,6 +15,7 @@ import (
 	"github.com/goravel/framework/contracts/log"
 	"github.com/tidwall/gjson"
 
+	"rllmx/app/access/identity"
 	"rllmx/app/gateway/account"
 	"rllmx/app/llm/executor"
 	"rllmx/app/llm/media"
@@ -133,6 +134,9 @@ type Input struct {
 	// ConnectionID pins a request to one account: the one a video job belongs
 	// to.
 	ConnectionID string
+	// Caller is who the request acts as; its allow list decides what a restricted
+	// key may call.
+	Caller identity.Caller
 	// Provider is the query's provider hint for a video poll.
 	Provider string
 }
@@ -264,11 +268,23 @@ func (p *Pipeline) run(ctx context.Context, kind string, in Input, req parsed) O
 	if kind == upstream.KindSTT {
 		req.modelTransport = p.modelTransport(ref)
 	}
+	if !p.mayCall(in.Caller, ref) {
+		return bad(http.StatusForbidden, appfailure.NotAllowed(model))
+	}
 	cfg := entry.Media.Config(kind)
 	if cfg == nil {
 		return bad(http.StatusBadRequest, "This provider does not serve that model here")
 	}
 	return p.serve(ctx, kind, in, ref, entry, cfg, req, ref.Model, row)
+}
+
+// mayCall reports whether the caller may use the resolved service. A key that is
+// not restricted may call anything.
+func (p *Pipeline) mayCall(caller identity.Caller, ref upstream.MediaRef) bool {
+	if !caller.Restricted {
+		return true
+	}
+	return p.d.Registry.Allows(caller.Allow, ref)
 }
 
 // record starts the one usage row a request leaves behind; the returned

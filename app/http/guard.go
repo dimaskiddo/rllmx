@@ -31,20 +31,6 @@ func WithCaller(ctx contractshttp.Context, c identity.Caller) {
 	ctx.WithValue(callerKey{}, c)
 }
 
-// ModelCaller is CallerFrom for a route that spends a model: a key limited to
-// a list of models is refused, because only the model listing reads that list
-// until per-request enforcement is built.
-func ModelCaller(ctx contractshttp.Context) (identity.Caller, int, bool) {
-	c, ok := CallerFrom(ctx)
-	switch {
-	case !ok:
-		return c, nethttp.StatusUnauthorized, false
-	case c.Restricted:
-		return c, nethttp.StatusForbidden, false
-	}
-	return c, 0, true
-}
-
 // Guard decides who may reach which route. Every route is declared through
 // Handle, which records its class; Protect, installed as global middleware,
 // reads the class and the socket peer, never the framework's client IP.

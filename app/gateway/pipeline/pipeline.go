@@ -12,6 +12,7 @@ import (
 
 	"rllmx/app/access/identity"
 	"rllmx/app/gateway/conversation"
+	"rllmx/app/llm/routing"
 	"rllmx/app/llm/stream"
 	"rllmx/app/llm/translate"
 	"rllmx/app/platform/failure"
@@ -106,6 +107,25 @@ func (p *Pipeline) Handle(ctx context.Context, in Input, open Opener) Output {
 	out := c.run(ctx)
 	c.finish(out)
 	return out
+}
+
+// Allows reports whether the caller may use the model string it names, without
+// spending anything: it is how a route that names a model but calls no provider
+// is checked. It fails closed: a name that does not resolve, or a store that
+// cannot answer, is not allowed.
+func (p *Pipeline) Allows(ctx context.Context, caller identity.Caller, model string) bool {
+	if !caller.Restricted {
+		return true
+	}
+	t, err := p.d.Resolver.Resolve(ctx, model)
+	if err != nil {
+		return false
+	}
+	allow, err := routing.NewAllow(ctx, p.d.Resolver, p.d.Registry, caller.Allow)
+	if err != nil {
+		return false
+	}
+	return allow.Target(t)
 }
 
 // call is the state of one request.

@@ -78,3 +78,38 @@ func (r *Registry) Media(name, kind string) (MediaRef, bool) {
 
 // mediaKindList is every service kind, for a lookup that does not name one.
 var mediaKindList = []string{KindEmbedding, KindImage, KindTTS, KindSTT, KindVideo, KindSearch, KindFetch}
+
+// Allows reports whether a key's list names the resolved service. A model route
+// is named as provider/model, or as the bare model id the media index knows; a
+// provider-only route (a search, a fetch, a video poll, a voice list) is named
+// by a bare entry that resolves to that provider. An entry with a slash never
+// opens a provider-only route, and a bare provider never opens a model: the two
+// are different things to be granted.
+func (r *Registry) Allows(list []string, ref MediaRef) bool {
+	for _, entry := range list {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		provider, model, hasModel := strings.Cut(entry, "/")
+		if ref.Model == "" {
+			if hasModel {
+				continue
+			}
+			if id, ok := r.Resolve(entry); ok && id == ref.Provider {
+				return true
+			}
+			continue
+		}
+		if hasModel && model != "" {
+			if id, ok := r.Resolve(provider); ok && id == ref.Provider && model == ref.Model {
+				return true
+			}
+			continue
+		}
+		if m, ok := r.Media(entry, ref.Kind); ok && m.Provider == ref.Provider && m.Model == ref.Model {
+			return true
+		}
+	}
+	return false
+}

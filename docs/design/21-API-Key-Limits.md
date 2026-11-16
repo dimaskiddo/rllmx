@@ -1,12 +1,12 @@
 # Design 21 — API Key Limits (`app/access/`)
 
-**Status:** todo
+**Status:** partial
 
-`app/access` does not exist. The `kv` scope and the columns it will read are defined in `design doc 15`.
+The model list is built; the quota is not. The `kv` scope and the columns quota will read are defined in `design doc 15`.
 
 | Limit | Behavior |
 |---|---|
-| Model | `apiKeys.accessRestricted` and `accessAllow`. A restricted key may call only the combos and resolved `provider/model` pairs listed. Checked on the resolved model, on combo names and members, and again after a rule reroute. Failure is a 403 in the client's error shape |
+| Model | `apiKeys.accessRestricted` and `accessAllow`, enforced. A restricted key may call only the combos and resolved `provider/model` pairs listed; a media request is checked on its resolved identity and a search, fetch, poll or voice list on its provider. The comparison is exact on the resolved identity, and an empty list allows nothing. Failure is a 403 naming the requested model, before the response cache and before any account is chosen |
 | Quota | Types: requests, tokens, cost. Windows: day, month, total (UTC). Stored in `kv` scope `rllmKeyLimits`, key = API key id (additive, invisible to 9router) |
 
 - Usage comes from the analytics rollups (`rollupDaily` is never pruned) plus an in-memory delta for rows not yet flushed.
@@ -21,7 +21,7 @@
 
 - [x] The model list filtered by the allow-list ( `app/gateway/catalog`: each entry resolved through the resolver, exact comparison); reuses that matching for the per-request check
 - [x] The allow-list is **stored** from the key API (`app/access/auth.ValidateAccess`, 200 entries of 256 characters, normalized) and nothing reads it yet
-- [ ] Per-key model allow-list, enforced per request; a reroute is re-checked against it. The response cache looks up before account selection, so the check must run before the lookup, or a restricted key could read an answer for a model it may not call
+- [x] Per-key model allow-list, enforced per request before the response cache (`routing.NewAllow`; the pipeline and the catalog share it). A combo is checked by name; member re-checks land with 2.4, which is when members are expanded
 - [ ] Per-key quota: request and token budgets, reset window, 429 `insufficient_quota`
 
 ---

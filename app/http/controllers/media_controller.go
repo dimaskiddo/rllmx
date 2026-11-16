@@ -7,6 +7,7 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 	"github.com/goravel/framework/contracts/log"
 
+	"rllmx/app/access/identity"
 	gatewaymedia "rllmx/app/gateway/media"
 	apphttp "rllmx/app/http"
 	"rllmx/app/http/middleware"
@@ -87,9 +88,9 @@ func (m *MediaController) Speech(ctx contractshttp.Context) contractshttp.Respon
 func (m *MediaController) Transcriptions(ctx contractshttp.Context) contractshttp.Response {
 	r := ctx.Request().Origin()
 	w := ctx.Response().Writer()
-	caller, status, ok := apphttp.ModelCaller(ctx)
+	caller, ok := apphttp.CallerFrom(ctx)
 	if !ok {
-		failure.Write(w, failure.OpenAI, status, refusalText(status))
+		failure.Write(w, failure.OpenAI, nethttp.StatusUnauthorized, "API key required")
 		return nil
 	}
 	form, status, msg := parseUpload(r)
@@ -107,7 +108,7 @@ func (m *MediaController) Transcriptions(ctx contractshttp.Context) contractshtt
 	}
 	out := p.Transcriptions(r.Context(), gatewaymedia.Input{
 		Path: r.URL.Path, Form: form, RequestID: middleware.RequestIDFrom(ctx),
-		APIKeyID: caller.ID, KeyName: caller.Name,
+		APIKeyID: caller.ID, KeyName: caller.Name, Caller: caller,
 	})
 	for k, v := range out.Header {
 		w.Header().Set(k, v)
@@ -121,8 +122,9 @@ func (m *MediaController) Transcriptions(ctx contractshttp.Context) contractshtt
 func (m *MediaController) Voices(ctx contractshttp.Context) contractshttp.Response {
 	r := ctx.Request().Origin()
 	w := ctx.Response().Writer()
-	if _, status, ok := apphttp.ModelCaller(ctx); !ok {
-		failure.Write(w, failure.OpenAI, status, refusalText(status))
+	caller, ok := apphttp.CallerFrom(ctx)
+	if !ok {
+		failure.Write(w, failure.OpenAI, nethttp.StatusUnauthorized, "API key required")
 		return nil
 	}
 	p, err := m.VoicesPipe()
@@ -131,7 +133,7 @@ func (m *MediaController) Voices(ctx contractshttp.Context) contractshttp.Respon
 		return nil
 	}
 	q := r.URL.Query()
-	out := p.Voices(r.Context(), q.Get("provider"), q.Get("lang"))
+	out := p.Voices(r.Context(), caller, q.Get("provider"), q.Get("lang"))
 	for k, v := range out.Header {
 		w.Header().Set(k, v)
 	}
@@ -204,9 +206,9 @@ func (m *MediaController) Images(ctx contractshttp.Context) contractshttp.Respon
 func (m *MediaController) serve(ctx contractshttp.Context, source func() (*gatewaymedia.Pipeline, error), call func(*gatewaymedia.Pipeline, gatewaymedia.Input) gatewaymedia.Output) contractshttp.Response {
 	r := ctx.Request().Origin()
 	w := ctx.Response().Writer()
-	caller, status, ok := apphttp.ModelCaller(ctx)
+	caller, ok := apphttp.CallerFrom(ctx)
 	if !ok {
-		failure.Write(w, failure.OpenAI, status, refusalText(status))
+		failure.Write(w, failure.OpenAI, nethttp.StatusUnauthorized, "API key required")
 		return nil
 	}
 	p, err := source()
@@ -224,7 +226,7 @@ func (m *MediaController) serve(ctx contractshttp.Context, source func() (*gatew
 	}
 	out := call(p, gatewaymedia.Input{
 		Path: r.URL.Path, Body: body, RequestID: middleware.RequestIDFrom(ctx),
-		APIKeyID: caller.ID, KeyName: caller.Name,
+		APIKeyID: caller.ID, KeyName: caller.Name, Caller: caller,
 		Binary:         r.URL.Query().Get("response_format") == "binary",
 		ResponseFormat: r.URL.Query().Get("response_format"),
 		ContentType:    r.Header.Get("Content-Type"),
@@ -261,7 +263,7 @@ func (m *MediaController) dashboardVoices(ctx contractshttp.Context, provider st
 	if provider == "" {
 		provider = r.URL.Query().Get("provider")
 	}
-	out := p.Voices(r.Context(), provider, r.URL.Query().Get("lang"))
+	out := p.Voices(r.Context(), identity.Caller{}, provider, r.URL.Query().Get("lang"))
 	for k, v := range out.Header {
 		w.Header().Set(k, v)
 	}

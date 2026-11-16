@@ -32,9 +32,9 @@ func (c *ChatController) Serve(ctx contractshttp.Context) contractshttp.Response
 	w := ctx.Response().Writer()
 	format := failure.ForPath(r.URL.Path)
 
-	caller, status, ok := apphttp.ModelCaller(ctx)
+	caller, ok := apphttp.CallerFrom(ctx)
 	if !ok {
-		failure.Write(w, format, status, refusalText(status))
+		failure.Write(w, format, nethttp.StatusUnauthorized, "API key required")
 		return nil
 	}
 	body, err := io.ReadAll(r.Body)
@@ -102,8 +102,9 @@ func (c *ChatController) CountTokens(ctx contractshttp.Context) contractshttp.Re
 	r := ctx.Request().Origin()
 	w := ctx.Response().Writer()
 	format := failure.ForPath(r.URL.Path)
-	if _, status, ok := apphttp.ModelCaller(ctx); !ok {
-		failure.Write(w, format, status, refusalText(status))
+	caller, ok := apphttp.CallerFrom(ctx)
+	if !ok {
+		failure.Write(w, format, nethttp.StatusUnauthorized, "API key required")
 		return nil
 	}
 	body, err := io.ReadAll(r.Body)
@@ -121,17 +122,22 @@ func (c *ChatController) CountTokens(ctx contractshttp.Context) contractshttp.Re
 		failure.Write(w, format, nethttp.StatusBadRequest, "Invalid request body")
 		return nil
 	}
+	// A key that may not call the model hears so here too: this route spends
+	// nothing, but it names a model, so it must not confirm one the key may not
+	// use.
+	if caller.Restricted {
+		p, err := c.Pipe()
+		if err != nil || p == nil {
+			failure.Write(w, format, nethttp.StatusServiceUnavailable, "")
+			return nil
+		}
+		if !p.Allows(r.Context(), caller, req.Model) {
+			failure.Write(w, format, nethttp.StatusForbidden, failure.NotAllowed(req.Model))
+			return nil
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(nethttp.StatusOK)
 	_, _ = w.Write([]byte(`{"input_tokens":` + strconv.FormatInt(translate.CountTokens(req), 10) + `}`))
 	return nil
-}
-
-// refusalText is what a caller is told when it may not spend a model: it has no
-// key, or its key is limited to a model list this route does not check yet.
-func refusalText(status int) string {
-	if status == nethttp.StatusForbidden {
-		return "This key is limited to a list of models"
-	}
-	return "API key required"
 }
