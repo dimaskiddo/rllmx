@@ -1,0 +1,141 @@
+package combo
+
+import (
+	"testing"
+
+	"rllmx/app/llm/routing"
+	"rllmx/app/llm/translate"
+	"rllmx/app/llm/upstream"
+	"rllmx/app/store/document"
+)
+
+func doc(t *testing.T, raw string) document.Doc {
+	t.Helper()
+	d, err := document.ParseDoc(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return d
+}
+
+func TestTheStrategyComesFromTheComboThenTheGlobalThenFallback(t *testing.T) {
+	global := doc(t, `{"comboStrategy":"round-robin","comboStrategies":{"fast":{"fallbackStrategy":"smart"}}}`)
+	if p := Read(global, "fast"); p.Strategy != StrategySmart {
+		t.Fatalf("the combo's own strategy lost: %+v", p)
+	}
+	if p := Read(global, "other"); p.Strategy != StrategyRoundRobin {
+		t.Fatalf("the global strategy lost: %+v", p)
+	}
+	if p := Read(doc(t, `{}`), "x"); p.Strategy != StrategyFallback {
+		t.Fatalf("the default lost: %+v", p)
+	}
+	if p := Read(doc(t, `{"comboStrategies":{"x":{"fallbackStrategy":"nonsense"}}}`), "x"); p.Strategy != StrategyFallback {
+		t.Fatalf("a typo should read as fallback: %+v", p)
+	}
+}
+
+func TestANameWithADotIsStillOneName(t *testing.T) {
+	d := doc(t, `{"comboStrategies":{"prod.fast":{"fallbackStrategy":"fusion"}}}`)
+	if p := Read(d, "prod.fast"); p.Strategy != StrategyFusion {
+		t.Fatalf("%+v", p)
+	}
+	if p := Read(d, "prod"); p.Strategy != StrategyFallback {
+		t.Fatalf("the dot opened a path: %+v", p)
+	}
+}
+
+func TestTheSmartKnobsLiveOnlyInTheCombosEntry(t *testing.T) {
+	d := doc(t, `{"confidenceThreshold":0.1,"comboStrategies":{"s":{"fallbackStrategy":"smart","smartPolicy":"per-turn","sessionSticky":false,"confidenceThreshold":0.65,"routerModel":"openai/gpt-4o","judgeModel":"openai/o3","fusionTuning":{"minPanel":3,"stragglerGraceMs":2000,"panelHardTimeoutMs":30000}}}}`)
+	p := Read(d, "s")
+	if p.Threshold != 0.65 || p.Sticky || p.SmartPolicy != "per-turn" || p.RouterModel != "openai/gpt-4o" || p.JudgeModel != "openai/o3" {
+		t.Fatalf("%+v", p)
+	}
+	if p.MinPanel != 3 || p.StragglerMS != 2000 || p.PanelMS != 30000 {
+		t.Fatalf("fusion knobs: %+v", p)
+	}
+	// Defaults when the entry names none, and a top-level threshold is ignored.
+	q := Read(doc(t, `{"confidenceThreshold":0.1,"comboStrategies":{"s":{"fallbackStrategy":"smart"}}}`), "s")
+	if q.Threshold != DefaultThreshold || !q.Sticky || q.RouterModel != defaultRouterModel {
+		t.Fatalf("%+v", q)
+	}
+}
+
+func TestTheRoundRobinLimitIsAtLeastOne(t *testing.T) {
+	for raw, want := range map[string]int{
+		`{}`:                                    1,
+		`{"comboStickyRoundRobinLimit":3}`:      3,
+		`{"comboStickyRoundRobinLimit":0}`:      1,
+		`{"comboStickyRoundRobinLimit":"many"}`: 1,
+		`{"comboStickyRoundRobinLimit":-2}`:     1,
+	} {
+		if got := Read(doc(t, raw), "x").RotationLimit; got != want {
+			t.Errorf("%s: limit = %d, want %d", raw, got, want)
+		}
+	}
+}
+
+func members(models ...string) []routing.Member {
+	out := make([]routing.Member, len(models))
+	for i, m := range models {
+		out[i] = routing.Member{Provider: "p", Model: m}
+	}
+	return out
+}
+
+func names(list []routing.Member) []string {
+	out := make([]string, len(list))
+	for i, m := range list {
+		out[i] = m.Model
+	}
+	return out
+}
+
+func TestRotationMovesTheStartAndAdvancesAfterTheLimit(t *testing.T) {
+	r := NewRotation()
+	m := members("a", "b", "c")
+	for i, want := range [][]string{
+		{"a", "b", "c"}, {"a", "b", "c"}, // limit 2: the first start serves twice
+		{"b", "c", "a"}, {"b", "c", "a"},
+		{"c", "a", "b"},
+	} {
+		got := names(r.Rotate("fast", m, 2))
+		if len(got) != 3 || got[0] != want[0] {
+			t.Fatalf("turn %d: %v, want %v", i, got, want)
+		}
+	}
+}
+
+func TestARotationOfOneAdvancesEveryRequest(t *testing.T) {
+	r := NewRotation()
+	m := members("a", "b")
+	for i, want := range []string{"a", "b", "a", "b"} {
+		if got := names(r.Rotate("fast", m, 1))[0]; got != want {
+			t.Fatalf("turn %d: %s, want %s", i, got, want)
+		}
+	}
+}
+
+func TestTheCapableMemberComesFirstWhateverTheStrategy(t *testing.T) {
+	vision := func(m routing.Member) upstream.Capability {
+		return upstream.Capability{Vision: m.Model == "vision"}
+	}
+	m := members("text", "vision")
+	needs := translate.Needs{Vision: true}
+	for _, strategy := range []string{StrategyFallback, StrategyRoundRobin} {
+		got, ok := Order(Policy{Name: "c", Strategy: strategy, RotationLimit: 1}, m, vision, needs, NewRotation(), nil)
+		if !ok || names(got)[0] != "vision" {
+			t.Fatalf("%s: %v", strategy, names(got))
+		}
+	}
+	// Without the need the declared order stands.
+	got, _ := Order(Policy{Name: "c", Strategy: StrategyFallback}, m, vision, translate.Needs{}, NewRotation(), nil)
+	if names(got)[0] != "text" {
+		t.Fatalf("%v", names(got))
+	}
+}
+
+func TestAnEmptyComboHasNoOrder(t *testing.T) {
+	if _, ok := Order(Policy{}, nil, nil, translate.Needs{}, NewRotation(), nil); ok {
+		t.Fatal("an empty combo was ordered")
+	}
+}

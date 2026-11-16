@@ -82,7 +82,8 @@ The status column is the v1 target, not the build state: behavior lands later. U
 |---|---|
 | `requireLogin`, `requireApiKey`, `authMode`, `ssoType`, `oidc*`, `saml*`, `password` | honored |
 | `stickyRoundRobinLimit`, `providerStrategies`, `fallbackStrategy` | honored |
-| `comboStrategy`, `comboStickyRoundRobinLimit`, `comboStrategies`, `capacityAdapter` | honored |
+| `comboStrategy`, `comboStickyRoundRobinLimit`, `comboStrategies` | honored: the combo routing reads them through the same 5 s settings cache (`design doc 4`). A `comboStrategies[name]` entry carries `fallbackStrategy`, and for a smart or fusion combo `smartPolicy`, `sessionSticky`, `confidenceThreshold`, `routerModel`, `judgeModel` and `fusionTuning` (`minPanel`, `stragglerGraceMs`, `panelHardTimeoutMs`); none of those has a top-level form |
+| `capacityAdapter` | stored: the pool is not built (`D337`) |
 | `providerThinking`, `quotaVisibility` | honored |
 | `providerOverrides` | honored: read and written by the override routes; applied to an upstream call by the executors |
 | `rtkEnabled`, `headroomEnabled`, `headroomUrl`, `headroomCompressUserMessages`, `headroomTimeoutMs`, `cavemanEnabled`, `cavemanLevel`, `ponytailEnabled`, `ponytailLevel`, `customPromptEnabled`, `customPrompt` | honored |

@@ -111,6 +111,9 @@ func (s routingSource) Nodes(context.Context) ([]routing.Node, error) {
 	return out, nil
 }
 func (s routingSource) ComboNames(context.Context) ([]string, error) { return nil, nil }
+func (s routingSource) Combos(context.Context) (map[string]repository.Combo, error) {
+	return nil, nil
+}
 func (s routingSource) ActiveProviders(context.Context) ([]string, error) {
 	return nil, nil
 }

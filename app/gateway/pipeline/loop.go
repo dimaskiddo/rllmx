@@ -15,6 +15,13 @@ import (
 // serve walks the provider's accounts until one answers, the failure belongs to
 // the request, or none is left.
 func (c *call) serve(ctx context.Context) Output {
+	out, _ := c.serveFail(ctx)
+	return out
+}
+
+// serveFail is serve that also says why it stopped, for a combo that decides
+// whether the next member may answer. A nil fail is a served answer.
+func (c *call) serveFail(ctx context.Context) (Output, *accountFail) {
 	exclude := map[string]bool{}
 	var last *accountFail
 	sawExpired := false
@@ -24,7 +31,13 @@ func (c *call) serve(ctx context.Context) Output {
 			Hold: c.hold(),
 		})
 		if err != nil {
-			return c.noAccount(ctx, err, last, sawExpired)
+			out := c.noAccount(ctx, err, last, sawExpired)
+			// A request that found no account did not answer, so a combo moves to
+			// its next member rather than treating it as served.
+			if last == nil {
+				last = &accountFail{status: out.Status, class: "no_account"}
+			}
+			return out, last
 		}
 		c.attempt++
 		c.row.Attempt = c.attempt
@@ -34,11 +47,11 @@ func (c *call) serve(ctx context.Context) Output {
 		// mistake, not the account's: it ends the request here, before a send,
 		// so no lock is written and no other account is tried for it.
 		if c.p.d.Catalog != nil && c.p.d.Catalog.Known(ctx, c.dest.provider, sel.Conn, c.dest.model) == catalog.Unknown {
-			return c.fail(http.StatusBadRequest, "invalid_request", "Model not found")
+			return c.fail(http.StatusBadRequest, "invalid_request", "Model not found"), &accountFail{status: http.StatusBadRequest, class: "invalid_request"}
 		}
 		out, f := c.try(ctx, sel.Conn)
 		if f == nil {
-			return out
+			return out, nil
 		}
 		if f.expired {
 			exclude[sel.Conn.ID] = true
@@ -50,6 +63,11 @@ func (c *call) serve(ctx context.Context) Output {
 			last = f
 			continue
 		}
+		if f.empty {
+			// No content is not the account's fault: it ends the request as it
+			// always did, and nothing is locked.
+			return c.upstreamFail(f), f
+		}
 		res, err := c.p.d.Reporter.Fail(ctx, account.FailInput{
 			ConnID: sel.Conn.ID, Provider: c.dest.provider, Model: c.dest.model,
 			Status: f.status, Text: f.text, ResetAt: f.resetAt,
@@ -58,10 +76,10 @@ func (c *call) serve(ctx context.Context) Output {
 			if c.p.d.Log != nil {
 				c.p.d.Log.Warningf("pipeline: recording a failed account failed: %v", err)
 			}
-			return c.upstreamFail(f)
+			return c.upstreamFail(f), f
 		}
 		if !res.Fallback {
-			return c.upstreamFail(f)
+			return c.upstreamFail(f), f
 		}
 		exclude[sel.Conn.ID] = true
 		last = f

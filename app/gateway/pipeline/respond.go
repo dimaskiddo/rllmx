@@ -105,7 +105,7 @@ func (c *call) buffered(ctx context.Context, resp executor.Response) (Output, *a
 		return c.readFailed(ctx)
 	}
 	if len(raw) == 0 || err != nil {
-		return c.fail(http.StatusBadGateway, "upstream_5xx", "The upstream sent no usable answer"), nil
+		return c.fail(http.StatusBadGateway, "upstream_5xx", "The upstream sent no usable answer"), emptyAnswer
 	}
 	up, ok := translate.Lookup(c.dest.format)
 	if !ok {
@@ -116,7 +116,7 @@ func (c *call) buffered(ctx context.Context, resp executor.Response) (Output, *a
 	}
 	ans, err := up.ReadResponse(raw, c.tctx)
 	if err != nil || !hasContent(ans) {
-		return c.fail(http.StatusBadGateway, "upstream_5xx", "The upstream sent no usable answer"), nil
+		return c.fail(http.StatusBadGateway, "upstream_5xx", "The upstream sent no usable answer"), emptyAnswer
 	}
 	if ans.Usage.Prompt == 0 && ans.Usage.Completion == 0 {
 		ans.Usage = stream.Estimate(len(c.body), len(ans.Message.Text())+len(ans.Message.Reasoning))
@@ -134,7 +134,7 @@ func (c *call) collect(ctx context.Context, resp executor.Response, src stream.S
 	}
 	ans := got.Response
 	if !hasContent(&ans) {
-		return c.fail(http.StatusBadGateway, "upstream_5xx", "The upstream sent no usable answer"), nil
+		return c.fail(http.StatusBadGateway, "upstream_5xx", "The upstream sent no usable answer"), emptyAnswer
 	}
 	return c.deliver(ctx, &ans)
 }
@@ -168,6 +168,10 @@ func (c *call) readFailed(ctx context.Context) (Output, *accountFail) {
 	}
 	return c.closed(), nil
 }
+
+// emptyAnswer is the failure an answer with no content is, so a combo can move to
+// its next member; a single-model request ends with it as it always did.
+var emptyAnswer = &accountFail{status: http.StatusBadGateway, class: "upstream_5xx", text: "The upstream sent no usable answer", empty: true}
 
 func hasContent(r *translate.Response) bool {
 	m := r.Message
@@ -205,7 +209,7 @@ func (c *call) relay(ctx context.Context, resp executor.Response, src stream.Sou
 		if res.Err != nil {
 			return Output{}, streamFail(res.Err)
 		}
-		return c.fail(http.StatusBadGateway, "upstream_5xx", "The upstream sent no usable answer"), nil
+		return c.fail(http.StatusBadGateway, "upstream_5xx", "The upstream sent no usable answer"), emptyAnswer
 	}
 	c.setUsage(res.Usage)
 	c.row.TTFBMs = res.TTFT.Milliseconds()
@@ -295,7 +299,7 @@ func (c *call) forwardCompact(ctx context.Context, resp executor.Response) (Outp
 		return c.readFailed(ctx)
 	}
 	if len(raw) == 0 || err != nil || !gjson.ValidBytes(raw) {
-		return c.fail(http.StatusBadGateway, "upstream_5xx", "The upstream sent no usable answer"), nil
+		return c.fail(http.StatusBadGateway, "upstream_5xx", "The upstream sent no usable answer"), emptyAnswer
 	}
 	up, _ := translate.Lookup(c.dest.format)
 	usage := stream.Estimate(len(c.body), len(raw))

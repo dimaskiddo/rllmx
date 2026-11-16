@@ -7,6 +7,7 @@ import (
 	"github.com/goravel/framework/contracts/log"
 
 	"rllmx/app/gateway/account"
+	"rllmx/app/gateway/combo"
 	"rllmx/app/gateway/conversation"
 	"rllmx/app/llm/catalog"
 	"rllmx/app/llm/executor"
@@ -93,16 +94,22 @@ type Catalog interface {
 
 // Deps is everything a Pipeline needs. Overrides, Settings, Prefetch, Log and Now are optional.
 type Deps struct {
-	Resolver  Resolver
-	Selector  Selector
-	Reporter  Reporter
-	Executor  executor.Executor
-	Nodes     Nodes
-	Registry  *upstream.Registry
-	Caps      *upstream.Capabilities
-	Prices    Prices
-	Usage     Usage
-	Budget    Budget
+	Resolver Resolver
+	Selector Selector
+	Reporter Reporter
+	Executor executor.Executor
+	Nodes    Nodes
+	Registry *upstream.Registry
+	Caps     *upstream.Capabilities
+	Prices   Prices
+	Usage    Usage
+	Budget   Budget
+	// Rotation is the per-combo round-robin position; nil starts every combo at
+	// its first member.
+	Rotation *combo.Rotation
+	// Sticky remembers a smart combo's last choice per session; nil keeps only
+	// the declared order.
+	Sticky    *combo.Sticky
 	Overrides Overrides
 	Settings  Settings
 	Prefetch  Prefetch

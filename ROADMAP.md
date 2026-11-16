@@ -36,7 +36,7 @@ Status words: **built** (implemented and tested), **partial** (some behavior mis
 | Account selection, per-model locks, cooldown and backoff | built |
 | Format translation, streaming, usage and finish reasons | built |
 | Executors for the shipped providers | built |
-| Combos and routing strategies | planned |
+| Combos and routing strategies (fallback, round-robin, smart, fusion) | built |
 | Response cache | built |
 | Token savers and skills | planned |
 

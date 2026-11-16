@@ -29,7 +29,11 @@ The stream half of each format lives in `app/llm/translate` (`StreamReader`, `St
 | Forced SSE to JSON | `Collect` reads the whole stream through the upstream's `StreamReader` and returns one hub `Response` (text, reasoning, tool calls by index, signature, images, finish, usage); the client codec's `WriteResponse` renders it. One implementation for every upstream format |
 | Completion | `Run` returns a `Result` (raw usage, estimate flag, finish, content length, first-byte time, whether a byte reached the client, the cause, the failure status); the pipeline turns it into one usage row; `Wrote` decides whether the next account may still be tried |
 
-**Peek failover.** For combo members, the first bytes of an SSE answer are held until content, a tool call or an error arrives, or `STREAM_EMPTY_PEEK_DEADLINE` (45 s) passes. An empty generation then fails over to the next member. This is the only place a stream is buffered.
+**Peek failover (built).** For a combo member, the answer is buffered until the first content, tool call or error frame, and the client's stream opens on that frame.
+
+An empty generation then fails over to the next member; on the last member the empty answer is returned as it stands, and an answer that opened to the client is never retried (`design doc 4`).
+
+This is the only place a stream is buffered. The upstream stall timer bounds the wait until the named `STREAM_EMPTY_PEEK_DEADLINE` (45 s) is read.
 
 ### Usage Extraction
 
@@ -56,7 +60,8 @@ Partial reports merge by field-wise maximum (`translate.MergeUsage`). Cached and
 
 - [x] SSE and NDJSON readers, the NDJSON writer, usage capture, the client buffer, the three timers, translate and passthrough modes, forced SSE to JSON, content-type helpers
 - [x] `Run` and `Collect` wired into the pipeline, the usage row recorded, an HTML upstream page answered with a 502
-- [ ] Empty-stream failover and the peek deadline `STREAM_EMPTY_PEEK_DEADLINE` (planned)
+- [x] Empty-stream failover: an empty member moves to the next, the last member's empty answer stands, and an opened stream is not retried
+- [ ] The named peek deadline `STREAM_EMPTY_PEEK_DEADLINE`; today the stall timer bounds the buffered read
 - [ ] Per-provider stall override from the registry
 
 ---

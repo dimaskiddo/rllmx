@@ -57,8 +57,9 @@ func (c *call) resolve(ctx context.Context) (Output, bool) {
 		return c.fail(http.StatusNotFound, "not_found", "Model not found"), false
 	}
 	if t.Combo != "" {
-		c.row.ComboName = t.Combo
-		return c.fail(http.StatusNotFound, "not_found", "Model not found"), false
+		// A combo name is routable: its members are tried in order, and this call
+		// keeps the one row.
+		return c.comboRun(ctx, t.Combo), false
 	}
 	dest, out, ok := c.destinationOf(ctx, t)
 	if !ok {

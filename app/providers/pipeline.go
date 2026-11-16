@@ -11,6 +11,7 @@ import (
 	"github.com/goravel/framework/contracts/foundation"
 
 	"rllmx/app/gateway/account"
+	"rllmx/app/gateway/combo"
 	"rllmx/app/gateway/pipeline"
 	"rllmx/app/gateway/prefetch"
 	"rllmx/app/llm/catalog"
@@ -87,6 +88,8 @@ func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.P
 		Prices:        table,
 		Usage:         writer,
 		Budget:        budget(h.Limits, runner),
+		Rotation:      combo.NewRotation(),
+		Sticky:        combo.NewSticky(),
 		Overrides:     headerOverrides{settings: settingsRead},
 		Settings:      settingsRead,
 		Prefetch:      prefetch.New(),

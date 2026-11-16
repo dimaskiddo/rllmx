@@ -28,6 +28,9 @@ type accountFail struct {
 	// account is passed over for this model until the gate's own time, with no
 	// lock stored.
 	gated bool
+	// empty marks an answer with no content: it ends a single-model request as it
+	// always did, and is never reported, because no account failed.
+	empty bool
 }
 
 func streamClass(err error) string {

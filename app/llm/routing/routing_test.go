@@ -16,9 +16,11 @@ type fakeSource struct {
 	aliases map[string]string
 	nodes   []Node
 	combos  []string
-	active  []string
-	err     error
-	reads   int
+	// comboSet is the member list per name, for Expand.
+	comboSet map[string]repository.Combo
+	active   []string
+	err      error
+	reads    int
 }
 
 func (f *fakeSource) Aliases(context.Context) (map[string]string, error) {
@@ -27,6 +29,17 @@ func (f *fakeSource) Aliases(context.Context) (map[string]string, error) {
 }
 func (f *fakeSource) Nodes(context.Context) ([]Node, error)        { f.reads++; return f.nodes, f.err }
 func (f *fakeSource) ComboNames(context.Context) ([]string, error) { f.reads++; return f.combos, f.err }
+func (f *fakeSource) Combos(context.Context) (map[string]repository.Combo, error) {
+	f.reads++
+	if f.comboSet != nil {
+		return f.comboSet, f.err
+	}
+	out := map[string]repository.Combo{}
+	for _, name := range f.combos {
+		out[name] = repository.Combo{Name: name}
+	}
+	return out, f.err
+}
 func (f *fakeSource) ActiveProviders(context.Context) ([]string, error) {
 	f.reads++
 	return f.active, f.err

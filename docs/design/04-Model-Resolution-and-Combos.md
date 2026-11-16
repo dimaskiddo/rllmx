@@ -2,7 +2,7 @@
 
 **Status:** partial
 
-Built: `app/llm/routing` (the resolver, the 5 s snapshot and the suffix grammar below). Nothing calls it yet; the first caller is the pipeline. Built: the connection, node and override routes in the Parity table below. `app/gateway` holds the pipeline, the catalog, the conversation store, prefetch and account selection; combo expansion, strategies and the management routes are and.
+Built: `app/llm/routing` (the resolver, the 5 s snapshot and the suffix grammar below) and `app/gateway/combo` (policy, order, rotation, sticky choice), called by `app/gateway/pipeline`. Built: the connection, node and override routes in the Parity table below. `app/gateway` also holds the pipeline, the catalog, the conversation store, prefetch and account selection; the capacity adapter and the combo management routes are planned.
 
 ### Resolution (`Resolver.Resolve`, built)
 
@@ -34,6 +34,12 @@ A combo has a name and an ordered list of `provider/model` strings or other comb
 | `smart` | A router model picks the member; session-sticky; confidence threshold; policy in `smartPolicy` |
 | `fusion` | Ask a panel in parallel with tools stripped, wait for a quorum, then a judge model combines the answers |
 
+**Built.** `Resolver.Expand` flattens a combo into `routing.Member` values (`app/llm/routing/combo.go`). `combo.Read` and `combo.Order` apply the strategy (`app/gateway/combo`), and `call.comboRun` walks the members (`app/gateway/pipeline/combo.go`).
+
+- `comboStickyRoundRobinLimit` below one counts as one; the rotation happens before the first attempt and advances whatever the outcome.
+- A smart choice is remembered per combo and session for 2 h, at most 5,000 entries, and survives a router failure. `sessionSticky:false` or `smartPolicy:"per-turn"` asks again every turn; a confidence below the threshold keeps the declared order.
+- The fusion panel is `min(max(2, minPanel), n)`, gives stragglers 8 s and the panel 90 s. A single answer is re-run with the client's own request instead of sent to the judge.
+
 ```mermaid
 sequenceDiagram
     participant P as Pipeline
@@ -57,11 +63,14 @@ sequenceDiagram
     C-->>P: 503 with retryAfter when all failed
 ```
 
-- Members are reordered so capable models come first when the request needs vision, pdf, audio or video. The **capacity adapter** appends models from a per-capability pool when no member qualifies.
-- A request-scoped 4xx also moves to the next member, but never locks an account.
-- An empty answer (zero content, or an SSE stream with no content within the peek deadline) counts as a failure for every member but the last.
-- When every member fails: 503 (or the last status) with `retryAfter` when known.
+- Members are reordered so capable models come first when the request needs vision, pdf, audio or video, in three tiers: members meeting every need, members meeting the hard needs, then the rest. The declared order holds inside a tier, and the order a strategy produces is the order the loop tries. The **capacity adapter** pool is not built: a request never gains a model the operator did not name in the combo (`D337`).
+- A member may name another combo. `Expand` follows it in place with a visited set and a depth limit of 3, so a cycle is `ErrComboCycle` and a deeper chain `ErrComboDepth`, both a 400 before any account is tried (`D336`). A member that does not resolve is skipped; a combo with nothing reachable is `ErrComboEmpty`, also a 400.
+- A request-scoped 4xx also moves to the next member, but never locks an account. A 502, 503 or 504 with a cooldown of at most 5 s is waited out; a longer one ends the search with that answer.
+- An empty answer (zero content, or an SSE stream that opened and produced nothing) counts as a failure for every member but the last, where it is returned as it stands. A stream that opened to the client is never retried.
+- When every member fails: the first request-scoped answer verbatim, else the last failure, with `retryAfter` when one gave it. A member that found no account is not an answer, so the search continues.
+- One usage row per client request (`D335`): `comboName` names the combo, and the row's provider, model, connection and attempt belong to the member that answered.
 - `fusion` runs the panel with tools stripped, non-streaming, a quorum of two, 8 s for stragglers and 90 s overall, then sends the answers to the judge. A `smart` choice sticks to the session.
+- The smart router and the fusion judge are ordinary pipeline requests on their own names, so each writes its own usage row and none of their spend is added to the client's row (`D338`).
 
 ---
 
@@ -92,14 +101,15 @@ sequenceDiagram
 ---
 
 ## Remaining work
-**Routing is built; combos are planned.**
+**Routing and combos are built; the capacity adapter and the combo management routes are planned.**
 
 - [x] `app/llm/routing`: model string to combo, alias, node or provider; `Resolver`, `Snapshot`, `Reserved` for node prefixes
 - [x] Registry loader and seed data for nine providers; the other ids arrive with their executor (`design doc 8`)
 - [ ] Capability rows (`design doc 7`,)
 - [x] `passthroughModels` on the 23 providers the reference marks (CommandCode, the opencode family, kimchi, bedrock, zed, openrouter and the rest): the flag raises a provider's model listing; an id its list does not name already reached the executor, so chat behaviour is unchanged
-- [ ] Combo expansion, sticky round-robin, per-combo strategies, capacity adapter
-- [ ] Empty-stream failover and the request-scoped 4xx combo advance
+- [x] Combo expansion, sticky round-robin, per-combo strategies
+- [x] Empty-stream failover and the request-scoped 4xx combo advance
+- [ ] Capacity adapter pool
 - [x] Provider-connection, provider-node and override routes
 - [x] The `Checker` and its four routes (`/test`, `/validate`, node `/validate`, `/models`)
 - [ ] `/api/combos*` —
@@ -121,6 +131,10 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 225 | `GET /v1/models` lists only models a caller can call: a registry provider with at least one active, readable connection, and a node with one; every such connection counts and a model is listed if any accepts it. The reference lists the whole static catalog when no connection exists and counts only the first connection of a provider. Entries carry `created`; a read route changes no row (the reference refreshes credentials during a GET). Custom-model rows are matched by provider id, alias and node prefix, type `llm` only. Combos are not listed until | An empty gateway advertises nothing, a second account's models show, and an alias-keyed row from a real 9router database appears |
 | 226 | `/v1/models/info`, `/v1/models/{id}` and `/v1beta/models` are built from the same filtered list as `/v1/models`; the Gemini list has real token limits and `models/<id>` names. The reference answers `info` and `/v1beta/models` from the static catalog with no key filter, and invents 128000/8192 | A restricted key cannot learn a model it may not call; limits are the capability row's |
 | 213 | An update takes a fixed field list only: a client cannot set `testStatus`, `lastError*`, `errorCode`, `backoffLevel`, a lock, a token or a node connection's copied fields. Only the server writes health, and the `Checker` records test outcomes. Toggling `isActive` does not clear a cooldown | A dashboard form cannot hide a real cooldown or poison an account (improvement) |
+| 335 | A combo request writes **one** usage row, naming the combo in `comboName` and the member that answered in `provider`/`model`/`connectionId`; the reference writes a row per member tried. **Built** | This router's analytics, quota and D306 all assume one row per request; a member's spend is visible through the row that answered |
+| 336 | A combo member may name another combo, expanded with a visited set and a depth limit of 3; the reference nests with no guard. **Built** | A cycle is a 400 at the combo, never a stack overflow |
+| 337 | The capacity adapter's per-capability pool is not built; ordering only reorders the members the operator named. **Built** | A request never gains a model the combo did not name |
+| 338 | The smart router and the fusion judge run through the ordinary pipeline on their own model names, so each writes its own usage row; none of their spend is added to the client's row. **Built** | Router and judge cost is visible without inflating the client's usage |
 
 ---
 

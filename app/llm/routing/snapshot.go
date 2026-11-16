@@ -26,6 +26,8 @@ type Source interface {
 	Aliases(ctx context.Context) (map[string]string, error)
 	Nodes(ctx context.Context) ([]Node, error)
 	ComboNames(ctx context.Context) ([]string, error)
+	// Combos returns every combo by name, with its members in declared order.
+	Combos(ctx context.Context) (map[string]repository.Combo, error)
 	// ActiveProviders lists the provider ids that have an active connection,
 	// each once.
 	ActiveProviders(ctx context.Context) ([]string, error)
@@ -35,10 +37,11 @@ type Source interface {
 // Source, each at most once per SnapshotTTL. A failed read is returned and not
 // cached.
 type Snapshot struct {
-	aliases *ttl.Value[map[string]string]
-	nodes   *ttl.Value[[]Node]
-	combos  *ttl.Value[[]string]
-	active  *ttl.Value[[]string]
+	aliases  *ttl.Value[map[string]string]
+	nodes    *ttl.Value[[]Node]
+	combos   *ttl.Value[[]string]
+	comboSet *ttl.Value[map[string]repository.Combo]
+	active   *ttl.Value[[]string]
 }
 
 // loadTimeout bounds one read of stored data, which no caller's context owns.
@@ -47,10 +50,11 @@ const loadTimeout = 10 * time.Second
 // NewSnapshot wraps a source. now may be nil for the wall clock.
 func NewSnapshot(src Source, now func() time.Time) *Snapshot {
 	return &Snapshot{
-		aliases: ttl.New(SnapshotTTL, now, src.Aliases),
-		nodes:   ttl.New(SnapshotTTL, now, src.Nodes),
-		combos:  ttl.New(SnapshotTTL, now, src.ComboNames),
-		active:  ttl.New(SnapshotTTL, now, src.ActiveProviders),
+		aliases:  ttl.New(SnapshotTTL, now, src.Aliases),
+		nodes:    ttl.New(SnapshotTTL, now, src.Nodes),
+		combos:   ttl.New(SnapshotTTL, now, src.ComboNames),
+		comboSet: ttl.New(SnapshotTTL, now, src.Combos),
+		active:   ttl.New(SnapshotTTL, now, src.ActiveProviders),
 	}
 }
 
@@ -59,6 +63,7 @@ func (s *Snapshot) Invalidate() {
 	s.aliases.Drop()
 	s.nodes.Drop()
 	s.combos.Drop()
+	s.comboSet.Drop()
 	s.active.Drop()
 }
 
@@ -73,6 +78,11 @@ func (s *Snapshot) Nodes(ctx context.Context) ([]Node, error) { return s.nodes.G
 // ComboNames returns the names of every combo.
 func (s *Snapshot) ComboNames(ctx context.Context) ([]string, error) {
 	return s.combos.Get(ctx, loadTimeout)
+}
+
+// Combos returns every combo by name.
+func (s *Snapshot) Combos(ctx context.Context) (map[string]repository.Combo, error) {
+	return s.comboSet.Get(ctx, loadTimeout)
 }
 
 // ActiveProviders returns the provider ids that have an active connection.
@@ -111,6 +121,18 @@ func (r repositorySource) ComboNames(ctx context.Context) ([]string, error) {
 	out := make([]string, 0, len(rows))
 	for _, c := range rows {
 		out = append(out, c.Name)
+	}
+	return out, nil
+}
+
+func (r repositorySource) Combos(ctx context.Context) (map[string]repository.Combo, error) {
+	rows, err := r.store.Combos().List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]repository.Combo, len(rows))
+	for _, c := range rows {
+		out[c.Name] = c
 	}
 	return out, nil
 }

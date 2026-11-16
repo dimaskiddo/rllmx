@@ -63,7 +63,11 @@ func (s *spy) Succeed(ctx context.Context, id, model string, at time.Time) error
 	return s.Reporter.Succeed(ctx, id, model, at)
 }
 
-type source struct{ combos []string }
+type source struct {
+	combos []string
+	// comboMembers is the member list per combo, for expansion.
+	comboMembers []repository.Combo
+}
 
 func (s source) Aliases(context.Context) (map[string]string, error) {
 	return map[string]string{
@@ -74,6 +78,13 @@ func (s source) Aliases(context.Context) (map[string]string, error) {
 }
 func (s source) Nodes(context.Context) ([]routing.Node, error) { return nil, nil }
 func (s source) ComboNames(context.Context) ([]string, error)  { return s.combos, nil }
+func (s source) Combos(context.Context) (map[string]repository.Combo, error) {
+	out := map[string]repository.Combo{}
+	for _, c := range s.comboMembers {
+		out[c.Name] = c
+	}
+	return out, nil
+}
 func (s source) ActiveProviders(context.Context) ([]string, error) {
 	return nil, nil
 }
@@ -443,13 +454,21 @@ func TestNoConnectionIs404InTheClientsShape(t *testing.T) {
 	}
 }
 
-func TestAComboNameIsNotRoutedYet(t *testing.T) {
-	r := newRig(t)
-	r.p.d.Resolver = &routing.Resolver{Registry: r.p.d.Registry, Snapshot: routing.NewSnapshot(source{combos: []string{"mycombo"}}, nil)}
-	r.conn("mycombo", "k1")
+func TestAComboNameIsServedByItsMembers(t *testing.T) {
+	// forced is the rig's stream-only provider, so a non-stream client still gets
+	// one answer from it.
+	r := newRig(t, tests.Reply{ContentType: "text/event-stream", Chunks: sseChunks()})
+	r.conn("forced", "k1")
+	r.p.d.Resolver = &routing.Resolver{Registry: r.p.d.Registry, Snapshot: routing.NewSnapshot(source{
+		combos:       []string{"mycombo"},
+		comboMembers: []repository.Combo{{Name: "mycombo", Models: []string{"forced/fm"}}},
+	}, nil)}
 	out, _ := r.do("/v1/chat/completions", `{"model":"mycombo","messages":[{"role":"user","content":"hi"}]}`)
-	if out.Status != 404 || len(r.up.Calls()) != 0 || r.last().ComboName != "mycombo" {
-		t.Fatalf("%d %+v", out.Status, r.last())
+	if out.Status != 200 || gjson.GetBytes(out.Body, "choices.0.message.content").String() != "hello" {
+		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+	if row := r.last(); row.ComboName != "mycombo" || row.Model != "fm" || row.Provider != "forced" {
+		t.Fatalf("%+v", row)
 	}
 }
 
