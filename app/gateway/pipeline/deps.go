@@ -102,6 +102,7 @@ type Deps struct {
 	Caps      *upstream.Capabilities
 	Prices    Prices
 	Usage     Usage
+	Budget    Budget
 	Overrides Overrides
 	Settings  Settings
 	Prefetch  Prefetch

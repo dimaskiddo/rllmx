@@ -41,6 +41,11 @@ const (
 // is off. The 9router schema ignores it.
 const ScopeResponseCache = "rllmResponseCache"
 
+// ScopeKeyLimits is a Go-only scope: key = API key id, value is that key's
+// budget ({"requests":{"day":1000},"tokens":{"month":…},"cost":{"total":…}}). A
+// key with no row has no budget. The 9router schema ignores it.
+const ScopeKeyLimits = "rllmKeyLimits"
+
 // KVRepo reads and writes the kv table.
 type KVRepo struct{ s *Store }
 
@@ -76,6 +81,11 @@ func (r *KVRepo) Set(ctx context.Context, scope, key, value string) error {
 		return fmt.Errorf("repository: kv value for %s/%s is not valid JSON", scope, key)
 	}
 	return r.s.kvPut(r.s.on(ctx), scope, key, value)
+}
+
+// Delete removes one value. A missing row is not an error.
+func (r *KVRepo) Delete(ctx context.Context, scope, key string) error {
+	return r.s.stmt(r.s.on(ctx), `DELETE FROM "kv" WHERE "scope" = ? AND "key" = ?`, dialect.StripNUL(scope), dialect.StripNUL(key))
 }
 
 // Increment adds one to a counter value in one transaction and returns the new

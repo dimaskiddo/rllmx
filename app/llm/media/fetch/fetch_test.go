@@ -153,3 +153,12 @@ func TestARedirectIsAFetchTheClientDecides(t *testing.T) {
 		t.Fatalf("%+v", call)
 	}
 }
+
+func TestAScrapeCarriesItsPrice(t *testing.T) {
+	req := media.Request{Kind: upstream.KindFetch, Provider: "firecrawl",
+		Config: &upstream.MediaConfig{CostPerQuery: 0.003}, Body: []byte(`{"url":"https://example.com","format":"markdown","max_characters":100}`)}
+	out, err := (Firecrawl{}).Parse(context.Background(), req, nil, 200, nil, []byte(`{"data":{"metadata":{"title":"T"},"markdown":"b"}}`))
+	if err != nil || out.Cost != 0.003 {
+		t.Fatalf("%v %+v", err, out)
+	}
+}

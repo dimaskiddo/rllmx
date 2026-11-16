@@ -72,6 +72,10 @@ func (p *Pipeline) service(ctx context.Context, kind string, in Input) Output {
 	if !p.mayCall(in.Caller, upstream.MediaRef{Provider: id, Kind: kind}) {
 		return bad(http.StatusForbidden, appfailure.NotAllowed(name))
 	}
+	if out, ok := p.budget(ctx, in.Caller); !ok {
+		row.Status, row.ErrorClass = out.Status, appfailure.ClassOf(out.Status)
+		return out
+	}
 	cfg := entry.Media.Config(kind)
 	if cfg == nil {
 		// A provider that searches through chat has no endpoint of its own; the

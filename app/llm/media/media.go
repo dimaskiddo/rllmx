@@ -66,6 +66,9 @@ type Response struct {
 	// web session that hands back a fresh cookie. Empty leaves the stored one
 	// untouched.
 	NewCredential string
+	// Cost is what the call cost, when the provider's shape says. A search and a
+	// fetch name it; an image or a video has no per-unit price here.
+	Cost float64
 }
 
 // Usage is the token count a media provider reported, when it reported one.

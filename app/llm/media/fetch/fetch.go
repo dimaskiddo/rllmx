@@ -50,7 +50,11 @@ type metrics struct {
 // the request started.
 func reply(provider, target, format, title, text string, links []string, limit int, cost *float64) (media.Response, error) {
 	page := build(provider, target, format, title, text, links, limit, cost)
-	return page.json()
+	out, err := page.json()
+	if err == nil && cost != nil {
+		out.Cost = *cost
+	}
+	return out, err
 }
 
 // build assembles one page's answer without its timing.

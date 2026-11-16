@@ -99,7 +99,11 @@ func reply(provider, query string, results []result, ans *answer, u usage, total
 	if err != nil {
 		return media.Response{}, media.BadRequestf("the answer cannot be built")
 	}
-	return media.Response{Status: http.StatusOK, Header: jsonHeader(), Body: raw}, nil
+	out := media.Response{Status: http.StatusOK, Header: jsonHeader(), Body: raw}
+	if u.SearchCost != nil {
+		out.Cost = *u.SearchCost
+	}
+	return out, nil
 }
 
 func jsonHeader() map[string]string {

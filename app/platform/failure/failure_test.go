@@ -424,3 +424,40 @@ func TestAnUpstreamStatusReadsTheSameOnEveryRoute(t *testing.T) {
 		}
 	}
 }
+
+func TestAQuotaRefusalSaysInsufficientQuotaInEveryFormat(t *testing.T) {
+	for f, want := range map[Format]string{
+		OpenAI:    `"code":"insufficient_quota"`,
+		Responses: `"code":"insufficient_quota"`,
+		Anthropic: `"type":"rate_limit_error"`,
+		Gemini:    `"status":"RESOURCE_EXHAUSTED"`,
+		Flat:      `"error":"spent"`,
+	} {
+		body := string(Quota(f, "spent"))
+		if !strings.Contains(body, want) {
+			t.Errorf("%d: %s lacks %s", f, body, want)
+		}
+	}
+	if !strings.Contains(string(Body(OpenAI, 429, "")), `"rate_limit_exceeded"`) {
+		t.Fatal("the ordinary 429 changed")
+	}
+}
+
+func TestQuotaHeadersCarryWhatIsLeftAndWhenItResets(t *testing.T) {
+	h := QuotaHeaders(0, -1, 12.5, 90*time.Second)
+	if h.Get("X-Rllm-Quota-Remaining-Requests") != "0" || h.Get("X-Rllm-Quota-Remaining-Cost") != "12.5" {
+		t.Fatalf("%v", h)
+	}
+	if h.Get("X-Rllm-Quota-Remaining-Tokens") != "" {
+		t.Fatal("an unlimited type was reported")
+	}
+	if h.Get("Retry-After") != "90" {
+		t.Fatalf("Retry-After = %q", h.Get("Retry-After"))
+	}
+	if h := QuotaHeaders(0, 0, 0, 0); h.Get("Retry-After") != "" {
+		t.Fatal("an all-time budget carried a reset")
+	}
+	if h := QuotaHeaders(0, 0, 0, 1500*time.Millisecond); h.Get("Retry-After") != "2" {
+		t.Fatalf("a part second rounded to %q", h.Get("Retry-After"))
+	}
+}

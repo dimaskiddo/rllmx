@@ -15,6 +15,7 @@ import (
 
 	"rllmx/app/access/auth"
 	"rllmx/app/access/identity"
+	"rllmx/app/access/quota"
 	apphttp "rllmx/app/http"
 	"rllmx/app/http/middleware"
 	"rllmx/app/platform/cache"
@@ -52,6 +53,7 @@ func newKeysRig(t *testing.T, guardAuth apphttp.Authenticator) *keysRig {
 		cache.New(tests.NewCache(), cache.WithoutShared()), identity.NewKeys(""))
 	c := &KeysController{
 		DB:      func() *repository.Store { return sq.Store },
+		Quota:   quota.NewLimits(func() *repository.Store { return sq.Store }, nil),
 		Codec:   identity.NewKeys(""),
 		Machine: identity.NewMachine(""),
 		Dir:     dir,
@@ -294,6 +296,58 @@ func TestAnAllowListRoundTripsAndIsRefusedWhenWrong(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			if rec := rig.call(t, nethttp.MethodPut, "/api/keys/"+id, body, keysLocalPeer); rec.Code != nethttp.StatusBadRequest {
+				t.Fatalf("%d %s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestAKeyBudgetRoundTripsAndIsRemovedWithTheKey(t *testing.T) {
+	rig := newKeysRig(t, signedSession{})
+	id, _ := rig.create(t, "k")
+	rec := rig.call(t, nethttp.MethodPut, "/api/keys/"+id, `{"quota":{"requests":{"day":100},"cost":{"total":2.5}}}`, keysLocalPeer)
+	if rec.Code != nethttp.StatusOK || !strings.Contains(rec.Body.String(), `"day":100`) {
+		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+	if raw, ok, _ := rig.sq.KV().Get(t.Context(), repository.ScopeKeyLimits, id); !ok || !strings.Contains(raw, `"total":2.5`) {
+		t.Fatalf("stored = %q %v", raw, ok)
+	}
+	// The listing carries it back.
+	rec = rig.call(t, nethttp.MethodGet, "/api/keys", "", keysLocalPeer)
+	if !strings.Contains(rec.Body.String(), `"quota":{"requests":{"day":100}`) {
+		t.Fatalf("list = %s", rec.Body.String())
+	}
+	// An empty object clears it.
+	rec = rig.call(t, nethttp.MethodPut, "/api/keys/"+id, `{"quota":{}}`, keysLocalPeer)
+	if rec.Code != nethttp.StatusOK || strings.Contains(rec.Body.String(), `"quota"`) {
+		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+	if _, ok, _ := rig.sq.KV().Get(t.Context(), repository.ScopeKeyLimits, id); ok {
+		t.Fatal("the cleared budget left a row")
+	}
+	// A budget set again goes with the key.
+	if rec := rig.call(t, nethttp.MethodPut, "/api/keys/"+id, `{"quota":{"requests":{"day":1}}}`, keysLocalPeer); rec.Code != nethttp.StatusOK {
+		t.Fatalf("%d", rec.Code)
+	}
+	if rec := rig.call(t, nethttp.MethodDelete, "/api/keys/"+id, "", keysLocalPeer); rec.Code != nethttp.StatusOK {
+		t.Fatalf("%d", rec.Code)
+	}
+	if _, ok, _ := rig.sq.KV().Get(t.Context(), repository.ScopeKeyLimits, id); ok {
+		t.Fatal("the deleted key left its budget")
+	}
+}
+
+func TestABadBudgetIsRefusedByName(t *testing.T) {
+	rig := newKeysRig(t, signedSession{})
+	id, _ := rig.create(t, "k")
+	for name, body := range map[string]string{
+		"a bad window":   `{"quota":{"requests":{"week":1}}}`,
+		"a bad type":     `{"quota":{"images":{"day":1}}}`,
+		"a negative day": `{"quota":{"requests":{"day":-1}}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			rec := rig.call(t, nethttp.MethodPut, "/api/keys/"+id, body, keysLocalPeer)
+			if rec.Code != nethttp.StatusBadRequest || !strings.Contains(strings.ToLower(rec.Body.String()), "quota") {
 				t.Fatalf("%d %s", rec.Code, rec.Body.String())
 			}
 		})

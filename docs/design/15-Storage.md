@@ -218,6 +218,7 @@ The framework's `migrate:*`, `db:wipe` and `db:seed` would drop or rewrite the 9
 | `_meta.totalRequestsLifetime` bump | `src/lib/db/repos/usageRepo.js` | diverged (counter in the analytics store; importer seeds from this key once) |
 | `modelLock_<model>` fields | `src/sse/services/auth.js` | done (written and cleared by `app/store/repository`, read by `app/gateway/account`) |
 | `kv` scope `rllmResponseCache` (per-key response-cache flag) | none | done: the reader `KVRepo.ResponseCacheEnabled`; the writer comes with the key API |
+| `kv` scope `rllmKeyLimits` (a key's budget) | none | done: `quota.Limits` reads, writes and deletes it; the key API sets it |
 | `kv` scopes and key formats | `src/lib/db/repos/*` | done (the four shared scopes; Go-only scopes arrive with their step) |
 | API key, machine id, JWT and bcrypt formats | `src/shared/utils/apiKey.js`, `machineId.js`, `src/lib/auth/dashboardSession.js` | done (`app/access/identity` golden vectors, `app/access/auth` `iss`, `method`, `pv`) |
 | `proxyPools`, `proxyPoolFitness` tables | `schema.js`, extended `proxyPoolFitnessRepo.js` | out (not created, read or dropped; left alone if present, divergences 202, 214) |

@@ -7,7 +7,7 @@ Built today: `app/store/analytics` — the usage store, writer, rollups, retenti
 - The pipeline enqueues one row per request on every path: price from `upstream.Table`, error class, attempt and estimate flag.
 - The writer is wired.
 - A Claude CLI bypass reply ends in one row: status 200, no provider, zero tokens.
-- `app/store`'s query surface, pricing API and quota are not built.
+- The per-key usage reader is built (`analytics.KeyTotals`); the wider `app/store` query surface and the pricing API are not.
 
 ### Usage
 

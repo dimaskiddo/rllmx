@@ -251,6 +251,29 @@ func TestKVIncrementLosesNoUpdate(t *testing.T) {
 	}
 }
 
+func TestDeleteRemovesOneKVValueAndToleratesAMissingOne(t *testing.T) {
+	s := newMigrated(t)
+	ctx := context.Background()
+	if err := s.KV().Set(ctx, ScopeKeyLimits, "k1", `{"requests":{"day":10}}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.KV().Set(ctx, ScopeKeyLimits, "k2", `{}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.KV().Delete(ctx, ScopeKeyLimits, "k1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := s.KV().Get(ctx, ScopeKeyLimits, "k1"); ok {
+		t.Fatal("the deleted value is still there")
+	}
+	if v, ok, _ := s.KV().Get(ctx, ScopeKeyLimits, "k2"); !ok || v != "{}" {
+		t.Fatalf("another key's value went with it: %q %v", v, ok)
+	}
+	if err := s.KV().Delete(ctx, ScopeKeyLimits, "never-set"); err != nil {
+		t.Fatalf("deleting a missing value: %v", err)
+	}
+}
+
 func TestNodesCRUDAndCascade(t *testing.T) {
 	s := newMigrated(t)
 	ctx := context.Background()

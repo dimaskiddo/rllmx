@@ -41,6 +41,12 @@ type Writer struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
+	// pending is the per-key totals of rows queued but not yet in the database,
+	// so a budget check sees this second's spend. A row leaves it when its batch
+	// is flushed, written or dropped.
+	pendingMu sync.Mutex
+	pending   map[string]Totals
+
 	dropped atomic.Uint64
 	failed  atomic.Uint64
 	lastLog atomic.Int64
@@ -57,7 +63,7 @@ func (s *Store) NewWriter(o WriterOptions) *Writer {
 	if o.FlushEvery <= 0 {
 		o.FlushEvery = defaultFlushEvery
 	}
-	w := &Writer{s: s, ch: make(chan row, o.QueueSize), opts: o, done: make(chan struct{})}
+	w := &Writer{s: s, ch: make(chan row, o.QueueSize), opts: o, done: make(chan struct{}), pending: map[string]Totals{}}
 	w.ctx, w.cancel = context.WithCancel(context.Background())
 	go w.run()
 	return w
@@ -80,10 +86,55 @@ func (w *Writer) enqueue(r row) bool {
 	}
 	select {
 	case w.ch <- r:
+		w.addPending(r)
 		return true
 	default:
 		w.dropped.Add(1)
 		return false
+	}
+}
+
+// Pending is the totals of one key's rows that are queued but not yet flushed.
+func (w *Writer) Pending(keyID string) Totals {
+	w.pendingMu.Lock()
+	defer w.pendingMu.Unlock()
+	return w.pending[keyID]
+}
+
+// addPending counts one queued row against its key.
+func (w *Writer) addPending(r row) {
+	if r.APIKeyID == "" {
+		return
+	}
+	w.pendingMu.Lock()
+	defer w.pendingMu.Unlock()
+	t := w.pending[r.APIKeyID]
+	t.Requests++
+	// Tokens and cost count every row, as the rollup sums them; only the request
+	// itself is taken back out for a failure, matching KeyTotals.
+	t.Tokens += r.PromptTokens + r.CompletionTokens
+	t.Cost += r.Cost
+	w.pending[r.APIKeyID] = t
+}
+
+// subPending takes a flushed batch back off the delta, whether it was written or
+// dropped: either way it is no longer waiting.
+func (w *Writer) subPending(batch []row) {
+	w.pendingMu.Lock()
+	defer w.pendingMu.Unlock()
+	for _, r := range batch {
+		if r.APIKeyID == "" {
+			continue
+		}
+		t := w.pending[r.APIKeyID]
+		t.Requests--
+		t.Tokens -= r.PromptTokens + r.CompletionTokens
+		t.Cost -= r.Cost
+		if t.Requests <= 0 {
+			delete(w.pending, r.APIKeyID)
+			continue
+		}
+		w.pending[r.APIKeyID] = t
 	}
 }
 
@@ -138,6 +189,7 @@ func (w *Writer) run() {
 }
 
 func (w *Writer) flush(batch []row) {
+	defer w.subPending(batch)
 	if w.opts.beforeFlush != nil {
 		w.opts.beforeFlush()
 	}

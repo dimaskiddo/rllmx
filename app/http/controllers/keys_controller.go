@@ -12,6 +12,7 @@ import (
 
 	"rllmx/app/access/auth"
 	"rllmx/app/access/identity"
+	"rllmx/app/access/quota"
 	"rllmx/app/store/repository"
 )
 
@@ -20,6 +21,7 @@ import (
 // answer a full value.
 type KeysController struct {
 	DB      func() *repository.Store
+	Quota   *quota.Limits
 	Codec   identity.Keys
 	Machine identity.Machine
 	Changed func()
@@ -31,14 +33,16 @@ type KeysController struct {
 
 // keyView is one key as the list answers it: masked, never the value.
 type keyView struct {
-	ID         string     `json:"id"`
-	Name       string     `json:"name"`
-	Key        string     `json:"key"`
-	IsActive   bool       `json:"isActive"`
-	CreatedAt  string     `json:"createdAt"`
-	Access     accessView `json:"access"`
-	Unreadable bool       `json:"unreadable,omitempty"`
-	MachineID  string     `json:"machineId,omitempty"`
+	ID        string     `json:"id"`
+	Name      string     `json:"name"`
+	Key       string     `json:"key"`
+	IsActive  bool       `json:"isActive"`
+	CreatedAt string     `json:"createdAt"`
+	Access    accessView `json:"access"`
+	// Quota is the key's budget; absent when it has none.
+	Quota      *quota.Limit `json:"quota,omitempty"`
+	Unreadable bool         `json:"unreadable,omitempty"`
+	MachineID  string       `json:"machineId,omitempty"`
 }
 
 // accessView is the allow-list shape the dashboard sends and reads.
@@ -47,26 +51,48 @@ type accessView struct {
 	Allow      []string `json:"allow"`
 }
 
-// masked is the view of one stored key for a list or an update.
-func masked(k repository.APIKey) keyView {
+// masked is the view of one stored key for a list or an update, with its budget
+// when it has one.
+func masked(k repository.APIKey, budget *quota.Limit) keyView {
 	allow := k.AccessAllow
 	if allow == nil {
 		allow = []string{}
 	}
 	return keyView{
 		ID: k.ID, Name: k.Name, Key: auth.MaskKey(k.Key), IsActive: k.IsActive,
-		CreatedAt: k.CreatedAt, Unreadable: k.Unreadable,
+		CreatedAt: k.CreatedAt, Unreadable: k.Unreadable, Quota: budget,
 		Access: accessView{Restricted: k.AccessRestricted, Allow: allow},
 	}
 }
 
 // revealed is the view of one key with its full value, for the reveal only.
-func revealed(k repository.APIKey) keyView {
-	v := masked(k)
+func revealed(k repository.APIKey, budget *quota.Limit) keyView {
+	v := masked(k, budget)
 	if !k.Unreadable {
 		v.Key = k.Key
 	}
 	return v
+}
+
+// limits returns every key's budget, or a failure the dashboard answers as a
+// storage fault.
+func (c *KeysController) limits(ctx contractshttp.Context) (map[string]quota.Limit, contractshttp.Response, bool) {
+	if c.Quota == nil {
+		return nil, storageDown(ctx), false
+	}
+	all, err := c.Quota.All(ctx.Request().Origin().Context())
+	if err != nil {
+		return nil, storageDown(ctx), false
+	}
+	return all, nil, true
+}
+
+// budgetOf is one key's budget, or nil when it has none.
+func budgetOf(all map[string]quota.Limit, id string) *quota.Limit {
+	if l, ok := all[id]; ok {
+		return &l
+	}
+	return nil
 }
 
 func (c *KeysController) store() *repository.Store {
@@ -86,9 +112,13 @@ func (c *KeysController) List(ctx contractshttp.Context) contractshttp.Response 
 	if err != nil {
 		return storageDown(ctx)
 	}
+	all, out2, ok := c.limits(ctx)
+	if !ok {
+		return out2
+	}
 	out := make([]keyView, 0, len(rows))
 	for _, k := range rows {
-		out = append(out, masked(k))
+		out = append(out, masked(k, budgetOf(all, k.ID)))
 	}
 	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"keys": out})
 }
@@ -107,7 +137,11 @@ func (c *KeysController) Show(ctx contractshttp.Context) contractshttp.Response 
 	if k.Unreadable {
 		return flat(ctx, nethttp.StatusInternalServerError, "This key's stored value cannot be read")
 	}
-	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"key": revealed(k)})
+	all, out2, ok := c.limits(ctx)
+	if !ok {
+		return out2
+	}
+	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"key": revealed(k, budgetOf(all, k.ID))})
 }
 
 // Create answers POST /api/keys: a fresh key for this machine, answered once.
@@ -156,6 +190,7 @@ func (c *KeysController) Update(ctx contractshttp.Context) contractshttp.Respons
 		Name     *string         `json:"name"`
 		IsActive *bool           `json:"isActive"`
 		Access   json.RawMessage `json:"access"`
+		Quota    json.RawMessage `json:"quota"`
 	}
 	if err := bindJSON(ctx, &b); err != nil {
 		return flat(ctx, nethttp.StatusBadRequest, "Invalid request body")
@@ -183,8 +218,30 @@ func (c *KeysController) Update(ctx contractshttp.Context) contractshttp.Respons
 	if err != nil {
 		return flat(ctx, nethttp.StatusInternalServerError, "The key could not be updated")
 	}
+	if len(b.Quota) > 0 && string(b.Quota) != "null" {
+		limit, err := quota.Validate(gjson.ParseBytes(b.Quota))
+		if err != nil {
+			return flat(ctx, nethttp.StatusBadRequest, strings.ToUpper(err.Error()[:1])+err.Error()[1:])
+		}
+		if c.Quota == nil {
+			return storageDown(ctx)
+		}
+		// An empty object is how a client clears a budget; nothing is stored.
+		if limit.Empty() {
+			err = c.Quota.Clear(ctx.Request().Origin().Context(), id)
+		} else {
+			err = c.Quota.Set(ctx.Request().Origin().Context(), id, limit)
+		}
+		if err != nil {
+			return flat(ctx, nethttp.StatusInternalServerError, "The key's budget could not be stored")
+		}
+	}
 	c.changed()
-	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"key": masked(row)})
+	all, out2, ok := c.limits(ctx)
+	if !ok {
+		return out2
+	}
+	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"key": masked(row, budgetOf(all, row.ID))})
 }
 
 // Delete answers DELETE /api/keys/{id}.
@@ -199,6 +256,10 @@ func (c *KeysController) Delete(ctx contractshttp.Context) contractshttp.Respons
 	}
 	if !deleted {
 		return flat(ctx, nethttp.StatusNotFound, "Key not found")
+	}
+	if c.Quota != nil {
+		// A budget with no key is harmless; the row goes with it.
+		_ = c.Quota.Delete(ctx.Request().Origin().Context(), ctx.Request().Route("id"))
 	}
 	c.changed()
 	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"message": "Key deleted successfully"})
@@ -223,6 +284,9 @@ func (c *KeysController) one(ctx contractshttp.Context) (repository.APIKey, cont
 // changed drops every cached key so a revocation or an edit takes effect at
 // once rather than at the cache's own expiry.
 func (c *KeysController) changed() {
+	if c.Quota != nil {
+		c.Quota.Changed()
+	}
 	if c.Changed != nil {
 		c.Changed()
 	}

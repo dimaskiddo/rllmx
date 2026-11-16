@@ -86,6 +86,7 @@ func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.P
 		Caps:          h.Capabilities,
 		Prices:        table,
 		Usage:         writer,
+		Budget:        budget(h.Limits, runner),
 		Overrides:     headerOverrides{settings: settingsRead},
 		Settings:      settingsRead,
 		Prefetch:      prefetch.New(),

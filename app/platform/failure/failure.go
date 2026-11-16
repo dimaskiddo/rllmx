@@ -161,7 +161,41 @@ type geminiBody struct {
 
 // Body renders an error in the given format.
 func Body(f Format, status int, msg string) []byte {
-	e := lookup(status)
+	return render(f, status, msg, lookup(status))
+}
+
+// quotaEntry is the 429 a spent key budget answers with: the code says the
+// key's own quota, not the provider's rate limit. Anthropic has no such type, so
+// it keeps its rate-limit one; Gemini says the resource is exhausted.
+var quotaEntry = entry{"insufficient_quota", "insufficient_quota", "rate_limit_error", "RESOURCE_EXHAUSTED", "Your request budget is spent"}
+
+// Quota renders a 429 for a key whose budget is spent.
+func Quota(f Format, msg string) []byte {
+	return render(f, http.StatusTooManyRequests, msg, quotaEntry)
+}
+
+// QuotaHeaders are the headers a spent budget carries: what is left in the
+// window that refused, and seconds until it resets. A negative amount omits that
+// header, and a zero reset omits Retry-After: an all-time budget never resets.
+func QuotaHeaders(requests, tokens, cost float64, reset time.Duration) http.Header {
+	h := http.Header{}
+	for name, amount := range map[string]float64{
+		"X-Rllm-Quota-Remaining-Requests": requests,
+		"X-Rllm-Quota-Remaining-Tokens":   tokens,
+		"X-Rllm-Quota-Remaining-Cost":     cost,
+	} {
+		if amount >= 0 {
+			h.Set(name, strconv.FormatFloat(amount, 'f', -1, 64))
+		}
+	}
+	if reset > 0 {
+		h.Set("Retry-After", strconv.FormatInt(int64((reset+time.Second-1)/time.Second), 10))
+	}
+	return h
+}
+
+// render turns one entry into the format's envelope.
+func render(f Format, status int, msg string, e entry) []byte {
 	m := message(f, status, msg, e)
 	switch f {
 	case OpenAI, Responses:

@@ -16,6 +16,7 @@ import (
 	"github.com/tidwall/gjson"
 
 	"rllmx/app/access/identity"
+	"rllmx/app/access/quota"
 	"rllmx/app/gateway/account"
 	"rllmx/app/llm/executor"
 	"rllmx/app/llm/media"
@@ -70,6 +71,11 @@ type Credentials interface {
 // VoiceLister asks a provider for its own voice list.
 type VoiceLister func(ctx context.Context, provider string, r media.Request, c media.Client) ([]upstream.Voice, error)
 
+// Budget decides whether a key may spend one more request.
+type Budget interface {
+	Check(ctx context.Context, keyID string) (quota.Refusal, error)
+}
+
 // Usage takes the one row a request leaves behind.
 type Usage interface {
 	Enqueue(r analytics.Record) bool
@@ -101,8 +107,10 @@ type Deps struct {
 	Credentials Credentials
 	Voices      VoiceLister
 	Usage       Usage
-	Log         log.Log
-	Now         func() time.Time
+	// Budget decides whether a key may spend one more request.
+	Budget Budget
+	Log    log.Log
+	Now    func() time.Time
 	// Network is the guarded dialer's configuration, for an adapter that opens a
 	// socket of its own.
 	Network network.Options
@@ -271,6 +279,10 @@ func (p *Pipeline) run(ctx context.Context, kind string, in Input, req parsed) O
 	if !p.mayCall(in.Caller, ref) {
 		return bad(http.StatusForbidden, appfailure.NotAllowed(model))
 	}
+	if out, ok := p.budget(ctx, in.Caller); !ok {
+		row.Status, row.ErrorClass = out.Status, appfailure.ClassOf(out.Status)
+		return out
+	}
 	cfg := entry.Media.Config(kind)
 	if cfg == nil {
 		return bad(http.StatusBadRequest, "This provider does not serve that model here")
@@ -285,6 +297,31 @@ func (p *Pipeline) mayCall(caller identity.Caller, ref upstream.MediaRef) bool {
 		return true
 	}
 	return p.d.Registry.Allows(caller.Allow, ref)
+}
+
+// budget answers a key whose budget is spent, or fails closed when the usage
+// cannot be read. ok is false when the request must stop.
+func (p *Pipeline) budget(ctx context.Context, caller identity.Caller) (Output, bool) {
+	if p.d.Budget == nil || caller.ID == "" || caller.Anonymous {
+		return Output{}, true
+	}
+	ref, err := p.d.Budget.Check(ctx, caller.ID)
+	if err != nil {
+		if p.d.Log != nil {
+			p.d.Log.Warningf("media: a key's budget cannot be checked: %v", err)
+		}
+		return failureOutput(http.StatusServiceUnavailable, "The request budget cannot be checked"), false
+	}
+	if !ref.Refused {
+		return Output{}, true
+	}
+	h := failureHeaders()
+	for k, v := range appfailure.QuotaHeaders(ref.Remaining.Requests, ref.Remaining.Tokens, ref.Remaining.Cost, ref.RetryAfter) {
+		if len(v) > 0 {
+			h[k] = v[0]
+		}
+	}
+	return Output{Status: http.StatusTooManyRequests, Header: h, Body: appfailure.Quota(appfailure.OpenAI, "The API key's budget is spent")}, false
 }
 
 // record starts the one usage row a request leaves behind; the returned
@@ -571,6 +608,7 @@ func (p *Pipeline) try(ctx context.Context, kind string, adapter media.Handler, 
 	if ans.Usage.Known {
 		row.PromptTokens, row.CompletionTokens = ans.Usage.Prompt, ans.Usage.Completion
 	}
+	row.Cost = ans.Cost
 	if !noReport {
 		p.succeed(ctx, conn, lockModel, started)
 	}

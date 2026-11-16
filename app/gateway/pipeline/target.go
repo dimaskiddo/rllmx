@@ -47,6 +47,9 @@ func (c *call) resolve(ctx context.Context) (Output, bool) {
 			return c.refuseModel(), false
 		}
 	}
+	if out, ok := c.budget(ctx); !ok {
+		return out, false
+	}
 	c.row.Provider, c.row.Model = t.Provider, t.Model
 	// A media model is never a chat model: the two areas share one registry, so
 	// the kind decides.

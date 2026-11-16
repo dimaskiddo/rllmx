@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"rllmx/app/access/quota"
 	"rllmx/app/llm/zed"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/goravel/framework/contracts/binding"
 	"github.com/goravel/framework/contracts/config"
@@ -49,6 +51,9 @@ type HTTP struct {
 	Auth     *auth.Authenticator
 	// SSO is the guarded identity-provider client and the sign-in store.
 	SSO *sso.Client
+	// Limits is every key's budget, read from the store and cached; the key API
+	// writes it and the pipelines check it.
+	Limits *quota.Limits
 	// Registry is the provider registry, validated at the bind: a bad data file
 	// stops the start.
 	Registry *upstream.Registry
@@ -183,6 +188,7 @@ func (r *ServerServiceProvider) Register(app foundation.Application) {
 			Guard:         apphttp.NewGuard(a, s.TrustLoopback),
 			Trust:         trust,
 			Auth:          a,
+			Limits:        quota.NewLimits(db, time.Now),
 			SSO:           sso.NewClient(upstreamCfg.Allow),
 			Registry:      registry,
 			Checker:       controllers.NewChecker(upstreamCfg.Allow),
