@@ -231,11 +231,14 @@ func TestRunnersReturnsTheServerRunner(t *testing.T) {
 	}
 	app := &fakeApp{values: map[any]any{BindingHTTP: bound, BindingData: &Data{Gate: data.NewGate()}}, route: tests.NewRoute(t), log: &tests.Log{}}
 	runners := (&ServerServiceProvider{}).Runners(app)
-	if len(runners) != 3 || runners[0].Signature() != "rllmx:http" || !runners[0].ShouldRun() {
+	if len(runners) != 4 || runners[0].Signature() != "rllmx:http" || !runners[0].ShouldRun() {
 		t.Fatalf("runners = %v", runners)
 	}
 	if runners[2].Signature() != "rllmx.claude-cli" || !runners[2].ShouldRun() {
 		t.Fatalf("the Claude version runner is missing: %v", runners[2].Signature())
+	}
+	if runners[3].Signature() != "rllmx.probe" || !runners[3].ShouldRun() {
+		t.Fatalf("the probe runner is missing: %v", runners[3].Signature())
 	}
 	withPriority, ok := runners[0].(foundation.RunnerWithShutdownPriority)
 	if !ok || withPriority.ShutdownPriority() >= 0 {

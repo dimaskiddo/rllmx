@@ -38,6 +38,10 @@ type Base struct {
 	Callback *controllers.CallbackController
 	// Keys is the client-key management handler; nil leaves its routes out.
 	Keys *controllers.KeysController
+	// Health carries the health feed; nil leaves the liveness route alone.
+	Health *controllers.HealthController
+	// Combos suggests and accepts a combo; nil leaves those routes out.
+	Combos *controllers.CombosController
 }
 
 // Web declares the route tables. Every route goes through guard.Handle, which
@@ -45,7 +49,11 @@ type Base struct {
 // table, and the server refuses to start with one.
 func Web(router route.Route, guard *apphttp.Guard, base Base) {
 	health := controllers.NewHealthController()
+	if base.Health != nil {
+		health = base.Health
+	}
 	guard.Handle(router, apphttp.ClassPublic, nethttp.MethodGet, "/api/health", health.Index)
+	guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/health/latency-stream", health.LatencyStream)
 
 	version := controllers.NewVersionController(base.Version, base.Commit)
 	guard.Handle(router, apphttp.ClassPublic, nethttp.MethodGet, "/api/version", version.Index)
@@ -86,12 +94,14 @@ func Web(router route.Route, guard *apphttp.Guard, base Base) {
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/providers", p.List)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPost, "/api/providers", p.Create)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPost, "/api/providers/validate", p.Validate)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPost, "/api/providers/test-batch", p.TestBatch)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPost, "/api/providers/bulk", p.BulkCreate)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/providers/{id}", p.Show)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPut, "/api/providers/{id}", p.Update)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodDelete, "/api/providers/{id}", p.Delete)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPost, "/api/providers/{id}/test", p.Test)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/providers/{id}/models", p.ModelsList)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPost, "/api/providers/{id}/test-models", p.TestModels)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/providers/{id}/overrides", p.Overrides)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPut, "/api/providers/{id}/overrides", p.SetOverrides)
 	}
@@ -134,6 +144,12 @@ func Web(router route.Route, guard *apphttp.Guard, base Base) {
 		guard.Handle(router, apphttp.ClassLLM, nethttp.MethodGet, "/v1/models", m.List)
 		guard.Handle(router, apphttp.ClassLLM, nethttp.MethodGet, "/v1/models/*path", m.Show)
 		guard.Handle(router, apphttp.ClassLLM, nethttp.MethodGet, "/v1beta/models", m.Gemini)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPost, "/api/models/test", m.Test)
+	}
+
+	if cb := base.Combos; cb != nil {
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/combos/suggest", cb.Suggest)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPost, "/api/combos/suggest/accept", cb.Accept)
 	}
 
 	if o := base.OAuth; o != nil {

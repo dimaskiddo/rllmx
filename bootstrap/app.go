@@ -46,10 +46,11 @@ func Boot(version, commit string) contractsfoundation.Application {
 			base.OIDC = oidcController(h)
 			base.SAML = samlController(h)
 			db := func() *repository.Store { return providers.DataOf(facades.App()).Runner.Store() }
-			base.Providers = &controllers.ProvidersController{Registry: h.Registry, DB: db, Checker: h.Checker, Refresher: h.Refresher}
+			base.Providers = &controllers.ProvidersController{Registry: h.Registry, DB: db, Checker: h.Checker, Refresher: h.Refresher, Enqueue: h.Probes.Enqueue, Probe: h.Probes.Prober}
 			base.Nodes = &controllers.NodesController{Registry: h.Registry, DB: db, Checker: h.Checker}
-			base.Chat = &controllers.ChatController{Pipe: providers.NewPipelineSource(facades.App()).Get, Log: facades.Log()}
-			base.Models = &controllers.ModelsController{Catalog: providers.NewCatalogSource(facades.App()).Get, Log: facades.Log()}
+			base.Chat = &controllers.ChatController{Pipe: h.Pipe.Get, Log: facades.Log()}
+			base.Models = &controllers.ModelsController{Catalog: providers.NewCatalogSource(facades.App()).Get, Probe: h.Probes.Prober, Log: facades.Log()}
+			base.Combos = &controllers.CombosController{DB: db, Probe: h.Probes.Prober, Tracker: h.Health, Prices: h.Prices.Get}
 			media := providers.NewMediaSource(facades.App())
 			base.Media = &controllers.MediaController{
 				EmbeddingsPipe: media.Get, ImagesPipe: media.Get, SpeechPipe: media.Get,
@@ -58,6 +59,7 @@ func Boot(version, commit string) contractsfoundation.Application {
 			}
 			base.OAuth = &controllers.OAuthController{Service: h.OAuth, Auth: h.Auth, Server: h.Settings}
 			base.Callback = &controllers.CallbackController{Files: web.Static}
+			base.Health = &controllers.HealthController{DB: db, Tracker: h.Health}
 			base.Keys = &controllers.KeysController{
 				DB: db, Quota: h.Limits, Codec: identity.NewKeys(facades.Config().GetString("auth.api_key_secret")),
 				Machine: identity.NewMachine(facades.Config().GetString("auth.machine_id_salt")),

@@ -57,6 +57,10 @@ func (c *call) resolve(ctx context.Context) (Output, bool) {
 		return c.fail(http.StatusNotFound, "not_found", "Model not found"), false
 	}
 	if t.Combo != "" {
+		if c.in.Connection != "" {
+			// A pinned request names one connection, and a combo is not one.
+			return c.fail(http.StatusBadRequest, "invalid_request", "A combo cannot be pinned to one connection"), false
+		}
 		// A combo name is routable: its members are tried in order, and this call
 		// keeps the one row.
 		return c.comboRun(ctx, t.Combo), false

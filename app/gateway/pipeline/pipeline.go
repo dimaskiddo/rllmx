@@ -55,6 +55,10 @@ type Input struct {
 	AcceptJSON bool
 	// Cache is the client's X-Rllm-Cache wish: "use", "bypass" or empty.
 	Cache string
+	// Connection pins the request to one connection. Only an internal model
+	// probe sets it: the pinned connection is tried once and no other account
+	// answers in its place.
+	Connection string
 }
 
 // Output is the answer. A streamed answer has already been written through the

@@ -58,6 +58,32 @@ type spy struct {
 	succeeded atomic.Int32
 }
 
+// healthRec is one outcome the pipeline gave the tracker.
+type healthRec struct {
+	provider string
+	ok       bool
+	latency  time.Duration
+}
+
+type healthSpy struct {
+	mu   sync.Mutex
+	recs []healthRec
+}
+
+func (h *healthSpy) Record(provider string, ok bool, latency time.Duration) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.recs = append(h.recs, healthRec{provider: provider, ok: ok, latency: latency})
+}
+
+func (h *healthSpy) Open(string) bool { return false }
+
+func (h *healthSpy) all() []healthRec {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]healthRec(nil), h.recs...)
+}
+
 func (s *spy) Succeed(ctx context.Context, id, model string, at time.Time) error {
 	s.succeeded.Add(1)
 	return s.Reporter.Succeed(ctx, id, model, at)
@@ -96,6 +122,7 @@ type rig struct {
 	up   *tests.Upstream
 	rows *usage.Sink
 	rep  *spy
+	hlt  *healthSpy
 }
 
 func instant(time.Duration) <-chan time.Time {
@@ -203,19 +230,20 @@ func newRig(t *testing.T, steps ...tests.Reply) *rig {
 	log := &tests.Log{}
 	rep := &spy{Reporter: account.NewReporter(st.Connections(), log, nil)}
 	rows := &usage.Sink{}
+	hlt := &healthSpy{}
 	p, err := New(Deps{
 		Resolver: &routing.Resolver{Registry: reg, Snapshot: routing.NewSnapshot(source{}, nil)},
 		Selector: account.NewSelector(account.SelectorOptions{Conns: st.Connections(), Settings: tests.Settings{}, Log: log}),
 		Reporter: rep,
 		Executor: mux.New(&executor.Default{Client: http.DefaultClient, Sleep: instant}, mux.Options{}),
-		Nodes:    st.Nodes(), Registry: reg, Caps: caps, Prices: table, Usage: rows,
+		Nodes:    st.Nodes(), Registry: reg, Caps: caps, Prices: table, Usage: rows, Health: hlt,
 		Timers: stream.Timers{FirstChunk: 300 * time.Millisecond, Stall: 300 * time.Millisecond, UsageWait: 50 * time.Millisecond},
 		Log:    log,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &rig{t: t, p: p, st: st, up: up, rows: rows, rep: rep}
+	return &rig{t: t, p: p, st: st, up: up, rows: rows, rep: rep, hlt: hlt}
 }
 
 func (r *rig) conn(provider, key string) repository.Connection {
@@ -552,6 +580,9 @@ func TestAStreamThatBreaksAfterBytesIsNotRetried(t *testing.T) {
 	}
 	if r.rep.succeeded.Load() != 0 {
 		t.Fatal("a broken stream cleared the locks")
+	}
+	if recs := r.hlt.all(); len(recs) != 1 || recs[0].ok {
+		t.Fatalf("a stream that broke after it opened was not counted: %+v", recs)
 	}
 }
 

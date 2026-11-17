@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 
 	contractsdb "github.com/goravel/framework/contracts/database/db"
 	"rllmx/app/store/dialect"
@@ -17,6 +18,10 @@ type Combo struct {
 	CreatedAt string
 	UpdatedAt string
 }
+
+// ErrComboNameTaken means a combo already has that name. Accepting a
+// suggestion never overwrites one.
+var ErrComboNameTaken = errors.New("repository: a combo with that name exists")
 
 // CombosRepo reads and writes the combos table.
 type CombosRepo struct{ s *Store }
@@ -68,15 +73,29 @@ func (r *CombosRepo) GetByID(ctx context.Context, id string) (Combo, bool, error
 	return r.byID(r.s.on(ctx), id)
 }
 
-// Create inserts a combo; a duplicate name fails.
-func (r *CombosRepo) Create(ctx context.Context, name string, models []string) (Combo, error) {
+// Create inserts a combo of the given kind; a duplicate name is
+// ErrComboNameTaken, decided inside the transaction that writes it.
+func (r *CombosRepo) Create(ctx context.Context, name, kind string, models []string) (Combo, error) {
 	if models == nil {
 		models = []string{}
 	}
 	ts := dialect.Now()
-	c := Combo{ID: dialect.NewID(), Name: dialect.StripNUL(name), Models: models, CreatedAt: ts, UpdatedAt: ts}
-	err := r.s.stmt(r.s.on(ctx), `INSERT INTO "combos"(`+comboCols+`) VALUES(?,?,?,?,?,?)`,
-		c.ID, c.Name, nil, encodeStrings(models), ts, ts)
+	c := Combo{ID: dialect.NewID(), Name: dialect.StripNUL(name), Kind: kind, Models: models, CreatedAt: ts, UpdatedAt: ts}
+	var stored any
+	if kind != "" {
+		stored = kind
+	}
+	err := r.s.Tx(ctx, func(tx contractsdb.Tx) error {
+		var rows []comboRow
+		if err := r.s.sel(tx, &rows, `SELECT `+comboCols+` FROM "combos" WHERE "name" = ?`, c.Name); err != nil {
+			return err
+		}
+		if len(rows) > 0 {
+			return ErrComboNameTaken
+		}
+		return r.s.stmt(tx, `INSERT INTO "combos"(`+comboCols+`) VALUES(?,?,?,?,?,?)`,
+			c.ID, c.Name, stored, encodeStrings(models), ts, ts)
+	})
 	if err != nil {
 		return Combo{}, err
 	}

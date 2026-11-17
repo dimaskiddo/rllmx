@@ -9,6 +9,7 @@ import (
 	"github.com/goravel/framework/contracts/log"
 
 	"rllmx/app/gateway/catalog"
+	"rllmx/app/gateway/probe"
 	apphttp "rllmx/app/http"
 	"rllmx/app/platform/failure"
 )
@@ -18,7 +19,10 @@ type ModelsController struct {
 	// Catalog returns the catalog, building it on first use. It fails while the
 	// stores are not open.
 	Catalog func() (*catalog.Catalog, error)
-	Log     log.Log
+	// Probe tests one model through the pipeline; nil leaves the route
+	// unavailable.
+	Probe func() (*probe.Prober, error)
+	Log   log.Log
 }
 
 func (m *ModelsController) list(ctx contractshttp.Context) (*catalog.Catalog, []catalog.Entry, bool) {
@@ -117,4 +121,36 @@ func (m *ModelsController) Show(ctx contractshttp.Context) contractshttp.Respons
 	}
 	failure.Write(ctx.Response().Writer(), failure.OpenAI, nethttp.StatusNotFound, "The model '"+id+"' does not exist or you do not have access to it.")
 	return nil
+}
+
+// Test answers POST /api/models/test: one named model, through the pipeline
+// with the normal account selection. Only chat models: a media model answers
+// through its own route and its own probe.
+func (m *ModelsController) Test(ctx contractshttp.Context) contractshttp.Response {
+	var b struct {
+		Model string `json:"model"`
+		Kind  string `json:"kind"`
+	}
+	if err := bindJSON(ctx, &b); err != nil {
+		return flat(ctx, nethttp.StatusBadRequest, "Invalid request body")
+	}
+	if b.Model == "" {
+		return flat(ctx, nethttp.StatusBadRequest, "Model required")
+	}
+	if b.Kind != "" && b.Kind != "llm" {
+		return flat(ctx, nethttp.StatusBadRequest, "Only llm models can be tested")
+	}
+	if m.Probe == nil {
+		return flat(ctx, nethttp.StatusServiceUnavailable, "Storage is not available")
+	}
+	p, err := m.Probe()
+	if err != nil {
+		return flat(ctx, nethttp.StatusServiceUnavailable, "Storage is not available")
+	}
+	r := p.Model(ctx.Request().Origin().Context(), b.Model)
+	out := contractshttp.Json{"ok": r.OK, "latencyMs": r.LatencyMs, "status": r.Status}
+	if !r.OK {
+		out["error"] = r.Error
+	}
+	return ctx.Response().Json(nethttp.StatusOK, out)
 }

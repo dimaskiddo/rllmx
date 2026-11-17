@@ -22,6 +22,7 @@ import (
 	"rllmx/app/access/oidc"
 	"rllmx/app/access/saml"
 	"rllmx/app/access/sso"
+	"rllmx/app/gateway/health"
 	apphttp "rllmx/app/http"
 	"rllmx/app/http/controllers"
 	"rllmx/app/llm/oauth"
@@ -61,6 +62,8 @@ type HTTP struct {
 	Checker *controllers.Checker
 	// Capabilities resolves what a model can do, validated at the bind.
 	Capabilities *upstream.Capabilities
+	// Health is the per-provider breaker and latency table the pipeline feeds.
+	Health *health.Tracker
 	// Stream holds the timers every streamed answer runs under.
 	Stream *settings.Stream
 	// Upstream is the outbound network setting: connect timeout and allow list.
@@ -83,6 +86,14 @@ type HTTP struct {
 	OAuthSettings *settings.OAuth
 	// ClaudeCLI is the claude-cli/x.y.z fingerprint the Claude channel carries.
 	ClaudeCLI *upstream.ClaudeCLI
+	// Pipe builds the request pipeline on first use; the probe runner shares
+	// it, so one pipeline holds the rotation and the caches.
+	Pipe *PipelineSource
+	// Probes probes a connection's models in the background and answers the
+	// dashboard's explicit tests.
+	Probes *ProbeSource
+	// Prices prices a request and ranks a suggestion; one table, two readers.
+	Prices *PriceSource
 }
 
 // HTTPOf returns the bound HTTP pieces. A missing binding means the provider is
@@ -183,7 +194,11 @@ func (r *ServerServiceProvider) Register(app foundation.Application) {
 		trust := apphttp.NewTrust(s.TrustedProxies)
 		a.ClientAddr = trust.ClientAddr
 		login, refresher, minter, google, hosted, freebuff := newLogin(app, registry, oauthCfg, upstreamCfg)
+		pipe := NewPipelineSource(app)
 		return &HTTP{
+			Pipe:          pipe,
+			Probes:        NewProbeSource(app, pipe),
+			Prices:        NewPriceSource(app),
 			Settings:      s,
 			Guard:         apphttp.NewGuard(a, s.TrustLoopback),
 			Trust:         trust,
@@ -193,6 +208,7 @@ func (r *ServerServiceProvider) Register(app foundation.Application) {
 			Registry:      registry,
 			Checker:       controllers.NewChecker(upstreamCfg.Allow),
 			Capabilities:  capabilities,
+			Health:        health.NewTracker(time.Now),
 			Stream:        streamCfg,
 			Upstream:      upstreamCfg,
 			Media:         mediaCfg,
@@ -303,7 +319,7 @@ func (r *ServerServiceProvider) Runners(app foundation.Application) []foundation
 	route := app.MakeRoute()
 	server := apphttp.NewServer(h.Settings, apphttp.Rewrite(route), h.Guard, route.GetRoutes, app.MakeLog())
 	server.WaitFor(DataOf(app).Gate)
-	return []foundation.Runner{server, newOAuthRunner(app, h, h.OAuthSettings), newClaudeRunner(app, h)}
+	return []foundation.Runner{server, newOAuthRunner(app, h, h.OAuthSettings), newClaudeRunner(app, h), newProbeRunner(app, h.Probes)}
 }
 
 // cacheOrNil returns the grouped cache, or nil when the cache provider is not

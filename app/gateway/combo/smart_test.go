@@ -27,7 +27,7 @@ func TestASmartChoiceLeadsAndIsRemembered(t *testing.T) {
 	sticky := NewSticky()
 	p := Policy{Name: "fast", Strategy: StrategySmart, Threshold: 0.8, Sticky: true}
 	smart := &Smart{Router: router, Sticky: sticky, Session: "s1", Now: func() time.Time { return time.Unix(100, 0) }}
-	out, _ := Order(p, members("a", "b", "c"), nil, needsNone(), NewRotation(), smart)
+	out, _ := Order(p, members("a", "b", "c"), nil, nil, needsNone(), NewRotation(), smart)
 	if names(out)[0] != "b" {
 		t.Fatalf("%v", names(out))
 	}
@@ -40,7 +40,7 @@ func TestASmartChoiceBelowTheThresholdKeepsTheOrder(t *testing.T) {
 	router := &scriptedRouter{choice: Choice{Model: "b", Confidence: 0.5}}
 	p := Policy{Name: "fast", Strategy: StrategySmart, Threshold: 0.8, Sticky: true}
 	smart := &Smart{Router: router, Sticky: NewSticky(), Session: "s1"}
-	out, _ := Order(p, members("a", "b", "c"), nil, needsNone(), NewRotation(), smart)
+	out, _ := Order(p, members("a", "b", "c"), nil, nil, needsNone(), NewRotation(), smart)
 	if names(out)[0] != "a" {
 		t.Fatalf("%v", names(out))
 	}
@@ -52,7 +52,7 @@ func TestAFailingRouterKeepsTheOrder(t *testing.T) {
 		{choice: Choice{Model: "notin", Confidence: 0.99}},
 	} {
 		p := Policy{Name: "fast", Strategy: StrategySmart, Threshold: 0.8, Sticky: true}
-		out, _ := Order(p, members("a", "b"), nil, needsNone(), NewRotation(), &Smart{Router: r, Sticky: NewSticky(), Session: "s1"})
+		out, _ := Order(p, members("a", "b"), nil, nil, needsNone(), NewRotation(), &Smart{Router: r, Sticky: NewSticky(), Session: "s1"})
 		if names(out)[0] != "a" {
 			t.Fatalf("%v", names(out))
 		}
@@ -65,7 +65,7 @@ func TestAStrictPolicyKeepsTheStickyChoiceWithoutAsking(t *testing.T) {
 	sticky.Put("fast", "s1", "b", time.Now())
 	p := Policy{Name: "fast", Strategy: StrategySmart, Threshold: 0.8, Sticky: true, SmartPolicy: "strict"}
 	smart := &Smart{Router: router, Sticky: sticky, Session: "s1"}
-	out, _ := Order(p, members("a", "b", "c"), nil, needsNone(), NewRotation(), smart)
+	out, _ := Order(p, members("a", "b", "c"), nil, nil, needsNone(), NewRotation(), smart)
 	if names(out)[0] != "b" || router.asked != 0 {
 		t.Fatalf("order %v, router asked %d times", names(out), router.asked)
 	}
@@ -77,7 +77,7 @@ func TestAPerTurnPolicyReasksEveryTurn(t *testing.T) {
 	sticky.Put("fast", "s1", "b", time.Now())
 	p := Policy{Name: "fast", Strategy: StrategySmart, Threshold: 0.8, Sticky: true, SmartPolicy: "per-turn"}
 	smart := &Smart{Router: router, Sticky: sticky, Session: "s1"}
-	out, _ := Order(p, members("a", "b", "c"), nil, needsNone(), NewRotation(), smart)
+	out, _ := Order(p, members("a", "b", "c"), nil, nil, needsNone(), NewRotation(), smart)
 	if router.asked != 1 {
 		t.Fatalf("the router was asked %d times", router.asked)
 	}
@@ -85,7 +85,7 @@ func TestAPerTurnPolicyReasksEveryTurn(t *testing.T) {
 		t.Fatalf("%v", names(out))
 	}
 	// Per-turn asks again on the next turn, and the choice leads each time.
-	out, _ = Order(p, members("a", "b", "c"), nil, needsNone(), NewRotation(), smart)
+	out, _ = Order(p, members("a", "b", "c"), nil, nil, needsNone(), NewRotation(), smart)
 	if router.asked != 2 || names(out)[0] != "c" {
 		t.Fatalf("asked %d, order %v", router.asked, names(out))
 	}
@@ -95,7 +95,7 @@ func TestAStickyChoiceThatLeftTheComboIsForgotten(t *testing.T) {
 	sticky := NewSticky()
 	sticky.Put("fast", "s1", "gone", time.Now())
 	p := Policy{Name: "fast", Strategy: StrategySmart, Threshold: 0.8, Sticky: true}
-	out, _ := Order(p, members("a", "b"), nil, needsNone(), NewRotation(), &Smart{Router: nil, Sticky: sticky, Session: "s1"})
+	out, _ := Order(p, members("a", "b"), nil, nil, needsNone(), NewRotation(), &Smart{Router: nil, Sticky: sticky, Session: "s1"})
 	if names(out)[0] != "a" {
 		t.Fatalf("%v", names(out))
 	}

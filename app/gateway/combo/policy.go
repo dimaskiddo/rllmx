@@ -144,8 +144,9 @@ type Caps func(m routing.Member) upstream.Capability
 
 // Order is the member order a request is tried in. Capability comes first for
 // every strategy: a member that cannot read what the turn carries is last, however
-// the strategy would place it. Then the strategy reorders what is left.
-func Order(p Policy, members []routing.Member, caps Caps, needs translate.Needs, state *Rotation, smart *Smart) ([]routing.Member, bool) {
+// the strategy would place it. Then the strategy reorders what is left, and a
+// provider whose breaker is open goes to the end.
+func Order(p Policy, members []routing.Member, caps Caps, open func(provider string) bool, needs translate.Needs, state *Rotation, smart *Smart) ([]routing.Member, bool) {
 	if len(members) == 0 {
 		return nil, false
 	}
@@ -158,7 +159,7 @@ func Order(p Policy, members []routing.Member, caps Caps, needs translate.Needs,
 	case StrategySmart:
 		out = p.smartOrder(out, smart)
 	}
-	return out, true
+	return byHealth(out, open), true
 }
 
 // Smart is what a smart strategy needs: the router that names a member, the
@@ -258,11 +259,26 @@ func byCapability(members []routing.Member, caps Caps, needs translate.Needs) []
 	if !needs.Any() || caps == nil {
 		return slices.Clone(members)
 	}
+	return partition(members, func(m routing.Member) bool { return !needs.Met(caps(m)) })
+}
+
+// byHealth moves a member whose provider's breaker is open to the end, keeping
+// the order inside both halves. Nothing is dropped: an open provider still
+// answers when it is all that is left.
+func byHealth(members []routing.Member, open func(provider string) bool) []routing.Member {
+	if open == nil {
+		return members
+	}
+	return partition(members, func(m routing.Member) bool { return open(m.Provider) })
+}
+
+// partition keeps the order and sends the members last reports true on to the
+// end.
+func partition(members []routing.Member, last func(routing.Member) bool) []routing.Member {
 	out := make([]routing.Member, 0, len(members))
 	for round := 0; round < 2; round++ {
 		for _, m := range members {
-			met := needs.Met(caps(m))
-			if (round == 0) == met {
+			if (round == 1) == last(m) {
 				out = append(out, m)
 			}
 		}

@@ -52,14 +52,9 @@ func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.P
 	}
 	log := app.MakeLog()
 
-	table, err := upstream.DefaultTable(h.Registry)
+	table, err := h.Prices.Get()
 	if err != nil {
 		return nil, err
-	}
-	if raw, err := store.KV().List(ctx, repository.ScopePricing); err != nil {
-		log.Warningf("pipeline: pricing overrides not read: %v", err)
-	} else {
-		table = table.WithOverrides(upstream.ParseOverrides(raw, func(format string, args ...any) { log.Warningf(format, args...) }))
 	}
 
 	settingsRead := settingsFor(store)
@@ -86,6 +81,7 @@ func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.P
 		Registry:      h.Registry,
 		Caps:          h.Capabilities,
 		Prices:        table,
+		Health:        h.Health,
 		Usage:         writer,
 		Budget:        budget(h.Limits, runner),
 		Rotation:      combo.NewRotation(),

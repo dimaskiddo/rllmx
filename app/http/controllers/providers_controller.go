@@ -11,6 +11,7 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 	"github.com/tidwall/gjson"
 
+	"rllmx/app/gateway/probe"
 	"rllmx/app/llm/upstream"
 	"rllmx/app/platform/text"
 	"rllmx/app/store/document"
@@ -43,6 +44,12 @@ type ProvidersController struct {
 	// Refresher renews and checks the tokens of OAuth accounts; nil leaves
 	// those accounts untestable.
 	Refresher LoginChecker
+	// Enqueue asks for a background probe of a new or changed connection; nil
+	// skips it.
+	Enqueue func(connID string)
+	// Probe tests a connection's models through the pipeline; nil leaves the
+	// model-test route unavailable.
+	Probe func() (*probe.Prober, error)
 }
 
 // LoginChecker renews an OAuth account's token when it is due and says whether
@@ -144,7 +151,16 @@ func (c *ProvidersController) Create(ctx contractshttp.Context) contractshttp.Re
 	if cerr != nil {
 		return c.createFailure(ctx, cerr)
 	}
+	c.enqueue(conn.ID)
 	return ctx.Response().Json(nethttp.StatusCreated, contractshttp.Json{"connection": connectionView(conn)})
+}
+
+// enqueue asks for a background probe of a changed connection; a nil hook does
+// nothing, so a route wired without a probe runner still answers.
+func (c *ProvidersController) enqueue(id string) {
+	if c.Enqueue != nil {
+		c.Enqueue(id)
+	}
 }
 
 // createFailure answers a failed create: a name conflict in its own shape, any
@@ -493,6 +509,9 @@ func (c *ProvidersController) Update(ctx contractshttp.Context) contractshttp.Re
 		if updated, _, err = st.Connections().Get(rc, id); err != nil {
 			return storageDown(ctx)
 		}
+	}
+	if updated.IsActive {
+		c.enqueue(updated.ID)
 	}
 	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"connection": connectionView(updated)})
 }

@@ -34,6 +34,17 @@ func IsClientAPI(p string) bool {
 // responses are never cached.
 func IsDashboardAPI(p string) bool { return p == "/api" || strings.HasPrefix(p, "/api/") }
 
+// IsLongDashboardCall reports a dashboard route whose work outlives the default
+// write deadline: a feed, and the two tests that wait on providers. Each such
+// handler bounds its own work instead.
+func IsLongDashboardCall(p string) bool {
+	switch p {
+	case "/api/health/latency-stream", "/api/providers/test-batch":
+		return true
+	}
+	return strings.HasSuffix(p, "/test-models")
+}
+
 func isDashboardPage(p string) bool { return p == "/dashboard" || strings.HasPrefix(p, "/dashboard/") }
 
 // unroutedClass picks the class for a path that matched no route, so a mistyped

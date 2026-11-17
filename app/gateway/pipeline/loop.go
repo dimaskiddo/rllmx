@@ -28,7 +28,7 @@ func (c *call) serveFail(ctx context.Context) (Output, *accountFail) {
 	for {
 		sel, err := c.p.d.Selector.Select(ctx, account.Request{
 			Provider: c.dest.provider, Model: c.dest.model, RequestedModel: c.requested, Exclude: exclude,
-			Hold: c.hold(),
+			Hold: c.hold(), Prefer: c.in.Connection,
 		})
 		if err != nil {
 			out := c.noAccount(ctx, err, last, sawExpired)
@@ -38,6 +38,13 @@ func (c *call) serveFail(ctx context.Context) (Output, *accountFail) {
 				last = &accountFail{status: out.Status, class: "no_account"}
 			}
 			return out, last
+		}
+		if c.in.Connection != "" && sel.Conn.ID != c.in.Connection {
+			// The pinned connection is not a candidate, and a pinned request never
+			// spends on another account.
+			out := c.fail(http.StatusServiceUnavailable, "no_account",
+				"["+c.dest.provider+"/"+c.dest.model+"] The pinned connection is not available")
+			return out, &accountFail{status: http.StatusServiceUnavailable, class: "no_account"}
 		}
 		c.attempt++
 		c.row.Attempt = c.attempt
@@ -80,6 +87,11 @@ func (c *call) serveFail(ctx context.Context) (Output, *accountFail) {
 		}
 		if !res.Fallback {
 			return c.upstreamFail(f), f
+		}
+		// Only a failure that moved the request on counts against the provider:
+		// a request-scoped answer and an empty one are not its fault.
+		if c.p.d.Health != nil {
+			c.p.d.Health.Record(c.dest.provider, false, 0)
 		}
 		exclude[sel.Conn.ID] = true
 		last = f

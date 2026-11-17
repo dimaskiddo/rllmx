@@ -373,15 +373,19 @@ func TestNodeCreateGivesAnIDWhenNoneIsSent(t *testing.T) {
 func TestCombosCRUD(t *testing.T) {
 	s := newMigrated(t)
 	ctx := context.Background()
-	c, err := s.Combos().Create(ctx, "best", []string{"cx/gpt-5", "anthropic/claude"})
+	c, err := s.Combos().Create(ctx, "best", "", []string{"cx/gpt-5", "anthropic/claude"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if c.Kind != "" || c.ID == "" {
 		t.Fatalf("combo: %+v", c)
 	}
-	if _, err := s.Combos().Create(ctx, "best", nil); err == nil {
-		t.Fatal("duplicate combo name accepted")
+	if _, err := s.Combos().Create(ctx, "best", "auto", nil); !errors.Is(err, ErrComboNameTaken) {
+		t.Fatalf("duplicate combo name: %v", err)
+	}
+	auto, err := s.Combos().Create(ctx, "auto-made", "auto", []string{"openai/gpt-4o"})
+	if err != nil || auto.Kind != "auto" {
+		t.Fatalf("kind not stored: %+v %v", auto, err)
 	}
 	got, ok, _ := s.Combos().GetByID(ctx, c.ID)
 	if !ok || !reflect.DeepEqual(got.Models, []string{"cx/gpt-5", "anthropic/claude"}) {
@@ -409,7 +413,7 @@ func TestCombosListedByCreationTime(t *testing.T) {
 	s := newMigrated(t)
 	ctx := context.Background()
 	for _, n := range []string{"c", "a", "b"} {
-		if _, err := s.Combos().Create(ctx, n, []string{"x"}); err != nil {
+		if _, err := s.Combos().Create(ctx, n, "", []string{"x"}); err != nil {
 			t.Fatal(err)
 		}
 		time.Sleep(2 * time.Millisecond)
@@ -527,7 +531,7 @@ func TestNULBytesAreStrippedFromEveryRepoWrite(t *testing.T) {
 	s := newMigrated(t)
 	ctx := context.Background()
 	_ = s.KV().Set(ctx, "sc\x00ope", "ke\x00y", `"va\u0000lue"`)
-	_, _ = s.Combos().Create(ctx, "na\x00me", []string{"mo\x00del"})
+	_, _ = s.Combos().Create(ctx, "na\x00me", "", []string{"mo\x00del"})
 	_, _ = s.APIKeys().Create(ctx, "na\x00me", "mach\x00ine", "sk-ke\x00y")
 	_, _ = s.Nodes().CreateUnique(ctx, Node{ID: "i\x00d", Type: "ty\x00pe", Name: "na\x00me", Data: `{}`}, "")
 	for _, q := range []string{

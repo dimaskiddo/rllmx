@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -92,6 +93,9 @@ func (c *call) unexpected(resp executor.Response, kind stream.Kind) Output {
 func (c *call) accept(ctx context.Context) {
 	if c.p.d.Quota != nil && c.dest.provider == antigravityID {
 		c.p.d.Quota.Succeeded(c.row.ConnectionID, c.dest.model)
+	}
+	if c.p.d.Health != nil {
+		c.p.d.Health.Record(c.dest.provider, true, time.Duration(c.row.TTFBMs)*time.Millisecond)
 	}
 	if err := c.p.d.Reporter.Succeed(ctx, c.row.ConnectionID, c.dest.model, c.attemptStart); err != nil && c.p.d.Log != nil {
 		c.p.d.Log.Warningf("pipeline: clearing locks failed: %v", err)
@@ -214,6 +218,9 @@ func (c *call) relay(ctx context.Context, resp executor.Response, src stream.Sou
 	c.setUsage(res.Usage)
 	c.row.TTFBMs = res.TTFT.Milliseconds()
 	if res.Err != nil {
+		if c.p.d.Health != nil {
+			c.p.d.Health.Record(c.dest.provider, false, 0)
+		}
 		c.errClass = streamClass(res.Err)
 		c.rowStatus = res.Status
 		return Output{Status: http.StatusOK, Streamed: true}, nil

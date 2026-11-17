@@ -70,6 +70,7 @@ sequenceDiagram
 - When every member fails: the first request-scoped answer verbatim, else the last failure, with `retryAfter` when one gave it. A member that found no account is not an answer, so the search continues.
 - One usage row per client request (`D335`): `comboName` names the combo, and the row's provider, model, connection and attempt belong to the member that answered.
 - `fusion` runs the panel with tools stripped, non-streaming, a quorum of two, 8 s for stragglers and 90 s overall, then sends the answers to the judge. A `smart` choice sticks to the session.
+- A member whose provider's breaker is open goes last, after the strategy and the capability order, for `fallback`, `round-robin` and `smart`; nothing is dropped, and `fusion` is not reordered (`design doc 12`, divergence 7).
 - The smart router and the fusion judge are ordinary pipeline requests on their own names, so each writes its own usage row and none of their spend is added to the client's row (`D338`).
 
 ---

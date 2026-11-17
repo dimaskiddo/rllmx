@@ -90,7 +90,7 @@ Every node in the diagram is built. The table says what each package holds and w
 
 The root `tests` package may import only packages whose own tests do not import it back, and `tests/imports_test.go` fails when it does. A helper that needs `repository` or `analytics` lives in a sub-package.
 
-Planned, not built: `combo`, `saver`, `skill`, `plan` and the health probe. See `ROADMAP.md`.
+Planned, not built: `saver`, `skill` and `plan`. `combo`, `health` and `probe` are built. See `ROADMAP.md`.
 
 ---
 
@@ -115,7 +115,7 @@ Planned, not built: `combo`, `saver`, `skill`, `plan` and the health probe. See 
 17. **Usage is metadata only.** One structured row per request in a separate store; no prompt, body or header is ever persisted.
 18. **The cache never breaks a request.** Every cache failure is a miss; credentials stay in process memory.
 19. **The server decides OAuth redirects.** The browser never supplies a `redirect_uri`, and every login has a single-use server-side session.
-20. **The circuit breaker is used** (planned, step). Health data will affect routing instead of only appearing in the UI.
+20. **The circuit breaker is used.** A provider that failed five times in a row is tried last by a combo, instead of only appearing in the UI (`design doc 12`).
 
 ---
 

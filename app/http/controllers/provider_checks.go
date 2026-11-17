@@ -8,12 +8,14 @@ import (
 	"time"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
+	"golang.org/x/sync/errgroup"
 
 	"rllmx/app/gateway/catalog"
 	"rllmx/app/llm/oauth"
 	"rllmx/app/llm/upstream"
 	"rllmx/app/platform/text"
 	"rllmx/app/store/document"
+	"rllmx/app/store/repository"
 )
 
 // outcomeStatus is the HTTP status a failed model-list fetch answers with.
@@ -105,16 +107,45 @@ func (c *ProvidersController) Test(ctx contractshttp.Context) contractshttp.Resp
 		return storageDown(ctx)
 	}
 	id := ctx.Request().Route("id")
-	rc := ctx.Request().Origin().Context()
-	conn, ok, err := st.Connections().Get(rc, id)
+	conn, ok, err := st.Connections().Get(ctx.Request().Origin().Context(), id)
 	if err != nil {
 		return storageDown(ctx)
 	}
 	if !ok {
 		return flat(ctx, nethttp.StatusNotFound, "Connection not found")
 	}
+	res, status, msg := c.checkOne(ctx.Request().Origin().Context(), st, conn)
+	if status != 0 {
+		return flat(ctx, status, msg)
+	}
+	out := verdict(res.result)
+	if res.refreshed {
+		out["refreshed"] = true
+	}
+	if res.result.Valid() {
+		// A connection that just proved itself is the one worth learning the
+		// models of.
+		c.enqueue(conn.ID)
+	}
+	out["latencyMs"] = res.latency
+	out["testedAt"] = res.at.UTC().Format(time.RFC3339)
+	return ctx.Response().Json(nethttp.StatusOK, out)
+}
+
+// checkResult is what one connection's key check came to.
+type checkResult struct {
+	result    Result
+	refreshed bool
+	latency   int64
+	at        time.Time
+}
+
+// checkOne runs the key check and records the outcome. A non-zero status is a
+// failure with that HTTP status and message; the single route and the batch
+// share both rules.
+func (c *ProvidersController) checkOne(ctx context.Context, st *repository.Store, conn repository.Connection) (checkResult, int, string) {
 	if conn.Corrupt {
-		return flat(ctx, nethttp.StatusConflict, "Connection data is unreadable")
+		return checkResult{}, nethttp.StatusConflict, "Connection data is unreadable"
 	}
 	key, _ := conn.Doc().GetString("apiKey")
 	started := time.Now()
@@ -123,18 +154,18 @@ func (c *ProvidersController) Test(ctx contractshttp.Context) contractshttp.Resp
 	refreshed := false
 	switch {
 	case upstream.NodeKind(conn.Provider) != "":
-		node, found, nerr := st.Nodes().Get(rc, conn.Provider)
+		node, found, nerr := st.Nodes().Get(ctx, conn.Provider)
 		if nerr != nil {
-			return storageDown(ctx)
+			return checkResult{}, nethttp.StatusServiceUnavailable, "Storage is not available"
 		}
 		if !found {
-			return flat(ctx, nethttp.StatusNotFound, "Provider node not found")
+			return checkResult{}, nethttp.StatusNotFound, "Provider node not found"
 		}
 		base, _ := node.Doc().GetString("baseUrl")
 		model, _ := conn.Doc().GetString("defaultModel")
-		res = c.Checker.CheckNode(rc, Node{Type: node.Type, BaseURL: base}, key, model, true)
+		res = c.Checker.CheckNode(ctx, Node{Type: node.Type, BaseURL: base}, key, model, true)
 	case conn.AuthType == "oauth" && c.oauthEntry(conn.Provider):
-		res, refreshed = c.checkLogin(rc, conn.ID)
+		res, refreshed = c.checkLogin(ctx, conn.ID)
 	case conn.AuthType != "apikey":
 		res = Result{Outcome: OutcomeUnsupported}
 	default:
@@ -142,26 +173,20 @@ func (c *ProvidersController) Test(ctx contractshttp.Context) contractshttp.Resp
 		if !found {
 			res = Result{Outcome: OutcomeUnsupported}
 		} else {
-			res = c.Checker.CheckRegistry(rc, entry, key)
+			res = c.Checker.CheckRegistry(ctx, entry, key)
 		}
 	}
 
 	at := time.Now()
 	if res.Outcome != OutcomeUnsupported {
-		if err := st.Connections().RecordTest(rc, id, res.Valid(), res.Outcome.Message(), at); err != nil {
+		if err := st.Connections().RecordTest(ctx, conn.ID, res.Valid(), res.Outcome.Message(), at); err != nil {
 			if errors.Is(err, document.ErrCorruptRow) {
-				return flat(ctx, nethttp.StatusConflict, "Connection data is unreadable")
+				return checkResult{}, nethttp.StatusConflict, "Connection data is unreadable"
 			}
-			return flat(ctx, nethttp.StatusInternalServerError, "Failed to record the test")
+			return checkResult{}, nethttp.StatusInternalServerError, "Failed to record the test"
 		}
 	}
-	out := verdict(res)
-	if refreshed {
-		out["refreshed"] = true
-	}
-	out["latencyMs"] = at.Sub(started).Milliseconds()
-	out["testedAt"] = at.UTC().Format(time.RFC3339)
-	return ctx.Response().Json(nethttp.StatusOK, out)
+	return checkResult{result: res, refreshed: refreshed, latency: at.Sub(started).Milliseconds(), at: at}, 0, ""
 }
 
 // ModelsList answers GET /api/providers/{id}/models. A node connection asks the
@@ -279,4 +304,153 @@ func (c *ProvidersController) checkLogin(ctx context.Context, id string) (Result
 		return Result{Outcome: OutcomeRefreshFailed}, false
 	}
 	return Result{Outcome: OutcomeRefreshFailed}, false
+}
+
+// batchModes are the connection groups POST /api/providers/test-batch accepts.
+var batchModes = map[string]bool{
+	"provider": true, "oauth": true, "free": true, "apikey": true, "compatible": true, "all": true,
+}
+
+const (
+	// batchParallel is how many connections one batch tests at once.
+	batchParallel = 3
+	batchTimeout  = 5 * time.Minute
+	modelsTimeout = 2 * time.Minute
+)
+
+type batchBody struct {
+	Mode       string `json:"mode"`
+	ProviderID string `json:"providerId"`
+}
+
+// TestBatch answers POST /api/providers/test-batch: every active connection in
+// one group, each checked and recorded exactly as the single route does.
+func (c *ProvidersController) TestBatch(ctx contractshttp.Context) contractshttp.Response {
+	st := c.store()
+	if st == nil || c.Checker == nil {
+		return storageDown(ctx)
+	}
+	var b batchBody
+	if err := bindJSON(ctx, &b); err != nil {
+		return flat(ctx, nethttp.StatusBadRequest, "Invalid request body")
+	}
+	if !batchModes[b.Mode] {
+		return flat(ctx, nethttp.StatusBadRequest, "Invalid mode")
+	}
+	if b.Mode == "provider" && b.ProviderID == "" {
+		return flat(ctx, nethttp.StatusBadRequest, "providerId is required for this mode")
+	}
+	rc := ctx.Request().Origin().Context()
+	all, err := st.Connections().List(rc, repository.ConnFilter{})
+	if err != nil {
+		return storageDown(ctx)
+	}
+	conns := make([]repository.Connection, 0, len(all))
+	for _, conn := range all {
+		if conn.IsActive && c.inBatch(b, conn) {
+			conns = append(conns, conn)
+		}
+	}
+	bctx, cancel := context.WithTimeout(rc, batchTimeout)
+	defer cancel()
+	rows := make([]contractshttp.Json, len(conns))
+	var g errgroup.Group
+	g.SetLimit(batchParallel)
+	for i, conn := range conns {
+		g.Go(func() error {
+			rows[i] = c.batchRow(bctx, st, conn)
+			return nil
+		})
+	}
+	_ = g.Wait()
+	passed := 0
+	for _, row := range rows {
+		if row["valid"] == true {
+			passed++
+		}
+	}
+	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{
+		"mode": b.Mode, "providerId": b.ProviderID, "results": rows,
+		"testedAt": time.Now().UTC().Format(time.RFC3339),
+		"summary":  contractshttp.Json{"total": len(rows), "passed": passed, "failed": len(rows) - passed},
+	})
+}
+
+// inBatch reports whether one connection belongs to the requested group.
+func (c *ProvidersController) inBatch(b batchBody, conn repository.Connection) bool {
+	node := upstream.NodeKind(conn.Provider) != ""
+	switch b.Mode {
+	case "all":
+		return true
+	case "compatible":
+		return node
+	case "provider":
+		return conn.Provider == b.ProviderID
+	case "oauth":
+		return !node && conn.AuthType == "oauth"
+	case "apikey":
+		return !node && conn.AuthType == "apikey"
+	case "free":
+		e, ok := c.Registry.ByID(conn.Provider)
+		return !node && ok && (e.Category == upstream.CategoryFree || e.Category == upstream.CategoryFreeTier)
+	}
+	return false
+}
+
+// batchRow is one connection's line in a batch answer. A connection that could
+// not be checked is that line's failure, never the whole request's.
+func (c *ProvidersController) batchRow(ctx context.Context, st *repository.Store, conn repository.Connection) contractshttp.Json {
+	row := contractshttp.Json{
+		"provider": conn.Provider, "connectionId": conn.ID, "connectionName": conn.Name,
+		"authType": conn.AuthType, "valid": false,
+	}
+	res, status, msg := c.checkOne(ctx, st, conn)
+	if status != 0 {
+		row["error"] = msg
+		return row
+	}
+	if res.result.Valid() {
+		row["valid"] = true
+	} else {
+		row["error"] = res.result.Outcome.Message()
+	}
+	row["latencyMs"] = res.latency
+	row["testedAt"] = res.at.UTC().Format(time.RFC3339)
+	return row
+}
+
+// TestModels answers POST /api/providers/{id}/test-models: a forced probe of the
+// connection's own models, up to the list ceiling.
+func (c *ProvidersController) TestModels(ctx contractshttp.Context) contractshttp.Response {
+	st := c.store()
+	if st == nil || c.Probe == nil {
+		return storageDown(ctx)
+	}
+	rc := ctx.Request().Origin().Context()
+	conn, ok, err := st.Connections().Get(rc, ctx.Request().Route("id"))
+	if err != nil {
+		return storageDown(ctx)
+	}
+	if !ok {
+		return flat(ctx, nethttp.StatusNotFound, "Connection not found")
+	}
+	if conn.Corrupt {
+		return flat(ctx, nethttp.StatusConflict, "Connection data is unreadable")
+	}
+	p, err := c.Probe()
+	if err != nil {
+		return storageDown(ctx)
+	}
+	pctx, cancel := context.WithTimeout(rc, modelsTimeout)
+	defer cancel()
+	results, err := p.All(pctx, conn)
+	if err != nil {
+		return flat(ctx, nethttp.StatusBadRequest, "This connection's models cannot be listed")
+	}
+	if len(results) == 0 {
+		return flat(ctx, nethttp.StatusBadRequest, "This connection names no model to test")
+	}
+	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{
+		"provider": conn.Provider, "connectionId": conn.ID, "results": results,
+	})
 }

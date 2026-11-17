@@ -49,6 +49,13 @@ type Quota interface {
 	Succeeded(account, model string)
 }
 
+// Health tracks how each provider is doing. Record takes one finished attempt;
+// Open says the provider's breaker is currently turned away.
+type Health interface {
+	Record(provider string, ok bool, latency time.Duration)
+	Open(provider string) bool
+}
+
 // Nodes reads a user-defined provider node.
 type Nodes interface {
 	Get(ctx context.Context, id string) (repository.Node, bool, error)
@@ -132,6 +139,9 @@ type Deps struct {
 	// Quota passes over an Antigravity account whose model is spent; nil leaves
 	// that to the common lock rules.
 	Quota Quota
+	// Health feeds the per-provider breaker and orders combo members; nil
+	// neither records nor skips.
+	Health Health
 	// Targets names the wire format of a provider whose catalog decides it.
 	Targets Targets
 	// Catalog reads the provider's own model list before a send; nil leaves

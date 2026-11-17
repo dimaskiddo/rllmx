@@ -32,8 +32,15 @@ type KeyResult struct {
 
 const anonymousLocalID = "anonymous-local"
 
+const probeID = "system-probe"
+
 // AnonymousLocal is the caller of a local request that presented no valid key
 // while the key requirement is off. Usage rows and cache keys use its fixed id.
 func AnonymousLocal() Caller {
 	return Caller{ID: anonymousLocalID, Name: "local", Anonymous: true}
 }
+
+// Probe is the caller of an internal model probe. It is not a key, so no
+// budget and no allow-list applies; its warm-up calls do spend, so they write
+// usage rows like any other request.
+func Probe() Caller { return Caller{ID: probeID, Name: "probe"} }

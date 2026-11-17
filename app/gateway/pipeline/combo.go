@@ -43,7 +43,13 @@ func (c *call) comboRun(ctx context.Context, name string) Output {
 			Now:     c.p.d.Now,
 		}
 	}
-	order, ok := combo.Order(policy, members, c.comboCaps, translate.DetectNeeds(c.req), c.p.d.Rotation, smart)
+	// Fusion asks every member, so the breaker does not reorder its panel; a
+	// search moves an open provider to the end instead.
+	var open func(string) bool
+	if policy.Strategy != combo.StrategyFusion {
+		open = c.providerOpen
+	}
+	order, ok := combo.Order(policy, members, c.comboCaps, open, translate.DetectNeeds(c.req), c.p.d.Rotation, smart)
 	if !ok {
 		return c.fail(http.StatusBadRequest, "invalid_request", "The combo names no model")
 	}
@@ -214,6 +220,12 @@ const smartStateChars = 2000
 // comboCaps is one member's capability row, for the capability order.
 func (c *call) comboCaps(m routing.Member) (cap upstream.Capability) {
 	return c.p.d.Caps.For(m.Provider, m.Model)
+}
+
+// providerOpen reports a provider whose breaker is open, so the member order can
+// try it last.
+func (c *call) providerOpen(provider string) bool {
+	return c.p.d.Health != nil && c.p.d.Health.Open(provider)
 }
 
 // comboPolicy reads one combo's strategy from the settings row, cached for the

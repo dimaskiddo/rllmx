@@ -282,7 +282,7 @@ func TestTheRepositorySourceReadsRealRows(t *testing.T) {
 	if err := st.KV().Set(ctx, repository.ScopeModelAliases, "mine", `"cc/claude-opus-5"`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.Combos().Create(ctx, "fast", []string{"openai/gpt-4o"}); err != nil {
+	if _, err := st.Combos().Create(ctx, "fast", "", []string{"openai/gpt-4o"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := st.Nodes().CreateUnique(ctx, repository.Node{Type: "openai-compatible", Name: "n", Data: `{"prefix":"mine2"}`}, "mine2"); err != nil {

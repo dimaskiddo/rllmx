@@ -76,3 +76,25 @@ func TestDeadlinesSetNothingTheWriterCannotCarry(t *testing.T) {
 		t.Fatalf("a recorder without a deadline was refused: %d", rec.Code)
 	}
 }
+
+func TestDeadlinesDoNotBoundALongDashboardCall(t *testing.T) {
+	handler, errs := lateWriter(80 * time.Millisecond)
+	r := newRoute(t, &Deadlines{APIWrite: 20 * time.Millisecond})
+	for _, path := range []string{"/api/health/latency-stream", "/api/providers/test-batch", "/api/providers/x/test-models"} {
+		r.Get(path, handler)
+		srv := httptest.NewServer(nethttp.HandlerFunc(r.ServeHTTP))
+		resp, err := srv.Client().Get(srv.URL + path)
+		if err != nil {
+			t.Fatalf("%s: a long call was cut: %v", path, err)
+		}
+		n, _ := io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		srv.Close()
+		if writeErr := <-errs; writeErr != nil {
+			t.Fatalf("%s: the write failed: %v", path, writeErr)
+		}
+		if n != int64(len(bulk)) {
+			t.Fatalf("%s: the client read %d of %d bytes", path, n, len(bulk))
+		}
+	}
+}

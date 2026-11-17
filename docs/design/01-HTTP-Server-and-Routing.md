@@ -78,7 +78,7 @@ Gin cannot express `{model}:generateContent`, so `POST /v1beta/models/*path` is 
 | Client body | `http.MaxBytesReader`, `SERVER_MAX_BODY_MB` (128; media uploads need it). `/api` bodies: 16 MiB |
 | Oversize | Declared length over the cap is refused before the handler runs; a chunked body stops at the cap. 413, a read timeout is 408, both in the endpoint's error format |
 | Upstream error body | Read up to 1 MiB |
-| `/api` deadlines | Read 30 s, write 60 s |
+| `/api` deadlines | Read 30 s, write 60 s, except the long calls: the latency feed, `providers/test-batch` and `providers/{id}/test-models` get no write deadline and bound their own work |
 | Client API deadlines | Read 10 minutes, no server write deadline |
 | Stream write | The SSE and NDJSON writers set their own deadline before each write: a client that stopped reading is cut after 60 s, a quiet stream is untouched |
 

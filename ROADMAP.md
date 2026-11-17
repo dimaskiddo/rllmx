@@ -15,7 +15,7 @@ Status words: **built** (implemented and tested), **partial** (some behavior mis
 | API key management API | built |
 | Per-key model allow-lists | built |
 | Per-key request, token and cost budgets | built |
-| Health, circuit breaker and model probes | partial |
+| Health, circuit breaker and model probes | built |
 
 ## Storage and usage
 

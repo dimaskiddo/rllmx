@@ -10,6 +10,7 @@ import (
 	"time"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
+	"github.com/goravel/framework/contracts/route"
 	goravelgin "github.com/goravel/gin"
 
 	"rllmx/app/access/auth"
@@ -33,6 +34,7 @@ func (m guardMW) Handle(ctx contractshttp.Context) { m.g.Protect(ctx) }
 type mgmtRig struct {
 	pc     *ProvidersController
 	route  nethttp.Handler
+	router route.Router
 	auth   *auth.Authenticator
 	st     *store.Store
 	cookie string
@@ -75,12 +77,14 @@ func newMgmtRig(t *testing.T) *mgmtRig {
 	handle(nethttp.MethodGet, "/api/providers", pc.List)
 	handle(nethttp.MethodPost, "/api/providers", pc.Create)
 	handle(nethttp.MethodPost, "/api/providers/validate", pc.Validate)
+	handle(nethttp.MethodPost, "/api/providers/test-batch", pc.TestBatch)
 	handle(nethttp.MethodPost, "/api/providers/bulk", pc.BulkCreate)
 	handle(nethttp.MethodGet, "/api/providers/{id}", pc.Show)
 	handle(nethttp.MethodPut, "/api/providers/{id}", pc.Update)
 	handle(nethttp.MethodDelete, "/api/providers/{id}", pc.Delete)
 	handle(nethttp.MethodPost, "/api/providers/{id}/test", pc.Test)
 	handle(nethttp.MethodGet, "/api/providers/{id}/models", pc.ModelsList)
+	handle(nethttp.MethodPost, "/api/providers/{id}/test-models", pc.TestModels)
 	handle(nethttp.MethodGet, "/api/providers/{id}/overrides", pc.Overrides)
 	handle(nethttp.MethodPut, "/api/providers/{id}/overrides", pc.SetOverrides)
 	handle(nethttp.MethodGet, "/api/provider-nodes", nc.List)
@@ -93,7 +97,7 @@ func newMgmtRig(t *testing.T) *mgmtRig {
 	if !ok {
 		t.Fatal("no session")
 	}
-	return &mgmtRig{route: r, auth: a, st: st, cookie: cookie.Value, guard: g, pc: pc}
+	return &mgmtRig{route: r, router: r, auth: a, st: st, cookie: cookie.Value, guard: g, pc: pc}
 }
 
 func (m *mgmtRig) call(method, path, body string, signedIn bool) (int, map[string]any, string) {

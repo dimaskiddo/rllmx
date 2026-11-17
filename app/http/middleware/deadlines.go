@@ -53,7 +53,11 @@ func (m *Deadlines) Handle(ctx contractshttp.Context) {
 	switch {
 	case apphttp.IsDashboardAPI(r.URL.Path):
 		_ = rc.SetReadDeadline(now.Add(first(m.APIRead, APIDefaultRead)))
-		_ = rc.SetWriteDeadline(now.Add(first(m.APIWrite, APIDefaultWrite)))
+		// A feed and the provider tests run longer than any dashboard answer;
+		// each of those handlers bounds its own work.
+		if !apphttp.IsLongDashboardCall(r.URL.Path) {
+			_ = rc.SetWriteDeadline(now.Add(first(m.APIWrite, APIDefaultWrite)))
+		}
 	case apphttp.IsClientAPI(r.URL.Path) && r.Body != nil && r.Body != nethttp.NoBody:
 		_ = rc.SetReadDeadline(now.Add(first(m.ClientRead, ClientDefaultRead)))
 	}
