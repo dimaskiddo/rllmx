@@ -69,7 +69,8 @@ Plain HTML, ES modules, CSS; same flows and `/api/*` contract (design doc 18).
 - [ ] 4.1: shell, routing, i18n (`web/static/i18n/{en,id}.json`), login, keys, connections
 - [ ] 4.3: combos, usage charts, logs, settings, skills studio
 - [x] `/api/settings`, `/api/locale`, `/api/tags` and the Console Log ring with its read and stream routes (2.6a); `/api/keys/*` (2.1)
-- [ ] `/api/models/*`, `/api/pricing`, `/api/combos/*` and catalog sync (2.6b, 2.6e); `/api/usage/*` (2.6c)
+- [x] `/api/models/*`, `/api/pricing`, `/api/combos/*` and presets (2.6b)
+- [ ] catalog sync (2.6e); `/api/usage/*` (2.6c)
 - **Done when:** no `innerHTML` from data, every dynamic string escaped.
 
 ---

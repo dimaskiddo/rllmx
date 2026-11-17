@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -184,6 +185,50 @@ func (r *SettingsRepo) MergeObjectField(ctx context.Context, key, field, raw str
 			return err
 		}
 		if err := d.SetRaw(key, obj); err != nil {
+			return err
+		}
+		return r.writeSettings(tx, d, stored)
+	})
+	if err == nil {
+		r.s.settingsChanged()
+	}
+	return err
+}
+
+// RenameObjectField moves one field of an object-valued setting to a new name in
+// one transaction, keeping its value. A setting without the old field is left
+// alone.
+func (r *SettingsRepo) RenameObjectField(ctx context.Context, key, from, to string) error {
+	if protectedSettings[key] {
+		return fmt.Errorf("%w: %s", ErrProtectedSetting, key)
+	}
+	if key == "" || from == "" || to == "" {
+		return fmt.Errorf("repository: a settings rename needs a key and two field names")
+	}
+	if from == to {
+		return nil
+	}
+	err := r.s.Tx(ctx, func(tx contractsdb.Tx) error {
+		d, stored, err := r.s.readStored(tx)
+		if err != nil {
+			return fmt.Errorf("settings: %w", err)
+		}
+		raw, _ := d.GetRaw(key)
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(raw), &fields); err != nil {
+			return nil
+		}
+		v, ok := fields[from]
+		if !ok {
+			return nil
+		}
+		delete(fields, from)
+		fields[to] = v
+		next, err := json.Marshal(fields)
+		if err != nil {
+			return err
+		}
+		if err := d.SetRaw(key, string(next)); err != nil {
 			return err
 		}
 		return r.writeSettings(tx, d, stored)

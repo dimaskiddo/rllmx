@@ -37,6 +37,7 @@ Built (the node model list) and (the response-cache switch and the per-key flag)
 
 - A settings write calls `Store.OnSettingsChange` after commit: the app purges `settings`, `overrides` and `response`, and resets the selector's settings copy and the auth snapshot. Both hooks exist as of 2.6a, so a `requireLogin` change is seen by the next request. A write from another process (`rllmx artisan password:reset`) is not announced, so it shows only after the TTL.
 - The selector reads connections live, because locks and sticky counters change per request. `Selector.settingsDoc`, `auth.Snapshot` and `routing.Snapshot` are small typed copies held in process. The refresh-result cache (10 s, memory only, collapses concurrent renewals of one refresh token) is Built.
+- One `routing.Snapshot` is shared by the pipeline, the catalog and the dashboard writes, which call `Invalidate` after an alias, combo or node write. A combo write also resets its `combo.Rotation` position and its `combo.Sticky` choice. The price table is read through its source on every request, and a pricing write resets and warms it, so no cache here waits out a TTL after a dashboard write.
 
 ### Namespaces
 

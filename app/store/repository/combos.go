@@ -102,11 +102,16 @@ func (r *CombosRepo) Create(ctx context.Context, name, kind string, models []str
 	return c, nil
 }
 
-// Update replaces a combo's name and members.
-func (r *CombosRepo) Update(ctx context.Context, id, name string, models []string) (Combo, error) {
-	if models == nil {
-		models = []string{}
-	}
+// ComboPatch changes one combo; a nil field keeps what is stored.
+type ComboPatch struct {
+	Name   *string
+	Kind   *string
+	Models *[]string
+}
+
+// Update applies a patch to a combo. A name another combo already holds is
+// ErrComboNameTaken, decided inside the transaction that writes it.
+func (r *CombosRepo) Update(ctx context.Context, id string, p ComboPatch) (Combo, error) {
 	var out Combo
 	err := r.s.Tx(ctx, func(tx contractsdb.Tx) error {
 		c, ok, err := r.byID(tx, id)
@@ -116,9 +121,33 @@ func (r *CombosRepo) Update(ctx context.Context, id, name string, models []strin
 		if !ok {
 			return ErrNotFound
 		}
-		c.Name, c.Models, c.UpdatedAt = dialect.StripNUL(name), models, dialect.Now()
-		if err := r.s.stmt(tx, `UPDATE "combos" SET "name"=?,"models"=?,"updatedAt"=? WHERE "id"=?`,
-			c.Name, encodeStrings(models), c.UpdatedAt, c.ID); err != nil {
+		if p.Name != nil {
+			name := dialect.StripNUL(*p.Name)
+			n, err := r.s.count(tx, `SELECT COUNT(*) FROM "combos" WHERE "name" = ? AND "id" <> ?`, name, c.ID)
+			if err != nil {
+				return err
+			}
+			if n > 0 {
+				return ErrComboNameTaken
+			}
+			c.Name = name
+		}
+		if p.Kind != nil {
+			c.Kind = dialect.StripNUL(*p.Kind)
+		}
+		if p.Models != nil {
+			c.Models = *p.Models
+			if c.Models == nil {
+				c.Models = []string{}
+			}
+		}
+		c.UpdatedAt = dialect.Now()
+		var kind any
+		if c.Kind != "" {
+			kind = c.Kind
+		}
+		if err := r.s.stmt(tx, `UPDATE "combos" SET "name"=?,"kind"=?,"models"=?,"updatedAt"=? WHERE "id"=?`,
+			c.Name, kind, encodeStrings(c.Models), c.UpdatedAt, c.ID); err != nil {
 			return err
 		}
 		out = c

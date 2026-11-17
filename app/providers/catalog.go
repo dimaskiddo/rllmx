@@ -24,15 +24,48 @@ func NewCatalogSource(app foundation.Application) *CatalogSource {
 // Get returns the catalog, building it if no earlier call did.
 func (s *CatalogSource) Get() (*catalog.Catalog, error) { return s.get() }
 
+// SnapshotSource builds the one routing snapshot every reader shares. A catalog
+// write invalidates it, so the next request routes the new alias, combo or node
+// rather than waiting out the snapshot's TTL.
+type SnapshotSource struct{ lazy[routing.Snapshot] }
+
+// NewSnapshotSource returns a source that reads the store through app.
+func NewSnapshotSource(app foundation.Application) *SnapshotSource {
+	return &SnapshotSource{lazy[routing.Snapshot]{build: func(context.Context) (*routing.Snapshot, error) { return buildSnapshot(app) }}}
+}
+
+// Get returns the snapshot, building it if no earlier call did.
+func (s *SnapshotSource) Get() (*routing.Snapshot, error) { return s.get() }
+
+// Invalidate drops what the snapshot holds. One that was never built holds
+// nothing.
+func (s *SnapshotSource) Invalidate() {
+	if v := s.v.Load(); v != nil {
+		v.Invalidate()
+	}
+}
+
+func buildSnapshot(app foundation.Application) (*routing.Snapshot, error) {
+	store := DataOf(app).Runner.Store()
+	if store == nil {
+		return nil, ErrStoreNotOpen
+	}
+	return routing.NewSnapshot(routing.NewRepositorySource(store), nil), nil
+}
+
 func buildCatalog(app foundation.Application) (*catalog.Catalog, error) {
 	h := HTTPOf(app)
 	store := DataOf(app).Runner.Store()
 	if store == nil {
 		return nil, ErrStoreNotOpen
 	}
+	snap, err := h.Snapshot.Get()
+	if err != nil {
+		return nil, err
+	}
 	c := &catalog.Catalog{
 		Registry: h.Registry, Caps: h.Capabilities,
-		Resolver: &routing.Resolver{Registry: h.Registry, Snapshot: routing.NewSnapshot(routing.NewRepositorySource(store), nil)},
+		Resolver: &routing.Resolver{Registry: h.Registry, Snapshot: snap},
 		Conns:    store.Connections(), Nodes: store.Nodes(), KV: store.KV(),
 		Fetch: nodeFetch(h.Checker), Log: app.MakeLog(), Created: time.Now().Unix(),
 	}

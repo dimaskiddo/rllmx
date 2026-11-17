@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
+	"github.com/goravel/framework/contracts/log"
 
 	"rllmx/app/gateway/combo"
 	"rllmx/app/gateway/health"
@@ -32,7 +33,7 @@ const (
 	comboModelsMax  = 50
 )
 
-// CombosController suggests a combo and accepts one. It never spends on a
+// CombosController manages the combos and suggests one. It never spends on a
 // suggestion: the ranking reads cached probe results, the health table and the
 // price table.
 type CombosController struct {
@@ -40,6 +41,36 @@ type CombosController struct {
 	Probe   func() (*probe.Prober, error)
 	Tracker *health.Tracker
 	Prices  func() (*upstream.Table, error)
+	// Registry feeds the presets; nil leaves the preset routes out.
+	Registry *upstream.Registry
+	// Changed drops the routing view after a write.
+	Changed func()
+	// Reset forgets a combo's rotation and sticky choice after a write.
+	Reset func(names ...string)
+	Log   log.Log
+}
+
+// comboJSON is one combo as the dashboard reads it.
+func comboJSON(c repository.Combo) contractshttp.Json {
+	models := c.Models
+	if models == nil {
+		models = []string{}
+	}
+	return contractshttp.Json{
+		"id": c.ID, "name": c.Name, "kind": c.Kind, "models": models,
+		"createdAt": c.CreatedAt, "updatedAt": c.UpdatedAt,
+	}
+}
+
+// changed runs the hooks a combo write needs: the routing view, the rotation
+// and the sticky choice.
+func (c *CombosController) changed(names ...string) {
+	if c.Reset != nil {
+		c.Reset(names...)
+	}
+	if c.Changed != nil {
+		c.Changed()
+	}
 }
 
 // Suggest answers GET /api/combos/suggest.
@@ -249,7 +280,7 @@ func (c *CombosController) Accept(ctx contractshttp.Context) contractshttp.Respo
 	if err := bindJSON(ctx, &b); err != nil {
 		return flat(ctx, nethttp.StatusBadRequest, "Invalid request body")
 	}
-	name, models, msg := validCombo(b)
+	name, models, msg := validCombo(b, 1)
 	if msg != "" {
 		return flat(ctx, nethttp.StatusBadRequest, msg)
 	}
@@ -262,34 +293,64 @@ func (c *CombosController) Accept(ctx contractshttp.Context) contractshttp.Respo
 	if err != nil {
 		return flat(ctx, nethttp.StatusInternalServerError, "Failed to create the combo")
 	}
-	return ctx.Response().Json(nethttp.StatusCreated, contractshttp.Json{"combo": contractshttp.Json{
-		"id": created.ID, "name": created.Name, "kind": created.Kind, "models": created.Models,
-		"createdAt": created.CreatedAt, "updatedAt": created.UpdatedAt,
-	}})
+	c.changed(name)
+	return ctx.Response().Json(nethttp.StatusCreated, contractshttp.Json{"combo": comboJSON(created)})
 }
 
 // validCombo checks a name and a member list, and reports the first thing wrong
-// in the words a form shows.
-func validCombo(b acceptBody) (string, []string, string) {
-	name := strings.TrimSpace(b.Name)
+// in the words a form shows. min is how few members are allowed: a suggested
+// combo needs one, a plain create may be filled later.
+func validCombo(b acceptBody, min int) (string, []string, string) {
+	name, msg := comboName(b.Name)
+	if msg != "" {
+		return "", nil, msg
+	}
+	models, msg := comboModels(b.Models, min)
+	if msg != "" {
+		return "", nil, msg
+	}
+	return name, models, ""
+}
+
+// comboName checks a combo name.
+func comboName(raw string) (string, string) {
+	name := strings.TrimSpace(raw)
 	switch {
 	case name == "":
-		return "", nil, "A combo needs a name"
+		return "", "A combo needs a name"
 	case len(name) > comboNameBytes || text.HasControl(name):
-		return "", nil, "Invalid combo name"
+		return "", "Invalid combo name"
 	case strings.Contains(name, "/"):
-		return "", nil, "A combo name cannot contain a slash"
+		return "", "A combo name cannot contain a slash"
 	}
-	if len(b.Models) == 0 || len(b.Models) > comboModelsMax {
-		return "", nil, "A combo needs 1 to 50 models"
+	return name, ""
+}
+
+// comboModels checks a member list of at least min and at most the stored
+// maximum.
+func comboModels(in []string, min int) ([]string, string) {
+	if len(in) < min || len(in) > comboModelsMax {
+		if min == 0 {
+			return nil, "A combo can have at most 50 models"
+		}
+		return nil, "A combo needs 1 to 50 models"
 	}
-	models := make([]string, 0, len(b.Models))
-	for _, m := range b.Models {
+	models := make([]string, 0, len(in))
+	for _, m := range in {
 		m = strings.TrimSpace(m)
 		if m == "" || len(m) > comboModelBytes || text.HasControl(m) {
-			return "", nil, "Invalid model in the combo"
+			return nil, "Invalid model in the combo"
 		}
 		models = append(models, m)
 	}
-	return name, models, ""
+	return models, ""
+}
+
+// comboKind checks the free-form kind a media combo carries.
+func comboKind(raw string) (string, string) {
+	kind := strings.TrimSpace(raw)
+	if len(kind) > 32 || text.HasControl(kind) {
+		return "", "Invalid combo kind"
+	}
+	return kind, ""
 }

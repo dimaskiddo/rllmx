@@ -114,6 +114,13 @@ func decodeStrings(raw string) []string {
 	return out
 }
 
+// StoredStrings reads a stored string array, keeping the string elements and
+// skipping any other, so a row another writer filled still lists.
+func StoredStrings(raw string) []string { return decodeStrings(raw) }
+
+// StoredStringsValue writes a stored string array, the form StoredStrings reads.
+func StoredStringsValue(list []string) string { return encodeStrings(list) }
+
 func encodeStrings(list []string) string {
 	b := []byte("[")
 	for i, v := range list {

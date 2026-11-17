@@ -29,6 +29,10 @@ var mediaKinds = map[string]bool{
 	KindVideo: true, KindSearch: true, KindFetch: true, KindImageText: true, KindSystem: true,
 }
 
+// KnownKind reports whether kind is one of the service kinds a provider data
+// file may name.
+func KnownKind(kind string) bool { return mediaKinds[kind] }
+
 var mediaAuthTypes = map[string]bool{"": true, "apikey": true, "oauth": true, "cookie": true, "none": true}
 
 // mediaAuthHeaders are the credential placements a config may name.

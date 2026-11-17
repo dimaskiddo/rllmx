@@ -45,6 +45,8 @@ type Base struct {
 	// Settings reads and writes the dashboard's settings; nil leaves those
 	// routes out.
 	Settings *controllers.SettingsController
+	// Pricing reads and writes the rate overrides; nil leaves those routes out.
+	Pricing *controllers.PricingController
 	// Logs serves the Console Log ring; nil leaves its routes out.
 	Logs *controllers.LogsController
 }
@@ -151,11 +153,36 @@ func Web(router route.Route, guard *apphttp.Guard, base Base) {
 		guard.Handle(router, apphttp.ClassLLM, nethttp.MethodGet, "/v1beta/models", m.Gemini)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPost, "/api/models/test", m.Test)
 		guard.Handle(router, apphttp.ClassLLM, nethttp.MethodGet, "/api/tags", m.Tags)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/models", m.AdminList)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/models/alias", m.Aliases)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPut, "/api/models/alias", m.SetAlias)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodDelete, "/api/models/alias", m.DeleteAlias)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/models/custom", m.CustomModels)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPost, "/api/models/custom", m.AddCustomModel)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodDelete, "/api/models/custom", m.DeleteCustomModel)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/models/disabled", m.DisabledModels)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPost, "/api/models/disabled", m.DisableModels)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodDelete, "/api/models/disabled", m.EnableModels)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/models/availability", m.Availability)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPost, "/api/models/availability", m.ClearCooldown)
 	}
 
 	if cb := base.Combos; cb != nil {
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/combos", cb.List)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPost, "/api/combos", cb.Create)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/combos/suggest", cb.Suggest)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPost, "/api/combos/suggest/accept", cb.Accept)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/combos/presets", cb.Presets)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPost, "/api/combos/presets", cb.ApplyPresets)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/combos/{id}", cb.Show)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPut, "/api/combos/{id}", cb.Update)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodDelete, "/api/combos/{id}", cb.Delete)
+	}
+
+	if p := base.Pricing; p != nil {
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/pricing", p.Show)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPatch, "/api/pricing", p.Update)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodDelete, "/api/pricing", p.Reset)
 	}
 
 	if o := base.OAuth; o != nil {

@@ -67,20 +67,45 @@ func entryOwners(e upstream.Entry) []string {
 // the ones switched off. A custom model with the id of a built-in one replaces
 // it rather than appearing twice.
 func RegistryModels(ctx context.Context, kv KV, e upstream.Entry) ([]Model, error) {
-	names := entryOwners(e)
-	off, err := disabledSet(ctx, kv, names)
+	all, err := RegistryAll(ctx, kv, []upstream.Entry{e})
 	if err != nil {
 		return nil, err
 	}
+	return all[0], nil
+}
+
+// RegistryAll is RegistryModels over several entries, reading each kv scope
+// once: the dashboard lists every provider, and a read per provider per scope
+// would be hundreds of queries.
+func RegistryAll(ctx context.Context, kv KV, entries []upstream.Entry) ([][]Model, error) {
 	custom, err := kv.List(ctx, repository.ScopeCustomModels)
 	if err != nil {
 		return nil, err
 	}
+	disabled, err := kv.List(ctx, repository.ScopeDisabledModels)
+	if err != nil {
+		return nil, err
+	}
+	out := make([][]Model, len(entries))
+	for i, e := range entries {
+		names := entryOwners(e)
+		off := map[string]bool{}
+		for _, n := range names {
+			for _, m := range repository.StoredStrings(disabled[n]) {
+				off[m] = true
+			}
+		}
+		out[i] = merge(baseModels(e), names, custom, nil, off)
+	}
+	return out, nil
+}
+
+func baseModels(e upstream.Entry) []Model {
 	base := make([]Model, 0, len(e.Models))
 	for _, m := range e.Models {
 		base = append(base, Model{ID: m.ID, Name: m.Name, Source: "builtin", Kind: m.Kind})
 	}
-	return merge(base, names, custom, nil, off), nil
+	return base
 }
 
 func disabledSet(ctx context.Context, kv KV, names []string) (map[string]bool, error) {

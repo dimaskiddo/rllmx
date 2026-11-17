@@ -24,6 +24,22 @@ func NewPriceSource(app foundation.Application) *PriceSource {
 // Get returns the table, building it if no earlier call did.
 func (s *PriceSource) Get() (*upstream.Table, error) { return s.get() }
 
+// Reset drops the built table. A pricing write calls it, then Get, so the next
+// request prices with the new cards.
+func (s *PriceSource) Reset() { s.reset() }
+
+// priceReader prices each request from the source, so a reset reaches the
+// pipeline instead of a table captured when the pipeline was built.
+type priceReader struct{ src *PriceSource }
+
+func (p priceReader) Cost(provider, model string, u upstream.Usage) (float64, bool) {
+	t, err := p.src.Get()
+	if err != nil {
+		return 0, false
+	}
+	return t.Cost(provider, model, u)
+}
+
 func buildPrices(app foundation.Application, ctx context.Context) (*upstream.Table, error) {
 	h := HTTPOf(app)
 	store := DataOf(app).Runner.Store()

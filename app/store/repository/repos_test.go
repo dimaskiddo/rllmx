@@ -394,12 +394,20 @@ func TestCombosCRUD(t *testing.T) {
 	if n := s.one(t, `SELECT count(*) FROM "combos" WHERE "id"=? AND "kind" IS NULL`, c.ID); n != "1" {
 		t.Fatal("kind must stay NULL")
 	}
-	upd, err := s.Combos().Update(ctx, c.ID, "renamed", []string{"x/y"})
+	renamed, members := "renamed", []string{"x/y"}
+	upd, err := s.Combos().Update(ctx, c.ID, ComboPatch{Name: &renamed, Models: &members})
 	if err != nil || upd.Name != "renamed" || upd.UpdatedAt == "" {
 		t.Fatalf("update: %+v %v", upd, err)
 	}
-	if _, err := s.Combos().Update(ctx, "nope", "n", nil); !errors.Is(err, ErrNotFound) {
+	if _, err := s.Combos().Update(ctx, "nope", ComboPatch{}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing combo: %v", err)
+	}
+	if _, err := s.Combos().Update(ctx, c.ID, ComboPatch{Name: &auto.Name}); !errors.Is(err, ErrComboNameTaken) {
+		t.Fatalf("a taken name: %v", err)
+	}
+	kind := "auto"
+	if same, err := s.Combos().Update(ctx, c.ID, ComboPatch{Kind: &kind}); err != nil || same.Kind != "auto" || same.Name != "renamed" {
+		t.Fatalf("kind change: %+v %v", same, err)
 	}
 	if ok, _ := s.Combos().Delete(ctx, c.ID); !ok {
 		t.Fatal("delete reported nothing deleted")

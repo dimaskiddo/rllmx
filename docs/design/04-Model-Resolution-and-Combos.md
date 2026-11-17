@@ -90,9 +90,9 @@ sequenceDiagram
 | `/api/providers/client` (usage list, filters, totals) | `app/http/controllers` | todo (quota fetchers) |
 | `/api/providers/test-batch`, `/api/providers/{id}/test-models`, `/api/models/test` | `app/http/controllers`, `app/probe` | todo (pipeline) |
 | `/api/providers/suggested-models`, `/api/providers/kilo/free-models` | `app/http/controllers` | todo (fixed URL list, guarded client) |
-| `/api/models/*` (alias, custom, disabled, availability, catalog-sync) | `app/http/controllers` | todo |
-| `/api/combos/*` (+ presets) | `app/http/controllers` | todo |
-| `/api/pricing` | `app/http/controllers` | todo |
+| `/api/models/*` (alias, custom, disabled, availability) | `app/http/controllers` | done (D352, D353, D357); `PUT /api/models` is a scope cut (D359); catalog-sync waits for 2.6e |
+| `/api/combos/*` (+ presets) | `app/http/controllers` | done (D356, D358) |
+| `/api/pricing` | `app/http/controllers` | done (D354, D355) |
 | `/api/translator/*` | `app/http/controllers` | todo |
 | `/api/media-providers/tts/*/voices` | `app/http/controllers`, `app/gateway` | done |
 | Media model resolution (bare id, slash id, `provider/model`, per-kind) | `app/llm/upstream` media index | done |
@@ -114,7 +114,8 @@ sequenceDiagram
 - [ ] Capacity adapter pool
 - [x] Provider-connection, provider-node and override routes
 - [x] The `Checker` and its four routes (`/test`, `/validate`, node `/validate`, `/models`)
-- [ ] `/api/combos*` —
+- [x] `/api/combos*` — CRUD, presets and the suggestion routes (`design doc 4`, D356, D358)
+- [x] `/api/models/*` — list, alias, custom, disabled and availability (`design doc 4`, D352, D353, D357)
 
 ---
 
@@ -137,6 +138,12 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 336 | A combo member may name another combo, expanded with a visited set and a depth limit of 3; the reference nests with no guard. **Built** | A cycle is a 400 at the combo, never a stack overflow |
 | 337 | The capacity adapter's per-capability pool is not built; ordering only reorders the members the operator named. **Built** | A request never gains a model the combo did not name |
 | 350 | `/api/tags` is Ollama's list shape over the caller's real catalog, on the client class with an API key; a digest is the SHA-256 of the id and the family is the provider **(built)** | The reference answers a fixed fake list behind the dashboard, where no Ollama client can reach it |
+| 352 | The alias map is written in one direction, alias to target, and an alias another model holds is a 409. Both routes that write it share one rule **(built)** | The reference's `/api/models` PUT stores model to alias while `/api/models/alias` stores alias to model, so its two routes disagree; it also lets a second model take an alias silently |
+| 353 | `GET /api/models` lists the registry with custom models in and disabled out, and answers the alias that points at each model. Node models stay on `/api/providers/{id}/models` **(built)** | The reference reads its alias map backwards, so the `alias` field is nearly always the bare id, and a list route there mixes in rows the catalog does not resolve |
+| 356 | Combo create and update validate the kind, allow an empty member list, answer the stored combo, and a duplicate name is a 409. A rename carries `settings.comboStrategies[name]` to the new name and a delete drops it **(built)** | The reference returns the request body echoed, leaves the strategy under the old name, and lets a rename race the unique index into a 500 |
+| 357 | `clearCooldown` drops the named lock and the account lock, leaves every other model's lock alone, and `__all` names `modelLock___all` **(built)** | The reference's `__all` maps to a key that never exists, so the account lock cannot be cleared from that page, while its activation side effect wipes every lock on the connection |
+| 358 | Presets enumerate the embedded provider list for both sources; the Claude list also includes the stored aliases that point at it **(trade-off)** | The reference reads the first Cursor account's live catalog from a presets preview; here the live list stays behind the model guard and the preview spends nothing |
+| 359 | `PUT /api/models` is not built **(scope cut)** | The reference's model-to-alias write is the mirror of a map it does not own, and no dashboard page calls it |
 | 338 | The smart router and the fusion judge run through the ordinary pipeline on their own model names, so each writes its own usage row; none of their spend is added to the client's row. **Built** | Router and judge cost is visible without inflating the client's usage |
 
 ---

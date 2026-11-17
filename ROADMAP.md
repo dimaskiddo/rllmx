@@ -65,7 +65,9 @@ Status words: **built** (implemented and tested), **partial** (some behavior mis
 | Area | Status |
 |---|---|
 | Login and callback page | built |
-| Provider, key and usage pages | planned |
+| Dashboard management API (settings, keys, models and aliases, custom and disabled models, availability, pricing, combos and presets, console log) | built |
+| Usage dashboard and quota views | planned |
+| Provider and key pages | planned |
 
 ---
 

@@ -434,3 +434,38 @@ func TestNodesWithoutAPrefixNeverCollide(t *testing.T) {
 		t.Fatalf("a cascade update of a node without a prefix: %v", err)
 	}
 }
+
+func TestRenameObjectFieldMovesTheValueAndKeepsTheOthers(t *testing.T) {
+	s := newMigrated(t)
+	ctx := context.Background()
+	if err := s.Settings().MergeObjectField(ctx, "comboStrategies", "fast.v2", `{"fallbackStrategy":"smart"}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Settings().MergeObjectField(ctx, "comboStrategies", "slow", `{"sessionSticky":true}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Settings().RenameObjectField(ctx, "comboStrategies", "fast.v2", "fast"); err != nil {
+		t.Fatal(err)
+	}
+	d, _ := s.Settings().Get(ctx)
+	raw, _ := d.GetRaw("comboStrategies")
+	o := mustDoc(t, raw)
+	if o.Has("fast.v2") || !o.Has("slow") {
+		t.Fatalf("the move touched another field: %s", raw)
+	}
+	if v, _ := o.GetRaw("fast"); v != `{"fallbackStrategy":"smart"}` {
+		t.Fatalf("the value was not carried: %s", raw)
+	}
+	for name, c := range map[string][3]string{
+		"missing field": {"comboStrategies", "absent", "new"},
+		"same name":     {"comboStrategies", "fast", "fast"},
+		"not an object": {"responseCache", "a", "b"},
+	} {
+		if err := s.Settings().RenameObjectField(ctx, c[0], c[1], c[2]); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	if err := s.Settings().RenameObjectField(ctx, "password", "a", "b"); !errors.Is(err, ErrProtectedSetting) {
+		t.Errorf("a protected setting was written: %v", err)
+	}
+}

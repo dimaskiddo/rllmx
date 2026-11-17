@@ -47,10 +47,25 @@ func Boot(version, commit string) contractsfoundation.Application {
 			base.SAML = samlController(h)
 			db := func() *repository.Store { return providers.DataOf(facades.App()).Runner.Store() }
 			base.Providers = &controllers.ProvidersController{Registry: h.Registry, DB: db, Checker: h.Checker, Refresher: h.Refresher, Enqueue: h.Probes.Enqueue, Probe: h.Probes.Prober}
-			base.Nodes = &controllers.NodesController{Registry: h.Registry, DB: db, Checker: h.Checker}
+			base.Nodes = &controllers.NodesController{Registry: h.Registry, DB: db, Checker: h.Checker, Changed: h.Snapshot.Invalidate}
 			base.Chat = &controllers.ChatController{Pipe: h.Pipe.Get, Log: facades.Log()}
-			base.Models = &controllers.ModelsController{Catalog: providers.NewCatalogSource(facades.App()).Get, Probe: h.Probes.Prober, Log: facades.Log()}
-			base.Combos = &controllers.CombosController{DB: db, Probe: h.Probes.Prober, Tracker: h.Health, Prices: h.Prices.Get}
+			base.Models = &controllers.ModelsController{
+				Catalog: providers.NewCatalogSource(facades.App()).Get, Probe: h.Probes.Prober, Log: facades.Log(),
+				Registry: h.Registry, Caps: h.Capabilities, DB: db, Changed: h.Snapshot.Invalidate,
+			}
+			base.Combos = &controllers.CombosController{
+				DB: db, Probe: h.Probes.Prober, Tracker: h.Health, Prices: h.Prices.Get, Log: facades.Log(),
+				Registry: h.Registry, Changed: h.Snapshot.Invalidate, Reset: h.ResetCombo,
+			}
+			base.Pricing = &controllers.PricingController{
+				DB: db, Table: h.Prices.Get, Log: facades.Log(),
+				Reload: func() {
+					h.Prices.Reset()
+					if _, err := h.Prices.Get(); err != nil {
+						facades.Log().Warningf("pricing: the table did not reload: %v", err)
+					}
+				},
+			}
 			media := providers.NewMediaSource(facades.App())
 			base.Media = &controllers.MediaController{
 				EmbeddingsPipe: media.Get, ImagesPipe: media.Get, SpeechPipe: media.Get,

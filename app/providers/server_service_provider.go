@@ -22,6 +22,7 @@ import (
 	"rllmx/app/access/oidc"
 	"rllmx/app/access/saml"
 	"rllmx/app/access/sso"
+	"rllmx/app/gateway/combo"
 	"rllmx/app/gateway/health"
 	apphttp "rllmx/app/http"
 	"rllmx/app/http/controllers"
@@ -94,6 +95,13 @@ type HTTP struct {
 	Probes *ProbeSource
 	// Prices prices a request and ranks a suggestion; one table, two readers.
 	Prices *PriceSource
+	// Snapshot is the one view of aliases, nodes and combos; a catalog write
+	// invalidates it, so the next request routes the change.
+	Snapshot *SnapshotSource
+	// Rotation is each combo's round-robin position and Sticky its last smart
+	// choice; a combo write resets both.
+	Rotation *combo.Rotation
+	Sticky   *combo.Sticky
 }
 
 // HTTPOf returns the bound HTTP pieces. A missing binding means the provider is
@@ -105,6 +113,15 @@ func HTTPOf(app foundation.Application) *HTTP {
 		panic(fmt.Sprintf("providers: %s is not bound: %v", BindingHTTP, err))
 	}
 	return h
+}
+
+// ResetCombo forgets a combo's rotation and sticky choice, for a combo whose
+// members or name just changed.
+func (h *HTTP) ResetCombo(names ...string) {
+	for _, n := range names {
+		h.Rotation.Reset(n)
+		h.Sticky.Drop(n)
+	}
 }
 
 // ServerServiceProvider owns the HTTP server. Register binds, Boot does
@@ -199,6 +216,9 @@ func (r *ServerServiceProvider) Register(app foundation.Application) {
 			Pipe:          pipe,
 			Probes:        NewProbeSource(app, pipe),
 			Prices:        NewPriceSource(app),
+			Snapshot:      NewSnapshotSource(app),
+			Rotation:      combo.NewRotation(),
+			Sticky:        combo.NewSticky(),
 			Settings:      s,
 			Guard:         apphttp.NewGuard(a, s.TrustLoopback),
 			Trust:         trust,

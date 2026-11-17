@@ -11,7 +11,6 @@ import (
 	"github.com/goravel/framework/contracts/foundation"
 
 	"rllmx/app/gateway/account"
-	"rllmx/app/gateway/combo"
 	"rllmx/app/gateway/pipeline"
 	"rllmx/app/gateway/prefetch"
 	"rllmx/app/llm/catalog"
@@ -52,7 +51,12 @@ func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.P
 	}
 	log := app.MakeLog()
 
-	table, err := h.Prices.Get()
+	// A failed build here means the embedded table is broken, so the pipeline
+	// refuses to start rather than price every request at zero.
+	if _, err := h.Prices.Get(); err != nil {
+		return nil, err
+	}
+	snap, err := h.Snapshot.Get()
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +78,7 @@ func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.P
 		CipherSuites: opencode.OpenCodeCipherSuites, Curves: h.Upstream.Curves,
 	})
 	return pipeline.New(pipeline.Deps{
-		Resolver: &routing.Resolver{Registry: h.Registry, Snapshot: routing.NewSnapshot(routing.NewRepositorySource(store), nil)},
+		Resolver: &routing.Resolver{Registry: h.Registry, Snapshot: snap},
 		Selector: selector,
 		Reporter: account.NewReporter(store.Connections(), log, nil),
 		Executor: mux.New(&executor.Default{Client: client}, mux.Options{
@@ -84,12 +88,12 @@ func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.P
 		Nodes:         store.Nodes(),
 		Registry:      h.Registry,
 		Caps:          h.Capabilities,
-		Prices:        table,
+		Prices:        priceReader{src: h.Prices},
 		Health:        h.Health,
 		Usage:         writer,
 		Budget:        budget(h.Limits, runner),
-		Rotation:      combo.NewRotation(),
-		Sticky:        combo.NewSticky(),
+		Rotation:      h.Rotation,
+		Sticky:        h.Sticky,
 		Overrides:     headerOverrides{settings: settingsRead},
 		Settings:      settingsRead,
 		Prefetch:      prefetch.New(),

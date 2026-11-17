@@ -41,3 +41,12 @@ func (l *lazy[T]) get() (*T, error) {
 	l.v.Store(v)
 	return v, nil
 }
+
+// reset drops the built value so the next get rebuilds it. The lock orders the
+// reset after a build already in flight, so a caller that writes and then warms
+// never keeps a table read before the write.
+func (l *lazy[T]) reset() {
+	l.mu.Lock()
+	l.v.Store(nil)
+	l.mu.Unlock()
+}

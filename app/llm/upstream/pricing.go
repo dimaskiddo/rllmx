@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"regexp"
 	"slices"
@@ -60,6 +61,9 @@ type rawRates struct {
 	Cached        *float64 `json:"cached"`
 	Reasoning     *float64 `json:"reasoning"`
 	CacheCreation *float64 `json:"cacheCreation"`
+	// CacheCreationStored is the spelling an existing database uses. It loses to
+	// the camelCase one when a row carries both.
+	CacheCreationStored *float64 `json:"cache_creation"`
 }
 
 func (w rawRates) rates() (Rates, error) {
@@ -84,7 +88,7 @@ func (w rawRates) rates() (Rates, error) {
 	for _, f := range []struct {
 		src *float64
 		dst *float64
-	}{{w.Cached, &r.Cached}, {w.Reasoning, &r.Reasoning}, {w.CacheCreation, &r.CacheCreation}} {
+	}{{w.Cached, &r.Cached}, {w.Reasoning, &r.Reasoning}, {w.CacheCreationStored, &r.CacheCreation}, {w.CacheCreation, &r.CacheCreation}} {
 		if f.src == nil {
 			continue
 		}
@@ -113,6 +117,30 @@ type pattern struct {
 // Overrides are the administrator's rate cards, keyed by provider then model.
 type Overrides map[string]map[string]Rates
 
+// MarshalJSON writes a card under the field names a stored row uses, so this
+// build and the reference read each other's rows.
+func (r Rates) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Input         float64 `json:"input"`
+		Output        float64 `json:"output"`
+		Cached        float64 `json:"cached"`
+		Reasoning     float64 `json:"reasoning"`
+		CacheCreation float64 `json:"cache_creation"`
+	}{r.Input, r.Output, r.Cached, r.Reasoning, r.CacheCreation})
+}
+
+// ParseCard reads one rate card with the rule the stored rows get: an unknown
+// field is refused, and either cache-field spelling is accepted.
+func ParseCard(body []byte) (Rates, error) {
+	dec := json.NewDecoder(bytes.NewReader(body))
+	dec.DisallowUnknownFields()
+	var w rawRates
+	if err := dec.Decode(&w); err != nil {
+		return Rates{}, fmt.Errorf("rate card: %s", decodeReason(err))
+	}
+	return w.rates()
+}
+
 // ParseOverrides reads the values of the kv scope "pricing": a provider name
 // to a JSON object of model to rate card. A malformed entry is skipped with a
 // warning that names the provider and model and never a value.
@@ -126,14 +154,7 @@ func ParseOverrides(raw map[string]string, warn func(format string, args ...any)
 		}
 		cards := map[string]Rates{}
 		for model, body := range models {
-			dec := json.NewDecoder(bytes.NewReader(body))
-			dec.DisallowUnknownFields()
-			var w rawRates
-			if err := dec.Decode(&w); err != nil {
-				warn("pricing override for %q model %q skipped: malformed rate card", provider, model)
-				continue
-			}
-			r, err := w.rates()
+			r, err := ParseCard(body)
 			if err != nil {
 				warn("pricing override for %q model %q skipped: %v", provider, model, err)
 				continue
@@ -215,6 +236,27 @@ func (t *Table) WithOverrides(o Overrides) *Table {
 	c := *t
 	c.overrides = o
 	return &c
+}
+
+// Cards is every provider rate this table knows, with the overrides laid over
+// the embedded rows. Lookup still decides a price; this is the dashboard's view
+// and a write's answer.
+func (t *Table) Cards() map[string]map[string]Rates {
+	out := make(map[string]map[string]Rates, len(t.providers)+len(t.overrides))
+	for provider, cards := range t.providers {
+		m := make(map[string]Rates, len(cards))
+		maps.Copy(m, cards)
+		out[provider] = m
+	}
+	for provider, cards := range t.overrides {
+		m, ok := out[provider]
+		if !ok {
+			m = map[string]Rates{}
+			out[provider] = m
+		}
+		maps.Copy(m, cards)
+	}
+	return out
 }
 
 // Lookup finds the rates for a model as a provider serves it. The order is the

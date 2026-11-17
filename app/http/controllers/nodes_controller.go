@@ -33,6 +33,9 @@ type NodesController struct {
 	Registry *upstream.Registry
 	DB       func() *repository.Store
 	Checker  *Checker
+	// Changed drops the routing view, so a new prefix routes at once. Nil is a
+	// no-op, as it is in a test that does not read routes.
+	Changed func()
 }
 
 func (c *NodesController) store() *repository.Store {
@@ -125,6 +128,7 @@ func (c *NodesController) Create(ctx contractshttp.Context) contractshttp.Respon
 		}
 		return flat(ctx, nethttp.StatusInternalServerError, "Failed to create provider node")
 	}
+	c.changed()
 	return ctx.Response().Json(nethttp.StatusCreated, contractshttp.Json{"node": nodeView(node)})
 }
 
@@ -176,7 +180,16 @@ func (c *NodesController) Update(ctx contractshttp.Context) contractshttp.Respon
 		}
 		return flat(ctx, nethttp.StatusInternalServerError, "Failed to update provider node")
 	}
+	c.changed()
 	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"node": nodeView(updated)})
+}
+
+// changed drops the routing view after a write, so the next request reads the
+// node as stored.
+func (c *NodesController) changed() {
+	if c.Changed != nil {
+		c.Changed()
+	}
 }
 
 // Delete answers DELETE /api/provider-nodes/{id}: the node, its connections and
@@ -193,6 +206,7 @@ func (c *NodesController) Delete(ctx contractshttp.Context) contractshttp.Respon
 		}
 		return flat(ctx, nethttp.StatusInternalServerError, "Failed to delete provider node")
 	}
+	c.changed()
 	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"success": true})
 }
 

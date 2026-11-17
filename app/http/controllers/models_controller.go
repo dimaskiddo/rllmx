@@ -14,7 +14,9 @@ import (
 	"rllmx/app/gateway/catalog"
 	"rllmx/app/gateway/probe"
 	apphttp "rllmx/app/http"
+	"rllmx/app/llm/upstream"
 	"rllmx/app/platform/failure"
+	"rllmx/app/store/repository"
 )
 
 // ModelsController serves the model catalog to API clients.
@@ -25,7 +27,14 @@ type ModelsController struct {
 	// Probe tests one model through the pipeline; nil leaves the route
 	// unavailable.
 	Probe func() (*probe.Prober, error)
-	Log   log.Log
+	// Registry, Caps and DB serve the dashboard's model management; nil leaves
+	// those routes out.
+	Registry *upstream.Registry
+	Caps     *upstream.Capabilities
+	DB       func() *repository.Store
+	// Changed drops the routing view after an alias write.
+	Changed func()
+	Log     log.Log
 }
 
 func (m *ModelsController) list(ctx contractshttp.Context) (*catalog.Catalog, []catalog.Entry, bool) {

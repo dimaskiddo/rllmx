@@ -1,6 +1,7 @@
 package upstream
 
 import (
+	"encoding/json"
 	"math"
 	"strings"
 	"testing"
@@ -231,5 +232,69 @@ func TestTheLoaderRefusesBadPrices(t *testing.T) {
 		if _, err := NewTable([]byte(body), nil); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
+	}
+}
+
+func TestAStoredCardWithTheUnderscoreSpellingPrices(t *testing.T) {
+	o := ParseOverrides(map[string]string{
+		"claude": `{"m": {"input": 3, "output": 15, "cache_creation": 4.5}}`,
+	}, func(string, ...any) {})
+	r, ok := o["claude"]["m"]
+	if !ok || !near(r.CacheCreation, 4.5) || !near(r.Input, 3) {
+		t.Fatalf("%+v %v", r, ok)
+	}
+}
+
+func TestTheCamelSpellingWinsWhenARowCarriesBoth(t *testing.T) {
+	r, err := ParseCard([]byte(`{"input": 1, "cacheCreation": 7, "cache_creation": 9}`))
+	if err != nil || !near(r.CacheCreation, 7) {
+		t.Fatalf("%+v %v", r, err)
+	}
+}
+
+func TestACardWeWriteUsesTheStoredSpelling(t *testing.T) {
+	in := Rates{Input: 1, Output: 2, Cached: 0.5, Reasoning: 2, CacheCreation: 1.5}
+	body, err := json.Marshal(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), `"cache_creation":1.5`) || strings.Contains(string(body), "cacheCreation") {
+		t.Fatalf("%s", body)
+	}
+	if out, err := ParseCard(body); err != nil || out != in {
+		t.Fatalf("%+v %v", out, err)
+	}
+}
+
+func TestAPokeAtACardRefusesAnUnknownFieldAndKeepsNoValue(t *testing.T) {
+	for name, body := range map[string]string{
+		"unknown":  `{"inptu": 9}`,
+		"negative": `{"input": -4}`,
+		"text":     `{"input": "secret-123"}`,
+	} {
+		_, err := ParseCard([]byte(body))
+		if err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+		if err != nil && strings.Contains(err.Error(), "secret-123") {
+			t.Errorf("%s: the value leaked: %v", name, err)
+		}
+	}
+}
+
+func TestCardsLaysTheOverridesOverTheEmbeddedRows(t *testing.T) {
+	tb := table(t).WithOverrides(Overrides{
+		"github": {"gpt-4o": {Input: 1}},
+		"own":    {"m": {Input: 2, Output: 3}},
+	})
+	cards := tb.Cards()
+	if cards["github"]["gpt-4o"].Input != 1 {
+		t.Fatalf("an override did not win: %+v", cards["github"])
+	}
+	if cards["own"]["m"].Output != 3 {
+		t.Fatalf("a provider only in the overrides is missing: %+v", cards)
+	}
+	if _, ok := tb.providers["github"]; ok && tb.providers["github"]["gpt-4o"].Input != 9 {
+		t.Fatalf("the view rewrote the baseline: %+v", tb.providers["github"])
 	}
 }

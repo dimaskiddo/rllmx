@@ -33,7 +33,7 @@ A row exists wherever a model departs from its family pattern: `claude-fable-5-2
 - An override replaces the whole rate card of its provider and model; `{}` makes a model free. A malformed entry is skipped with a warning naming provider and model, never a value.
 - **Cost:** prompt includes cached and cache-creation tokens (charged at their own rates, the rest at the input rate, floored at zero); completion includes reasoning tokens (reasoning share at the reasoning rate, the rest at the output rate; a count above the completion is cut back). Gemini thought tokens are normalized by the usage extractor first. An OpenAI-shaped answer may spell its cache counts as `prompt_tokens_details.*` or as an SDK's `inputTokenDetails.cacheReadTokens`/`cacheWriteTokens`; both are read.
 - Computed at completion and stored in the row, so a later price change never rewrites history.
-- The embedded file makes cost work on an empty database. `/api/pricing`  edits the overrides; removing one restores the embedded rate.
+- The embedded file makes cost work on an empty database. `/api/pricing` reads the merged cards, `PATCH` merges cards into the stored rows and `DELETE ?provider[&model]` restores the embedded rate. A write resets and warms the price table, so the next request prices with the new numbers (D355).
 
 ### Quota
 
@@ -77,6 +77,8 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 18 | Usage always recorded, metadata only; upstream error becomes class | Prompts, secrets never at rest |
 | 143 | One row: status 200, no provider, zero tokens | Every request ends in one row |
 | 78 | `Cost` reports "unknown"; patterns split once at load. **(partial)**row still stores 0 for unknown | No per-request compile |
+| 354 | A stored rate card is read and written with the field `cache_creation`, and the camel spelling is accepted too **(built)** | A real 9router row spells it `cache_creation`; the strict decoder skipped every override that carried a cache-creation rate, and a card this build wrote would lose it in the reference |
+| 355 | Every pricing route answers the merged table: the embedded provider rows with the overrides laid over them, and a write applies to the next request through the reloaded source **(built)** | The reference's PATCH answers only the overrides while GET answers a merged map of two providers, and its edit form sends the whole map back, turning every default into a stored override |
 
 ---
 
