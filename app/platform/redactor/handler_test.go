@@ -31,6 +31,19 @@ func handle(t *testing.T, e tests.Entry) log.Entry {
 	return inner.Entries[0]
 }
 
+func TestTeeSeesTheScrubbedCopy(t *testing.T) {
+	inner := &tests.Handler{}
+	var teed []string
+	h := NewHandler(inner)
+	h.Tee(func(e log.Entry) { teed = append(teed, e.Message()) })
+	if err := h.Handle(newEntry(func(e *tests.Entry) { e.MessageV = "hello sk-abcdefghij world" })); err != nil {
+		t.Fatal(err)
+	}
+	if len(teed) != 1 || strings.Contains(teed[0], "sk-abcdefghij") {
+		t.Fatalf("the tee saw %q", teed)
+	}
+}
+
 func TestHandlerScrubsTheMessage(t *testing.T) {
 	got := handle(t, newEntry(func(e *tests.Entry) { e.MessageV = "hello sk-abcdefghij world" }))
 	if strings.Contains(got.Message(), "sk-abcdefghij") || !strings.Contains(got.Message(), "hello") || !strings.Contains(got.Message(), "world") {

@@ -193,19 +193,19 @@ Anything the dashboard asks the router to do against its own endpoints (model te
 | `/api/auth/saml/{start,acs,metadata}` | `app/access/saml`, `app/http/controllers` | done |
 | `keys:create`, `keys:list`, `keys:revoke`, `password:reset`, `db:export-plain` | `app/console/commands`, `app/access/identity` | done |
 | `/api/auth/oidc/test`, `/api/auth/saml/test` | none | deferred |
-| `/api/settings` (database export/import, the other settings) | `app/http/controllers` | todo (require-login is built) |
+| `/api/settings` (GET, PATCH) | `app/http/controllers` | done (an allow list of the keys this build reads, each typed and bounded; the password hash, the SSO secret and every unlisted stored key stay out. The database export/import is CLI-only, `db:export-plain`) |
 | `/api/keys/*` (list, create, reveal, rename, enable/disable, delete) | `app/http/controllers`, `app/access/auth` | done (a dashboard session even when `requireLogin` is off; the list is masked and only the reveal and the create answer a whole key) |
-| `/api/locale`, `/api/tags` | `app/http/controllers` | todo |
+| `/api/locale`, `/api/tags` | `app/http/controllers` | done (`tags` is Ollama's shape over the caller's own catalog, on an API key) |
 
 ---
 
 ## Remaining work
 
- are built: password login with its session and limiter, API keys, OIDC, SAML and the five commands. The design doc is `partial` because four parity rows above are still open, each owned by a later step:
+ are built: password login with its session and limiter, API keys, OIDC, SAML, the settings and locale routes, and the five commands. One parity row stays open:
 
-- [x] The key management API (`/api/keys/*`); `/api/settings` stays with the settings step
-- [ ] `/api/auth/oidc/test`, `/api/auth/saml/test`, `/api/locale`, `/api/tags` — planned
-- [ ] The per-key model allow-list and quota the `Caller` already carries —, (`design doc 21`)
+- [x] The key management API (`/api/keys/*`); the settings routes and the per-key answer-cache switch (2.6a)
+- [ ] `/api/auth/oidc/test`, `/api/auth/saml/test` — deferred
+- [x] The per-key model allow-list and quota the `Caller` carries (`design doc 21`, steps 2.2 and 2.3)
 - **Done when:** a revoked or disabled key is rejected within the cache TTL and immediately after explicit invalidation — that holds today and a test proves it. What keeps the design doc open is the management surface and the two limits, not the guard.
 
 ---
@@ -227,6 +227,8 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 55, 56 | `hasPassword` only to local or signed-in callers; `Secure` from TLS, `AUTH_COOKIE_SECURE`, trusted proxy | Anonymous callers learn nothing; clients cannot pick cookie flags |
 | 145 | Failed settings read stops start; corrupt session epoch fails snapshot, so no session validates | Unreadable hash never means "no password" |
 | 59, 60 | One resolver for `oidc`, `saml`, `sso`, `both`. SSO usable when its provider is configured; `AUTH_SSO_ALLOW` narrows who may sign in and **empty admits anyone the provider accepts**; password login off only when SSO usable | No lockout by a half-configured IdP; an operator who wants a closed door sets the list |
+| 348 | `/api/settings` is an allow list: only the keys this build reads are writable, each with a type and a bound, and an unknown key is a 400. The password changes through `POST /api/auth/change-password`; the view never carries the password hash, the SSO client secret, `mitmSudoEncrypted` or an unlisted stored key **(built)** | The reference mass-assigns any key into the settings row, returns `mitmSudoEncrypted`, accepts `newPassword` with no length or strength rule, and lets a first-time change skip the current password |
+| 349 | The `locale` cookie is `SameSite=Lax`, and `Secure` when the request arrived over TLS **(built)** | The reference sets a bare cookie that another site can send and a plain-HTTP proxy can read |
 | 61, 62 | `APP_URL` (remote request without it refused). State keys server-side single-use sign-in plus HMAC bind cookie; verifier, nonce server-side | Caller cannot choose where code goes; planted `code` + `state` refused |
 | 63, 64 | RS256, ES256 only; issuer equals discovery; `azp` for several audiences; `at_hash` when present; `sub` required; unverified email refused; `preferred_username` only on exact allow-list entry | No algorithm confusion or token substitution; editable claim cannot admit a domain |
 | 210 | `AUTH_SSO_ALLOW` empty admits every account the provider accepts | One setting to explain, and the reference's own behaviour; the closed door is one line away |

@@ -166,7 +166,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 194 | Goravel-owned names as framework defines them (`APP_*`, `JWT_SECRET`); every other variable `<GROUP>_<NAME>`, no prefix (`AUTH_API_KEY_SECRET`, `AUTH_MACHINE_ID_SALT`, `HTTP_SERVER_*`). `JWT_SECRET` keeps its name; values of `API_KEY_SECRET`, `MACHINE_ID_SALT` copy over unchanged | One naming contract, group-owned unknown-name check, framework names. Risk: shared host may carry another program's `DB_*`/`LOG_*`, so only `.env` entries scanned |
 | 201 | Retired: logging is the `Log` facade with its redacting channel | Recorded so the number stays citable (framework choice) |
 | 6, 10, 105 | Not read, implemented, adopted; settings keys kept and imported | Dead or unsafe (scope cut) |
-| 28 | All log output through one redactor. **(partial)**the redacting channel is built and tested; the Console Log ring and its read route are not, and arrive with | Errors, headers can carry tokens |
+| 28 | All log output through one redactor, and the Console Log is a second reader behind it, so the ring only ever holds scrubbed text **(built)** | Errors, headers can carry tokens |
 | 33 | All `<GROUP>_<NAME>`, Go durations; old names not read | One contract; operators rename (design doc 17) (trade-off) |
 
 ---

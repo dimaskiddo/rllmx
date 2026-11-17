@@ -1,16 +1,35 @@
 package config
 
 import (
+	"github.com/goravel/framework/contracts/log"
 	"github.com/goravel/framework/foundation/json"
 	"github.com/goravel/framework/log/logger"
 
 	"rllmx/app/facades"
+	"rllmx/app/platform/logbook"
 	"rllmx/app/platform/redactor"
 )
 
 // logFile is relative to the project root: the single and daily drivers join
 // it to that root themselves, so an absolute path would be nested inside it.
 const logFile = "storage/logs/rllmx.log"
+
+// console is the ring the dashboard's Console Log reads. The channel is built
+// at init, before any provider registers, so the ring is owned here and reached
+// through ConsoleLog by the route wiring.
+var console = logbook.New(logbook.Size)
+
+// ConsoleLog returns the ring every clean log entry also lands in.
+func ConsoleLog() *logbook.Book { return console }
+
+// logDriver is the file driver behind the redactor, with the console ring as a
+// second reader. Order matters: redaction runs first, so the ring never holds a
+// secret.
+func logDriver(inner log.Logger) *redactor.Channel {
+	ch := redactor.NewChannel(inner)
+	ch.Tee(func(e log.Entry) { console.Add(e.Level().String(), e.Time(), e.Message()) })
+	return ch
+}
 
 func init() {
 	config := facades.Config()
@@ -41,14 +60,14 @@ func init() {
 			},
 			"single": map[string]any{
 				"driver":    "custom",
-				"via":       redactor.NewChannel(logger.NewSingle(config, json.New())),
+				"via":       logDriver(logger.NewSingle(config, json.New())),
 				"path":      logFile,
 				"level":     config.Env("LOG_LEVEL", "info"),
 				"formatter": "text",
 			},
 			"daily": map[string]any{
 				"driver":    "custom",
-				"via":       redactor.NewChannel(logger.NewDaily(config, json.New())),
+				"via":       logDriver(logger.NewDaily(config, json.New())),
 				"path":      logFile,
 				"level":     config.Env("LOG_LEVEL", "info"),
 				"days":      7,

@@ -12,6 +12,7 @@ import (
 // the caller remembering not to log a secret.
 type Handler struct {
 	next log.Handler
+	tee  func(log.Entry)
 }
 
 // NewHandler puts the scrub between a caller and the channel that writes.
@@ -19,12 +20,20 @@ func NewHandler(next log.Handler) *Handler {
 	return &Handler{next: next}
 }
 
+// Tee hands every clean entry to fn before the channel writes it, so a second
+// reader such as the console ring only ever sees scrubbed text.
+func (h *Handler) Tee(fn func(log.Entry)) { h.tee = fn }
+
 // Enabled follows the wrapped handler.
 func (h *Handler) Enabled(l log.Level) bool { return h.next.Enabled(l) }
 
 // Handle cleans e and hands the copy to the wrapped handler.
 func (h *Handler) Handle(e log.Entry) error {
-	return h.next.Handle(cleanEntry(e))
+	clean := cleanEntry(e)
+	if h.tee != nil {
+		h.tee(clean)
+	}
+	return h.next.Handle(clean)
 }
 
 // entry is a log.Entry whose fields are already clean. Its context is empty on

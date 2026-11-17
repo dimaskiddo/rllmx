@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	nethttp "net/http"
@@ -43,6 +44,8 @@ type keyView struct {
 	Quota      *quota.Limit `json:"quota,omitempty"`
 	Unreadable bool         `json:"unreadable,omitempty"`
 	MachineID  string       `json:"machineId,omitempty"`
+	// ResponseCache is this key's switch for the answer cache.
+	ResponseCache bool `json:"responseCache"`
 }
 
 // accessView is the allow-list shape the dashboard sends and reads.
@@ -52,26 +55,33 @@ type accessView struct {
 }
 
 // masked is the view of one stored key for a list or an update, with its budget
-// when it has one.
-func masked(k repository.APIKey, budget *quota.Limit) keyView {
+// when it has one and its answer-cache switch.
+func masked(k repository.APIKey, budget *quota.Limit, cacheOn bool) keyView {
 	allow := k.AccessAllow
 	if allow == nil {
 		allow = []string{}
 	}
 	return keyView{
 		ID: k.ID, Name: k.Name, Key: auth.MaskKey(k.Key), IsActive: k.IsActive,
-		CreatedAt: k.CreatedAt, Unreadable: k.Unreadable, Quota: budget,
+		CreatedAt: k.CreatedAt, Unreadable: k.Unreadable, Quota: budget, ResponseCache: cacheOn,
 		Access: accessView{Restricted: k.AccessRestricted, Allow: allow},
 	}
 }
 
 // revealed is the view of one key with its full value, for the reveal only.
-func revealed(k repository.APIKey, budget *quota.Limit) keyView {
-	v := masked(k, budget)
+func revealed(k repository.APIKey, budget *quota.Limit, cacheOn bool) keyView {
+	v := masked(k, budget, cacheOn)
 	if !k.Unreadable {
 		v.Key = k.Key
 	}
 	return v
+}
+
+// cacheOn reports whether this key may use the answer cache. A read failure is
+// off, the same as no row.
+func cacheOn(st *repository.Store, ctx context.Context, id string) bool {
+	on, err := st.KV().ResponseCacheEnabled(ctx, id)
+	return err == nil && on
 }
 
 // limits returns every key's budget, or a failure the dashboard answers as a
@@ -118,7 +128,7 @@ func (c *KeysController) List(ctx contractshttp.Context) contractshttp.Response 
 	}
 	out := make([]keyView, 0, len(rows))
 	for _, k := range rows {
-		out = append(out, masked(k, budgetOf(all, k.ID)))
+		out = append(out, masked(k, budgetOf(all, k.ID), cacheOn(st, ctx.Request().Origin().Context(), k.ID)))
 	}
 	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"keys": out})
 }
@@ -141,7 +151,7 @@ func (c *KeysController) Show(ctx contractshttp.Context) contractshttp.Response 
 	if !ok {
 		return out2
 	}
-	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"key": revealed(k, budgetOf(all, k.ID))})
+	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"key": revealed(k, budgetOf(all, k.ID), cacheOn(c.store(), ctx.Request().Origin().Context(), k.ID))})
 }
 
 // Create answers POST /api/keys: a fresh key for this machine, answered once.
@@ -187,10 +197,11 @@ func (c *KeysController) Update(ctx contractshttp.Context) contractshttp.Respons
 	}
 	id := ctx.Request().Route("id")
 	var b struct {
-		Name     *string         `json:"name"`
-		IsActive *bool           `json:"isActive"`
-		Access   json.RawMessage `json:"access"`
-		Quota    json.RawMessage `json:"quota"`
+		Name          *string         `json:"name"`
+		IsActive      *bool           `json:"isActive"`
+		Access        json.RawMessage `json:"access"`
+		Quota         json.RawMessage `json:"quota"`
+		ResponseCache *bool           `json:"responseCache"`
 	}
 	if err := bindJSON(ctx, &b); err != nil {
 		return flat(ctx, nethttp.StatusBadRequest, "Invalid request body")
@@ -236,12 +247,25 @@ func (c *KeysController) Update(ctx contractshttp.Context) contractshttp.Respons
 			return flat(ctx, nethttp.StatusInternalServerError, "The key's budget could not be stored")
 		}
 	}
+	if b.ResponseCache != nil {
+		// The switch is a kv row, not a column: a 9router schema has nowhere to
+		// put it, and a key without the row is off.
+		var err error
+		if *b.ResponseCache {
+			err = st.KV().Set(ctx.Request().Origin().Context(), repository.ScopeResponseCache, id, `{"enabled":true}`)
+		} else {
+			err = st.KV().Delete(ctx.Request().Origin().Context(), repository.ScopeResponseCache, id)
+		}
+		if err != nil {
+			return flat(ctx, nethttp.StatusInternalServerError, "The key's cache switch could not be stored")
+		}
+	}
 	c.changed()
 	all, out2, ok := c.limits(ctx)
 	if !ok {
 		return out2
 	}
-	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"key": masked(row, budgetOf(all, row.ID))})
+	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"key": masked(row, budgetOf(all, row.ID), cacheOn(st, ctx.Request().Origin().Context(), row.ID))})
 }
 
 // Delete answers DELETE /api/keys/{id}.
@@ -261,6 +285,7 @@ func (c *KeysController) Delete(ctx contractshttp.Context) contractshttp.Respons
 		// A budget with no key is harmless; the row goes with it.
 		_ = c.Quota.Delete(ctx.Request().Origin().Context(), ctx.Request().Route("id"))
 	}
+	_ = st.KV().Delete(ctx.Request().Origin().Context(), repository.ScopeResponseCache, ctx.Request().Route("id"))
 	c.changed()
 	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"message": "Key deleted successfully"})
 }

@@ -16,7 +16,7 @@ const (
 var copiedSettings = map[string]bool{
 	"stickyRoundRobinLimit": true, "providerStrategies": true, "quotaVisibility": true, "comboStrategy": true,
 	"comboStickyRoundRobinLimit": true, "comboStrategies": true, "capacityAdapter": true, "fallbackStrategy": true,
-	"providerThinking": true, "providerOverrides": true, "claudeAutoPing": true, "char_limit": true,
+	"providerThinking": true, "providerOverrides": true, "claudeAutoPing": true, "codexAutoPing": true, "char_limit": true,
 	"rtkEnabled": true, "headroomEnabled": true, "headroomUrl": true, "headroomCompressUserMessages": true, "headroomTimeoutMs": true,
 	"cavemanEnabled": true, "cavemanLevel": true, "ponytailEnabled": true, "ponytailLevel": true,
 	"customPromptEnabled": true, "customPrompt": true, "tokenSaverEnabled": true, "tokenSaverBudget": true,

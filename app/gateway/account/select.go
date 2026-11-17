@@ -110,6 +110,10 @@ func NewSelector(o SelectorOptions) *Selector {
 	}
 }
 
+// Changed drops the cached settings, so a dashboard write such as the rotation
+// limit applies to the next pick.
+func (s *Selector) Changed() { s.settings.drop() }
+
 // providerLock returns the one-slot semaphore of a provider. A channel, not a
 // mutex, so a request that is cancelled while it waits leaves the queue.
 func (s *Selector) providerLock(p string) chan struct{} {

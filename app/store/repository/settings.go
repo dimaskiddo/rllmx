@@ -62,6 +62,7 @@ var settingDefaults = []settingDefault{
 	{"pxpipeAutoInstall", "true"}, {"pxpipeMinChars", "25000"}, {"pxpipeTimeoutMs", "15000"}, {"providerOverrides", "{}"},
 	{"headroomAutoStart", "true"}, {"hermesServiceAutoStart", "true"},
 	{"responseCache", `{"enabled":false,"ttlSeconds":3600,"maxEntryKb":512}`},
+	{"claudeAutoPing", "false"}, {"codexAutoPing", "false"},
 }
 
 const (

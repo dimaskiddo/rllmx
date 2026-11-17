@@ -25,9 +25,11 @@ const (
 func (c Class) valid() bool { return c >= ClassPublic && c <= ClassPage }
 
 // IsClientAPI reports whether a path belongs to the client API, which gets CORS,
-// the client body cap and no page headers.
+// the client body cap and no page headers. `/api/tags` is Ollama's model list,
+// so it is a client route even though the reference puts it under the dashboard.
 func IsClientAPI(p string) bool {
-	return p == "/v1" || strings.HasPrefix(p, "/v1/") || p == "/v1beta" || strings.HasPrefix(p, "/v1beta/")
+	return p == "/v1" || strings.HasPrefix(p, "/v1/") || p == "/v1beta" ||
+		strings.HasPrefix(p, "/v1beta/") || p == "/api/tags"
 }
 
 // IsDashboardAPI reports whether a path belongs to the dashboard JSON API, whose
@@ -39,7 +41,7 @@ func IsDashboardAPI(p string) bool { return p == "/api" || strings.HasPrefix(p, 
 // handler bounds its own work instead.
 func IsLongDashboardCall(p string) bool {
 	switch p {
-	case "/api/health/latency-stream", "/api/providers/test-batch":
+	case "/api/health/latency-stream", "/api/providers/test-batch", "/api/translator/console-logs/stream":
 		return true
 	}
 	return strings.HasSuffix(p, "/test-models")

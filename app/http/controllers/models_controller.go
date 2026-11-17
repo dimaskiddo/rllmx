@@ -1,9 +1,12 @@
 package controllers
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	nethttp "net/http"
 	"strings"
+	"time"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
 	"github.com/goravel/framework/contracts/log"
@@ -120,6 +123,45 @@ func (m *ModelsController) Show(ctx contractshttp.Context) contractshttp.Respons
 		}
 	}
 	failure.Write(ctx.Response().Writer(), failure.OpenAI, nethttp.StatusNotFound, "The model '"+id+"' does not exist or you do not have access to it.")
+	return nil
+}
+
+// tag is one entry of GET /api/tags, Ollama's model list shape.
+type tag struct {
+	Name       string    `json:"name"`
+	Model      string    `json:"model"`
+	ModifiedAt string    `json:"modified_at"`
+	Size       int64     `json:"size"`
+	Digest     string    `json:"digest"`
+	Details    tagDetail `json:"details"`
+}
+
+type tagDetail struct {
+	Format            string `json:"format"`
+	Family            string `json:"family"`
+	ParameterSize     string `json:"parameter_size"`
+	QuantizationLevel string `json:"quantization_level"`
+}
+
+// Tags answers GET /api/tags: the caller's own catalog in Ollama's list shape,
+// so an Ollama client pointed at this router lists what it may call. The
+// reference answers a fixed fake list behind the dashboard, where no Ollama
+// client can reach it.
+func (m *ModelsController) Tags(ctx contractshttp.Context) contractshttp.Response {
+	c, entries, ok := m.list(ctx)
+	if !ok {
+		return nil
+	}
+	modified := time.Unix(c.Created, 0).UTC().Format(time.RFC3339)
+	out := make([]tag, 0, len(entries))
+	for _, e := range entries {
+		sum := sha256.Sum256([]byte(e.ID))
+		out = append(out, tag{
+			Name: e.ID, Model: e.ID, ModifiedAt: modified, Digest: hex.EncodeToString(sum[:]),
+			Details: tagDetail{Format: "safetensors", Family: e.Provider},
+		})
+	}
+	respondJSON(ctx, nethttp.StatusOK, map[string]any{"models": out})
 	return nil
 }
 

@@ -42,6 +42,11 @@ type Base struct {
 	Health *controllers.HealthController
 	// Combos suggests and accepts a combo; nil leaves those routes out.
 	Combos *controllers.CombosController
+	// Settings reads and writes the dashboard's settings; nil leaves those
+	// routes out.
+	Settings *controllers.SettingsController
+	// Logs serves the Console Log ring; nil leaves its routes out.
+	Logs *controllers.LogsController
 }
 
 // Web declares the route tables. Every route goes through guard.Handle, which
@@ -145,6 +150,7 @@ func Web(router route.Route, guard *apphttp.Guard, base Base) {
 		guard.Handle(router, apphttp.ClassLLM, nethttp.MethodGet, "/v1/models/*path", m.Show)
 		guard.Handle(router, apphttp.ClassLLM, nethttp.MethodGet, "/v1beta/models", m.Gemini)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPost, "/api/models/test", m.Test)
+		guard.Handle(router, apphttp.ClassLLM, nethttp.MethodGet, "/api/tags", m.Tags)
 	}
 
 	if cb := base.Combos; cb != nil {
@@ -163,6 +169,18 @@ func Web(router route.Route, guard *apphttp.Guard, base Base) {
 		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodPost, "/api/oauth/exchange", o.Exchange)
 		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodPost, "/api/oauth/callback", o.Callback)
 		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/oauth/status", o.Status)
+	}
+
+	if s := base.Settings; s != nil {
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/settings", s.Show)
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodPatch, "/api/settings", s.Update)
+		guard.Handle(router, apphttp.ClassPublic, nethttp.MethodPost, "/api/locale", s.Locale)
+	}
+
+	if l := base.Logs; l != nil {
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/translator/console-logs", l.List)
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodDelete, "/api/translator/console-logs", l.Clear)
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/translator/console-logs/stream", l.Stream)
 	}
 
 	if cb := base.Callback; cb != nil {

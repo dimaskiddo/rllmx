@@ -353,3 +353,29 @@ func TestABadBudgetIsRefusedByName(t *testing.T) {
 		})
 	}
 }
+
+// TestTheCacheSwitchIsAKeyFieldAndTakesEffectAtOnce: the response cache is off
+// for a key until the dashboard turns it on, and turning it off deletes the row
+// rather than storing a false.
+func TestTheCacheSwitchIsAKeyFieldAndTakesEffectAtOnce(t *testing.T) {
+	k := newKeysRig(t, signedSession{})
+	id, _ := k.create(t, "a")
+	off, err := k.sq.Store.KV().ResponseCacheEnabled(context.Background(), id)
+	if err != nil || off {
+		t.Fatalf("a new key is on: %v %v", off, err)
+	}
+	rec := k.call(t, nethttp.MethodPut, "/api/keys/"+id, `{"responseCache":true}`, keysLocalPeer)
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"responseCache":true`) {
+		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+	if on, _ := k.sq.Store.KV().ResponseCacheEnabled(context.Background(), id); !on {
+		t.Fatal("the switch did not reach the store")
+	}
+	rec = k.call(t, nethttp.MethodPut, "/api/keys/"+id, `{"responseCache":false}`, keysLocalPeer)
+	if rec.Code != 200 || strings.Contains(rec.Body.String(), `"responseCache":true`) {
+		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+	if row, found, _ := k.sq.Store.KV().Get(context.Background(), repository.ScopeResponseCache, id); found {
+		t.Fatalf("the row survived: %q", row)
+	}
+}

@@ -23,6 +23,7 @@ Static files embedded with `go:embed`: one HTML shell per page, hand-written CSS
 |---|---|
 | i18n | `web/static/i18n/en.json` and `id.json`, key-based; the locale cookie is set by `/api/locale`. A new locale is a new JSON file |
 | Escaping | Dynamic text uses `textContent` or escaped attributes, never `innerHTML` from data |
+| Console Log | `GET /api/translator/console-logs` returns the ring and `GET …/stream` follows it: `init` with the ring, `lines` in batches, `clear` when the ring is emptied, a comment every 25 s. The lines are already redacted, so the page renders them as text and never re-fetches the log file |
 | Secrets | The API masks them and the dashboard never receives raw tokens. The one exception is a deliberate reveal: a signed-in operator asks for one key by id and the answer is logged (D330) |
 
 ### Provider Routes (`app/http/controllers`)
@@ -67,7 +68,8 @@ Plain HTML, ES modules, CSS; same flows and `/api/*` contract (design doc 18).
 - [ ] 4.0: written stack-spike decision in `ARCHITECTURE.md` before any framework enters `web/`
 - [ ] 4.1: shell, routing, i18n (`web/static/i18n/{en,id}.json`), login, keys, connections
 - [ ] 4.3: combos, usage charts, logs, settings, skills studio
-- [ ] Management API behind the pages: `/api/settings`, `/api/keys/*`, `/api/usage/*`, catalog sync, `/api/locale`, `/api/tags`, and the Console Log ring's read route
+- [x] `/api/settings`, `/api/locale`, `/api/tags` and the Console Log ring with its read and stream routes (2.6a); `/api/keys/*` (2.1)
+- [ ] `/api/models/*`, `/api/pricing`, `/api/combos/*` and catalog sync (2.6b, 2.6e); `/api/usage/*` (2.6c)
 - **Done when:** no `innerHTML` from data, every dynamic string escaped.
 
 ---

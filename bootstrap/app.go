@@ -60,6 +60,8 @@ func Boot(version, commit string) contractsfoundation.Application {
 			base.OAuth = &controllers.OAuthController{Service: h.OAuth, Auth: h.Auth, Server: h.Settings}
 			base.Callback = &controllers.CallbackController{Files: web.Static}
 			base.Health = &controllers.HealthController{DB: db, Tracker: h.Health}
+			base.Settings = &controllers.SettingsController{DB: db, Auth: h.Auth, Secure: h.Trust.SecureRequest}
+			base.Logs = &controllers.LogsController{Book: config.ConsoleLog()}
 			base.Keys = &controllers.KeysController{
 				DB: db, Quota: h.Limits, Codec: identity.NewKeys(facades.Config().GetString("auth.api_key_secret")),
 				Machine: identity.NewMachine(facades.Config().GetString("auth.machine_id_salt")),

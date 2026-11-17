@@ -31,11 +31,11 @@ Built (the node model list) and (the response-cache switch and the per-key flag)
 | Naming-filter flag (secret-free projection of the settings row) *(planned)* | `settings` / `pipeline` | 30 s | any settings write |
 | Response-cache switch and limits (Built: `{enabled, ttl, maxKb}` with defaults filled in) | `settings` / `response` | 30 s | any settings write |
 | Provider overrides (header values may be credentials) | `overrides` (memory only) / `all` | 30 s | any settings write |
-| Per-key response-cache flag | `apikeys` / `rc:<key id>` | 10 s | `KeyStore.Changed` (the key API,, calls it when it writes the flag) |
+| Per-key response-cache flag | `apikeys` / `rc:<key id>` | 10 s | `KeyStore.Changed`, which the key API calls when it writes the flag (`responseCache` on `PUT /api/keys/{id}`) |
 | A user node's own model list. Key: SHA-256 of node id and base URL, so an edited address misses by itself; the value is the model list and never a credential. The assembled catalog is not cached: it is a few small reads per request | `models` / `node:<hash>` | 30 s | expiry only |
 | Key lookups | `apikeys` / SHA-256 of the key | 10 s | `KeyStore.Changed` |
 
-- A settings write calls `Store.OnSettingsChange` after commit: the app purges `settings`, `overrides` and `response`, and resets the selector's settings copy and the auth snapshot. A write from another process (`rllmx artisan password:reset`) is not announced, so it shows only after the TTL.
+- A settings write calls `Store.OnSettingsChange` after commit: the app purges `settings`, `overrides` and `response`, and resets the selector's settings copy and the auth snapshot. Both hooks exist as of 2.6a, so a `requireLogin` change is seen by the next request. A write from another process (`rllmx artisan password:reset`) is not announced, so it shows only after the TTL.
 - The selector reads connections live, because locks and sticky counters change per request. `Selector.settingsDoc`, `auth.Snapshot` and `routing.Snapshot` are small typed copies held in process. The refresh-result cache (10 s, memory only, collapses concurrent renewals of one refresh token) is Built.
 
 ### Namespaces
@@ -100,8 +100,8 @@ Built and tested: `app/platform/cache` (groups, generational purge, the memory-o
 
 - [x] The response cache: switches, key, lookup, store, header, budget, the kv reader, the purge on a settings write
 - [x] The first readers of the cache: the node model list, the response-cache projection and the per-key flag
-- [ ] Writing the per-key flag, and calling `KeyStore.Changed` and removing the kv row when a key is deleted: the key API
-- [ ] Writing the `responseCache` setting: the settings API
+- [x] Writing the per-key flag (`responseCache` on `PUT /api/keys/{id}`), calling `KeyStore.Changed`, and removing the kv row when a key is deleted: the key API
+- [x] Writing the `responseCache` setting: `PATCH /api/settings`
 - [x] Client tool in the key
 
 ---

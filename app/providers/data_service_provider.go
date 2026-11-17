@@ -141,6 +141,11 @@ func openMain(app foundation.Application, s *settings.Store, version string) fun
 		}
 		warnings = append(warnings, authWarnings...)
 		onSettingsWrite(store, func() *cache.Cache { return cacheOrNil(app) })
+		// The guard's copy of the settings decides whether a login is required;
+		// a dashboard change must not wait for its TTL.
+		if h := HTTPOf(app); h != nil && h.Auth != nil {
+			store.OnSettingsChange(h.Auth.Store.Changed)
+		}
 
 		usage, err := openAnalytics(ctx, app, s, version)
 		if err != nil {

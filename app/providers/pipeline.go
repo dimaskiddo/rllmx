@@ -58,6 +58,10 @@ func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.P
 	}
 
 	settingsRead := settingsFor(store)
+	selector := account.NewSelector(account.SelectorOptions{Conns: store.Connections(), Settings: store.Settings(), Log: log})
+	// The selector keeps its own settings copy; a dashboard write must reach it
+	// on the next pick rather than at its TTL.
+	store.OnSettingsChange(selector.Changed)
 
 	client := network.NewClient(network.Options{
 		ConnectTimeout: h.Upstream.ConnectTimeout, MaxRedirects: -1, Allow: h.Upstream.Allow, BodyCap: -1,
@@ -71,7 +75,7 @@ func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.P
 	})
 	return pipeline.New(pipeline.Deps{
 		Resolver: &routing.Resolver{Registry: h.Registry, Snapshot: routing.NewSnapshot(routing.NewRepositorySource(store), nil)},
-		Selector: account.NewSelector(account.SelectorOptions{Conns: store.Connections(), Settings: store.Settings(), Log: log}),
+		Selector: selector,
 		Reporter: account.NewReporter(store.Connections(), log, nil),
 		Executor: mux.New(&executor.Default{Client: client}, mux.Options{
 			PeekIdle: h.Stream.Stall, VertexTokens: h.Google.Vertex, MimoCookies: h.Google.Mimo, OpenCodeClient: freeLane,
