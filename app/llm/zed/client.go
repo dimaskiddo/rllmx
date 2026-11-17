@@ -17,6 +17,7 @@ import (
 	"rllmx/app/platform/file"
 	"rllmx/app/store/dialect"
 	"rllmx/app/store/document"
+	"rllmx/app/store/repository"
 )
 
 // The fixed addresses of the hosted service and its sign-in page.
@@ -196,4 +197,10 @@ func UserAuth(a Account) string {
 		return a.Access
 	}
 	return a.UserID + " " + a.Access
+}
+
+// Profile reads the account's own record, which carries its plan and what is
+// left of it. The call travels on the account's own token, not a minted one.
+func (c *Client) Profile(ctx context.Context, conn repository.Connection) (int, []byte, error) {
+	return c.call(ctx, http.MethodGet, c.base()+"/client/users/me", accountOf(conn), "", nil)
 }

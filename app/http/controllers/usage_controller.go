@@ -52,7 +52,10 @@ type UsageController struct {
 	DB       func() *repository.Store
 	Registry *upstream.Registry
 	Inflight *health.Inflight
-	Log      log.Log
+	// Quota answers the per-connection reads and the reset routes; nil when no
+	// reader is wired.
+	Quota func() QuotaReader
+	Log   log.Log
 	// Loc and Now pin the clock in a test; nil reads time.Local and time.Now.
 	Loc         *time.Location
 	Now         func() time.Time

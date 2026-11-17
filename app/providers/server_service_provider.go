@@ -29,6 +29,7 @@ import (
 	"rllmx/app/llm/oauth"
 	"rllmx/app/llm/oauth/freebuff"
 	"rllmx/app/llm/oauth/github"
+	llmquota "rllmx/app/llm/quota"
 	"rllmx/app/llm/upstream"
 	"rllmx/app/platform/cache"
 	"rllmx/app/platform/file"
@@ -104,6 +105,8 @@ type HTTP struct {
 	Sticky   *combo.Sticky
 	// Inflight counts the requests running now, for the usage feed.
 	Inflight *health.Inflight
+	// Quota answers what is left of each connection's plan, for the dashboard.
+	Quota *llmquota.Reader
 }
 
 // HTTPOf returns the bound HTTP pieces. A missing binding means the provider is
@@ -214,7 +217,7 @@ func (r *ServerServiceProvider) Register(app foundation.Application) {
 		a.ClientAddr = trust.ClientAddr
 		login, refresher, minter, google, hosted, freebuff := newLogin(app, registry, oauthCfg, upstreamCfg)
 		pipe := NewPipelineSource(app)
-		return &HTTP{
+		h := &HTTP{
 			Pipe:          pipe,
 			Probes:        NewProbeSource(app, pipe),
 			Prices:        NewPriceSource(app),
@@ -243,7 +246,10 @@ func (r *ServerServiceProvider) Register(app foundation.Application) {
 			Freebuff:      freebuff,
 			ClaudeCLI:     upstream.NewClaudeCLI(upstreamCfg.ClaudeCLIVersion),
 			OAuthSettings: oauthCfg,
-		}, nil
+		}
+		h.Quota = newQuotaReader(h)
+		h.Quota.Cache = cacheOrNil(app)
+		return h, nil
 	})
 }
 

@@ -1,13 +1,14 @@
-# Design 16 — Usage, Pricing & Quota (`app/store/analytics/`, `app/store/analytics/`)
+# Design 16 — Usage, Pricing & Quota (`app/store/analytics/`, `app/llm/quota/`)
 
 **Status:** partial
 
-Built today: `app/store/analytics` — the usage store, writer, rollups, retention, the legacy importer and the dashboard's readers; `app/http/controllers` serves the usage routes; `app/gateway/health` holds the in-flight table.
+Built today: `app/store/analytics` — the usage store, writer, rollups, retention, the legacy importer and the dashboard's readers; `app/http/controllers` serves the usage routes; `app/gateway/health` holds the in-flight table; `app/llm/quota` holds the Antigravity selector gate and the per-connection readers the quota routes call.
 
 - The pipeline enqueues one row per request on every path: price from `upstream.Table`, error class, attempt and estimate flag.
 - The writer is wired.
 - A Claude CLI bypass reply ends in one row: status 200, no provider, zero tokens.
 - The readers are built (`analytics.KeyTotals`, `Sums`, `Buckets`, `LastSeen`, `Recent`, `Providers`) and every usage route below reads them.
+- `app/llm/quota` answers 22 providers from a per-connection route, and the two refill routes spend a grant or a credit.
 
 ### Usage
 
@@ -51,9 +52,24 @@ A row exists wherever a model departs from its family pattern: `claude-fable-5-2
 
 ### Quota
 
-The Antigravity limits are already read by `app/llm/quota` for the selector; Gemini 4 Carbon counts toward the general Gemini pool, so its three tiers are among the models whose quota is kept.
+The Antigravity limits are read by `app/llm/quota` for the selector; Gemini 4 Carbon counts toward the general Gemini pool, so its three tiers are among the models whose quota is kept.
 
-`/api/usage/{connectionId}` (step) will show the same readings. Per-provider fetchers report live limits through `/api/usage/{connectionId}` (GitHub, Gemini CLI, Antigravity, Claude, Codex, Kiro, Qoder, iFlow, GLM, MiniMax, Kimi, DeepSeek, OpenCode, Zed, Cursor and others). API key quota limits are a separate feature (design doc 21).
+**Readers.** `GET /api/usage/{connectionId}` answers what is left of one connection's plan through `quota.Reader`. The reader dispatches on the provider through one table (the parity list below) and resolves the credential the way a request does: the login's token renewed first when due, else the stored key.
+
+A connection this build cannot read answers the reference's two messages: an unsupported provider, and an auth type the provider's reader does not serve. A refusal the provider typed as a 401 or 403 is retried once after a renewal, never after matching a message (D367).
+
+- One field carries one unit: a window counts in its provider's own numbers, a balance is a credit with a unit, and the share left is always a percentage (D368).
+- A reading is cached by connection id for a minute and `force=1` skips the cache; nothing is keyed by a token (D369).
+- Every call has an 8 s deadline and a 1 MiB cap, and a whole reading 25 s, under the dashboard's 60 s write deadline (D370).
+- A failure answers the provider and its status, never the upstream body (D371).
+
+**Refills.** `POST /api/usage/{connectionId}/claude-reset` spends one of Anthropic's free grants and `GET`/`POST .../codex-reset-credits` lists and spends one of Codex's. Both are irreversible and sit behind a dashboard session. A grant id is checked against its own shape before any call, and a missing or bad one is a 400 (D378).
+
+**Providers.** Read: GitHub, Gemini CLI, Antigravity (through the selector's own fetcher), Claude, Codex, Kiro, GLM, MiniMax, Kimi, DeepSeek, OpenCode, Zed, Cursor, Grok CLI, CodeBuddy, Cline, Freebuff, Groq, Ollama, Vercel AI Gateway and Command Code.
+
+Deferred until their handshake is designed: MiniMax Code (a signed account API), Xiaomi MiMo (a cookie SSO chain) and Qoder (a pasted token exchanged for a job token) (D379). API key quota limits are a separate feature (design doc 21).
+
+**Auto-ping.** The two settings are read and written in the reference's shape — a switch, or an object of opted-in connections and their anchored schedules — and nothing pings yet; the scheduler is its own step (D380).
 
 ---
 
@@ -62,17 +78,20 @@ The Antigravity limits are already read by `app/llm/quota` for the selector; Gem
 | Endpoint | Package | Status |
 |---|---|---|
 | `/api/usage/stats`, `chart`, `history`, `logs`, `request-logs`, `providers`, `active-providers`, `stream` | `app/http/controllers`, `app/store/analytics`, `app/gateway/health` | done (diverged) |
-| `/api/usage/{connectionId}`, `claude-reset`, `codex-reset-credits` | `app/store/analytics` | todo (quota fetchers, 2.6d) |
+| `/api/usage/{connectionId}`, `claude-reset`, `codex-reset-credits` | `app/llm/quota`, `app/http/controllers` | done (diverged); MiniMax Code, Xiaomi MiMo and Qoder deferred |
+| `/api/providers/client` | `app/http/controllers` | done (`design doc 4`) |
 | `/api/usage/request-details` | none | out (stored bodies) |
 
 ---
 
 ## Remaining work
-**The usage rows, the readers and the dashboard's usage routes are built; the per-connection quota readers wait for step 2.6d.**
+**The usage rows, the readers, every usage route and the per-connection quota readers are built. What stays open is the quota auto-ping scheduler, three providers whose reading needs a handshake of its own, and a paged history.**
 
 - [x] `/api/usage/*` over `requests` and the rollups, with the live feed; `history` answers the all-time totals (D363), and a keyset-paged history is not built
 - [x] Pricing lookup over the embedded baseline and the `pricing` overrides; the pipeline's usage hook calls it
 - [x] Per-key request, token and cost budgets with the day, month and total windows, checked before dispatch (step 2.3, `design doc 21`)
+- [x] `/api/usage/{connectionId}` and the two refill routes, 22 providers; MiniMax Code, Xiaomi MiMo and Qoder await a handshake design (D379)
+- [ ] Quota auto-ping: the runner, its anchored slots and the tiny request that warms a window (the settings shape is done, D380)
 
 ---
 
@@ -100,6 +119,20 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 365 | `providers` comes from the day rollups | The reference reads a `requestDetails` table this build does not have, and its filter forgets a provider once that table is pruned |
 | 366 | No `last10Minutes`, no de-duplication of the recent list, no skills suffix in a log line **(scope cut)** | No page reads the first, one row per request already rules out the second, and skills are not built (step 3.2) |
 | 355 | Every pricing route answers the merged table: the embedded provider rows with the overrides laid over them, and a write applies to the next request through the reloaded source **(built)** | The reference's PATCH answers only the overrides while GET answers a merged map of two providers, and its edit form sends the whole map back, turning every default into a stored override |
+| 367 | A refused credential is retried once when the fetcher saw a 401 or 403, and the refusal is typed, not read out of a message **(built)** | The reference retries when the answer's message contains `expired`, `authentication`, `unauthorized`, `401` or `re-authorize`, so a provider's wording decides whether a token is renewed |
+| 368 | One unit per field: a window counts in the provider's own numbers, a balance is `isCreditBalance` with a `unit`, and the share left is always `remainingPercentage` **(built)** | The reference's `remaining` is a count for GitHub, Kiro and Qoder, a percentage for Claude and Codex, and unclamped for Vercel, so the page cannot render one bar rule |
+| 369 | A reading is cached by connection id for a minute, `force=1` skips it, and a failed reading is not cached **(built)** | The reference caches by the raw access token, never evicts, and its Claude entry keeps returning a failed result until a forced read |
+| 370 | Every call is bounded at 8 s and 1 MiB, and a reading at 25 s **(built)** | The reference sets no timeout on most fetchers and reads the whole body, so one silent endpoint holds a dashboard request open |
+| 371 | A failed reading answers the provider's name and status; no upstream body reaches a message **(built)** | The reference echoes the full body in GitHub's and Kiro's errors and in Zed's, which can carry account data |
+| 372 | Claude's legacy organization fallback (`/v1/settings`, then `/v1/organizations/{id}/usage`) is not built **(scope cut)** | It returns the raw organization usage as if it were quotas, and it joins an upstream-supplied id into a path unencoded |
+| 373 | Grok CLI's gRPC-web fallback is not built **(scope cut)** | It only fires when the billing calls answer no rows, and it hand-decodes a protobuf frame for one percentage |
+| 374 | Vercel's remaining share is taken against the balance plus what was spent, and `Used (USD)` carries the spend **(built)** | The reference divides by a hardcoded $5 monthly credit, which overstates a funded account and inverts the two rows' meaning |
+| 375 | An Ollama window that names no `remaining_percent` is left out **(built)** | The reference reads a missing share as 100% left, so an unknown window looks full |
+| 376 | Kimi's `limits[]` entries each keep a row **(built)** | The reference writes every entry to one `Ratelimit` key, so only the last survives |
+| 377 | MiniMax's refusal is read from the status and the plan's own `base_resp` code, and a 200 body is never scanned **(built)** | The reference runs an invalid-key regex over the body of every answer, so a successful answer that mentions "coding plan" is reported as a bad key |
+| 378 | A reset grant id outside its shape answers 400 before any call **(built)** | The reference throws from the service and answers 500 for a missing or malformed grant |
+| 379 | MiniMax Code, Xiaomi MiMo and Qoder have no reading: their calls need a signed account API, a cookie SSO chain and a pasted token exchanged for a job token **(scope cut)** | Each is a handshake of its own; the three land together with the design that covers them |
+| 380 | Quota auto-ping is not built; the settings are read and written in the reference's shape only **(scope cut)** | The scheduler needs its own design pass (tick ownership, restart dedupe, which call starts a window); the settings shape had to land now so a reference database round-trips |
 
 ---
 

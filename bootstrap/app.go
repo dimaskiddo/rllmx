@@ -81,6 +81,12 @@ func Boot(version, commit string) contractsfoundation.Application {
 					return 0
 				},
 				DB: db, Registry: h.Registry, Inflight: h.Inflight, Log: facades.Log(),
+				Quota: func() controllers.QuotaReader {
+					if h.Quota == nil {
+						return nil
+					}
+					return h.Quota
+				},
 			}
 			base.Media = &controllers.MediaController{
 				EmbeddingsPipe: media.Get, ImagesPipe: media.Get, SpeechPipe: media.Get,

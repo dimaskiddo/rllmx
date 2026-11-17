@@ -84,10 +84,11 @@ The status column is the v1 target, not the build state: behavior lands later. U
 | `stickyRoundRobinLimit`, `providerStrategies`, `fallbackStrategy` | honored |
 | `comboStrategy`, `comboStickyRoundRobinLimit`, `comboStrategies` | honored: the combo routing reads them through the same 5 s settings cache (`design doc 4`). A `comboStrategies[name]` entry carries `fallbackStrategy`, and for a smart or fusion combo `smartPolicy`, `sessionSticky`, `confidenceThreshold`, `routerModel`, `judgeModel` and `fusionTuning` (`minPanel`, `stragglerGraceMs`, `panelHardTimeoutMs`); none of those has a top-level form |
 | `capacityAdapter` | stored: the pool is not built (`D337`) |
-| `providerThinking`, `quotaVisibility` | honored |
+| `providerThinking` | stored; read by no code yet |
+| `quotaVisibility` | stored; the quota page reads it (`design doc 18`) |
 | `providerOverrides` | honored: read and written by the override routes; applied to an upstream call by the executors |
 | `rtkEnabled`, `headroomEnabled`, `headroomUrl`, `headroomCompressUserMessages`, `headroomTimeoutMs`, `cavemanEnabled`, `cavemanLevel`, `ponytailEnabled`, `ponytailLevel`, `customPromptEnabled`, `customPrompt` | honored |
-| `claudeAutoPing`, `codexAutoPing` | honored |
+| `claudeAutoPing`, `codexAutoPing` | stored and round-tripped in the reference's shape (a switch, or an object of connections and schedules); no scheduler reads them yet (`design doc 16`) |
 | `responseCache` | honored (`{enabled, ttlSeconds, maxEntryKb}`, default off; D24, D148); written by the settings API |
 | `ccFilterNaming` | honored (answers the Claude CLI topic-naming probe locally; absent = off; dashboard toggle with the settings API) |
 | `autoPlan*`, `<skillId>Enabled`, `<skillId>RoutingMode`, `ecc_auto_skill_router*` (extended) | honored |

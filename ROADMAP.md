@@ -25,7 +25,7 @@ Status words: **built** (implemented and tested), **partial** (some behavior mis
 | PostgreSQL storage | built |
 | Import from an existing 9router database (config and usage history) | built |
 | Usage rows, pricing and cost | built |
-| Usage dashboard routes (stats, chart, history, logs, providers, live feed) and quota views | built (routes); pages planned |
+| Usage dashboard routes (stats, chart, history, logs, providers, live feed), per-connection quota readings with the two refill routes, and the client connection list | built (routes); pages planned |
 
 ## Requests
 
@@ -67,6 +67,7 @@ Status words: **built** (implemented and tested), **partial** (some behavior mis
 | Login and callback page | built |
 | Dashboard management API (settings, keys, models and aliases, custom and disabled models, availability, pricing, combos and presets, console log) | built |
 | Usage API (stats, chart, history, logs, providers, active providers, live feed) | built |
+| Quota API (per-connection readings, `providers/client`, the two refill routes) | built; quota auto-ping planned |
 | Usage and quota pages | planned |
 | Provider and key pages | planned |
 

@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/tidwall/gjson"
+
 	"rllmx/app/platform/text"
 )
 
@@ -215,6 +217,23 @@ type SessionHeader struct {
 type AccountHeader struct {
 	Name string   `json:"name"`
 	From []string `json:"from"`
+}
+
+// Value reads the header's value from a connection's stored data: the provider
+// specific data first, then the row's own fields.
+func (a *AccountHeader) Value(data string) string {
+	if a == nil {
+		return ""
+	}
+	for _, field := range a.From {
+		if v := gjson.Get(data, "providerSpecificData."+field).String(); v != "" {
+			return v
+		}
+		if v := gjson.Get(data, field).String(); v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // Refresh is how and when a login's access token is renewed.

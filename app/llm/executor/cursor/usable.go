@@ -10,6 +10,13 @@ import (
 	"rllmx/app/llm/upstream"
 )
 
+// Headers are the identity headers of the client the account belongs to, for a
+// call the executor does not make. They carry no credential framing of their
+// own beyond the token.
+func Headers(token, machineID string) map[string]string {
+	return headers(token, machineID, false)
+}
+
 // UsableModels reads the ids the agent service says this account may use. It is
 // the same answer the executor reads to resolve the picker's alias; the
 // pipeline's catalogue guard asks it too, so one reading serves both.

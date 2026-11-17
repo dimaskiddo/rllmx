@@ -249,3 +249,41 @@ func TestTheConsoleLogNeedsASession(t *testing.T) {
 		t.Fatalf("%d without a session", code)
 	}
 }
+
+func TestAnAutoPingSettingKeepsTheReferenceShape(t *testing.T) {
+	m := newMgmtRig(t)
+	m.settingsRoutes(&SettingsController{DB: func() *repository.Store { return m.st.Store }, Auth: m.auth})
+	body := `{"claudeAutoPing":{"connections":{"c1":true},"schedules":{"c1":{"enabled":true,"anchor":"09:30","windowHours":5,"slotsPerDay":3,"timezone":"Asia/Jakarta"}},"note":"kept"}}`
+	code, out, raw := m.call(nethttp.MethodPatch, "/api/settings", body, true)
+	if code != 200 {
+		t.Fatalf("%d %s", code, raw)
+	}
+	stored := out["claudeAutoPing"].(map[string]any)
+	if stored["note"] != "kept" {
+		t.Fatalf("an unknown key was dropped: %v", stored)
+	}
+	if stored["connections"].(map[string]any)["c1"] != true {
+		t.Fatalf("the opt-in was lost: %v", stored)
+	}
+	if out["codexAutoPing"] != false {
+		t.Fatalf("an unset switch reads %v", out["codexAutoPing"])
+	}
+
+	code, out, raw = m.call(nethttp.MethodPatch, "/api/settings", `{"claudeAutoPing":true}`, true)
+	if code != 200 || out["claudeAutoPing"] != true {
+		t.Fatalf("a switch %d %s", code, raw)
+	}
+
+	for _, bad := range []string{
+		`{"codexAutoPing":"yes"}`,
+		`{"codexAutoPing":{"connections":{"c1":"on"}}}`,
+		`{"codexAutoPing":{"schedules":{"c1":{"anchor":"25:00"}}}}`,
+		`{"codexAutoPing":{"schedules":{"c1":{"windowHours":0.1}}}}`,
+		`{"codexAutoPing":{"schedules":{"c1":{"windowHours":5,"slotsPerDay":9}}}}`,
+	} {
+		code, _, raw = m.call(nethttp.MethodPatch, "/api/settings", bad, true)
+		if code != 400 {
+			t.Fatalf("%s was stored: %d %s", bad, code, raw)
+		}
+	}
+}

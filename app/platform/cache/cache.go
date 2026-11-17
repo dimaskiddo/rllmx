@@ -52,6 +52,9 @@ const (
 	// credential and stays in memory, because a sign-in must finish on the
 	// instance that started it.
 	Discovery Group = "discovery"
+	// Quota caches an account's quota reading, which holds no credential and is
+	// stale after a minute anyway.
+	Quota Group = "quota"
 )
 
 func (g Group) shared() bool {

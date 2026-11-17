@@ -87,7 +87,7 @@ sequenceDiagram
 | `/api/providers/{id}/models` | `app/http/controllers` | partial (nodes: the node's own `/models`; registry: embedded list plus `customModels`, minus `disabledModels`, no request; both Built; live catalog per OAuth provider) |
 | `/api/provider-nodes` (list, create), `/{id}` (update, delete) | `app/http/controllers` | done |
 | `/api/provider-nodes/validate` | `app/http/controllers` | done |
-| `/api/providers/client` (usage list, filters, totals) | `app/http/controllers` | todo (quota fetchers) |
+| `/api/providers/client` (usage list, filters, totals) | `app/http/controllers` | done (only the connections a quota reading answers) |
 | `/api/providers/test-batch`, `/api/providers/{id}/test-models`, `/api/models/test` | `app/http/controllers`, `app/gateway/probe` | done (llm models only) |
 | `/api/providers/suggested-models`, `/api/providers/kilo/free-models` | `app/http/controllers` | todo (fixed URL list, guarded client) |
 | `/api/models/*` (alias, custom, disabled, availability) | `app/http/controllers` | done (D352, D353, D357); `PUT /api/models` is a scope cut (D359); catalog-sync waits for 2.6e |

@@ -19,23 +19,27 @@ func (t Targets) Format(ctx context.Context, conn repository.Connection, model s
 	if t.Client == nil {
 		return "", ErrUnknownTarget
 	}
+	format, err := t.Client.Format(ctx, accountOf(conn), model)
+	if errors.Is(err, ErrUnknownTarget) {
+		return "", err
+	}
+	return format, err
+}
+
+// accountOf reads a login as the client presents it.
+func accountOf(conn repository.Connection) Account {
 	d := conn.Doc()
 	psd, _ := d.GetRaw("providerSpecificData")
 	access, _ := d.GetString("accessToken")
 	if access == "" {
 		access, _ = d.GetString("apiKey")
 	}
-	a := Account{
+	return Account{
 		Access:         access,
 		UserID:         stringField(psd, "userId", "zedUserId"),
 		SystemID:       stringField(psd, "systemId", "zedSystemId"),
 		OrganizationID: stringField(psd, "organizationId", "zedOrganizationId"),
 	}
-	format, err := t.Client.Format(ctx, a, model)
-	if errors.Is(err, ErrUnknownTarget) {
-		return "", err
-	}
-	return format, err
 }
 
 // stringField reads the first of several names a field may be stored under.

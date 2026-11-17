@@ -5,6 +5,7 @@ import (
 	nethttp "net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
@@ -59,9 +60,11 @@ type settingsView struct {
 	CapacityAdapter            json.RawMessage `json:"capacityAdapter"`
 	ResponseCache              json.RawMessage `json:"responseCache"`
 
-	ClaudeAutoPing bool `json:"claudeAutoPing"`
-	CodexAutoPing  bool `json:"codexAutoPing"`
-	HasPassword    bool `json:"hasPassword"`
+	// ClaudeAutoPing and CodexAutoPing are the reference's own values: false, or
+	// an object holding the connections opted in and their schedules.
+	ClaudeAutoPing json.RawMessage `json:"claudeAutoPing"`
+	CodexAutoPing  json.RawMessage `json:"codexAutoPing"`
+	HasPassword    bool            `json:"hasPassword"`
 }
 
 // Show answers GET /api/settings.
@@ -163,8 +166,8 @@ func (c *SettingsController) view(d document.Doc) settingsView {
 		ProviderStrategies:         rawObject(d, "providerStrategies", "{}"),
 		CapacityAdapter:            rawObject(d, "capacityAdapter", "{}"),
 		ResponseCache:              rawObject(d, "responseCache", "{}"),
-		ClaudeAutoPing:             rawBool(d, "claudeAutoPing", false),
-		CodexAutoPing:              rawBool(d, "codexAutoPing", false),
+		ClaudeAutoPing:             rawPing(d, "claudeAutoPing"),
+		CodexAutoPing:              rawPing(d, "codexAutoPing"),
 	}
 	v.HasPassword = v.HasPassword || rawString(d, "password", "") != ""
 	if c.Auth != nil && c.Auth.OIDCUsable != nil {
@@ -216,8 +219,8 @@ type settingRule func(json.RawMessage) (string, string)
 var settingsRules = map[string]settingRule{
 	"requireLogin":               boolRule,
 	"requireApiKey":              boolRule,
-	"claudeAutoPing":             boolRule,
-	"codexAutoPing":              boolRule,
+	"claudeAutoPing":             autoPingRule,
+	"codexAutoPing":              autoPingRule,
 	"authMode":                   enumRule("password", "oidc", "saml", "sso", "both"),
 	"ssoType":                    enumRule("oidc", "saml"),
 	"oidcIssuerUrl":              urlRule("https", 2048),
@@ -247,6 +250,93 @@ func boolRule(raw json.RawMessage) (string, string) {
 		return string(raw), ""
 	}
 	return "", "must be true or false"
+}
+
+// rawPing reads an auto-ping setting, which is false or an object.
+func rawPing(d document.Doc, key string) json.RawMessage {
+	switch v := rawOf(d, key); {
+	case v.IsObject():
+		return json.RawMessage(v.Raw)
+	case v.Type == gjson.True:
+		return json.RawMessage("true")
+	}
+	return json.RawMessage("false")
+}
+
+// autoPingRule accepts the reference's two shapes for an auto-ping setting: a
+// switch, or an object naming the connections and their schedules. Unknown keys
+// inside the object are kept, so a value another build wrote survives a save.
+func autoPingRule(raw json.RawMessage) (string, string) {
+	switch string(raw) {
+	case "true", "false":
+		return string(raw), ""
+	}
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &body); err != nil {
+		return "", "must be true, false, or an object of connections and schedules"
+	}
+	for key, value := range body {
+		switch key {
+		case "connections":
+			var on map[string]bool
+			if err := json.Unmarshal(value, &on); err != nil {
+				return "", "connections must map a connection id to true or false"
+			}
+		case "schedules":
+			var schedules map[string]json.RawMessage
+			if err := json.Unmarshal(value, &schedules); err != nil {
+				return "", "schedules must map a connection id to a schedule"
+			}
+			for _, s := range schedules {
+				if msg := scheduleRule(s); msg != "" {
+					return "", msg
+				}
+			}
+		}
+	}
+	out, err := json.Marshal(body)
+	if err != nil {
+		return "", "must be true, false, or an object of connections and schedules"
+	}
+	return string(out), ""
+}
+
+// scheduleRule checks one anchored ping schedule, the shape the scheduler reads.
+func scheduleRule(raw json.RawMessage) string {
+	var s struct {
+		Enabled     *bool    `json:"enabled"`
+		Anchor      string   `json:"anchor"`
+		WindowHours *float64 `json:"windowHours"`
+		SlotsPerDay *int     `json:"slotsPerDay"`
+	}
+	if err := json.Unmarshal(raw, &s); err != nil && string(raw) != "null" {
+		return "a schedule must be an object"
+	}
+	if s.Anchor != "" {
+		head, tail, ok := strings.Cut(s.Anchor, ":")
+		hour, err1 := strconv.Atoi(head)
+		minute, err2 := strconv.Atoi(tail)
+		if !ok || err1 != nil || err2 != nil || hour > 23 || minute > 59 || hour < 0 || minute < 0 {
+			return "an anchor must read HH:MM"
+		}
+	}
+	window := 5.0
+	if s.WindowHours != nil {
+		window = *s.WindowHours
+	}
+	if window < 0.5 || window > 24 {
+		return "windowHours must be between 0.5 and 24"
+	}
+	if s.SlotsPerDay != nil {
+		max := int(24 / window)
+		if max < 1 {
+			max = 1
+		}
+		if *s.SlotsPerDay < 1 || *s.SlotsPerDay > max {
+			return "slotsPerDay is out of range for the window"
+		}
+	}
+	return ""
 }
 
 func intRule(min, max int) settingRule {

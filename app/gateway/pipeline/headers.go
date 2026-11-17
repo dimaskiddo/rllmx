@@ -49,18 +49,5 @@ func dedupe(in []string) []string {
 // the stored fields that holds one, in the connection's data or its provider
 // specific data.
 func accountHeader(conn repository.Connection, a *upstream.AccountHeader) string {
-	if a == nil {
-		return ""
-	}
-	d := conn.Doc()
-	psd, _ := d.GetRaw("providerSpecificData")
-	for _, field := range a.From {
-		if v := gjson.Get(psd, field).String(); v != "" {
-			return v
-		}
-		if v, _ := d.GetString(field); v != "" {
-			return v
-		}
-	}
-	return ""
+	return a.Value(conn.Data)
 }

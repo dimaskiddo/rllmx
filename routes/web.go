@@ -105,6 +105,7 @@ func Web(router route.Route, guard *apphttp.Guard, base Base) {
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPost, "/api/providers/validate", p.Validate)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPost, "/api/providers/test-batch", p.TestBatch)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPost, "/api/providers/bulk", p.BulkCreate)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/providers/client", p.Client)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/providers/{id}", p.Show)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPut, "/api/providers/{id}", p.Update)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodDelete, "/api/providers/{id}", p.Delete)
@@ -196,6 +197,10 @@ func Web(router route.Route, guard *apphttp.Guard, base Base) {
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/usage/providers", u.Providers)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/usage/active-providers", u.ActiveProviders)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/usage/stream", u.Stream)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/usage/{id}", u.Connection)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPost, "/api/usage/{id}/claude-reset", u.ClaudeReset)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/usage/{id}/codex-reset-credits", u.CodexCredits)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPost, "/api/usage/{id}/codex-reset-credits", u.CodexResetCredits)
 	}
 
 	if o := base.OAuth; o != nil {
