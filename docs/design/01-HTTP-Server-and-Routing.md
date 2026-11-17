@@ -48,7 +48,7 @@ Outermost first: path check and rewrite, recover, request id, access log, securi
 | `GET /v1/models`, `/v1/models/info?id=`, `/v1/models/{provider}/{model}`, `GET /v1beta/models` | The models the caller can call: connections, custom models and alias targets, minus disabled ones; a restricted key sees its own list. `/v1/models/*path` is a catch-all because the id holds a slash (D225, D226) |
 | `POST /v1/api/chat` | Ollama chat |
 | `POST /v1/embeddings`, `/v1/images/generations`, `/v1/audio/*`, `/v1/videos/*`, `/v1/search`, `/v1/web/fetch` | Media (design doc 13) |
-| `POST /v1/systemone` | Smart router entry |
+| `POST /v1/systemone` | Smart router entry; not routed yet, as nace and v1m are deferred (design doc 8). The `/systemone` rewrite is in place |
 | `/api/*` | Dashboard JSON API (design doc 18) |
 | `GET /api/health` | Unauthenticated liveness |
 | `GET /api/init` | `{"initialized":true,"needsSetup":<no connection configured>}`. An unreadable count answers `needsSetup:false`, so a broken store never becomes a setup prompt |
@@ -173,7 +173,8 @@ The guard, the server and the middleware stack are built. The design doc stays `
 
 - [x] The request guard runs on a real authenticator, with sessions, API keys, OIDC and SAML
 - [x] The data runner closes the stores, the writer and the cache in shutdown-priority order
-- [ ] `/v1`, `/v1beta` and `/api/*` client and dashboard routes, and the pages
+- [x] `/v1`, `/v1beta` and `/api/*` client and dashboard routes
+- [ ] The dashboard pages (`design doc 18`)
 
 Nothing in the listener, the middleware order, the path rules, CORS, the body cap, the deadlines or the two base routes is outstanding.
 

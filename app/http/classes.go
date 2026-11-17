@@ -41,7 +41,7 @@ func IsDashboardAPI(p string) bool { return p == "/api" || strings.HasPrefix(p, 
 // handler bounds its own work instead.
 func IsLongDashboardCall(p string) bool {
 	switch p {
-	case "/api/health/latency-stream", "/api/providers/test-batch", "/api/translator/console-logs/stream":
+	case "/api/health/latency-stream", "/api/providers/test-batch", "/api/translator/console-logs/stream", "/api/usage/stream":
 		return true
 	}
 	return strings.HasSuffix(p, "/test-models")

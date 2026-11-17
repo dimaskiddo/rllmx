@@ -49,6 +49,8 @@ type Base struct {
 	Pricing *controllers.PricingController
 	// Logs serves the Console Log ring; nil leaves its routes out.
 	Logs *controllers.LogsController
+	// Usage serves the usage pages and their feed; nil leaves those routes out.
+	Usage *controllers.UsageController
 }
 
 // Web declares the route tables. Every route goes through guard.Handle, which
@@ -183,6 +185,17 @@ func Web(router route.Route, guard *apphttp.Guard, base Base) {
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/pricing", p.Show)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPatch, "/api/pricing", p.Update)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodDelete, "/api/pricing", p.Reset)
+	}
+
+	if u := base.Usage; u != nil {
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/usage/stats", u.Stats)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/usage/chart", u.Chart)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/usage/history", u.History)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/usage/logs", u.Logs)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/usage/request-logs", u.Logs)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/usage/providers", u.Providers)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/usage/active-providers", u.ActiveProviders)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/usage/stream", u.Stream)
 	}
 
 	if o := base.OAuth; o != nil {

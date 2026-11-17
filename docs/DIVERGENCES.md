@@ -23,14 +23,14 @@ Each row carries a stable identifier, what we do differently and why it is bette
 | 13 | Media Endpoints | 33 | [13-…](design/13-Media-Endpoints.md) |
 | 14 | Outbound Network | 15 | [14-…](design/14-Outbound-Network.md) |
 | 15 | Storage | 19 | [15-…](design/15-Storage.md) |
-| 16 | Usage, Pricing & Quota | 14 | [16-…](design/16-Usage-Pricing-and-Quota.md) |
+| 16 | Usage, Pricing & Quota | 21 | [16-…](design/16-Usage-Pricing-and-Quota.md) |
 | 17 | Configuration | 8 | [17-…](design/17-Configuration.md) |
 | 19 | Go Interfaces | 0 | [19-…](design/19-Go-Interfaces.md) |
 | 20 | Cache | 5 | [20-…](design/20-Cache.md) |
 | 21 | API Key Limits | 2 | [21-…](design/21-API-Key-Limits.md) |
 | 22 | Deferred & Out of Scope | 3 | [22-…](design/22-Deferred-and-Out-of-Scope.md) |
 | 23 | CLI | 4 | [23-…](design/23-CLI.md) |
-| **Total** | | **357** | |
+| **Total** | | **364** | |
 
 ## Kinds
 
@@ -38,15 +38,15 @@ Each row's Why column says which kind it is. Every number is counted once, by th
 
 | Kind | Meaning | Count | Numbers |
 |---|---|---|---|
-| Improvement | Differs from the reference for a stated reason | 286 | Every row with no other marker |
+| Improvement | Differs from the reference for a stated reason | 291 | Every row with no other marker |
 | New feature | Something the reference does not have | 7 | 24, 32, 148, 284, 310, 336, 25 |
-| Trade-off | A deliberate cost | 14 | 33, 81, 91, 138, 141, 286, 287, 289, 290, 317, 332, 334, 358 |
-| Scope cut | A reference feature not adopted | 31 | 3, 6, 9, 10, 11, 16, 48, 89, 105, 158, 159, 160, 161, 162, 202, 214, 250, 256, 260, 273, 278, 279, 320, 322, 337, 346, 347, 359 |
+| Trade-off | A deliberate cost | 15 | 33, 81, 91, 138, 141, 286, 287, 289, 290, 317, 332, 334, 358, 360 |
+| Scope cut | A reference feature not adopted | 32 | 3, 6, 9, 10, 11, 16, 48, 89, 105, 158, 159, 160, 161, 162, 202, 214, 250, 256, 260, 273, 278, 279, 320, 322, 337, 346, 347, 359, 366 |
 | Planned | Resolved by a named later change | 4 | 25, 66, 102, 321 |
 | Temporary | Stopgap until a named later change | 3 | 93, 104, 325 |
 | Retired | A framework choice or a rule that no longer applies, or a behavior now the reference's own; the identifier stays citable | 12 | 193, 196, 197, 198, 199, 201, 222, 236, 244, 245, 277, 325 |
 | Built as planned | Was only a schedule change and is now done | 1 | 216 |
-| **Total** | | **357** | |
+| **Total** | | **364** | |
 
 How a row is counted:
 - A row with no marker is an improvement. A row marked *partial* is one too, and so are 112-114 and 118, where only a sub-point waits for later work.

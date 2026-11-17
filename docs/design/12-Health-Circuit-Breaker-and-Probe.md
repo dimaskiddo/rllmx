@@ -29,7 +29,7 @@
 |---|---|---|
 | `/api/combos/suggest`, `/suggest/accept` | `app/gateway/combo`, `app/http/controllers` | done |
 | `/api/health/latency-stream` | `app/http/controllers`, `app/gateway/health` | done |
-| `/api/usage/active-providers` | `app/gateway`, `app/health` | todo (`design doc 16`, with the usage routes) |
+| `/api/usage/active-providers` | `app/gateway/health`, `app/http/controllers` | done (the usage routes, `design doc 16`) |
 | `/api/providers/test-batch`, `/api/providers/{id}/test-models`, `/api/models/test` | `app/http/controllers`, `app/gateway/probe` | done (llm models only) |
 | `/api/headroom/*` (status, proxy) | `app/saver` | todo |
 | `/api/skills`, `/api/skills/sync-ecc` (dashboard action, not CLI) | `app/skill` | todo |
@@ -38,14 +38,14 @@
 ---
 
 ## Remaining work
-**Health, the breaker and the probe are built. The usage route and the later areas wait for their steps.**
+**Health, the breaker, the probe and the live usage route are built. The later areas wait for their steps.**
 
 - [x] `app/gateway/health`: the health table, the breaker, latency and success rate
 - [x] Routing on the breaker: combo order
 - [x] `app/gateway/probe`: the model probe, its cache and the background runner
 - [x] `providers/test-batch`, `providers/{id}/test-models`, `models/test` through the pipeline
 - [x] `/api/combos/suggest` and `/suggest/accept`, `/api/health/latency-stream`
-- [ ] `/api/usage/active-providers` with the usage routes (`design doc 16`)
+- [x] `/api/usage/active-providers` and the in-flight table with the usage routes (`design doc 16`)
 - [ ] `/api/headroom/*`, `/api/skills*`, `/api/auto-plan/settings` with their areas
 
 ---

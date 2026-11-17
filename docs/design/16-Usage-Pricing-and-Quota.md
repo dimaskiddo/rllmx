@@ -2,18 +2,32 @@
 
 **Status:** partial
 
-Built today: `app/store/analytics` — the usage store, writer, rollups, retention and the legacy importer.
+Built today: `app/store/analytics` — the usage store, writer, rollups, retention, the legacy importer and the dashboard's readers; `app/http/controllers` serves the usage routes; `app/gateway/health` holds the in-flight table.
 
 - The pipeline enqueues one row per request on every path: price from `upstream.Table`, error class, attempt and estimate flag.
 - The writer is wired.
 - A Claude CLI bypass reply ends in one row: status 200, no provider, zero tokens.
-- The per-key usage reader is built (`analytics.KeyTotals`); the wider `app/store` query surface and the pricing API are not.
+- The readers are built (`analytics.KeyTotals`, `Sums`, `Buckets`, `LastSeen`, `Recent`, `Providers`) and every usage route below reads them.
 
 ### Usage
 
 When a request completes, the pipeline enqueues one row to the analytics writer. There is no switch. Nothing else is stored about the request. Cache hits are rows too (`cached` set, zero cost). The modality (chat, embeddings, images, audio, video, search, fetch) is the `endpoint`.
 
-`/api/usage/*` (stats, charts, history, per key, per connection) reads only `requests` and the rollups. History pages use a keyset cursor. A bounded in-memory ring and an SSE emitter feed `/api/usage/stream`; active requests are tracked in memory.
+**Readers.** `/api/usage/{stats,chart,history,logs,request-logs,providers,active-providers,stream}` read only `requests` and the rollups:
+- `stats` and `chart` take `today`, `24h`, `7d`, `30d`, `60d` or `all`.
+- `today` and `24h` read the hour rollups, which live inside the request retention. Longer periods read the day rollups for the days before the oldest kept hour and the hour rollups from that day on, so a day whose hours were pruned is still counted once, whole.
+- The reporting zone is the server's own (`TZ`, `time.Local`); a day taken from the day rollups can only keep its UTC date (D360). `24h` is the 24 clock hours ending now (D361).
+- `history` answers the all-time totals, as the reference does, and `request-details` stays out because it serves stored bodies.
+- `logs` and `request-logs` are the 200 newest rows, one line each.
+- `providers` is the distinct provider list from the day rollups, named by node then registry.
+- `byApiKey` is keyed by the key's id and shows the masked key, never the key (D362).
+- `last10Minutes`, the recent list's de-duplication and the log line's skills suffix are left out (D366).
+
+**Live.** `app/gateway/health`'s in-flight table counts every attempt from the moment an account is chosen until its answer, a stream included, is finished. The release is idempotent, so a double end cannot drive another request's count down (D364).
+
+`stats` carries `pending`, `activeRequests`, `recentRequests` and `errorProvider`; `/api/usage/active-providers` counts the providers with a request running.
+
+`/api/usage/stream` sends those four live fields on connect and again when a request starts or ends or a batch of rows lands. It never recomputes the totals (D363).
 
 ### Pricing (`app/llm/upstream/pricing.go`, data `app/llm/upstream/data/pricing/prices.json`; built)
 
@@ -47,18 +61,18 @@ The Antigravity limits are already read by `app/llm/quota` for the selector; Gem
 
 | Endpoint | Package | Status |
 |---|---|---|
-| `/api/usage/*` (stats, chart, history, providers, stream, per-connection quota) | `app/http/controllers` | diverged |
-| `/api/usage/{connectionId}/claude-reset`, `codex-reset-credits` | `app/store` | todo (quota fetchers) |
-| `/api/usage/request-details`, `request-logs` | none | out |
+| `/api/usage/stats`, `chart`, `history`, `logs`, `request-logs`, `providers`, `active-providers`, `stream` | `app/http/controllers`, `app/store/analytics`, `app/gateway/health` | done (diverged) |
+| `/api/usage/{connectionId}`, `claude-reset`, `codex-reset-credits` | `app/store/analytics` | todo (quota fetchers, 2.6d) |
+| `/api/usage/request-details` | none | out (stored bodies) |
 
 ---
 
 ## Remaining work
-**Usage rows are written to the analytics store; the `app/store` query surface is planned.**
+**The usage rows, the readers and the dashboard's usage routes are built; the per-connection quota readers wait for step 2.6d.**
 
-- [ ] `/api/usage/*` query surface over `requests` and the rollups, with the keyset cursor and the SSE stream
+- [x] `/api/usage/*` over `requests` and the rollups, with the live feed; `history` answers the all-time totals (D363), and a keyset-paged history is not built
 - [x] Pricing lookup over the embedded baseline and the `pricing` overrides; the pipeline's usage hook calls it
-- [ ] Per-key request and token budgets with a reset window, counted from the usage row and checked before dispatch
+- [x] Per-key request, token and cost budgets with the day, month and total windows, checked before dispatch (step 2.3, `design doc 21`)
 
 ---
 
@@ -78,6 +92,13 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 143 | One row: status 200, no provider, zero tokens | Every request ends in one row |
 | 78 | `Cost` reports "unknown"; patterns split once at load. **(partial)**row still stores 0 for unknown | No per-request compile |
 | 354 | A stored rate card is read and written with the field `cache_creation`, and the camel spelling is accepted too **(built)** | A real 9router row spells it `cache_creation`; the strict decoder skipped every override that carried a cache-creation rate, and a card this build wrote would lose it in the reference |
+| 360 | Days and labels use the server's zone (`TZ`). `today` and `24h` come from the hour rollups, which cover the request retention; older days come from the day rollups, which are kept forever, so a long chart can switch from local days to UTC days at the retention edge. `lastUsed` is the newest request time when the request rows still hold it (48 h), else the bucket start **(trade-off)** | The reference keeps a local-date rollup for every day; this build reuses the two rollups it already writes instead of a third table, and the seam only touches data older than the retention |
+| 361 | `24h` is the 24 clock hours ending now, labelled `HH:00` | The reference buckets back from the current minute, so labels read `14:37` |
+| 362 | `byApiKey` is keyed by the key's id and carries `apiKeyMasked`; every period uses the same rule | The reference puts the raw API key in the object key of every long-period `stats` answer and every `history` and stream frame, which hands any dashboard reader the keys |
+| 363 | The stream sends only `pending`, `activeRequests`, `recentRequests` and `errorProvider`, on connect and on a change of the tracker generation or the flushed-batch counter | The reference recomputes all-time totals after every request and sends the whole object to a page that reads four fields |
+| 364 | A request holds its in-flight slot until its answer, a stream included, is finished; the release is idempotent; a provider with no connection is counted too | The reference zeroes a counter after 60 s while the stream still runs and a double end can drive another request's count down |
+| 365 | `providers` comes from the day rollups | The reference reads a `requestDetails` table this build does not have, and its filter forgets a provider once that table is pruned |
+| 366 | No `last10Minutes`, no de-duplication of the recent list, no skills suffix in a log line **(scope cut)** | No page reads the first, one row per request already rules out the second, and skills are not built (step 3.2) |
 | 355 | Every pricing route answers the merged table: the embedded provider rows with the overrides laid over them, and a write applies to the next request through the reloaded source **(built)** | The reference's PATCH answers only the overrides while GET answers a merged map of two providers, and its edit form sends the whole map back, turning every default into a stored override |
 
 ---

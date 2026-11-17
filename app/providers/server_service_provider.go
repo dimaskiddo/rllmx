@@ -102,6 +102,8 @@ type HTTP struct {
 	// choice; a combo write resets both.
 	Rotation *combo.Rotation
 	Sticky   *combo.Sticky
+	// Inflight counts the requests running now, for the usage feed.
+	Inflight *health.Inflight
 }
 
 // HTTPOf returns the bound HTTP pieces. A missing binding means the provider is
@@ -229,6 +231,7 @@ func (r *ServerServiceProvider) Register(app foundation.Application) {
 			Checker:       controllers.NewChecker(upstreamCfg.Allow),
 			Capabilities:  capabilities,
 			Health:        health.NewTracker(time.Now),
+			Inflight:      health.NewInflight(time.Now),
 			Stream:        streamCfg,
 			Upstream:      upstreamCfg,
 			Media:         mediaCfg,

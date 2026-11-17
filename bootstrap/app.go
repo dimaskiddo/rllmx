@@ -67,6 +67,21 @@ func Boot(version, commit string) contractsfoundation.Application {
 				},
 			}
 			media := providers.NewMediaSource(facades.App())
+			base.Usage = &controllers.UsageController{
+				Analytics: func() controllers.UsageReader {
+					if s := providers.DataOf(facades.App()).Runner.Analytics(); s != nil {
+						return s
+					}
+					return nil
+				},
+				Flushed: func() uint64 {
+					if w := providers.DataOf(facades.App()).Runner.Writer(); w != nil {
+						return w.Flushed()
+					}
+					return 0
+				},
+				DB: db, Registry: h.Registry, Inflight: h.Inflight, Log: facades.Log(),
+			}
 			base.Media = &controllers.MediaController{
 				EmbeddingsPipe: media.Get, ImagesPipe: media.Get, SpeechPipe: media.Get,
 				TranscribePipe: media.Get, VoicesPipe: media.Get, VideosPipe: media.Get,

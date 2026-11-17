@@ -175,8 +175,8 @@ Every provider the references ship, with executor kind, status and the work that
 |---|---|
 | done | Data file, executor, tests complete |
 | partial | Some of the provider is done; the note says which part |
-| todo | Registry entry and executor in |
-| todo | Media provider (embeddings, image, audio, video, search, fetch), |
+| todo | Registry entry and executor in the table, code not yet written |
+| todo | Media provider (embeddings, image, audio, video, search, fetch) in the table, code not yet written |
 | deferred | Needs something outside v1; reason below |
 | out | Not built; reason below |
 

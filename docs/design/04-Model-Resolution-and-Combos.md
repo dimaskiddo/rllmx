@@ -88,12 +88,12 @@ sequenceDiagram
 | `/api/provider-nodes` (list, create), `/{id}` (update, delete) | `app/http/controllers` | done |
 | `/api/provider-nodes/validate` | `app/http/controllers` | done |
 | `/api/providers/client` (usage list, filters, totals) | `app/http/controllers` | todo (quota fetchers) |
-| `/api/providers/test-batch`, `/api/providers/{id}/test-models`, `/api/models/test` | `app/http/controllers`, `app/probe` | todo (pipeline) |
+| `/api/providers/test-batch`, `/api/providers/{id}/test-models`, `/api/models/test` | `app/http/controllers`, `app/gateway/probe` | done (llm models only) |
 | `/api/providers/suggested-models`, `/api/providers/kilo/free-models` | `app/http/controllers` | todo (fixed URL list, guarded client) |
 | `/api/models/*` (alias, custom, disabled, availability) | `app/http/controllers` | done (D352, D353, D357); `PUT /api/models` is a scope cut (D359); catalog-sync waits for 2.6e |
 | `/api/combos/*` (+ presets) | `app/http/controllers` | done (D356, D358) |
 | `/api/pricing` | `app/http/controllers` | done (D354, D355) |
-| `/api/translator/*` | `app/http/controllers` | todo |
+| `/api/translator/*` | `app/http/controllers` | partial (the console log read, clear and stream routes; the playground is planned) |
 | `/api/media-providers/tts/*/voices` | `app/http/controllers`, `app/gateway` | done |
 | Media model resolution (bare id, slash id, `provider/model`, per-kind) | `app/llm/upstream` media index | done |
 | A search or fetch provider named in the body (`provider`, else `model`), and a connection borrowed from another provider (`credentialFallback`) | `app/gateway/media`, the provider's media block | done |
@@ -103,11 +103,11 @@ sequenceDiagram
 ---
 
 ## Remaining work
-**Routing and combos are built; the capacity adapter and the combo management routes are planned.**
+**Routing, the combos and their management routes are built; the capacity adapter and the capability overlay are planned.**
 
 - [x] `app/llm/routing`: model string to combo, alias, node or provider; `Resolver`, `Snapshot`, `Reserved` for node prefixes
 - [x] Registry loader and seed data for nine providers; the other ids arrive with their executor (`design doc 8`)
-- [ ] Capability rows (`design doc 7`,)
+- [x] Capability rows (`design doc 7`; the catalog overlay waits for step 2.6e)
 - [x] `passthroughModels` on the 23 providers the reference marks (CommandCode, the opencode family, kimchi, bedrock, zed, openrouter and the rest): the flag raises a provider's model listing; an id its list does not name already reached the executor, so chat behaviour is unchanged
 - [x] Combo expansion, sticky round-robin, per-combo strategies
 - [x] Empty-stream failover and the request-scoped 4xx combo advance

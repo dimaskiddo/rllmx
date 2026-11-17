@@ -49,6 +49,7 @@ type Writer struct {
 
 	dropped atomic.Uint64
 	failed  atomic.Uint64
+	flushed atomic.Uint64
 	lastLog atomic.Int64
 }
 
@@ -77,6 +78,10 @@ func (w *Writer) Dropped() uint64 { return w.dropped.Load() }
 
 // Failed is the number of records a failed flush lost.
 func (w *Writer) Failed() uint64 { return w.failed.Load() }
+
+// Flushed counts the batches a reader has not seen yet: it moves once per
+// committed batch, so a feed can tell whether new rows landed.
+func (w *Writer) Flushed() uint64 { return w.flushed.Load() }
 
 func (w *Writer) enqueue(r row) bool {
 	w.mu.RLock()
@@ -201,7 +206,9 @@ func (w *Writer) flush(batch []row) {
 		if last := w.lastLog.Load(); now-last > int64(logEvery) && w.lastLog.CompareAndSwap(last, now) {
 			w.s.log.Errorf("analytics: batch of %d dropped: %v", len(batch), err)
 		}
+		return
 	}
+	w.flushed.Add(1)
 }
 
 const insertSQL = `INSERT INTO "requests"("ts","requestId","apiKeyId","apiKeyName","connectionId","provider","model","endpoint","sourceFormat","status","errorClass","stream","cached","estimated","promptTokens","completionTokens","cachedTokens","cacheWriteTokens","reasoningTokens","cost","latencyMs","ttfbMs","comboName","attempt","importId") VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`

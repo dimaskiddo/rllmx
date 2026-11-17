@@ -217,14 +217,14 @@ The framework's `migrate:*`, `db:wipe` and `db:seed` would drop or rewrite the 9
 | `_meta` keys and backup-before-change rule (`schemaVersion` 1 = migration level) | `src/lib/db/migrate.js` | done |
 | `_meta.totalRequestsLifetime` bump | `src/lib/db/repos/usageRepo.js` | diverged (counter in the analytics store; importer seeds from this key once) |
 | `modelLock_<model>` fields | `src/sse/services/auth.js` | done (written and cleared by `app/store/repository`, read by `app/gateway/account`) |
-| `kv` scope `rllmResponseCache` (per-key response-cache flag) | none | done: the reader `KVRepo.ResponseCacheEnabled`; the writer comes with the key API |
+| `kv` scope `rllmResponseCache` (per-key response-cache flag) | none | done: `KVRepo.ResponseCacheEnabled` reads it, the key API writes it, and a key's delete removes it |
 | `kv` scope `rllmKeyLimits` (a key's budget) | none | done: `quota.Limits` reads, writes and deletes it; the key API sets it |
 | `kv` scopes and key formats | `src/lib/db/repos/*` | done (the four shared scopes; Go-only scopes arrive with their step) |
 | API key, machine id, JWT and bcrypt formats | `src/shared/utils/apiKey.js`, `machineId.js`, `src/lib/auth/dashboardSession.js` | done (`app/access/identity` golden vectors, `app/access/auth` `iss`, `method`, `pv`) |
 | `proxyPools`, `proxyPoolFitness` tables | `schema.js`, extended `proxyPoolFitnessRepo.js` | out (not created, read or dropped; left alone if present, divergences 202, 214) |
 | Legacy `db.json`, `usage.json`, `disabledModels.json`, `request-details.json` import | `src/lib/db/migrate.js` | out |
 
-Two rows above are still open, and each is owned by a later step: the `rllmResponseCache` scope has its reader and its writer, and both arrive with the key API, and the proxy tables are `out`. That is why this design doc is `partial`: the schema and both engines are done, the readers of two scopes are not.
+One row above is still open: PostgreSQL is written and has never been run here, so `make test-pg` is the evidence still missing. The proxy tables are `out`, which is a decision. That is why this design doc is `partial`: the schema and both engines are built, and the PostgreSQL run is what a done status waits on.
 
 ---
 
@@ -237,7 +237,7 @@ No reference counterpart.
 | Analytics store (`requests`, rollups, `meta`), writer, retention, legacy importer | done on SQLite; PostgreSQL paths built (`app/store/analytics`) |
 | PostgreSQL mapping | built; run `make test-pg` with `TEST_PG_DSN` against a server |
 | Sealed secrets: `enc:v1:` values in `apiKeys.key`, connection `data`, `settings.oidcClientSecret`; check row in kv scope `rllmCrypto` | done (converted after a full backup; no plain secret left in the file or its WAL) |
-| Pre-encryption backup (never pruned), `rllmx artisan db:export-plain` | partial (`ExportPlain` store function built and tested; the command arrives with `keys:*`; SQLite only) |
+| Pre-encryption backup (never pruned), `rllmx artisan db:export-plain` | done (SQLite only) |
 | `rllmx artisan db:backup`, `check`, `vacuum` | done |
 | `rllmx artisan db:import-config` (seed from a 9router database) | done |
 | `rllmx artisan db:import-analytics` (usage history import) | done |

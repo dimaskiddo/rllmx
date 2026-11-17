@@ -17,10 +17,10 @@ The model list and the quota are built. The `kv` scope they read is defined in `
 ---
 
 ## Remaining work
-**Steps and.** Nothing built.
+**Steps 2.2 and 2.3 are built.**
 
 - [x] The model list filtered by the allow-list ( `app/gateway/catalog`: each entry resolved through the resolver, exact comparison); reuses that matching for the per-request check
-- [x] The allow-list is **stored** from the key API (`app/access/auth.ValidateAccess`, 200 entries of 256 characters, normalized) and nothing reads it yet
+- [x] The allow-list is **stored** from the key API (`app/access/auth.ValidateAccess`, 200 entries of 256 characters, normalized) and read by the per-request check below
 - [x] Per-key model allow-list, enforced per request before the response cache (`routing.NewAllow`; the pipeline and the catalog share it). A combo is checked by name; member re-checks land with 2.4, which is when members are expanded
 - [x] Per-key quota: request, token and cost budgets, the UTC day, month and total windows, the 429 `insufficient_quota`, and the key API field that sets them
 

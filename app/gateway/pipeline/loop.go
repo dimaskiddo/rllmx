@@ -10,6 +10,7 @@ import (
 	"rllmx/app/llm/catalog"
 	"rllmx/app/llm/oauth"
 	"rllmx/app/platform/failure"
+	"rllmx/app/store/repository"
 )
 
 // serve walks the provider's accounts until one answers, the failure belongs to
@@ -17,6 +18,18 @@ import (
 func (c *call) serve(ctx context.Context) Output {
 	out, _ := c.serveFail(ctx)
 	return out
+}
+
+// attempted runs one attempt with the account counted as serving the request
+// until the answer, a stream included, is finished.
+func (c *call) attempted(ctx context.Context, conn repository.Connection) (Output, *accountFail) {
+	if c.p.d.Inflight == nil {
+		return c.try(ctx, conn)
+	}
+	release := c.p.d.Inflight.Start(c.dest.provider, c.dest.model, conn.ID)
+	out, fail := c.try(ctx, conn)
+	release(fail != nil)
+	return out, fail
 }
 
 // serveFail is serve that also says why it stopped, for a combo that decides
@@ -56,7 +69,7 @@ func (c *call) serveFail(ctx context.Context) (Output, *accountFail) {
 		if c.p.d.Catalog != nil && c.p.d.Catalog.Known(ctx, c.dest.provider, sel.Conn, c.dest.model) == catalog.Unknown {
 			return c.fail(http.StatusBadRequest, "invalid_request", "Model not found"), &accountFail{status: http.StatusBadRequest, class: "invalid_request"}
 		}
-		out, f := c.try(ctx, sel.Conn)
+		out, f := c.attempted(ctx, sel.Conn)
 		if f == nil {
 			return out, nil
 		}

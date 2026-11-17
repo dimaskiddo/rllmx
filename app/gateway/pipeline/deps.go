@@ -71,6 +71,12 @@ type Usage interface {
 	Enqueue(r analytics.Record) bool
 }
 
+// Inflight counts the requests running now. The release is idempotent and says
+// whether the attempt failed.
+type Inflight interface {
+	Start(provider, model, connID string) (release func(failed bool))
+}
+
 // Overrides gives the operator's extra headers for a provider.
 type Overrides interface {
 	Headers(ctx context.Context, provider string) map[string]string
@@ -142,6 +148,8 @@ type Deps struct {
 	// Health feeds the per-provider breaker and orders combo members; nil
 	// neither records nor skips.
 	Health Health
+	// Inflight feeds the dashboard's live request list; nil tracks nothing.
+	Inflight Inflight
 	// Targets names the wire format of a provider whose catalog decides it.
 	Targets Targets
 	// Catalog reads the provider's own model list before a send; nil leaves

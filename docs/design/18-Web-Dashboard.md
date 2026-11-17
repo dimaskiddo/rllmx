@@ -1,6 +1,6 @@
 # Design 18 — Web Dashboard (`web/`)
 
-**Status:** todo
+**Status:** partial
 
 `web/` holds only the OAuth callback page: `web/embed.go` (`web.Static`, `go:embed static`), `static/callback.html` and `static/js/callback.js`, served by `GET /callback` and `GET /static/js/callback.js` (both public; no inline script, because the page CSP is `default-src 'self'`). The rest of the dashboard is planned in the same folder.
 
@@ -63,14 +63,15 @@ Plain HTML, ES modules, CSS; same flows and `/api/*` contract (design doc 18).
 ---
 
 ## Remaining work
-**Only the callback page is built;** the rest of `web/` is not.
+**The callback page and the `/api/*` groups listed below are built; the pages are not.**
 
 - [ ] 4.0: written stack-spike decision in `ARCHITECTURE.md` before any framework enters `web/`
 - [ ] 4.1: shell, routing, i18n (`web/static/i18n/{en,id}.json`), login, keys, connections
 - [ ] 4.3: combos, usage charts, logs, settings, skills studio
 - [x] `/api/settings`, `/api/locale`, `/api/tags` and the Console Log ring with its read and stream routes (2.6a); `/api/keys/*` (2.1)
 - [x] `/api/models/*`, `/api/pricing`, `/api/combos/*` and presets (2.6b)
-- [ ] catalog sync (2.6e); `/api/usage/*` (2.6c)
+- [x] `/api/usage/*` and its live feed (2.6c)
+- [ ] catalog sync (2.6e)
 - **Done when:** no `innerHTML` from data, every dynamic string escaped.
 
 ---

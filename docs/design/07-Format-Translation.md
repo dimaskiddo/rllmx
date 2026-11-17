@@ -167,12 +167,12 @@ All go through the OpenAI hub; no direct pairs (design doc 7). References under 
 
 | Translator | Reference | Status |
 |---|---|---|
-| claude to/from openai | `request/claude-to-openai.js`, `request/openai-to-claude.js` | todo (D115) |
-| gemini to/from openai | `request/gemini-to-openai.js`, `request/openai-to-gemini.js` | todo |
-| openai to/from openai-responses | `request/openai-responses.js`, `response/openai-responses.js`, `formats/responsesApi.js` | todo (request, body, stream, both ways; D119-120) |
-| openai to/from ollama | `*/*ollama*.js` | todo (all four directions; D136) |
-| Concerns: thinking, tool calls, usage, finish reasons, images, modality, params | `concerns/*` | todo (also same-format, D138; param rules in `params.json`: claude temperature, groq, openai, GitHub; OpenAI-shaped bodies drop `developer`, foreign blocks, blank messages as `filterToOpenAIFormat`; audit 2 fixes D183-D188) |
-| Capability, thinking-level and vision tables | `providers/{capabilities,thinkingLevels,visionPatterns}.js` | todo (`app/llm/upstream`, `data/capabilities/*.json`; catalog overlay, commandcode and kiro rules) |
+| claude to/from openai | `request/claude-to-openai.js`, `request/openai-to-claude.js` | done (D115) |
+| gemini to/from openai | `request/gemini-to-openai.js`, `request/openai-to-gemini.js` | done |
+| openai to/from openai-responses | `request/openai-responses.js`, `response/openai-responses.js`, `formats/responsesApi.js` | done (request, body and stream, both ways; D119-120) |
+| openai to/from ollama | `*/*ollama*.js` | done (all four directions; D136) |
+| Concerns: thinking, tool calls, usage, finish reasons, images, modality, params | `concerns/*` | done (also same-format, D138; param rules in `params.json`: claude temperature, groq, openai, GitHub; OpenAI-shaped bodies drop `developer`, foreign blocks, blank messages as `filterToOpenAIFormat`; audit 2 fixes D183-D188) |
+| Capability, thinking-level and vision tables | `providers/{capabilities,thinkingLevels,visionPatterns}.js` | partial (`app/llm/upstream`, `data/capabilities/*.json`; the catalog overlay is step 2.6e) |
 | gemini-cli, antigravity (from openai, and the answer back) | `request/openai-to-gemini.js`, `response/gemini-to-openai.js` | done |
 | openai to vertex | `request/openai-to-vertex.js` | done |
 | kiro (openai to kiro; the answer is read as events) | `request/openai-to-kiro.js`, `request/claude-to-kiro.js`, `concerns/kiroConversation.js`, `config/kiroConstants.js` | done |
@@ -182,7 +182,7 @@ All go through the OpenAI hub; no direct pairs (design doc 7). References under 
 ---
 
 ## Remaining work
-**are built.**
+**Every client format and concern is built; the catalog overlay (2.6e) and the deferred web translators are not.**
 
 - [x] The OpenAI hub and the OpenAI, Claude, Responses, Gemini and Ollama codecs for request and non-stream answer
 - [x] Claude preparation: cache markers (at most four, tool-call prefixes byte-stable), history repair, thinking-block signatures, `max_tokens` cap, tool-choice relaxing
@@ -191,9 +191,9 @@ All go through the OpenAI hub; no direct pairs (design doc 7). References under 
 - [x] The stream direction of every codec: readers and writers for OpenAI, Claude, Responses, Gemini and Ollama; hold-for-usage; the `<think>` tag split for Responses; Claude `Read` tool argument repair
 - [x] Image prefetch (`app/gateway/prefetch`,): Gemini and Ollama targets only, magic bytes decide the type
 - [x] The Claude request shape: tool suffix, placeholder tools, billing block, user id, restore on body and stream
-- [x]: gemini-cli, antigravity and vertex (`CloudCodeCodec`, `VertexCodec`; the Gemini writer takes a placeholder signature and the safety settings through `Ctx`)
-- [x]: the kiro format (`translate/kiro.go`, `kiro_wire.go`, `kiro_canon.go`, `kiro_stream.go`, `kiro_alias.go`) Built
-- [x]: the cursor and commandcode codecs (`app/llm/translate/cursor`, `.../commandcode`), both upstream-only and blank-imported by the pipeline
+- [x] Built: gemini-cli, antigravity and vertex (`CloudCodeCodec`, `VertexCodec`; the Gemini writer takes a placeholder signature and the safety settings through `Ctx`)
+- [x] Built: the kiro format (`translate/kiro.go`, `kiro_wire.go`, `kiro_canon.go`, `kiro_stream.go`, `kiro_alias.go`) Built
+- [x] Built: the cursor and commandcode codecs (`app/llm/translate/cursor`, `.../commandcode`), both upstream-only and blank-imported by the pipeline
 - [x] Layout: one package per client format (`translate/openai`, `claude`, `gemini`, `responses`, `ollama`), beside the upstream-only `kiro`, `commandcode` and `cursor`. The root keeps the hub, the registry, `Ctx`, the frames and the concerns; the helpers two formats share are exported there rather than copied, and the per-format usage readers stay in the root's `usage_events.go` because they need nothing from a codec
 
 ---

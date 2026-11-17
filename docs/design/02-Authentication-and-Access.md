@@ -201,12 +201,12 @@ Anything the dashboard asks the router to do against its own endpoints (model te
 
 ## Remaining work
 
- are built: password login with its session and limiter, API keys, OIDC, SAML, the settings and locale routes, and the five commands. One parity row stays open:
+**Built:** password login with its session and limiter, API keys, OIDC, SAML, the settings and locale routes, and the five commands. One parity row stays open:
 
 - [x] The key management API (`/api/keys/*`); the settings routes and the per-key answer-cache switch (2.6a)
 - [ ] `/api/auth/oidc/test`, `/api/auth/saml/test` — deferred
 - [x] The per-key model allow-list and quota the `Caller` carries (`design doc 21`, steps 2.2 and 2.3)
-- **Done when:** a revoked or disabled key is rejected within the cache TTL and immediately after explicit invalidation — that holds today and a test proves it. What keeps the design doc open is the management surface and the two limits, not the guard.
+- **Done when:** a revoked or disabled key is rejected within the cache TTL and immediately after explicit invalidation — that holds today and a test proves it. What keeps the design doc open is the two deferred test routes.
 
 ---
 

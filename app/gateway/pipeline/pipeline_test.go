@@ -123,6 +123,7 @@ type rig struct {
 	rows *usage.Sink
 	rep  *spy
 	hlt  *healthSpy
+	flg  *flightSpy
 }
 
 func instant(time.Duration) <-chan time.Time {
@@ -231,19 +232,20 @@ func newRig(t *testing.T, steps ...tests.Reply) *rig {
 	rep := &spy{Reporter: account.NewReporter(st.Connections(), log, nil)}
 	rows := &usage.Sink{}
 	hlt := &healthSpy{}
+	flg := &flightSpy{}
 	p, err := New(Deps{
 		Resolver: &routing.Resolver{Registry: reg, Snapshot: routing.NewSnapshot(source{}, nil)},
 		Selector: account.NewSelector(account.SelectorOptions{Conns: st.Connections(), Settings: tests.Settings{}, Log: log}),
 		Reporter: rep,
 		Executor: mux.New(&executor.Default{Client: http.DefaultClient, Sleep: instant}, mux.Options{}),
-		Nodes:    st.Nodes(), Registry: reg, Caps: caps, Prices: table, Usage: rows, Health: hlt,
+		Nodes:    st.Nodes(), Registry: reg, Caps: caps, Prices: table, Usage: rows, Health: hlt, Inflight: flg,
 		Timers: stream.Timers{FirstChunk: 300 * time.Millisecond, Stall: 300 * time.Millisecond, UsageWait: 50 * time.Millisecond},
 		Log:    log,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &rig{t: t, p: p, st: st, up: up, rows: rows, rep: rep, hlt: hlt}
+	return &rig{t: t, p: p, st: st, up: up, rows: rows, rep: rep, hlt: hlt, flg: flg}
 }
 
 func (r *rig) conn(provider, key string) repository.Connection {

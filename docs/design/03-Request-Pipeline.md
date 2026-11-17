@@ -70,7 +70,7 @@ flowchart TD
 | `POST /v1/audio/speech`, `/transcriptions`, `GET /v1/audio/voices` | `app/gateway/media` | done |
 | `POST /v1/videos/*`, `GET /v1/videos/{id}` | `app/gateway/media` | done (a web video answers the completed job and a poll of it is a 404, D317) |
 | `POST /v1/search`, `POST /v1/web/fetch` | `app/gateway/media` | done |
-| `POST /v1/systemone` | `app/gateway` | todo (the smart combo, step 2.4) |
+| `POST /v1/systemone` | `app/gateway` | deferred (the smart strategy is built, D338; nace and v1m serve this route, design doc 8) |
 | URL rewrites (`/codex/*`, `/responses`, `/v1/v1/*`, `/systemone`; ref `next.config.mjs`) | `app/http` | done (pre-guard; non-canonical paths refused) |
 
 ---
@@ -80,15 +80,15 @@ flowchart TD
 | Stage | Reference | Package | Status |
 |---|---|---|---|
 | Guard (key, session, loopback) | `dashboardGuard.js`, `sse/services/auth.js` | `app/http`, `app/access/auth` | partial |
-| Key access restriction | `sse/services/keyAccess.js` | `app/access` | partial (a restricted key is refused with 403 on every spending route until step 2.2 checks the list per request, D325) |
+| Key access restriction | `sse/services/keyAccess.js` | `app/access` | done (enforced per request; D325 is retired) |
 | Session identity | `utils/sessionManager.js` | `app/gateway/conversation` | Built (client-named id by reference priority, else opening assistant text, else per connection, two-hour life; `Bound` keyed hash; the pipeline reads it, once an account is chosen: the Claude user id and session header, and a keyed hash for Codex's `session_id`; continuity store) |
 | Bypass (warmup, title) | `utils/bypassHandler.js` | `app/gateway/pipeline` | done |
-| Capability detection (current-turn needs: vision, pdf, audio, video) | `services/combo.js` (`detectRequiredCapabilities`) | `app/llm/translate` | todo (`DetectNeeds`, `Needs.Met`; combo step calls it) |
+| Capability detection (current-turn needs: vision, pdf, audio, video) | `services/combo.js` (`detectRequiredCapabilities`) | `app/llm/translate` | done (`DetectNeeds`, `Needs.Met`; the combo order reads them) |
 | Capacity adapter (fallback pools per capability) | `services/capacityAdapter.js` | `app/gateway` | todo |
 | Model resolution, aliases, nodes, inference | `services/model.js`, `sse/services/model.js` | `app/llm/routing` | done (resolver, snapshot; D80-81; a combo name is answered 404 until) |
-| Combos: fallback, round-robin, smart (System One), fusion | `services/combo.js`, `services/systemoneRouter.js` | `app/gateway` | todo |
-| Empty-stream failover | `services/emptyFailover.js` | `app/llm/stream` | todo |
-| Request-scoped 4xx combo advance | `services/combo.js` | `app/gateway` | todo |
+| Combos: fallback, round-robin, smart (System One), fusion | `services/combo.js`, `services/systemoneRouter.js` | `app/gateway` | done (D335 to D338; the per-capability pool stays out, D337) |
+| Empty-stream failover | `services/emptyFailover.js` | `app/llm/stream` | done |
+| Request-scoped 4xx combo advance | `services/combo.js` | `app/gateway` | done |
 | Account selection and strategies | `sse/services/auth.js` | `app/gateway/account` | done |
 | Error rules and backoff | `config/errorConfig.js`, `services/accountFallback.js` | `app/gateway/account` | done |
 | Per-model locks (`modelLock_*`) | `sse/services/auth.js` | `app/gateway/account`, `app/store/repository` | done (write and clear in `app/store/repository`, read by the selector) |
@@ -100,7 +100,7 @@ flowchart TD
 | Executor base, retry, URL fallback | `executors/base.js` | `app/llm/executor` | Built; the `baseUrls` fallback (D291) (in-place retry by status, data overrides, 2 s default delay; `baseUrls` fallback never tried: no shipped provider needs it, D102; a 401 or 403 on a login renews its token and retries once, D222 retired) |
 | Streaming: SSE parse and emit, usage, timers | `utils/stream.js`, `streamHandler.js` | `app/llm/stream` | done |
 | Forced SSE to JSON, non-stream translation | `handlers/chatCore/*` | `app/llm/stream`, `app/gateway/pipeline` | Built (`Collect` for a stream-only provider; a buffered body through the codecs) |
-| Usage save, daily aggregate, cost | `src/lib/db/repos/usageRepo.js` | `app/store/analytics`, `app/gateway/pipeline` | partial (one row per request on every path with price and error class, built; the writer is wired; `app/store` query surface unbuilt) |
+| Usage save, daily aggregate, cost | `src/lib/db/repos/usageRepo.js` | `app/store/analytics`, `app/gateway/pipeline` | done (one row per request on every path with price and error class; the readers and routes serve the dashboard, design doc 16) |
 | Response cache (opt-in, per key and global, no streams or tool-call answers) | none in the references | `app/gateway/pipeline`, `app/providers` | done (lookup after resolution and before translation, store in `deliver` after the account accepted; a hit selects no account and its row is `cached` at cost 0; D24, D148) |
 | Request details (body dumps) | `src/lib/db/repos/requestDetailsRepo.js` | none | out |
 | Live-catalog guards: kiro, codex, cursor, kimchi, qoder (extended) | `handlers/chatCore.js` | `app/gateway/catalog` | done (`app/llm/catalog`) |
@@ -116,8 +116,9 @@ flowchart TD
 - [x] `/v1/messages`, `/v1/messages/count_tokens`, `/v1/responses`, `/v1/responses/compact`, `/v1beta/models/*`, `/v1/api/chat`, the `Accept: application/json` rule, the NDJSON opener
 - [x] The model catalog routes
 - [x] The response cache
-- [ ] Key checks, skills, auto plan, token savers, combos: planned
-- [ ] Capability detection (vision, pdf, audio, video): `translate.DetectNeeds` and `Needs.Met`, current turn only; the combo handling is the caller
+- [x] Key checks and combos
+- [ ] Token savers, skills and auto plan (`design doc 10`, `design doc 11`, steps 3.1 to 3.4)
+- [x] Capability detection (vision, pdf, audio, video): `translate.DetectNeeds` and `Needs.Met`, current turn only; the combo order reads it
 - **Done when:** every endpoint passes golden and end-to-end tests with `-race`; the same prompt through OpenAI, Anthropic, Responses and Gemini yields consistent usage rows.
 
 ---

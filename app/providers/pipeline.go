@@ -90,6 +90,7 @@ func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.P
 		Caps:          h.Capabilities,
 		Prices:        priceReader{src: h.Prices},
 		Health:        h.Health,
+		Inflight:      h.Inflight,
 		Usage:         writer,
 		Budget:        budget(h.Limits, runner),
 		Rotation:      h.Rotation,
