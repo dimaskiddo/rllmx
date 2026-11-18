@@ -32,6 +32,9 @@ type ModelsController struct {
 	Registry *upstream.Registry
 	Caps     *upstream.Capabilities
 	DB       func() *repository.Store
+	// CatalogSync runs the models.dev sync and reports it; nil leaves the
+	// catalog routes answering unavailable.
+	CatalogSync func() CatalogSyncer
 	// Changed drops the routing view after an alias write.
 	Changed func()
 	Log     log.Log

@@ -90,7 +90,7 @@ sequenceDiagram
 | `/api/providers/client` (usage list, filters, totals) | `app/http/controllers` | done (only the connections a quota reading answers) |
 | `/api/providers/test-batch`, `/api/providers/{id}/test-models`, `/api/models/test` | `app/http/controllers`, `app/gateway/probe` | done (llm models only) |
 | `/api/providers/suggested-models`, `/api/providers/kilo/free-models` | `app/http/controllers` | todo (fixed URL list, guarded client) |
-| `/api/models/*` (alias, custom, disabled, availability) | `app/http/controllers` | done (D352, D353, D357); `PUT /api/models` is a scope cut (D359); catalog-sync waits for 2.6e |
+| `/api/models/*` (alias, custom, disabled, availability, catalog-sync) | `app/http/controllers` | done (D352, D353, D357, D387); `PUT /api/models` is a scope cut (D359); the sync itself is `design doc 7` |
 | `/api/combos/*` (+ presets) | `app/http/controllers` | done (D356, D358) |
 | `/api/pricing` | `app/http/controllers` | done (D354, D355) |
 | `/api/translator/*` | `app/http/controllers` | partial (the console log read, clear and stream routes; the playground is planned) |
@@ -103,11 +103,11 @@ sequenceDiagram
 ---
 
 ## Remaining work
-**Routing, the combos and their management routes are built; the capacity adapter and the capability overlay are planned.**
+**Routing, the combos and their management routes are built, the capability overlay included; the capacity adapter is planned.**
 
 - [x] `app/llm/routing`: model string to combo, alias, node or provider; `Resolver`, `Snapshot`, `Reserved` for node prefixes
 - [x] Registry loader and seed data for nine providers; the other ids arrive with their executor (`design doc 8`)
-- [x] Capability rows (`design doc 7`; the catalog overlay waits for step 2.6e)
+- [x] Capability rows and the models.dev catalog overlay (`design doc 7`)
 - [x] `passthroughModels` on the 23 providers the reference marks (CommandCode, the opencode family, kimchi, bedrock, zed, openrouter and the rest): the flag raises a provider's model listing; an id its list does not name already reached the executor, so chat behaviour is unchanged
 - [x] Combo expansion, sticky round-robin, per-combo strategies
 - [x] Empty-stream failover and the request-scoped 4xx combo advance
@@ -144,6 +144,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 357 | `clearCooldown` drops the named lock and the account lock, leaves every other model's lock alone, and `__all` names `modelLock___all` **(built)** | The reference's `__all` maps to a key that never exists, so the account lock cannot be cleared from that page, while its activation side effect wipes every lock on the connection |
 | 358 | Presets enumerate the embedded provider list for both sources; the Claude list also includes the stored aliases that point at it **(trade-off)** | The reference reads the first Cursor account's live catalog from a presets preview; here the live list stays behind the model guard and the preview spends nothing |
 | 359 | `PUT /api/models` is not built **(scope cut)** | The reference's model-to-alias write is the mirror of a map it does not own, and no dashboard page calls it |
+| 387 | `POST /api/models/catalog-sync` bounds the whole sync at 50 s, so it answers inside the dashboard's 60 s write deadline **(trade-off)** | The reference allows 60 s for the download alone and then parses it with no bound, so a slow day cuts the answer off mid-write |
 | 338 | The smart router and the fusion judge run through the ordinary pipeline on their own model names, so each writes its own usage row; none of their spend is added to the client's row. **Built** | Router and judge cost is visible without inflating the client's usage |
 
 ---

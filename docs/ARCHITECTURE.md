@@ -61,7 +61,7 @@ Every node in the diagram is built. The table says what each package holds and w
 | `gateway/conversation` | The session a request belongs to | `pipeline` |
 | `gateway/prefetch` | Remote image URLs turned into inline data, on a guarded client | `pipeline` |
 | `gateway/account` | Account selection, error rules, backoff and locks | `pipeline` |
-| `llm/upstream` | The provider registry, the price table and the capability tables | the router |
+| `llm/upstream` | The provider registry, the price table, the capability tables and the synced catalog overlay | the router |
 | `llm/routing` | A model name turned into a provider, model or combo | `pipeline` |
 | `llm/translate` | The typed hub and the format codecs, one package per client format | `pipeline` |
 | `llm/executor` | One request to one account; the answer is returned unread | `pipeline` |

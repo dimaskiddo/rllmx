@@ -306,6 +306,9 @@ type Model struct {
 	// Levels are the reasoning efforts the model accepts, when it is stricter
 	// than the shared tables.
 	Levels []string `json:"levels,omitempty"`
+	// ContextLength is the window the gateway itself truncates to, where it
+	// differs from the vendor's: a catalog sync leaves it alone.
+	ContextLength int `json:"contextLength,omitempty"`
 	// Kind is the service a media model belongs to; empty or "llm" is a chat
 	// model. A media model is never offered as a chat model.
 	Kind string `json:"kind,omitempty"`

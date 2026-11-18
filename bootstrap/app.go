@@ -52,6 +52,12 @@ func Boot(version, commit string) contractsfoundation.Application {
 			base.Models = &controllers.ModelsController{
 				Catalog: providers.NewCatalogSource(facades.App()).Get, Probe: h.Probes.Prober, Log: facades.Log(),
 				Registry: h.Registry, Caps: h.Capabilities, DB: db, Changed: h.Snapshot.Invalidate,
+				CatalogSync: func() controllers.CatalogSyncer {
+					if h.CatalogSync == nil {
+						return nil
+					}
+					return h.CatalogSync
+				},
 			}
 			base.Combos = &controllers.CombosController{
 				DB: db, Probe: h.Probes.Prober, Tracker: h.Health, Prices: h.Prices.Get, Log: facades.Log(),

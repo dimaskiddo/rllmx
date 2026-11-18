@@ -94,7 +94,7 @@ sequenceDiagram
 | 9 | `PRAGMA optimize` and WAL checkpoint on both SQLite files, incremental vacuum on analytics, `ANALYZE` on PostgreSQL analytics |
 | 10 | Memory, or Redis when configured. Unreachable Redis logs once; every lookup misses |
 | 11 | Load and validate embedded provider data (unique ids, known executors); read settings row, merge defaults, keep unknown keys. `ServerServiceProvider` loads the registry (`upstream.Default`) when it binds, so a bad data file stops the start with the file and field named; a test also fails the build on bad data |
-| 12 | Today only the maintenance jobs (`app/store/data`). Planned: token refresh (, `OAUTH_BACKGROUND_REFRESH`), quota auto-ping, catalog sync (, `CATALOG_SYNC`) |
+| 12 | Token refresh (`OAUTH_BACKGROUND_REFRESH`), the model catalog sync (`CATALOG_SYNC`, `app/providers/catalog_runner.go`) and the maintenance jobs (`app/store/data`). Planned: quota auto-ping |
 | 13 | Route table checked first: route outside guarded group fails the start |
 | 14 | `GET /api/health` on configured host (wildcard dialled as loopback): 3 s, no proxy, at most three redirects inside those 3 s, exit 0 only for `200` with `{"ok":true}` |
 

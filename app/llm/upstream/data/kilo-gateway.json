@@ -19,26 +19,32 @@
   "models": [
     {
       "id": "kilo-auto/free",
+      "contextLength": 256000,
       "name": "Kilo Auto Free"
     },
     {
       "id": "nvidia/nemotron-3-super-120b-a12b:free",
+      "contextLength": 262144,
       "name": "Nemotron 3 Super 120B (Free)"
     },
     {
       "id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "contextLength": 1000000,
       "name": "Nemotron 3 Ultra 550B (Free)"
     },
     {
       "id": "kwaipilot/kat-coder-pro-v2.5:free",
+      "contextLength": 256000,
       "name": "Kat Coder Pro v2.5 (Free)"
     },
     {
       "id": "kilo-auto/frontier",
+      "contextLength": 1000000,
       "name": "Kilo Auto Frontier"
     },
     {
       "id": "kilo-auto/balanced",
+      "contextLength": 1000000,
       "name": "Kilo Auto Balanced"
     }
   ]

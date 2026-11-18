@@ -168,6 +168,8 @@ func Web(router route.Route, guard *apphttp.Guard, base Base) {
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodDelete, "/api/models/disabled", m.EnableModels)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/models/availability", m.Availability)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPost, "/api/models/availability", m.ClearCooldown)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/models/catalog-sync", m.CatalogStatus)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPost, "/api/models/catalog-sync", m.CatalogRun)
 	}
 
 	if cb := base.Combos; cb != nil {

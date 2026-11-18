@@ -48,18 +48,28 @@ The reference translators were compared with base 9router 0.5.116 and the improv
 | Usage | Normalized per provider into prompt, completion, cached, cache-creation and reasoning tokens |
 | Stream state | Each stream holds a state value (message id, tool calls by index, finish reason, usage, content block indices; Responses adds sequence numbers and text/argument buffers). A `nil` chunk means flush: translators close open blocks |
 
-### Capabilities (`app/llm/upstream/capabilities.go`, planned)
+### Capabilities (`app/llm/upstream/capabilities.go`, built)
 
-Nothing exists yet. The target shape is four embedded files under `data/capabilities/`: `capabilities.json`, `thinking.json`, `vision.json`, `params.json`, decoded strictly, size capped and validated at start.
+Four embedded files under `data/capabilities/` — `capabilities.json`, `thinking.json`, `vision.json`, `params.json` — decoded strictly, size capped and validated at start.
 
 | Call | Resolution |
 |---|---|
-| `For(provider, model)` | The provider's own row (full name, then the name after the last slash; provider aliases share a table), the exact model row, the first matching ordered glob (case-insensitive, `*` only), the defaults. Only a provider row is returned as is; the other steps turn vision on when the name says so, and a name on the not-vision list never does |
+| `For(provider, model)` | The provider's own row (full name, then the name after the last slash; provider aliases share a table), the exact model row, the first matching ordered glob (case-insensitive, `*` only), the defaults, then the synced catalog. Only a provider row is returned as is; the other steps turn vision on when the name says so, and a name on the not-vision list never does |
+| `Base(provider, model)` | The same without the synced catalog: what the tables say alone, which a sync compares against |
 | `Levels(provider, model, declared)` | nil for a model that does not reason. Otherwise the registry's declared levels, then the first matching override (provider-qualified rows only for that provider), then the compatible-node rule, then the format's set, then the base set. `none` is removed when the model cannot disable thinking |
 | `Budget(level)` | The token budget of a level |
 | `ParamRules(provider, model)` | The `params.json` rules (drop or rename a parameter, drop or rename an assistant message field, flatten content, cap output tokens) in file order. The translator applies them last, to the final upstream body, on every pair |
 
-The Claude and Gemini placeholder thinking signatures are data in `thinking.json`.
+The Claude and Gemini placeholder thinking signatures are data in `thinking.json`. A registry model may state its own `contextLength`: the window its gateway truncates to, where it differs from the vendor's. It only stops a catalog sync from writing a context delta; the capability answer still comes from the tables.
+
+**The synced catalog.** `DATA_DIR/model-catalog.json` holds deltas from models.dev. A runner loads it at start and refreshes it every 24 hours (`app/providers/catalog_sync.go`; `CATALOG_SYNC=false` stops the timer only), and `POST /api/models/catalog-sync` refreshes it on demand. The file carries its own version, so a copy this build did not write is ignored and rebuilt.
+
+- `models["<provider>:<baseId>"]` lists the input modalities models.dev declares for that gateway. A model is filed under every local id requests arrive with and under the upstream id, and a base id drops a `vendor/` prefix and a `:suffix` and is lower-cased. Modalities only ever turn a capability on.
+- `providers[<provider>][<model>]` holds the gateway's own window and answer cap where either differs from the tables by more than 10 %, judged by `Base`. A stated `contextLength` never yields a context delta.
+- The lookup runs after the exact-model and glob steps and never over a provider row. It is one atomic pointer swap per request and a map read per name.
+- `GET /api/models/catalog-sync` answers the last sync and the installed file's summary; `POST` syncs now and answers 503 when one is already running.
+
+The upstream JSON is about 4.3 MB. It is decoded one provider at a time under a 32 MiB byte cap and count caps, so a hostile answer cannot hold more than that; a failure is a class (`answered 502`, `did not answer in time`), never a piece of the body.
 
 ### Claude Request Shape
 
@@ -172,7 +182,7 @@ All go through the OpenAI hub; no direct pairs (design doc 7). References under 
 | openai to/from openai-responses | `request/openai-responses.js`, `response/openai-responses.js`, `formats/responsesApi.js` | done (request, body and stream, both ways; D119-120) |
 | openai to/from ollama | `*/*ollama*.js` | done (all four directions; D136) |
 | Concerns: thinking, tool calls, usage, finish reasons, images, modality, params | `concerns/*` | done (also same-format, D138; param rules in `params.json`: claude temperature, groq, openai, GitHub; OpenAI-shaped bodies drop `developer`, foreign blocks, blank messages as `filterToOpenAIFormat`; audit 2 fixes D183-D188) |
-| Capability, thinking-level and vision tables | `providers/{capabilities,thinkingLevels,visionPatterns}.js` | partial (`app/llm/upstream`, `data/capabilities/*.json`; the catalog overlay is step 2.6e) |
+| Capability, thinking-level and vision tables, and the models.dev catalog overlay (`/api/models/catalog-sync`) | `providers/{capabilities,thinkingLevels,visionPatterns}.js`, `lib/modelCatalog/sync.js`, `providers/catalogOverride.js` | done (`app/llm/upstream`, `data/capabilities/*.json`; diverged 381 to 386) |
 | gemini-cli, antigravity (from openai, and the answer back) | `request/openai-to-gemini.js`, `response/gemini-to-openai.js` | done |
 | openai to vertex | `request/openai-to-vertex.js` | done |
 | kiro (openai to kiro; the answer is read as events) | `request/openai-to-kiro.js`, `request/claude-to-kiro.js`, `concerns/kiroConversation.js`, `config/kiroConstants.js` | done |
@@ -182,12 +192,12 @@ All go through the OpenAI hub; no direct pairs (design doc 7). References under 
 ---
 
 ## Remaining work
-**Every client format and concern is built; the catalog overlay (2.6e) and the deferred web translators are not.**
+**Every client format and concern is built, the catalog overlay included; the deferred web translators are not.**
 
 - [x] The OpenAI hub and the OpenAI, Claude, Responses, Gemini and Ollama codecs for request and non-stream answer
 - [x] Claude preparation: cache markers (at most four, tool-call prefixes byte-stable), history repair, thinking-block signatures, `max_tokens` cap, tool-choice relaxing
 - [x] The concerns: tool-call ids and results, finish reasons, usage invariants, modality, thinking, parameter rules applied last
-- [x] The capability tables in `app/llm/upstream`
+- [x] The capability tables in `app/llm/upstream`, and the models.dev catalog overlay (`overlay.go`, `overlay_sync.go`; the runner and the file in `app/providers`)
 - [x] The stream direction of every codec: readers and writers for OpenAI, Claude, Responses, Gemini and Ollama; hold-for-usage; the `<think>` tag split for Responses; Claude `Read` tool argument repair
 - [x] Image prefetch (`app/gateway/prefetch`,): Gemini and Ollama targets only, magic bytes decide the type
 - [x] The Claude request shape: tool suffix, placeholder tools, billing block, user id, restore on body and stream
@@ -226,6 +236,12 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 217 | Every writer holds its closing event until the usage report or `STREAM_USAGE_WAIT` | A usage trailer sent after the finish chunk reaches Claude and Gemini clients too |
 | 309 | The Claude Code version the fingerprint advertises is refreshed on a runner timer, not from a request: the value is read from memory and no request waits on npm | The reference's first caller after the cache expires starts the lookup in the background; a timer keeps the same freshness with no request path at all |
 | 218 | An upstream error event (Claude `error`, Responses `response.failed`, Gemini or Ollama error body, an OpenAI `error` object) fails the stream with the client's own error frame | The reference dropped it and the stream ended with no finish and no error |
+| 381 | The synced catalog is one immutable value behind an atomic pointer, applied after the exact-model and glob steps and never over a provider row; a sync compares against `Base`, so it never reads its own last answer **(built)** | The reference detaches its reader for the whole rebuild, so requests lose the catalog meanwhile, and leaving it attached made each delta relative to the last one, so the file erased itself over two runs |
+| 382 | The upstream catalog is decoded one provider at a time under a 32 MiB byte cap and count caps, and a failure names a class, never an upstream body **(built)** | The reference parses all 4.3 MB in one object with no cap, and one hostile or broken answer holds the whole process |
+| 383 | The catalog file carries version 3; a file the reference wrote (version 2) is ignored and rebuilt **(trade-off)** | Its deltas were computed against its tables, so applying them here would publish numbers no table of ours ever decided |
+| 384 | No trimmed copy of the whole upstream catalog is written **(scope cut)** | Nothing but the reference's add-models skill reads it |
+| 385 | The file is read once at start and swapped in memory; a hand edit applies at restart or the next sync **(trade-off)** | The reference stats the file on every capability lookup and parses it whenever the mtime moved, which a request pays for |
+| 386 | The status answer names the file, not its absolute path, and a failure is bounded text **(built)** | The reference hands a dashboard reader the host's data path and stores any error text it receives |
 
 ---
 

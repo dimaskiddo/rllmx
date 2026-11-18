@@ -136,7 +136,7 @@ flowchart TD
 | Names | Go-only tables use plain identifiers (letters, digits, underscore), so 9router's backup, which interpolates names unquoted, still works on a shared file |
 | PostgreSQL columns | `information_schema.columns` filtered by `table_schema = current_schema`, exact names; the migrator's `addColumn` uses `ADD COLUMN IF NOT EXISTS` |
 
-**Files in `DATA_DIR`:** `jwt-secret`, `machine-id`, `db/data.sqlite`, `db/analytics.sqlite`, `db/backups/`, `db/analytics-backups/`, `skills/`, `model-catalog.json`, `rllmx.lock`. Directories `0700`, files `0600`. `DATA_DIR` defaults to `storage/app`; logs sit in `storage/logs` (`rllmx.log`), so `storage/` is the one volume to keep. The main store holds only router configuration.
+**Files in `DATA_DIR`:** `jwt-secret`, `machine-id`, `db/data.sqlite`, `db/analytics.sqlite`, `db/backups/`, `db/analytics-backups/`, `skills/`, `model-catalog.json` (version 3; a copy another build wrote is rebuilt), `rllmx.lock`. Directories `0700`, files `0600`. `DATA_DIR` defaults to `storage/app`; logs sit in `storage/logs` (`rllmx.log`), so `storage/` is the one volume to keep. The main store holds only router configuration.
 
 **Seeding and import.** `rllmx artisan db:import-config` seeds an empty store from a 9router database (`app/store/importer`); `rllmx artisan db:import-analytics` moves old usage history. Steps and rules: `docs/WORKFLOWS.md`.
 

@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync/atomic"
 )
 
 //go:embed data/capabilities/capabilities.json
@@ -149,6 +150,8 @@ type Capabilities struct {
 	visionOk *regexp.Regexp
 	params   []paramCompiled
 	registry *Registry
+	// overlay is the synced catalog, swapped whole; nil means the tables alone.
+	overlay atomic.Pointer[Overlay]
 }
 
 // LoadCapabilities reads the embedded tables. A bad table is an error.
@@ -332,11 +335,16 @@ func modelNames(model string) []string {
 }
 
 // For resolves what a model can do: the provider's own row, then the exact
-// model, then the first matching glob, over the defaults. Only a provider row is
-// returned as written; the other steps turn vision on when the name says so, and
-// a name on the not-vision list never gets it.
+// model, then the first matching glob, over the defaults, then the synced
+// catalog. Only a provider row is returned as written; the other steps turn
+// vision on when the name says so, and a name on the not-vision list never gets
+// it.
 func (c *Capabilities) For(provider, model string) Capability {
-	out := c.forModel(provider, model)
+	out, providerRow := c.table(provider, model)
+	if !providerRow {
+		c.refine(&out, provider, model)
+		c.finish(&out, model)
+	}
 	if c.registry != nil {
 		if id, ok := c.registry.Resolve(provider); ok {
 			if e, ok := c.registry.ByID(id); ok && e.Transport.ThinkingFormat != "" {
@@ -347,7 +355,56 @@ func (c *Capabilities) For(provider, model string) Capability {
 	return out
 }
 
-func (c *Capabilities) forModel(provider, model string) Capability {
+// Base resolves without the synced catalog: what the tables say on their own.
+// A sync compares against it, so the catalog never sees its own last answer.
+func (c *Capabilities) Base(provider, model string) Capability {
+	out, providerRow := c.table(provider, model)
+	if !providerRow {
+		c.finish(&out, model)
+	}
+	return out
+}
+
+func (c *Capabilities) finish(out *Capability, model string) {
+	if !out.Vision && c.looksLikeVision(model) {
+		out.Vision = true
+	}
+}
+
+// refine lays the synced catalog over a table result: a declared modality only
+// turns a capability on, and a positive limit replaces the table's number.
+func (c *Capabilities) refine(out *Capability, provider, model string) {
+	ov := c.overlay.Load()
+	if ov == nil {
+		return
+	}
+	id := baseID(model)
+	limitsDone := false
+	for _, o := range c.owners(provider) {
+		if m, ok := ov.Models[o+":"+id]; ok {
+			out.Vision = out.Vision || m.Vision
+			out.PDF = out.PDF || m.PDF
+			out.AudioInput = out.AudioInput || m.AudioInput
+			out.VideoInput = out.VideoInput || m.VideoInput
+		}
+		if limitsDone {
+			continue
+		}
+		if l, ok := ov.Limits(o, model); ok {
+			limitsDone = true
+			if l.ContextWindow > 0 {
+				out.ContextWindow = l.ContextWindow
+			}
+			if l.MaxOutput > 0 {
+				out.MaxOutput = l.MaxOutput
+			}
+		}
+	}
+}
+
+// table resolves the embedded tables alone and reports whether a provider's own
+// row answered, which the catalog may not overwrite.
+func (c *Capabilities) table(provider, model string) (Capability, bool) {
 	out := defaultCapability()
 	apply := func(raw json.RawMessage) { _ = json.Unmarshal(raw, &out) }
 	names := modelNames(model)
@@ -355,7 +412,7 @@ func (c *Capabilities) forModel(provider, model string) Capability {
 		for _, n := range names {
 			if raw, ok := c.caps.Providers[o][n]; ok {
 				apply(raw)
-				return out
+				return out, true
 			}
 		}
 	}
@@ -378,10 +435,7 @@ func (c *Capabilities) forModel(provider, model string) Capability {
 			}
 		}
 	}
-	if !out.Vision && c.looksLikeVision(model) {
-		out.Vision = true
-	}
-	return out
+	return out, false
 }
 
 func (c *Capabilities) looksLikeVision(model string) bool {

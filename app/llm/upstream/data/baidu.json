@@ -20,30 +20,37 @@
   "models": [
     {
       "id": "deepseek-v4-pro",
+      "contextLength": 1048576,
       "name": "DeepSeek V4 Pro"
     },
     {
       "id": "deepseek-v4-flash",
+      "contextLength": 1048576,
       "name": "DeepSeek V4 Flash"
     },
     {
       "id": "glm-5.2",
+      "contextLength": 512000,
       "name": "GLM 5.2"
     },
     {
       "id": "glm-5.1",
+      "contextLength": 198000,
       "name": "GLM 5.1"
     },
     {
       "id": "kimi-k2.6",
+      "contextLength": 262144,
       "name": "Kimi K2.6"
     },
     {
       "id": "qwen3.5-397b-a17b",
+      "contextLength": 262144,
       "name": "Qwen 3.5 397B A17B"
     },
     {
       "id": "qwen3.5-27b",
+      "contextLength": 262144,
       "name": "Qwen 3.5 27B"
     }
   ]

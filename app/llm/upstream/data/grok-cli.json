@@ -58,7 +58,8 @@
   "models": [
     {
       "id": "grok-build",
-      "name": "Grok Build"
+      "name": "Grok Build",
+      "contextLength": 500000
     },
     {
       "id": "grok-4.7",

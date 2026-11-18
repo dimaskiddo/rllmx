@@ -23,94 +23,117 @@
     },
     {
       "id": "claude-opus-4.7",
+      "contextLength": 1000000,
       "name": "Claude Opus 4.7"
     },
     {
       "id": "claude-sonnet-4.6",
+      "contextLength": 1000000,
       "name": "Claude Sonnet 4.6"
     },
     {
       "id": "claude-haiku-4.5",
+      "contextLength": 200000,
       "name": "Claude Haiku 4.5"
     },
     {
       "id": "gpt-5.5",
+      "contextLength": 1050000,
       "name": "GPT-5.5"
     },
     {
       "id": "gpt-5.4",
+      "contextLength": 1050000,
       "name": "GPT-5.4"
     },
     {
       "id": "gpt-5.4-mini",
+      "contextLength": 400000,
       "name": "GPT-5.4 Mini"
     },
     {
       "id": "gpt-5.4-nano",
+      "contextLength": 400000,
       "name": "GPT-5.4 Nano"
     },
     {
       "id": "grok-4.3",
+      "contextLength": 1000000,
       "name": "Grok 4.3"
     },
     {
       "id": "grok-4.20",
+      "contextLength": 2000000,
       "name": "Grok 4.20"
     },
     {
       "id": "gemini-3.1-pro-preview",
+      "contextLength": 1048576,
       "name": "Gemini 3.1 Pro"
     },
     {
       "id": "gemini-3-flash-preview",
+      "contextLength": 1048576,
       "name": "Gemini 3 Flash"
     },
     {
       "id": "gemini-3.1-flash-lite-preview",
+      "contextLength": 1048576,
       "name": "Gemini 3.1 Flash Lite"
     },
     {
       "id": "kimi-k2.6",
+      "contextLength": 262144,
       "name": "Kimi K2.6"
     },
     {
       "id": "kimi-k2.5",
+      "contextLength": 262144,
       "name": "Kimi K2.5"
     },
     {
       "id": "glm-5.1",
+      "contextLength": 204800,
       "name": "GLM 5.1"
     },
     {
       "id": "glm-5",
+      "contextLength": 204800,
       "name": "GLM 5"
     },
     {
       "id": "mimo-v2.5-pro",
+      "contextLength": 1050000,
       "name": "MiMo-V2.5-Pro"
     },
     {
       "id": "mimo-v2.5",
+      "contextLength": 1050000,
       "name": "MiMo-V2.5"
     },
     {
       "id": "minimax-m3",
+      "contextLength": 1048576,
       "name": "MiniMax M3"
     },
     {
       "id": "minimax-m2.7",
+      "contextLength": 204800,
       "name": "MiniMax M2.7"
     },
     {
       "id": "minimax-m2.5",
+      "contextLength": 204800,
       "name": "MiniMax M2.5"
     },
     {
       "id": "qwen3.6-plus",
+      "contextLength": 1000000,
       "name": "Qwen 3.6 Plus"
     },
     {
       "id": "nemotron-3-super-120b-a12b",
+      "contextLength": 1000000,
       "name": "Nemotron 3 Super"
     }
   ]

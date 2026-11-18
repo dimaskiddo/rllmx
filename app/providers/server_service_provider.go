@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"rllmx/app/access/quota"
@@ -33,6 +34,7 @@ import (
 	"rllmx/app/llm/upstream"
 	"rllmx/app/platform/cache"
 	"rllmx/app/platform/file"
+	"rllmx/app/platform/network"
 	"rllmx/app/platform/settings"
 	"rllmx/app/store/repository"
 )
@@ -107,6 +109,8 @@ type HTTP struct {
 	Inflight *health.Inflight
 	// Quota answers what is left of each connection's plan, for the dashboard.
 	Quota *llmquota.Reader
+	// CatalogSync writes and installs the synced model catalog.
+	CatalogSync *CatalogSync
 }
 
 // HTTPOf returns the bound HTTP pieces. A missing binding means the provider is
@@ -249,6 +253,17 @@ func (r *ServerServiceProvider) Register(app foundation.Application) {
 		}
 		h.Quota = newQuotaReader(h)
 		h.Quota.Cache = cacheOrNil(app)
+		dataDir, err := settings.ResolveDataDir(cfg.GetString("app.data_dir"))
+		if err != nil {
+			return nil, err
+		}
+		h.CatalogSync = newCatalogSync(h.Capabilities, dataDir, func() *http.Client {
+			return network.NewClient(network.Options{
+				ConnectTimeout: h.Upstream.ConnectTimeout, MaxRedirects: 3, Allow: h.Upstream.Allow,
+				BodyCap: upstream.MaxCatalogBytes, Curves: h.Upstream.Curves,
+			})
+		}, app.MakeLog())
+		h.CatalogSync.Enabled = cfg.GetBool("catalog.sync")
 		return h, nil
 	})
 }
@@ -348,7 +363,7 @@ func (r *ServerServiceProvider) Runners(app foundation.Application) []foundation
 	route := app.MakeRoute()
 	server := apphttp.NewServer(h.Settings, apphttp.Rewrite(route), h.Guard, route.GetRoutes, app.MakeLog())
 	server.WaitFor(DataOf(app).Gate)
-	return []foundation.Runner{server, newOAuthRunner(app, h, h.OAuthSettings), newClaudeRunner(app, h), newProbeRunner(app, h.Probes)}
+	return []foundation.Runner{server, newOAuthRunner(app, h, h.OAuthSettings), newClaudeRunner(app, h), newProbeRunner(app, h.Probes), newCatalogRunner(app, h.CatalogSync, h.CatalogSync.Enabled)}
 }
 
 // cacheOrNil returns the grouped cache, or nil when the cache provider is not

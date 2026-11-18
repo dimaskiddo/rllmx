@@ -47,6 +47,7 @@ Status words: **built** (implemented and tested), **partial** (some behavior mis
 | OAuth logins (device and code flows), token refresh, bulk import | built |
 | Provider checks and probes | built |
 | Live model catalog per account | built |
+| models.dev catalog sync and the capability overlay (`/api/models/catalog-sync`, `CATALOG_SYNC`) | built |
 
 ## Media
 

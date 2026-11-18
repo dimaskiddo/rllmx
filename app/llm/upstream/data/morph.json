@@ -27,18 +27,22 @@
     },
     {
       "id": "morph-qwen35-397b",
+      "contextLength": 262144,
       "name": "Qwen 3.5 397B (Morph)"
     },
     {
       "id": "morph-minimax27-230b",
+      "contextLength": 200704,
       "name": "MiniMax M2.7 (Morph)"
     },
     {
       "id": "morph-qwen36-27b",
+      "contextLength": 262144,
       "name": "Qwen 3.6 27B (Morph)"
     },
     {
       "id": "morph-dsv4flash",
+      "contextLength": 1048576,
       "name": "DeepSeek V4 Flash (Morph)"
     }
   ]
