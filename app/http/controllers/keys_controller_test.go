@@ -379,3 +379,42 @@ func TestTheCacheSwitchIsAKeyFieldAndTakesEffectAtOnce(t *testing.T) {
 		t.Fatalf("the row survived: %q", row)
 	}
 }
+
+func TestABadBudgetLeavesTheRestOfTheUpdateUnapplied(t *testing.T) {
+	rig := newKeysRig(t, signedSession{})
+	id, _ := rig.create(t, "before")
+	body := `{"name":"after","isActive":false,"access":{"restricted":true,"allow":["openai/gpt-4o"]},"quota":{"requests":{"week":1}}}`
+	if rec := rig.call(t, nethttp.MethodPut, "/api/keys/"+id, body, keysLocalPeer); rec.Code != nethttp.StatusBadRequest {
+		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+	row, _, _ := rig.sq.APIKeys().GetByID(t.Context(), id)
+	if row.Name != "before" || !row.IsActive || row.AccessRestricted {
+		t.Fatalf("a refused update changed the key: %+v", row)
+	}
+}
+
+func TestTheListShowsEachKeysCacheSwitch(t *testing.T) {
+	rig := newKeysRig(t, signedSession{})
+	on, _ := rig.create(t, "on")
+	off, _ := rig.create(t, "off")
+	if rec := rig.call(t, nethttp.MethodPut, "/api/keys/"+on, `{"responseCache":true}`, keysLocalPeer); rec.Code != 200 {
+		t.Fatalf("%d", rec.Code)
+	}
+	rec := rig.call(t, nethttp.MethodGet, "/api/keys", "", keysLocalPeer)
+	var got struct {
+		Keys []struct {
+			ID            string `json:"id"`
+			ResponseCache bool   `json:"responseCache"`
+		} `json:"keys"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, k := range got.Keys {
+		seen[k.ID] = k.ResponseCache
+	}
+	if !seen[on] || seen[off] || len(seen) != 2 {
+		t.Fatalf("%v", seen)
+	}
+}

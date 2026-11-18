@@ -1,6 +1,7 @@
 package combo
 
 import (
+	"context"
 	"testing"
 
 	"rllmx/app/llm/routing"
@@ -122,13 +123,13 @@ func TestTheCapableMemberComesFirstWhateverTheStrategy(t *testing.T) {
 	m := members("text", "vision")
 	needs := translate.Needs{Vision: true}
 	for _, strategy := range []string{StrategyFallback, StrategyRoundRobin} {
-		got, ok := Order(Policy{Name: "c", Strategy: strategy, RotationLimit: 1}, m, vision, nil, needs, NewRotation(), nil)
+		got, ok := Order(context.Background(), Policy{Name: "c", Strategy: strategy, RotationLimit: 1}, m, vision, nil, needs, NewRotation(), nil)
 		if !ok || names(got)[0] != "vision" {
 			t.Fatalf("%s: %v", strategy, names(got))
 		}
 	}
 	// Without the need the declared order stands.
-	got, _ := Order(Policy{Name: "c", Strategy: StrategyFallback}, m, vision, nil, translate.Needs{}, NewRotation(), nil)
+	got, _ := Order(context.Background(), Policy{Name: "c", Strategy: StrategyFallback}, m, vision, nil, translate.Needs{}, NewRotation(), nil)
 	if names(got)[0] != "text" {
 		t.Fatalf("%v", names(got))
 	}
@@ -137,7 +138,7 @@ func TestTheCapableMemberComesFirstWhateverTheStrategy(t *testing.T) {
 func TestAnOpenProvidersMembersGoLastAndAreNeverDropped(t *testing.T) {
 	m := []routing.Member{{Provider: "a", Model: "m1"}, {Provider: "b", Model: "m2"}, {Provider: "a", Model: "m3"}}
 	open := func(provider string) bool { return provider == "a" }
-	got, ok := Order(Policy{Name: "c", Strategy: StrategyFallback}, m, nil, open, translate.Needs{}, NewRotation(), nil)
+	got, ok := Order(context.Background(), Policy{Name: "c", Strategy: StrategyFallback}, m, nil, open, translate.Needs{}, NewRotation(), nil)
 	if !ok || len(got) != 3 {
 		t.Fatalf("%v", names(got))
 	}
@@ -145,14 +146,42 @@ func TestAnOpenProvidersMembersGoLastAndAreNeverDropped(t *testing.T) {
 		t.Fatalf("order %v", got)
 	}
 	// Every provider open: the order is the declared one.
-	all, _ := Order(Policy{Name: "c", Strategy: StrategyFallback}, m, nil, func(string) bool { return true }, translate.Needs{}, NewRotation(), nil)
+	all, _ := Order(context.Background(), Policy{Name: "c", Strategy: StrategyFallback}, m, nil, func(string) bool { return true }, translate.Needs{}, NewRotation(), nil)
 	if names(all)[0] != "m1" || len(all) != 3 {
 		t.Fatalf("order %v", names(all))
 	}
 }
 
 func TestAnEmptyComboHasNoOrder(t *testing.T) {
-	if _, ok := Order(Policy{}, nil, nil, nil, translate.Needs{}, NewRotation(), nil); ok {
+	if _, ok := Order(context.Background(), Policy{}, nil, nil, nil, translate.Needs{}, NewRotation(), nil); ok {
 		t.Fatal("an empty combo was ordered")
+	}
+}
+
+func TestAGlobalFusionStrategyKeepsItsPanelDefaults(t *testing.T) {
+	p := Read(doc(t, `{"comboStrategy":"fusion"}`), "chain")
+	if p.Strategy != StrategyFusion || p.MinPanel != DefaultMinPanel || p.StragglerMS != DefaultStragglerMS || p.PanelMS != DefaultPanelMS {
+		t.Fatalf("%+v", p)
+	}
+}
+
+func TestRoundRobinRotatesInsideTheCapableTier(t *testing.T) {
+	caps := func(m routing.Member) upstream.Capability {
+		return upstream.Capability{Vision: m.Model == "v1" || m.Model == "v2"}
+	}
+	m := members("text", "v1", "v2")
+	needs := translate.Needs{Vision: true}
+	r := NewRotation()
+	p := Policy{Name: "c", Strategy: StrategyRoundRobin, RotationLimit: 1}
+	var leads []string
+	for i := 0; i < 4; i++ {
+		got, _ := Order(context.Background(), p, m, caps, nil, needs, r, nil)
+		if names(got)[2] != "text" {
+			t.Fatalf("turn %d: the incapable member is not last: %v", i, names(got))
+		}
+		leads = append(leads, names(got)[0])
+	}
+	if leads[0] == leads[1] || leads[0] != leads[2] {
+		t.Fatalf("the capable members did not alternate: %v", leads)
 	}
 }

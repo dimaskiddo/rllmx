@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"rllmx/app/llm/upstream"
 	"rllmx/app/platform/cache"
@@ -333,8 +334,10 @@ func TestAnUnknownOrIneligibleConnectionIsNotRead(t *testing.T) {
 	if _, err := testReader(newStub(), deferred, "t").Read(context.Background(), deferred, true); !errors.Is(err, ErrUnsupported) {
 		t.Fatalf("%v", err)
 	}
-	if Supports("qoder") || Supports("xiaomi-mimo") || Supports("minimax-code") {
-		t.Fatal("a deferred provider answers")
+	for _, name := range []string{"qoder", "xiaomi-mimo", "minimax-code"} {
+		if _, ok := fetchers[name]; ok {
+			t.Fatalf("%s has a reader", name)
+		}
 	}
 	for _, tt := range []struct {
 		provider, auth string
@@ -472,8 +475,10 @@ func TestTheTableCoversEveryReaderItClaims(t *testing.T) {
 	if len(fetchers) < 20 {
 		t.Fatalf("only %d readers", len(fetchers))
 	}
-	if !Supports("claude") || Supports("iflow") || Supports("ollama-web") {
-		t.Fatal("the dispatch table names the wrong providers")
+	for name, want := range map[string]bool{"claude": true, "iflow": false, "ollama-web": false} {
+		if _, ok := fetchers[name]; ok != want {
+			t.Fatalf("the dispatch table has %s = %v", name, ok)
+		}
 	}
 }
 
@@ -486,5 +491,32 @@ func TestAShareOutsideTheHundredIsClamped(t *testing.T) {
 	}
 	if q := window(20, 0, time.Time{}); !q.Unlimited || q.RemainingPercentage != 100 {
 		t.Fatalf("an uncapped row %+v", q)
+	}
+}
+
+func TestACommandCodeOrgIdIsEscapedInTheBillingQuery(t *testing.T) {
+	if got := commandCodeURL("/alpha/billing/credits", "org&admin=1#x y"); got != commandCodeBase+"/alpha/billing/credits?orgId=org%26admin%3D1%23x+y" {
+		t.Fatalf("the org id reached the query as it came: %s", got)
+	}
+	if got := commandCodeURL("/alpha/billing/credits", ""); got != commandCodeBase+"/alpha/billing/credits" {
+		t.Fatalf("no org: %s", got)
+	}
+}
+
+func TestAClaudeResetAnswerIsCutBeforeItReachesTheDashboard(t *testing.T) {
+	long := strings.Repeat("é", 400)
+	s := newStub().
+		on("api.anthropic.com", "/api/oauth/profile", `{"organization":{"uuid":"org-9"}}`).
+		code("api.anthropic.com", "/api/organizations/org-9/reset_rate_limits", http.StatusBadRequest).
+		on("api.anthropic.com", "/api/organizations/org-9/reset_rate_limits", `{"result":"`+long+`","reason":"`+long+`","error":{"message":"`+long+`"}}`)
+	r := testReader(s, connOf("claude", "oauth", ""), "t")
+	out, err := r.ClaudeReset(context.Background(), connOf("claude", "oauth", ""), "grant-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, v := range map[string]string{"result": out.Result, "reason": out.Reason, "message": out.Message} {
+		if len(v) > maxUpstreamText || !utf8.ValidString(v) {
+			t.Errorf("%s is %d bytes, valid=%v", name, len(v), utf8.ValidString(v))
+		}
 	}
 }

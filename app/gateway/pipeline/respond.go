@@ -207,7 +207,13 @@ func (c *call) relay(ctx context.Context, resp executor.Response, src stream.Sou
 	})
 	if errors.Is(res.Err, stream.ErrClientGone) {
 		c.setUsage(res.Usage)
-		return c.closed(), nil
+		out := c.closed()
+		if res.Usage.Prompt+res.Usage.Completion > 0 {
+			// The upstream served and was paid for: the row must keep a status a
+			// budget counts, with the reason in its class.
+			c.rowStatus = http.StatusOK
+		}
+		return out, nil
 	}
 	if !lc.opened {
 		if res.Err != nil {

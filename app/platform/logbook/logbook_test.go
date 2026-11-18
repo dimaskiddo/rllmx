@@ -9,28 +9,30 @@ import (
 
 func at(sec int) time.Time { return time.Date(2026, 1, 1, 0, 0, sec, 0, time.UTC) }
 
+func all(b *Book) []Entry {
+	lines, _ := b.Snapshot()
+	return lines
+}
+
 func TestTheRingKeepsTheNewestLinesInOrder(t *testing.T) {
 	b := New(3)
 	for i := range 5 {
 		b.Add("info", at(i), string(rune('a'+i)))
 	}
-	got := b.Lines(0)
+	got := all(b)
 	if len(got) != 3 || got[0].Message != "c" || got[2].Message != "e" {
 		t.Fatalf("%+v", got)
-	}
-	if last := b.Lines(1); len(last) != 1 || last[0].Message != "e" {
-		t.Fatalf("%+v", last)
 	}
 }
 
 func TestALineCannotForgeARecordOrGrowTheRing(t *testing.T) {
 	b := New(4)
 	b.Add("info", at(0), "a\x00b\nc\rd")
-	if got := b.Lines(0); len(got) != 1 || strings.ContainsAny(got[0].Message, "\x00\n\r") {
+	if got := all(b); len(got) != 1 || strings.ContainsAny(got[0].Message, "\x00\n\r") {
 		t.Fatalf("%+v", got)
 	}
 	b.Add("info", at(1), strings.Repeat("x", maxLine*2))
-	got := b.Lines(0)
+	got := all(b)
 	if len(got) != 2 || len(got[1].Message) != maxLine {
 		t.Fatalf("%d lines, %d bytes", len(got), len(got[1].Message))
 	}
@@ -68,12 +70,12 @@ func TestAnEmptyBookAnswersEmptyAndNeverBlocks(t *testing.T) {
 	nilBook.Add("info", at(0), "ignored")
 	nilBook.Clear()
 	b := New(0)
-	if len(b.Lines(0)) != 0 {
+	if len(all(b)) != 0 {
 		t.Fatal("a new book holds lines")
 	}
 	b.Add("info", at(0), "x")
-	if len(b.Lines(0)) != 1 {
-		t.Fatalf("a zero size did not take the default: %d", len(b.Lines(0)))
+	if len(all(b)) != 1 {
+		t.Fatalf("a zero size did not take the default: %d", len(all(b)))
 	}
 }
 
@@ -84,7 +86,7 @@ func TestConcurrentWritersAndReadersStayConsistent(t *testing.T) {
 		wg.Go(func() {
 			for j := range 100 {
 				b.Add("info", at(j), "x")
-				b.Lines(3)
+				all(b)
 				b.Since(0, b.Generation())
 				if (i+j)%50 == 0 {
 					b.Clear()
@@ -93,7 +95,7 @@ func TestConcurrentWritersAndReadersStayConsistent(t *testing.T) {
 		})
 	}
 	wg.Wait()
-	if got := b.Lines(0); len(got) > 16 {
+	if got := all(b); len(got) > 16 {
 		t.Fatalf("the ring grew to %d", len(got))
 	}
 }

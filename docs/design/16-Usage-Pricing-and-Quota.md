@@ -132,6 +132,8 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 377 | MiniMax's refusal is read from the status and the plan's own `base_resp` code, and a 200 body is never scanned **(built)** | The reference runs an invalid-key regex over the body of every answer, so a successful answer that mentions "coding plan" is reported as a bad key |
 | 378 | A reset grant id outside its shape answers 400 before any call **(built)** | The reference throws from the service and answers 500 for a missing or malformed grant |
 | 379 | MiniMax Code, Xiaomi MiMo and Qoder have no reading: their calls need a signed account API, a cookie SSO chain and a pasted token exchanged for a job token **(scope cut)** | Each is a handshake of its own; the three land together with the design that covers them |
+| 393 | Kiro's quota is read from CodeWhisperer's GET, then its POST (`x-amz-target`), then the Q host's GET, and the first answer wins; a refusal on all three is a message that says chat may still work, not an error that triggers a renewal **(built)** | The reference reads the same three and words its messages by sign-in method; this build had tried one host and built a second it never called. The live endpoints were never called here, so the POST attempt is unverified |
+| 394 | Text a provider returns in a Claude reset answer is cut to 200 bytes on a character boundary before it reaches the dashboard **(built)** | The reference passes `result`, `reason` and `error.message` through uncut, so one long answer from the vendor fills the page |
 | 380 | Quota auto-ping is not built; the settings are read and written in the reference's shape only **(scope cut)** | The scheduler needs its own design pass (tick ownership, restart dedupe, which call starts a window); the settings shape had to land now so a reference database round-trips |
 
 ---
@@ -143,5 +145,8 @@ One row per lesson; the decision is what the code does because of it.
 | Finding | Decision |
 |---|---|
 | The analytics store writes usage rows and the pipeline prices each one. | `upstream.Table` (`Lookup`, `Cost`, `ParseOverrides`) supplies the rates. |
+| A value taken from a vendor's answer must not reach the next query as it came. | Command Code's organisation id is escaped when it is joined into the billing address, as the reference's `URLSearchParams` does. |
+| A pricing row that cannot be read must never be replaced by the write that follows it. | `mergeCards` and `dropCard` refuse a stored row that is not an object and leave it as it was. |
+| A failed read of the operator's prices must not become the price list for good. | The source returns the embedded table together with `ErrPricingOverrides`; requests price with it, and the next call reads again. |
 | An unknown model must not look free. | `Table.Cost` returns `known=false`; an override of `{}` is the only way to say a model costs nothing. |
 

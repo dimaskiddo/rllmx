@@ -29,7 +29,7 @@ func readCursor(ctx context.Context, r *Reader, e upstream.Entry, a Access) (Rea
 			return out, nil
 		}
 	}
-	code, raw, err = r.do(ctx, request{URL: cursorAuthURL, Headers: bearer(identity(e), a.Token)})
+	code, raw, err = r.do(ctx, request{URL: cursorAuthURL, Headers: bearerFor(e, a)})
 	if err != nil {
 		return failed("Cursor", err)
 	}

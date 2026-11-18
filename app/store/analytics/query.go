@@ -74,6 +74,29 @@ func (s *Store) splitAt(ctx context.Context) (int64, error) {
 	return time.UnixMilli(dayBucket(time.UnixMilli(min[0]))).AddDate(0, 0, 1).UnixMilli(), nil
 }
 
+// span is where each rollup is read from for a window that starts at one
+// moment: the hourly rollups from hourFrom, and, unless the window is hourly
+// only, the daily ones from dayFrom up to split.
+type span struct {
+	hourFrom, dayFrom, split int64
+}
+
+// spanOf lays a window out over the two rollups.
+func (s *Store) spanOf(ctx context.Context, from time.Time, hourly bool) (span, error) {
+	var sp span
+	if !hourly {
+		var err error
+		if sp.split, err = s.splitAt(ctx); err != nil {
+			return span{}, err
+		}
+		if !from.IsZero() {
+			sp.dayFrom = dayBucket(from)
+		}
+	}
+	sp.hourFrom = max(start(from), sp.split)
+	return sp, nil
+}
+
 // table picks the rollup an hourly window reads.
 func table(hourly bool) string {
 	if hourly {
@@ -90,21 +113,28 @@ func start(from time.Time) int64 {
 	return hourBucket(from)
 }
 
+// dimsRow is the five columns a usage row is grouped by.
+type dimsRow struct {
+	Provider     string `db:"provider"`
+	Model        string `db:"model"`
+	ConnectionID string `db:"connectionId"`
+	APIKeyID     string `db:"apiKeyId"`
+	Endpoint     string `db:"endpoint"`
+}
+
+func (r dimsRow) dims() Dims { return Dims(r) }
+
 type sumRow struct {
-	Provider     string  `db:"provider"`
-	Model        string  `db:"model"`
-	ConnectionID string  `db:"connectionId"`
-	APIKeyID     string  `db:"apiKeyId"`
-	Endpoint     string  `db:"endpoint"`
-	Requests     int64   `db:"requests"`
-	Errors       int64   `db:"errors"`
-	Prompt       int64   `db:"promptTokens"`
-	Completion   int64   `db:"completionTokens"`
-	Cached       int64   `db:"cachedTokens"`
-	CacheWrite   int64   `db:"cacheWriteTokens"`
-	Reasoning    int64   `db:"reasoningTokens"`
-	Cost         float64 `db:"cost"`
-	Last         int64   `db:"last"`
+	dimsRow
+	Requests   int64   `db:"requests"`
+	Errors     int64   `db:"errors"`
+	Prompt     int64   `db:"promptTokens"`
+	Completion int64   `db:"completionTokens"`
+	Cached     int64   `db:"cachedTokens"`
+	CacheWrite int64   `db:"cacheWriteTokens"`
+	Reasoning  int64   `db:"reasoningTokens"`
+	Cost       float64 `db:"cost"`
+	Last       int64   `db:"last"`
 }
 
 // Sums totals the usage per dimension from a moment on. hourly reads only the
@@ -112,39 +142,28 @@ type sumRow struct {
 // rollups answer the days before the first kept hour and the hourly ones the
 // days from it.
 func (s *Store) Sums(ctx context.Context, from time.Time, hourly bool) ([]Sum, error) {
-	var split int64
-	if !hourly {
-		var err error
-		if split, err = s.splitAt(ctx); err != nil {
-			return nil, err
-		}
-	}
-	hourFrom := start(from)
-	if hourFrom < split {
-		hourFrom = split
+	sp, err := s.spanOf(ctx, from, hourly)
+	if err != nil {
+		return nil, err
 	}
 	var rows []sumRow
 	query := `SELECT ` + groupCols + `,` + sumAgg + `,MAX("bucket") AS "last" FROM ` + table(true) +
 		` WHERE "bucket" >= ? GROUP BY ` + groupCols
-	if err := s.db.WithContext(ctx).Select(&rows, s.q(query), hourFrom); err != nil {
+	if err := s.db.WithContext(ctx).Select(&rows, s.q(query), sp.hourFrom); err != nil {
 		return nil, err
 	}
 	if !hourly {
-		dayFrom := int64(0)
-		if !from.IsZero() {
-			dayFrom = dayBucket(from)
-		}
 		var days []sumRow
 		query := `SELECT ` + groupCols + `,` + sumAgg + `,MAX("bucket") AS "last" FROM ` + table(false) +
 			` WHERE "bucket" >= ? AND "bucket" < ? GROUP BY ` + groupCols
-		if err := s.db.WithContext(ctx).Select(&days, s.q(query), dayFrom, split); err != nil {
+		if err := s.db.WithContext(ctx).Select(&days, s.q(query), sp.dayFrom, sp.split); err != nil {
 			return nil, err
 		}
 		rows = append(rows, days...)
 	}
 	merged := make(map[Dims]*Sum, len(rows))
 	for _, r := range rows {
-		k := Dims{r.Provider, r.Model, r.ConnectionID, r.APIKeyID, r.Endpoint}
+		k := r.dims()
 		v := merged[k]
 		if v == nil {
 			v = &Sum{Dims: k}
@@ -177,16 +196,9 @@ func (s *Store) Buckets(ctx context.Context, from time.Time, hourly bool) ([]Buc
 	const cols = `"bucket",COALESCE(SUM("requests"),0) AS "requests",` +
 		`COALESCE(SUM("promptTokens"),0)+COALESCE(SUM("completionTokens"),0) AS "tokens",` +
 		`COALESCE(SUM("cost"),0) AS "cost"`
-	var split int64
-	if !hourly {
-		var err error
-		if split, err = s.splitAt(ctx); err != nil {
-			return nil, err
-		}
-	}
-	hourFrom := start(from)
-	if hourFrom < split {
-		hourFrom = split
+	sp, err := s.spanOf(ctx, from, hourly)
+	if err != nil {
+		return nil, err
 	}
 	read := func(table string, daily bool, from, to int64) ([]Bucket, error) {
 		var rows []struct {
@@ -205,18 +217,14 @@ func (s *Store) Buckets(ctx context.Context, from time.Time, hourly bool) ([]Buc
 		}
 		return out, nil
 	}
-	hours, err := read(table(true), false, hourFrom, math.MaxInt64)
+	hours, err := read(table(true), false, sp.hourFrom, math.MaxInt64)
 	if err != nil {
 		return nil, err
 	}
 	if hourly {
 		return hours, nil
 	}
-	dayFrom := int64(0)
-	if !from.IsZero() {
-		dayFrom = dayBucket(from)
-	}
-	days, err := read(table(false), true, dayFrom, split)
+	days, err := read(table(false), true, sp.dayFrom, sp.split)
 	if err != nil {
 		return nil, err
 	}
@@ -227,12 +235,8 @@ func (s *Store) Buckets(ctx context.Context, from time.Time, hourly bool) ([]Buc
 // the request rows so a bucket start can be replaced by the real time.
 func (s *Store) LastSeen(ctx context.Context, since time.Time) (map[Dims]time.Time, error) {
 	var rows []struct {
-		Provider     string `db:"provider"`
-		Model        string `db:"model"`
-		ConnectionID string `db:"connectionId"`
-		APIKeyID     string `db:"apiKeyId"`
-		Endpoint     string `db:"endpoint"`
-		Last         int64  `db:"last"`
+		dimsRow
+		Last int64 `db:"last"`
 	}
 	err := s.db.WithContext(ctx).Select(&rows, s.q(`SELECT `+groupCols+`,MAX("ts") AS "last" FROM "requests"`+
 		` WHERE "ts" >= ? GROUP BY `+groupCols), since.UnixMilli())
@@ -241,13 +245,24 @@ func (s *Store) LastSeen(ctx context.Context, since time.Time) (map[Dims]time.Ti
 	}
 	out := make(map[Dims]time.Time, len(rows))
 	for _, r := range rows {
-		out[Dims{r.Provider, r.Model, r.ConnectionID, r.APIKeyID, r.Endpoint}] = time.UnixMilli(r.Last).UTC()
+		out[r.dims()] = time.UnixMilli(r.Last).UTC()
 	}
 	return out, nil
 }
 
 // Recent returns the newest request rows, at most maxRecent.
 func (s *Store) Recent(ctx context.Context, limit int) ([]Request, error) {
+	return s.recent(ctx, limit, "")
+}
+
+// RecentServed returns the newest rows that used tokens, at most limit, for a
+// list that would otherwise read many rows to keep a few.
+func (s *Store) RecentServed(ctx context.Context, limit int) ([]Request, error) {
+	return s.recent(ctx, limit, ` WHERE "promptTokens" + "completionTokens" > 0`)
+}
+
+// recent runs the one query both readers share; where is a constant clause.
+func (s *Store) recent(ctx context.Context, limit int, where string) ([]Request, error) {
 	if limit <= 0 || limit > maxRecent {
 		limit = maxRecent
 	}
@@ -263,7 +278,7 @@ func (s *Store) Recent(ctx context.Context, limit int) ([]Request, error) {
 		ErrorClass   string `db:"errorClass"`
 	}
 	err := s.db.WithContext(ctx).Select(&rows, s.q(`SELECT "ts","provider","model","connectionId","promptTokens",`+
-		`"completionTokens","cachedTokens","status","errorClass" FROM "requests" ORDER BY "id" DESC LIMIT ?`), limit)
+		`"completionTokens","cachedTokens","status","errorClass" FROM "requests"`+where+` ORDER BY "id" DESC LIMIT ?`), limit)
 	if err != nil {
 		return nil, err
 	}

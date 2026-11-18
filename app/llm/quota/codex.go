@@ -22,12 +22,9 @@ const (
 // readCodex reads the account's windows: the session and weekly pair, then the
 // review and spark pairs when the plan reports them.
 func readCodex(ctx context.Context, r *Reader, e upstream.Entry, a Access) (Reading, error) {
-	code, raw, err := r.do(ctx, request{URL: codexUsageURL, Headers: codexHeaders(e, a, nil)})
-	if err != nil {
-		return failed("Codex", err)
-	}
-	if code != http.StatusOK {
-		return answered("Codex", code)
+	raw, stop, early, earlyErr := r.getOK(ctx, "Codex", request{URL: codexUsageURL, Headers: codexHeaders(e, a, nil)})
+	if stop {
+		return early, earlyErr
 	}
 	return parseCodex(raw), nil
 }
@@ -35,7 +32,7 @@ func readCodex(ctx context.Context, r *Reader, e upstream.Entry, a Access) (Read
 // codexHeaders are the CLI's own: its identity, the account header and the
 // bearer token.
 func codexHeaders(e upstream.Entry, a Access, extra map[string]string) map[string]string {
-	h := bearer(identity(e), a.Token)
+	h := bearerFor(e, a)
 	if e.OAuth != nil && e.OAuth.Account != nil {
 		if v := e.OAuth.Account.Value(a.Conn.Data); v != "" {
 			h[e.OAuth.Account.Name] = v

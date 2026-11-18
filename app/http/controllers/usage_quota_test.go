@@ -197,6 +197,11 @@ func TestTheClientListShowsOnlyReadableConnections(t *testing.T) {
 	if page, size := clientPaging("0", "900"); page != 1 || size != clientPageSizeMax {
 		t.Fatalf("paging %d %d", page, size)
 	}
+	// A page past anything real cannot wrap the offset into a negative slice index.
+	code, _, raw = r.m.call("GET", "/api/providers/client?page=461168601842738792&pageSize=500", "", true)
+	if code != 200 {
+		t.Fatalf("a huge page answered %d %s", code, raw)
+	}
 }
 
 func TestAStaticUsageRouteWinsOverTheConnectionOne(t *testing.T) {
@@ -234,4 +239,33 @@ func seedConnectionNamed(t *testing.T, r *usageRig, provider, authType, name str
 		t.Fatal(err)
 	}
 	return conn
+}
+
+func TestAPageIsASliceOfTheRowsAndAPastTheEndPageIsEmpty(t *testing.T) {
+	for _, tt := range []struct{ total, page, size, from, to, pages int }{
+		{0, 1, 20, 0, 0, 0},
+		{3, 1, 2, 0, 2, 2},
+		{3, 2, 2, 2, 3, 2},
+		{3, 3, 2, 3, 3, 2},
+		{3, 1_000_000, 500, 3, 3, 1},
+		{40, 2, 20, 20, 40, 2},
+	} {
+		from, to, pages := pageSpan(tt.total, tt.page, tt.size)
+		if from != tt.from || to != tt.to || pages != tt.pages {
+			t.Errorf("%+v: got %d %d %d", tt, from, to, pages)
+		}
+	}
+}
+
+func TestOnlyReadableConnectionsAreListedAndTheirProvidersAreNamedOnceInOrder(t *testing.T) {
+	rows, names := eligibleClients([]repository.Connection{
+		{Provider: "kimi", AuthType: "apikey"}, {Provider: "claude", AuthType: "oauth"},
+		{Provider: "claude", AuthType: "apikey"}, {Provider: "claude", AuthType: "oauth"}, {Provider: "deepseek", AuthType: "oauth"},
+	})
+	if len(rows) != 3 || strings.Join(names, ",") != "claude,kimi" {
+		t.Fatalf("%d rows, providers %v", len(rows), names)
+	}
+	if _, none := eligibleClients(nil); none == nil {
+		t.Fatal("no providers must answer an empty list, not null")
+	}
 }

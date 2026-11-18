@@ -65,12 +65,6 @@ var fetchers = map[string]fetcher{
 	"commandcode":       {auth: authKey, run: readCommandCode},
 }
 
-// Supports reports whether a connection of this provider has a quota reader.
-func Supports(provider string) bool {
-	_, ok := fetchers[provider]
-	return ok
-}
-
 // Serves reports whether a reading can be asked for this provider and auth type.
 // A dashboard lists exactly the connections a reading answers.
 func Serves(provider, authType string) bool {

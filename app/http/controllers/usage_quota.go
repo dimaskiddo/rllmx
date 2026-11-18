@@ -34,7 +34,7 @@ func (c *UsageController) connection(ctx contractshttp.Context) (repository.Conn
 		return repository.Connection{}, c.failed(ctx, "quota", "Failed to fetch usage", err)
 	}
 	if !ok {
-		return repository.Connection{}, usageError(ctx, nethttp.StatusNotFound, "Connection not found")
+		return repository.Connection{}, flat(ctx, nethttp.StatusNotFound, "Connection not found")
 	}
 	return conn, nil
 }
@@ -54,7 +54,7 @@ func (c *UsageController) Connection(ctx contractshttp.Context) contractshttp.Re
 	}
 	q := c.quotaReader()
 	if q == nil {
-		return usageError(ctx, nethttp.StatusInternalServerError, "Failed to fetch usage")
+		return flat(ctx, nethttp.StatusInternalServerError, "Failed to fetch usage")
 	}
 	force := ctx.Request().Query("force") == "1"
 	out, err := q.Read(ctx.Request().Origin().Context(), conn, force)
@@ -68,7 +68,7 @@ func (c *UsageController) Connection(ctx contractshttp.Context) contractshttp.Re
 			"message": "Usage not available for this connection",
 		})
 	case errors.Is(err, quota.ErrExpired):
-		return usageError(ctx, nethttp.StatusUnauthorized, "Credential refresh failed: "+quotaReason(err))
+		return flat(ctx, nethttp.StatusUnauthorized, "Credential refresh failed: "+quotaReason(err))
 	case err != nil:
 		return c.failed(ctx, "quota", "Failed to fetch usage", err)
 	}
@@ -94,7 +94,7 @@ func quotaReason(err error) string {
 // claudeConnection checks that a reset route is asked about the right account.
 func claudeConnection(ctx contractshttp.Context, conn repository.Connection) contractshttp.Response {
 	if conn.Provider != "claude" || (conn.AuthType != "oauth" && conn.AuthType != "access_token") {
-		return usageError(ctx, nethttp.StatusBadRequest, "Limit reset is only available for Claude OAuth connections.")
+		return flat(ctx, nethttp.StatusBadRequest, "Limit reset is only available for Claude OAuth connections.")
 	}
 	return nil
 }
@@ -102,10 +102,10 @@ func claudeConnection(ctx contractshttp.Context, conn repository.Connection) con
 // codexConnection checks that a reset-credit route is asked about a Codex login.
 func codexConnection(ctx contractshttp.Context, conn repository.Connection) contractshttp.Response {
 	if conn.Provider != "codex" {
-		return usageError(ctx, nethttp.StatusBadRequest, "Codex reset credits are only available for Codex connections.")
+		return flat(ctx, nethttp.StatusBadRequest, "Codex reset credits are only available for Codex connections.")
 	}
 	if conn.AuthType != "oauth" && conn.AuthType != "access_token" {
-		return usageError(ctx, nethttp.StatusBadRequest, "Codex reset credits require an OAuth or access-token connection.")
+		return flat(ctx, nethttp.StatusBadRequest, "Codex reset credits require an OAuth or access-token connection.")
 	}
 	return nil
 }
@@ -122,7 +122,7 @@ func (c *UsageController) ClaudeReset(ctx contractshttp.Context) contractshttp.R
 	}
 	q := c.quotaReader()
 	if q == nil {
-		return usageError(ctx, nethttp.StatusInternalServerError, "Failed to reset limits")
+		return flat(ctx, nethttp.StatusInternalServerError, "Failed to reset limits")
 	}
 	var body struct {
 		GrantID string `json:"grantId"`
@@ -131,9 +131,9 @@ func (c *UsageController) ClaudeReset(ctx contractshttp.Context) contractshttp.R
 	out, err := q.ClaudeReset(ctx.Request().Origin().Context(), conn, strings.TrimSpace(body.GrantID))
 	switch {
 	case errors.Is(err, quota.ErrInvalidGrant):
-		return usageError(ctx, nethttp.StatusBadRequest, "Invalid reset grant id.")
+		return flat(ctx, nethttp.StatusBadRequest, "Invalid reset grant id.")
 	case errors.Is(err, quota.ErrExpired):
-		return usageError(ctx, nethttp.StatusUnauthorized, "Credential refresh failed: "+quotaReason(err))
+		return flat(ctx, nethttp.StatusUnauthorized, "Credential refresh failed: "+quotaReason(err))
 	case err != nil:
 		return c.failed(ctx, "claude-reset", "Failed to reset limits", err)
 	}
@@ -169,14 +169,14 @@ func (c *UsageController) CodexCredits(ctx contractshttp.Context) contractshttp.
 	}
 	q := c.quotaReader()
 	if q == nil {
-		return usageError(ctx, nethttp.StatusInternalServerError, "Failed to fetch reset credits")
+		return flat(ctx, nethttp.StatusInternalServerError, "Failed to fetch reset credits")
 	}
 	out, err := q.CodexCredits(ctx.Request().Origin().Context(), conn)
 	switch {
 	case errors.Is(err, quota.ErrAuth), errors.Is(err, quota.ErrExpired):
-		return usageError(ctx, nethttp.StatusUnauthorized, "Credential refresh failed: "+quotaReason(err))
+		return flat(ctx, nethttp.StatusUnauthorized, "Credential refresh failed: "+quotaReason(err))
 	case errors.Is(err, quota.ErrRefused):
-		return usageError(ctx, nethttp.StatusInternalServerError, "Failed to fetch reset credits")
+		return flat(ctx, nethttp.StatusInternalServerError, "Failed to fetch reset credits")
 	case err != nil:
 		return c.failed(ctx, "codex-credits", "Failed to fetch reset credits", err)
 	}
@@ -195,12 +195,12 @@ func (c *UsageController) CodexResetCredits(ctx contractshttp.Context) contracts
 	}
 	q := c.quotaReader()
 	if q == nil {
-		return usageError(ctx, nethttp.StatusInternalServerError, "Failed to reset credits")
+		return flat(ctx, nethttp.StatusInternalServerError, "Failed to reset credits")
 	}
 	out, err := q.CodexConsume(ctx.Request().Origin().Context(), conn)
 	switch {
 	case errors.Is(err, quota.ErrAuth), errors.Is(err, quota.ErrExpired):
-		return usageError(ctx, nethttp.StatusUnauthorized, "Credential refresh failed: "+quotaReason(err))
+		return flat(ctx, nethttp.StatusUnauthorized, "Credential refresh failed: "+quotaReason(err))
 	case err != nil:
 		return c.failed(ctx, "codex-reset", "Failed to reset credits", err)
 	}

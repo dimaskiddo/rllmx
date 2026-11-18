@@ -2,12 +2,18 @@ package providers
 
 import (
 	"context"
+	"errors"
 
 	"github.com/goravel/framework/contracts/foundation"
 
 	"rllmx/app/llm/upstream"
 	"rllmx/app/store/repository"
 )
+
+// ErrPricingOverrides says the operator's price overrides could not be read. The
+// table that comes with it holds the embedded rates and prices requests until
+// the overrides can be read.
+var ErrPricingOverrides = errors.New("providers: the pricing overrides could not be read")
 
 // PriceSource builds the price table once. The pipeline prices a request with
 // it and the suggest route ranks on it, so both read the same numbers.
@@ -33,8 +39,10 @@ func (s *PriceSource) Reset() { s.reset() }
 type priceReader struct{ src *PriceSource }
 
 func (p priceReader) Cost(provider, model string, u upstream.Usage) (float64, bool) {
-	t, err := p.src.Get()
-	if err != nil {
+	// A table built without the operator's overrides still prices a request, at
+	// the embedded rates; only no table at all is no price.
+	t, _ := p.src.Get()
+	if t == nil {
 		return 0, false
 	}
 	return t.Cost(provider, model, u)
@@ -53,7 +61,7 @@ func buildPrices(app foundation.Application, ctx context.Context) (*upstream.Tab
 	raw, err := store.KV().List(ctx, repository.ScopePricing)
 	if err != nil {
 		app.MakeLog().Warningf("pipeline: pricing overrides not read: %v", err)
-		return table, nil
+		return table, ErrPricingOverrides
 	}
 	return table.WithOverrides(upstream.ParseOverrides(raw, func(format string, args ...any) {
 		app.MakeLog().Warningf(format, args...)

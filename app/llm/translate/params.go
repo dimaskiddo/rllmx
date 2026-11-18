@@ -9,6 +9,7 @@ import (
 	"github.com/tidwall/sjson"
 
 	"rllmx/app/llm/upstream"
+	"rllmx/app/platform/text"
 )
 
 // ApplyParams runs the parameter rules over a final upstream body, which is why
@@ -81,32 +82,17 @@ func deleteTop(body []byte, name string) []byte {
 	if _, ok := topField(body, name); !ok {
 		return body
 	}
-	if next, err := sjson.DeleteBytes(body, escapePath(name)); err == nil {
+	if next, err := sjson.DeleteBytes(body, text.EscapePath(name)); err == nil {
 		return next
 	}
 	return body
 }
 
 func setTop(body []byte, name, raw string) []byte {
-	if next, err := sjson.SetRawBytes(body, escapePath(name), []byte(raw)); err == nil {
+	if next, err := sjson.SetRawBytes(body, text.EscapePath(name), []byte(raw)); err == nil {
 		return next
 	}
 	return body
-}
-
-// escapePath makes a field name one literal path segment.
-func escapePath(name string) string {
-	if !strings.ContainsAny(name, `.*?#|@\:!=<>%"`) {
-		return name
-	}
-	var b strings.Builder
-	for i := 0; i < len(name); i++ {
-		if strings.IndexByte(`.*?#|@\:!=<>%"`, name[i]) >= 0 {
-			b.WriteByte('\\')
-		}
-		b.WriteByte(name[i])
-	}
-	return b.String()
 }
 
 // rewriteMessages edits the assistant messages and flattens text-only content,
@@ -135,7 +121,7 @@ func rewriteMessages(body []byte, rule upstream.ParamRule) []byte {
 		if m.Get("role").String() == "assistant" {
 			for _, f := range rule.DropMessageFields {
 				if _, ok := topField([]byte(raw), f); ok {
-					if next, err := sjson.Delete(raw, escapePath(f)); err == nil {
+					if next, err := sjson.Delete(raw, text.EscapePath(f)); err == nil {
 						raw = next
 					}
 				}

@@ -21,12 +21,7 @@ type smartRouter struct{ call *call }
 // Choose sends the choice question to the policy's router model and reads back
 // the member it named. The router model must be a plain model: a combo there
 // would recurse.
-func (r smartRouter) Choose(ctx context.Context, state string, models []string) (combo.Choice, error) {
-	policy, err := r.call.comboPolicy(ctx, "")
-	if err != nil {
-		return combo.Choice{}, combo.ErrNoChoice
-	}
-	routerModel := policy.RouterModel
+func (r smartRouter) Choose(ctx context.Context, routerModel, state string, models []string) (combo.Choice, error) {
 	if routerModel == "" {
 		return combo.Choice{}, combo.ErrNoChoice
 	}
@@ -54,7 +49,6 @@ func (r smartRouter) Choose(ctx context.Context, state string, models []string) 
 	caps := r.call.p.d.Caps.For(dest.provider, dest.model)
 	tctx := translate.NewCtx(r.call.format, dest.format)
 	tctx.Provider, tctx.Model, tctx.Caps, tctx.Entry = dest.provider, dest.model, caps, dest.entry
-	req.Stream = false
 	body, err := codec.WriteRequest(&req, tctx)
 	if err != nil {
 		return combo.Choice{}, combo.ErrNoChoice

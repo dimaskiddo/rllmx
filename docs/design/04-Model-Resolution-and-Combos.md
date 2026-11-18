@@ -65,13 +65,13 @@ sequenceDiagram
 
 - Members are reordered so capable models come first when the request needs vision, pdf, audio or video, in three tiers: members meeting every need, members meeting the hard needs, then the rest. The declared order holds inside a tier, and the order a strategy produces is the order the loop tries. The **capacity adapter** pool is not built: a request never gains a model the operator did not name in the combo (`D337`).
 - A member may name another combo. `Expand` follows it in place with a visited set and a depth limit of 3, so a cycle is `ErrComboCycle` and a deeper chain `ErrComboDepth`, both a 400 before any account is tried (`D336`). A member that does not resolve is skipped; a combo with nothing reachable is `ErrComboEmpty`, also a 400.
-- A request-scoped 4xx also moves to the next member, but never locks an account. A 502, 503 or 504 with a cooldown of at most 5 s is waited out; a longer one ends the search with that answer.
+- Any failure of a member moves the walk to the next one, and a request-scoped 4xx never locks an account. A 502, 503 or 504 with a cooldown of at most 5 s is waited out; a longer one ends the search with that answer (`D388`).
 - An empty answer (zero content, or an SSE stream that opened and produced nothing) counts as a failure for every member but the last, where it is returned as it stands. A stream that opened to the client is never retried.
 - When every member fails: the first request-scoped answer verbatim, else the last failure, with `retryAfter` when one gave it. A member that found no account is not an answer, so the search continues.
 - One usage row per client request (`D335`): `comboName` names the combo, and the row's provider, model, connection and attempt belong to the member that answered.
 - `fusion` runs the panel with tools stripped, non-streaming, a quorum of two, 8 s for stragglers and 90 s overall, then sends the answers to the judge. A `smart` choice sticks to the session.
 - A member whose provider's breaker is open goes last, after the strategy and the capability order, for `fallback`, `round-robin` and `smart`; nothing is dropped, and `fusion` is not reordered (`design doc 12`, divergence 7).
-- The smart router and the fusion judge are ordinary pipeline requests on their own names, so each writes its own usage row and none of their spend is added to the client's row (`D338`).
+- The smart router is an ordinary pipeline request on its own model name, so it writes its own usage row and none of its spend is added to the client's row (`D338`). The fusion panel and judge are members of the client's one request, and their tokens and cost are added to its one row, which names the combo and the judge (`D389`).
 
 ---
 
@@ -144,8 +144,12 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 357 | `clearCooldown` drops the named lock and the account lock, leaves every other model's lock alone, and `__all` names `modelLock___all` **(built)** | The reference's `__all` maps to a key that never exists, so the account lock cannot be cleared from that page, while its activation side effect wipes every lock on the connection |
 | 358 | Presets enumerate the embedded provider list for both sources; the Claude list also includes the stored aliases that point at it **(trade-off)** | The reference reads the first Cursor account's live catalog from a presets preview; here the live list stays behind the model guard and the preview spends nothing |
 | 359 | `PUT /api/models` is not built **(scope cut)** | The reference's model-to-alias write is the mirror of a map it does not own, and no dashboard page calls it |
+| 388 | A member whose accounts are all locked, or that failed on its credentials or a quota, moves the walk on to the next member; only a refusal that blames the request is kept as the answer if every member fails, and a long cooldown still ends the search **(built)** | The reference falls through on every failure but a request-scoped 4xx, and this build had ended the walk on a 401, 402, 403, 429 or a locked account, so a combo whose first member was spent never reached its second |
+| 389 | The fusion panel's tokens and cost are added to the client's one row, which names the combo and the member that answered. **Built** | The reference records one usage row per panel call and one for the judge, so a request shows as N+1; here a request is one row (`D335`) and a per-key token or cost budget sees the whole spend |
+| 390 | A smart combo asks the router model named in its own entry, and a global fusion strategy takes the panel defaults. **Built** | Both were defects of this build, not of the reference: the router was read from the policy of a combo named `""`, and a global `fusion` left the panel timeout at 0 and answered 503 every time |
+| 391 | Round-robin rotates inside the tier of members that meet the request's needs and keeps the rest behind them. **Built** | The capability order was undone by the rotation, so a text-only member could lead a request with an image |
 | 387 | `POST /api/models/catalog-sync` bounds the whole sync at 50 s, so it answers inside the dashboard's 60 s write deadline **(trade-off)** | The reference allows 60 s for the download alone and then parses it with no bound, so a slow day cuts the answer off mid-write |
-| 338 | The smart router and the fusion judge run through the ordinary pipeline on their own model names, so each writes its own usage row; none of their spend is added to the client's row. **Built** | Router and judge cost is visible without inflating the client's usage |
+| 338 | The smart router runs through the ordinary pipeline on its own model name, so it writes its own usage row and none of its spend is added to the client's row. **Built** | Router cost is visible without inflating the client's usage |
 
 ---
 
@@ -160,4 +164,7 @@ One row per lesson; the decision is what the code does because of it.
 | A dead node must not be asked again on every request. | A failed or empty fetch is cached as an empty list for 30 s, keyed by node id and base URL, never the credential. |
 | `claude-opus-5[1m](high)` and `claude-opus-5(high)[1m]` must reach the same target. | The resolver strips a trailing marker and a trailing thinking suffix in a loop before anything else. |
 | A node must not shadow a built-in name whatever the stored row says. | `Registry.Reserved` decides: an id, an alias, an extra alias or a local name. |
+| A failure that is one account's must not end a combo that has other members. | `classifyMember` sorts a failure into request-scoped, retry or fallback; only the first two can end the walk, and only a long cooldown does. A walk test puts a 429 first and a serving member second. |
+| A combo's row must say what the client got. | The walk keeps each failure with its error class and settles the row with the class of the answer it returns, not of a member tried after it; a served member clears what an earlier one set. |
+| The router and the panel must be asked on the request's context. | `Order` takes the context and passes it to the router; a client that leaves ends the question. |
 

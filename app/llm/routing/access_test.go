@@ -4,13 +4,11 @@ import (
 	"context"
 	"errors"
 	"testing"
-
-	"rllmx/app/llm/upstream"
 )
 
 func allow(t *testing.T, entries ...string) Allow {
 	t.Helper()
-	a, err := NewAllow(context.Background(), resolver(t, &fakeSource{combos: []string{"fast"}}), registry(t), entries)
+	a, err := NewAllow(context.Background(), resolver(t, &fakeSource{combos: []string{"fast"}}), entries)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -19,7 +17,7 @@ func allow(t *testing.T, entries ...string) Allow {
 
 func TestAListedModelIsAllowedInAnyFormTheResolverUnderstands(t *testing.T) {
 	r := resolver(t, &fakeSource{combos: []string{"fast"}})
-	a, err := NewAllow(context.Background(), r, registry(t), []string{
+	a, err := NewAllow(context.Background(), r, []string{
 		"openai/gpt-4o",               // provider/model
 		"claude/claude-opus-5",        // another provider
 		"openai/gpt-4o-mini",          // a second model of one provider
@@ -79,26 +77,21 @@ func TestAComboIsMatchedByNameAndAModelIsNot(t *testing.T) {
 	}
 }
 
-func TestAProviderEntryAllowsAProviderOnlyRoute(t *testing.T) {
+func TestABareEntryAllowsTheModelItResolvesToAndNoOther(t *testing.T) {
 	a := allow(t, "serper", "openai/gpt-4o")
-	if !a.Provider("serper") {
-		t.Fatal("a bare provider entry does not allow that provider")
-	}
-	if a.Provider("tavily") {
-		t.Fatal("an unlisted provider was allowed")
-	}
-	// A provider entry does not open every model of it: only the provider-only
-	// routes read this set.
 	r := resolver(t, &fakeSource{})
 	if a.Target(resolve(t, r, "openai/gpt-4o-mini")) {
-		t.Fatal("a provider entry allowed a model")
+		t.Fatal("an entry allowed a model it does not name")
+	}
+	if !a.Target(resolve(t, r, "openai/gpt-4o")) {
+		t.Fatal("a listed model was refused")
 	}
 }
 
 func TestAnEmptyListAllowsNothing(t *testing.T) {
 	a := allow(t)
 	r := resolver(t, &fakeSource{})
-	if a.Target(resolve(t, r, "openai/gpt-4o")) || a.Provider("openai") {
+	if a.Target(resolve(t, r, "openai/gpt-4o")) {
 		t.Fatal("an empty list allowed something")
 	}
 }
@@ -118,17 +111,7 @@ func TestAStorageErrorFailsTheListClosed(t *testing.T) {
 	r := resolver(t, &fakeSource{err: boom})
 	// A bare entry reads the combo list, so the storage fault surfaces; a
 	// prefixed one never touches the snapshot.
-	if _, err := NewAllow(context.Background(), r, registry(t), []string{"gpt-4o"}); !errors.Is(err, boom) {
+	if _, err := NewAllow(context.Background(), r, []string{"gpt-4o"}); !errors.Is(err, boom) {
 		t.Fatalf("err = %v, want the storage error", err)
 	}
-}
-
-// registry is the real provider table, for the provider set.
-func registry(t *testing.T) *upstream.Registry {
-	t.Helper()
-	reg, err := upstream.Default()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return reg
 }

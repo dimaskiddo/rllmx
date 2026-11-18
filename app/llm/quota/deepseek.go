@@ -2,7 +2,6 @@ package quota
 
 import (
 	"context"
-	"net/http"
 
 	"github.com/tidwall/gjson"
 
@@ -14,14 +13,11 @@ const deepseekBalanceURL = "https://api.deepseek.com/user/balance"
 // readDeepSeek reads the account's balance. The service has no key-only window,
 // so a connection with another auth type is not served.
 func readDeepSeek(ctx context.Context, r *Reader, e upstream.Entry, a Access) (Reading, error) {
-	h := keyed(e, identity(e), a.Token)
+	h := keyedFor(e, a)
 	h["Content-Type"] = "application/json"
-	code, raw, err := r.do(ctx, request{URL: deepseekBalanceURL, Headers: h})
-	if err != nil {
-		return failed("DeepSeek", err)
-	}
-	if code != http.StatusOK {
-		return answered("DeepSeek", code)
+	raw, stop, early, earlyErr := r.getOK(ctx, "DeepSeek", request{URL: deepseekBalanceURL, Headers: h})
+	if stop {
+		return early, earlyErr
 	}
 	return parseDeepSeek(raw), nil
 }

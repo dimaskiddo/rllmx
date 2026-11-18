@@ -80,3 +80,68 @@ func TestABuildGetsAContextThatEnds(t *testing.T) {
 		t.Fatalf("err %v", err)
 	}
 }
+
+func TestCallersOfAFailingBuildShareOneAttempt(t *testing.T) {
+	var builds atomic.Int32
+	gate := make(chan struct{})
+	l := &lazy[int]{build: func(context.Context) (*int, error) {
+		builds.Add(1)
+		<-gate
+		return nil, ErrStoreNotOpen
+	}}
+	var wg sync.WaitGroup
+	for range 10 {
+		wg.Go(func() {
+			if _, err := l.get(); !errors.Is(err, ErrStoreNotOpen) {
+				t.Errorf("err %v", err)
+			}
+		})
+	}
+	time.Sleep(30 * time.Millisecond)
+	close(gate)
+	wg.Wait()
+	if n := builds.Load(); n != 1 {
+		t.Fatalf("%d builds ran one after another, want one shared attempt", n)
+	}
+}
+
+func TestAResetDuringABuildDropsWhatThatBuildRead(t *testing.T) {
+	var builds atomic.Int32
+	started, gate := make(chan struct{}), make(chan struct{})
+	l := &lazy[int]{build: func(context.Context) (*int, error) {
+		n := int(builds.Add(1))
+		if n == 1 {
+			close(started)
+			<-gate
+		}
+		return &n, nil
+	}}
+	first := make(chan int)
+	go func() { v, _ := l.get(); first <- *v }()
+	<-started
+	l.reset()
+	// A caller after the reset must not join the build that began before it.
+	got, err := l.get()
+	if err != nil || *got != 2 {
+		t.Fatalf("after the reset: %v %v", got, err)
+	}
+	close(gate)
+	<-first
+	if v, _ := l.get(); *v != 2 {
+		t.Fatalf("the stale build replaced the fresh value: %d", *v)
+	}
+}
+
+func TestAFallbackValueIsUsedAndNotKept(t *testing.T) {
+	var builds atomic.Int32
+	l := &lazy[int]{build: func(context.Context) (*int, error) {
+		n := int(builds.Add(1))
+		return &n, errors.New("partial")
+	}}
+	for i := 1; i <= 2; i++ {
+		v, err := l.get()
+		if err == nil || v == nil || *v != i {
+			t.Fatalf("call %d: %v %v", i, v, err)
+		}
+	}
+}

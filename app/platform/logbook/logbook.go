@@ -63,23 +63,10 @@ func (b *Book) Add(level string, at time.Time, message string) {
 	b.count++
 }
 
-// Lines returns the newest limit entries, oldest first. A limit below one means
-// every entry.
-func (b *Book) Lines(limit int) []Entry {
-	if b == nil {
-		return []Entry{}
-	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.lines(limit)
-}
-
-func (b *Book) lines(limit int) []Entry {
-	if limit <= 0 || limit > b.count {
-		limit = b.count
-	}
-	out := make([]Entry, 0, limit)
-	for i := b.count - limit; i < b.count; i++ {
+// lines copies the ring out, oldest first. The caller holds the lock.
+func (b *Book) lines() []Entry {
+	out := make([]Entry, 0, b.count)
+	for i := 0; i < b.count; i++ {
 		out = append(out, b.buf[(b.start+i)%len(b.buf)])
 	}
 	return out
@@ -93,7 +80,7 @@ func (b *Book) Snapshot() ([]Entry, int64) {
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.lines(0), b.header
+	return b.lines(), b.header
 }
 
 // Since returns the entries written after seq. When gen is not the current
@@ -106,7 +93,7 @@ func (b *Book) Since(seq, gen int64) ([]Entry, int64) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if gen != b.header {
-		return b.lines(0), b.header
+		return b.lines(), b.header
 	}
 	out := make([]Entry, 0, 8)
 	for i := 0; i < b.count; i++ {

@@ -20,25 +20,19 @@ const (
 // readOllama reads the cloud plan's windows, then the account's balance when the
 // plan reports none.
 func readOllama(ctx context.Context, r *Reader, e upstream.Entry, a Access) (Reading, error) {
-	h := bearer(identity(e), a.Token)
-	code, raw, err := r.do(ctx, request{URL: ollamaUsageURL, Headers: h})
-	if err != nil {
-		return failed("Ollama", err)
-	}
-	if code != http.StatusOK {
-		return answered("Ollama", code)
+	h := bearerFor(e, a)
+	raw, stop, early, earlyErr := r.getOK(ctx, "Ollama", request{URL: ollamaUsageURL, Headers: h})
+	if stop {
+		return early, earlyErr
 	}
 	out := parseOllamaPlan(raw)
 	if len(out.Quotas) > 0 {
 		out.Plan = ollamaPlan(ctx, r, h)
 		return out, nil
 	}
-	code, raw, err = r.do(ctx, request{URL: ollamaBalanceURL, Headers: h})
-	if err != nil {
-		return failed("Ollama", err)
-	}
-	if code != http.StatusOK {
-		return answered("Ollama", code)
+	raw, stop, early, earlyErr = r.getOK(ctx, "Ollama", request{URL: ollamaBalanceURL, Headers: h})
+	if stop {
+		return early, earlyErr
 	}
 	return parseOllamaBalance(raw), nil
 }

@@ -125,7 +125,7 @@ func (p *Pipeline) Allows(ctx context.Context, caller identity.Caller, model str
 	if err != nil {
 		return false
 	}
-	allow, err := routing.NewAllow(ctx, p.d.Resolver, p.d.Registry, caller.Allow)
+	allow, err := routing.NewAllow(ctx, p.d.Resolver, caller.Allow)
 	if err != nil {
 		return false
 	}

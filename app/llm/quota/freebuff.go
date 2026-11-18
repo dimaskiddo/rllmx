@@ -14,7 +14,7 @@ const freebuffSessionURL = "https://www.codebuff.com/api/v1/freebuff/session"
 // readFreebuff reads the free session's per-model limits. recentCount is
 // fractional and includes the running session's own reservation.
 func readFreebuff(ctx context.Context, r *Reader, e upstream.Entry, a Access) (Reading, error) {
-	h := bearer(identity(e), a.Token)
+	h := bearerFor(e, a)
 	h["User-Agent"] = "codebuff-cli/0.0.138"
 	code, raw, err := r.do(ctx, request{URL: freebuffSessionURL, Headers: h})
 	if err != nil {

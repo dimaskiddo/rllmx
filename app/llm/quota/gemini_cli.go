@@ -19,16 +19,13 @@ const (
 // readGeminiCLI reads a Gemini CLI account's per-model allowance. The project is
 // the one the login stored, or the one the service names.
 func readGeminiCLI(ctx context.Context, r *Reader, e upstream.Entry, a Access) (Reading, error) {
-	h := bearer(identity(e), a.Token)
+	h := bearerFor(e, a)
 	project, tier := stored(a.Conn, "projectId"), ""
 	if project == "" {
-		code, raw, err := r.do(ctx, request{Method: http.MethodPost, URL: googleCodeLoad, Headers: h,
+		raw, stop, early, earlyErr := r.getOK(ctx, "Gemini CLI", request{Method: http.MethodPost, URL: googleCodeLoad, Headers: h,
 			Body: []byte(`{"metadata":{"ideType":"ANTIGRAVITY"}}`)})
-		if err != nil {
-			return failed("Gemini CLI", err)
-		}
-		if code != http.StatusOK {
-			return answered("Gemini CLI", code)
+		if stop {
+			return early, earlyErr
 		}
 		project = gjson.GetBytes(raw, "cloudaicompanionProject").String()
 		if id := gjson.GetBytes(raw, "cloudaicompanionProject.id").String(); id != "" {
@@ -40,12 +37,9 @@ func readGeminiCLI(ctx context.Context, r *Reader, e upstream.Entry, a Access) (
 	if project != "" {
 		body = []byte(`{"project":` + document.Encode(project) + `}`)
 	}
-	code, raw, err := r.do(ctx, request{Method: http.MethodPost, URL: googleCodeQuota, Headers: h, Body: body})
-	if err != nil {
-		return failed("Gemini CLI", err)
-	}
-	if code != http.StatusOK {
-		return answered("Gemini CLI", code)
+	raw, stop, early, earlyErr := r.getOK(ctx, "Gemini CLI", request{Method: http.MethodPost, URL: googleCodeQuota, Headers: h, Body: body})
+	if stop {
+		return early, earlyErr
 	}
 	out := Reading{Quotas: map[string]Quota{}, Plan: tier}
 	if out.Plan == "" {

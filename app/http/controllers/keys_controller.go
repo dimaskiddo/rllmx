@@ -105,12 +105,7 @@ func budgetOf(all map[string]quota.Limit, id string) *quota.Limit {
 	return nil
 }
 
-func (c *KeysController) store() *repository.Store {
-	if c.DB == nil {
-		return nil
-	}
-	return c.DB()
-}
+func (c *KeysController) store() *repository.Store { return storeOf(c.DB) }
 
 // List answers GET /api/keys: every key, oldest first, masked.
 func (c *KeysController) List(ctx contractshttp.Context) contractshttp.Response {
@@ -126,9 +121,14 @@ func (c *KeysController) List(ctx contractshttp.Context) contractshttp.Response 
 	if !ok {
 		return out2
 	}
+	cached, err := st.KV().ResponseCacheKeys(ctx.Request().Origin().Context())
+	if err != nil {
+		// A switch that cannot be read is off, as a single key's is.
+		cached = nil
+	}
 	out := make([]keyView, 0, len(rows))
 	for _, k := range rows {
-		out = append(out, masked(k, budgetOf(all, k.ID), cacheOn(st, ctx.Request().Origin().Context(), k.ID)))
+		out = append(out, masked(k, budgetOf(all, k.ID), cached[k.ID]))
 	}
 	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"keys": out})
 }
@@ -222,13 +222,9 @@ func (c *KeysController) Update(ctx contractshttp.Context) contractshttp.Respons
 		}
 		patch.Access = &checked
 	}
-	row, err := st.APIKeys().Update(ctx.Request().Origin().Context(), id, patch)
-	if errors.Is(err, repository.ErrNotFound) {
-		return flat(ctx, nethttp.StatusNotFound, "Key not found")
-	}
-	if err != nil {
-		return flat(ctx, nethttp.StatusInternalServerError, "The key could not be updated")
-	}
+	// Every field is checked before any is stored, so a refusal leaves the key as
+	// it was.
+	var budget *quota.Limit
 	if len(b.Quota) > 0 && string(b.Quota) != "null" {
 		limit, err := quota.Validate(gjson.ParseBytes(b.Quota))
 		if err != nil {
@@ -237,26 +233,23 @@ func (c *KeysController) Update(ctx contractshttp.Context) contractshttp.Respons
 		if c.Quota == nil {
 			return storageDown(ctx)
 		}
-		// An empty object is how a client clears a budget; nothing is stored.
-		if limit.Empty() {
-			err = c.Quota.Clear(ctx.Request().Origin().Context(), id)
-		} else {
-			err = c.Quota.Set(ctx.Request().Origin().Context(), id, limit)
-		}
-		if err != nil {
+		budget = &limit
+	}
+	row, err := st.APIKeys().Update(ctx.Request().Origin().Context(), id, patch)
+	if errors.Is(err, repository.ErrNotFound) {
+		return flat(ctx, nethttp.StatusNotFound, "Key not found")
+	}
+	if err != nil {
+		return flat(ctx, nethttp.StatusInternalServerError, "The key could not be updated")
+	}
+	rc := ctx.Request().Origin().Context()
+	if budget != nil {
+		if err := c.storeBudget(rc, id, *budget); err != nil {
 			return flat(ctx, nethttp.StatusInternalServerError, "The key's budget could not be stored")
 		}
 	}
 	if b.ResponseCache != nil {
-		// The switch is a kv row, not a column: a 9router schema has nowhere to
-		// put it, and a key without the row is off.
-		var err error
-		if *b.ResponseCache {
-			err = st.KV().Set(ctx.Request().Origin().Context(), repository.ScopeResponseCache, id, `{"enabled":true}`)
-		} else {
-			err = st.KV().Delete(ctx.Request().Origin().Context(), repository.ScopeResponseCache, id)
-		}
-		if err != nil {
+		if err := setCacheSwitch(rc, st, id, *b.ResponseCache); err != nil {
 			return flat(ctx, nethttp.StatusInternalServerError, "The key's cache switch could not be stored")
 		}
 	}
@@ -266,6 +259,24 @@ func (c *KeysController) Update(ctx contractshttp.Context) contractshttp.Respons
 		return out2
 	}
 	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"key": masked(row, budgetOf(all, row.ID), cacheOn(st, ctx.Request().Origin().Context(), row.ID))})
+}
+
+// storeBudget stores a key's budget. An empty one is how a client clears it.
+func (c *KeysController) storeBudget(ctx context.Context, id string, budget quota.Limit) error {
+	if budget.Empty() {
+		return c.Quota.Clear(ctx, id)
+	}
+	return c.Quota.Set(ctx, id, budget)
+}
+
+// setCacheSwitch turns a key's answer cache on or off. The switch is a kv row,
+// not a column: a 9router schema has nowhere to put it, and a key without the
+// row is off.
+func setCacheSwitch(ctx context.Context, st *repository.Store, id string, on bool) error {
+	if on {
+		return st.KV().Set(ctx, repository.ScopeResponseCache, id, `{"enabled":true}`)
+	}
+	return st.KV().Delete(ctx, repository.ScopeResponseCache, id)
 }
 
 // Delete answers DELETE /api/keys/{id}.

@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	nethttp "net/http"
 	"sort"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 	"github.com/goravel/framework/contracts/log"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 
 	"rllmx/app/llm/upstream"
 	"rllmx/app/platform/text"
@@ -34,12 +36,7 @@ type PricingController struct {
 	Log    log.Log
 }
 
-func (c *PricingController) store() *repository.Store {
-	if c.DB == nil {
-		return nil
-	}
-	return c.DB()
-}
+func (c *PricingController) store() *repository.Store { return storeOf(c.DB) }
 
 // cards is the merged view the routes answer with.
 func (c *PricingController) cards(ctx contractshttp.Context) contractshttp.Response {
@@ -128,29 +125,39 @@ func checkCard(provider, model string, card json.RawMessage) string {
 	return bad
 }
 
+// errPricingRow says a stored row is not a JSON object of cards.
+var errPricingRow = errors.New("pricing: the stored row is not an object")
+
 // mergeCards replaces each named model in the provider's stored row and keeps
-// the rest as stored, including their spelling.
+// the rest as stored, including their spelling. A row that is not an object is
+// an error, so a write never replaces what it cannot read.
 func mergeCards(rc context.Context, st *repository.Store, provider string, cards map[string]upstream.Rates) error {
-	row := map[string]json.RawMessage{}
+	row := "{}"
 	raw, ok, err := st.KV().Get(rc, repository.ScopePricing, provider)
 	if err != nil {
 		return err
 	}
 	if ok {
-		_ = json.Unmarshal([]byte(raw), &row)
+		if !gjson.Parse(raw).IsObject() {
+			return errPricingRow
+		}
+		row = raw
 	}
-	for model, r := range cards {
-		body, err := json.Marshal(r)
+	models := make([]string, 0, len(cards))
+	for model := range cards {
+		models = append(models, model)
+	}
+	sort.Strings(models)
+	for _, model := range models {
+		body, err := json.Marshal(cards[model])
 		if err != nil {
 			return err
 		}
-		row[model] = body
+		if row, err = sjson.SetRaw(row, text.EscapePath(model), string(body)); err != nil {
+			return err
+		}
 	}
-	body, err := json.Marshal(row)
-	if err != nil {
-		return err
-	}
-	return st.KV().Set(rc, repository.ScopePricing, provider, string(body))
+	return st.KV().Set(rc, repository.ScopePricing, provider, row)
 }
 
 // Reset answers DELETE /api/pricing?provider[&model]: the named rows go, or the
@@ -165,14 +172,8 @@ func (c *PricingController) Reset(ctx contractshttp.Context) contractshttp.Respo
 	model := strings.TrimSpace(ctx.Request().Query("model"))
 	switch {
 	case provider == "":
-		raw, err := st.KV().List(rc, repository.ScopePricing)
-		if err != nil {
+		if err := st.KV().DeleteScope(rc, repository.ScopePricing); err != nil {
 			return flat(ctx, nethttp.StatusInternalServerError, "Failed to reset pricing")
-		}
-		for p := range raw {
-			if err := st.KV().Delete(rc, repository.ScopePricing, p); err != nil {
-				return flat(ctx, nethttp.StatusInternalServerError, "Failed to reset pricing")
-			}
 		}
 	case model == "":
 		if err := st.KV().Delete(rc, repository.ScopePricing, provider); err != nil {
@@ -192,22 +193,22 @@ func dropCard(rc context.Context, st *repository.Store, provider, model string) 
 	if err != nil || !ok {
 		return err
 	}
-	row := map[string]json.RawMessage{}
-	if err := json.Unmarshal([]byte(raw), &row); err != nil {
-		return err
+	row := gjson.Parse(raw)
+	if !row.IsObject() {
+		return errPricingRow
 	}
-	if _, found := row[model]; !found {
+	path := text.EscapePath(model)
+	if !row.Get(path).Exists() {
 		return nil
 	}
-	delete(row, model)
-	if len(row) == 0 {
-		return st.KV().Delete(rc, repository.ScopePricing, provider)
-	}
-	body, err := json.Marshal(row)
+	next, err := sjson.Delete(raw, path)
 	if err != nil {
 		return err
 	}
-	return st.KV().Set(rc, repository.ScopePricing, provider, string(body))
+	if len(gjson.Parse(next).Map()) == 0 {
+		return st.KV().Delete(rc, repository.ScopePricing, provider)
+	}
+	return st.KV().Set(rc, repository.ScopePricing, provider, next)
 }
 
 // priceName applies the name rule a provider and a model each get.

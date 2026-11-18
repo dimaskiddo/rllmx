@@ -4,7 +4,26 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
+
+func TestAnEscapedNameIsOneLiteralPathSegment(t *testing.T) {
+	for _, name := range []string{"plain", "a.b", "a*b", "a?b", "a#b", "a|b", "a@b", `a\b`, "a:b", "a!b", "a=b", "a<b", "a>b", "a%b", `a"b`, "gpt-4.1.mini", "é.ü"} {
+		body, err := sjson.Set("{}", EscapePath(name), 1)
+		if err != nil {
+			t.Fatalf("%q: %v", name, err)
+		}
+		if got := gjson.Get(body, EscapePath(name)); got.Int() != 1 {
+			t.Errorf("%q: read back %v from %s", name, got, body)
+		}
+		keys := gjson.Parse(body).Map()
+		if _, ok := keys[name]; !ok || len(keys) != 1 {
+			t.Errorf("%q is not the one key in %s", name, body)
+		}
+	}
+}
 
 func TestStripControl(t *testing.T) {
 	if got := StripControl("a\r\nb\x07é"); got != "abé" {

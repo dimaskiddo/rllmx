@@ -3,6 +3,7 @@ package analytics
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -128,3 +129,30 @@ func diff(a, b float64) float64 {
 
 // sameKey puts a row on k0, which the other rows of a test use.
 func sameKey(r Record) Record { r.APIKeyID = "k0"; return r }
+
+func TestARowIsPendingBeforeTheFlusherCanSeeIt(t *testing.T) {
+	// A row the flusher takes off the queue must already be counted, or its
+	// removal runs first and the count it leaves behind is never taken off.
+	// The flusher is parked inside the flush, so the check does not depend on
+	// who runs first.
+	s := newStore(t)
+	var w *Writer
+	var early atomic.Int64
+	w = s.NewWriter(WriterOptions{QueueSize: 256, FlushRows: 1, FlushEvery: time.Hour, beforeFlush: func() {
+		if w.Pending("k0").Requests < 1 {
+			early.Add(1)
+		}
+	}})
+	for i := 0; i < 2000; i++ {
+		w.Enqueue(sameKey(rec(i, t0)))
+	}
+	if err := w.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if n := early.Load(); n != 0 {
+		t.Fatalf("%d rows reached the flusher before they were counted", n)
+	}
+	if got := w.Pending("k0"); got != (Totals{}) {
+		t.Fatalf("a flushed queue still counts against the key: %+v", got)
+	}
+}

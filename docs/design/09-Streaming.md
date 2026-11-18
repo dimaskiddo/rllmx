@@ -62,7 +62,7 @@ Partial reports merge by field-wise maximum (`translate.MergeUsage`). Cached and
 - [x] `Run` and `Collect` wired into the pipeline, the usage row recorded, an HTML upstream page answered with a 502
 - [x] Empty-stream failover: an empty member moves to the next, the last member's empty answer stands, and an opened stream is not retried
 - [ ] The named peek deadline `STREAM_EMPTY_PEEK_DEADLINE`; today the stall timer bounds the buffered read
-- [ ] Per-provider stall override from the registry
+- [x] Per-provider stall override from the registry (`stallTimeoutMs` in a provider's transport, read by `Transport.Stall`)
 
 ---
 

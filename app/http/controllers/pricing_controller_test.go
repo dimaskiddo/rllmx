@@ -130,3 +130,43 @@ func TestAPricingWriteRefusesABadCardAndWritesNothing(t *testing.T) {
 		t.Fatal("a refused write reloaded the table")
 	}
 }
+
+func TestACorruptStoredRowIsNotOverwrittenByAWrite(t *testing.T) {
+	m, _, _ := newPricingRig(t)
+	ctx := context.Background()
+	for _, bad := range []string{`["not","an","object"]`, `true`, `"text"`, `12`} {
+		if err := m.st.Store.KV().Set(ctx, repository.ScopePricing, "openai", bad); err != nil {
+			t.Fatal(err)
+		}
+		m.ok(t, "PATCH", "/api/pricing", `{"openai":{"gpt-4o":{"input":1,"output":2}}}`, 500)
+		if raw, _, _ := m.st.Store.KV().Get(ctx, repository.ScopePricing, "openai"); raw != bad {
+			t.Fatalf("the unreadable row %s was replaced: %s", bad, raw)
+		}
+	}
+}
+
+func TestAWriteKeepsTheOtherModelsOfTheRowAsStored(t *testing.T) {
+	m, _, _ := newPricingRig(t)
+	ctx := context.Background()
+	if err := m.st.Store.KV().Set(ctx, repository.ScopePricing, "openai", `{"keep.me":{"input":7,"output":8},"gpt-4o":{"input":1,"output":2}}`); err != nil {
+		t.Fatal(err)
+	}
+	m.ok(t, "PATCH", "/api/pricing", `{"openai":{"gpt-4o":{"input":50,"output":60},"gpt-4.1.mini":{"input":3,"output":4}}}`, 200)
+	raw, _, _ := m.st.Store.KV().Get(ctx, repository.ScopePricing, "openai")
+	if gjson.Get(raw, `keep\.me.input`).Float() != 7 || gjson.Get(raw, "gpt-4o.input").Float() != 50 {
+		t.Fatalf("%s", raw)
+	}
+	if _, ok := gjson.Parse(raw).Map()["gpt-4.1.mini"]; !ok {
+		t.Fatalf("a dotted model id was split into a path: %s", raw)
+	}
+	m.ok(t, "DELETE", "/api/pricing?provider=openai&model=gpt-4o", "", 200)
+	raw, _, _ = m.st.Store.KV().Get(ctx, repository.ScopePricing, "openai")
+	if gjson.Get(raw, "gpt-4o").Exists() || gjson.Get(raw, `keep\.me.input`).Float() != 7 {
+		t.Fatalf("%s", raw)
+	}
+	m.ok(t, "DELETE", "/api/pricing?provider=openai&model=keep.me", "", 200)
+	m.ok(t, "DELETE", "/api/pricing?provider=openai&model=gpt-4.1.mini", "", 200)
+	if _, found, _ := m.st.Store.KV().Get(ctx, repository.ScopePricing, "openai"); found {
+		t.Fatal("an emptied row stayed")
+	}
+}

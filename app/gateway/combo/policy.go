@@ -14,6 +14,7 @@ import (
 	"rllmx/app/llm/routing"
 	"rllmx/app/llm/translate"
 	"rllmx/app/llm/upstream"
+	"rllmx/app/platform/text"
 	"rllmx/app/store/document"
 )
 
@@ -60,12 +61,15 @@ type Policy struct {
 // then the global strategy, then fallback. Smart's knobs live only in the
 // per-combo entry only, never as a top-level key.
 func Read(doc document.Doc, name string) Policy {
-	p := Policy{Name: name, Strategy: DefaultStrategy, Sticky: true, Threshold: DefaultThreshold, RouterModel: defaultRouterModel}
+	p := Policy{
+		Name: name, Strategy: DefaultStrategy, Sticky: true, Threshold: DefaultThreshold, RouterModel: defaultRouterModel,
+		MinPanel: DefaultMinPanel, StragglerMS: DefaultStragglerMS, PanelMS: DefaultPanelMS,
+	}
 	p.RotationLimit = rotationLimit(doc)
 	if s, _ := doc.GetString("comboStrategy"); strings.TrimSpace(s) != "" {
 		p.Strategy = s
 	}
-	entry := gjson.Get(doc.String(), "comboStrategies."+escapePath(name))
+	entry := gjson.Get(doc.String(), "comboStrategies."+text.EscapePath(name))
 	if !entry.IsObject() {
 		p.Strategy = normalise(p.Strategy)
 		return p
@@ -100,15 +104,6 @@ func Read(doc document.Doc, name string) Policy {
 	if v := entry.Get("fusionTuning.panelHardTimeoutMs"); v.Type == gjson.Number && v.Int() > 0 {
 		p.PanelMS = int(v.Int())
 	}
-	if p.MinPanel < 1 {
-		p.MinPanel = DefaultMinPanel
-	}
-	if p.StragglerMS < 1 {
-		p.StragglerMS = DefaultStragglerMS
-	}
-	if p.PanelMS < 1 {
-		p.PanelMS = DefaultPanelMS
-	}
 	return p
 }
 
@@ -132,13 +127,6 @@ func rotationLimit(doc document.Doc) int {
 	return int(v.Int())
 }
 
-// escapePath quotes a name for a gjson path, so a dot in a combo name is part of
-// the name rather than a step.
-func escapePath(name string) string {
-	r := strings.NewReplacer(`\`, `\\`, `.`, `\.`, `*`, `\*`, `?`, `\?`, `|`, `\|`, `#`, `\#`, `@`, `\@`)
-	return r.Replace(name)
-}
-
 // Caps is what one member can do, for the capability order.
 type Caps func(m routing.Member) upstream.Capability
 
@@ -146,18 +134,19 @@ type Caps func(m routing.Member) upstream.Capability
 // every strategy: a member that cannot read what the turn carries is last, however
 // the strategy would place it. Then the strategy reorders what is left, and a
 // provider whose breaker is open goes to the end.
-func Order(p Policy, members []routing.Member, caps Caps, open func(provider string) bool, needs translate.Needs, state *Rotation, smart *Smart) ([]routing.Member, bool) {
+func Order(ctx context.Context, p Policy, members []routing.Member, caps Caps, open func(provider string) bool, needs translate.Needs, state *Rotation, smart *Smart) ([]routing.Member, bool) {
 	if len(members) == 0 {
 		return nil, false
 	}
-	out := byCapability(members, caps, needs)
+	out, capable := byCapability(members, caps, needs)
 	switch p.Strategy {
 	case StrategyRoundRobin:
 		if state != nil {
-			out = state.Rotate(p.Name, out, p.RotationLimit)
+			// Only the members that meet the need take turns; the rest stay behind them.
+			out = append(state.Rotate(p.Name, out[:capable:capable], p.RotationLimit), out[capable:]...)
 		}
 	case StrategySmart:
-		out = p.smartOrder(out, smart)
+		out = p.smartOrder(ctx, out, smart)
 	}
 	return byHealth(out, open), true
 }
@@ -184,7 +173,7 @@ func (p Policy) strict() bool { return p.SmartPolicy == "strict" }
 // smartOrder applies the smart strategy: a remembered choice leads while the
 // policy keeps it, otherwise the router names a member and its answer is
 // remembered. Every failure keeps the order the policy would otherwise use.
-func (p Policy) smartOrder(members []routing.Member, smart *Smart) []routing.Member {
+func (p Policy) smartOrder(ctx context.Context, members []routing.Member, smart *Smart) []routing.Member {
 	if smart == nil || len(members) == 0 {
 		return members
 	}
@@ -227,7 +216,7 @@ func (p Policy) smartOrder(members []routing.Member, smart *Smart) []routing.Mem
 	for i, m := range members {
 		models[i] = m.Model
 	}
-	choice, err := smart.Router.Choose(context.Background(), smart.State, models)
+	choice, err := smart.Router.Choose(ctx, p.RouterModel, smart.State, models)
 	if err != nil || !inList(choice.Model) || choice.Confidence < p.Threshold {
 		// The router failed, named a model the combo does not have, or was not
 		// confident enough: the sticky choice (if any) keeps the lead.
@@ -253,13 +242,20 @@ func (p Policy) smartOrder(members []routing.Member, smart *Smart) []routing.Mem
 	return members
 }
 
-// byCapability keeps the declared order within three tiers: a member that meets
-// every need, one that meets the hard needs (the same set here), and the rest.
-func byCapability(members []routing.Member, caps Caps, needs translate.Needs) []routing.Member {
+// byCapability keeps the declared order with the members that meet every need
+// first, and says how many those are.
+func byCapability(members []routing.Member, caps Caps, needs translate.Needs) ([]routing.Member, int) {
 	if !needs.Any() || caps == nil {
-		return slices.Clone(members)
+		return slices.Clone(members), len(members)
 	}
-	return partition(members, func(m routing.Member) bool { return !needs.Met(caps(m)) })
+	out := partition(members, func(m routing.Member) bool { return !needs.Met(caps(m)) })
+	capable := 0
+	for _, m := range members {
+		if needs.Met(caps(m)) {
+			capable++
+		}
+	}
+	return out, capable
 }
 
 // byHealth moves a member whose provider's breaker is open to the end, keeping

@@ -2,6 +2,9 @@ package quota
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"strings"
@@ -11,47 +14,90 @@ import (
 	"rllmx/app/llm/upstream"
 )
 
-// kiro hosts that answer a usage call, by how the account signed in.
+// kiro hosts that answer a usage call.
 const (
 	kiroQHost    = "https://q.us-east-1.amazonaws.com"
 	kiroCWHost   = "https://codewhisperer.us-east-1.amazonaws.com"
 	kiroLimits   = "/getUsageLimits"
 	kiroUsageQry = "isEmailRequired=true&origin=AI_EDITOR&resourceType=AGENTIC_REQUEST"
+	kiroTarget   = "AmazonCodeWhispererService.GetUsageLimits"
 )
 
 // readKiro reads what CodeWhisperer says is left of the agentic requests. The
-// account's own region and profile decide the address; a key talks to the Q
-// host first, as the executor does.
+// service answers on more than one address and in more than one shape, so it
+// tries each in turn and takes the first that answers. A refusal on all of them
+// is a message, not an error: the chat path reaches a different host, so the
+// login may still be good, and renewing it would not help.
 func readKiro(ctx context.Context, r *Reader, e upstream.Entry, a Access) (Reading, error) {
-	hosts := []string{kiroCWHost, kiroQHost}
-	if strings.EqualFold(stored(a.Conn, "authMethod"), "api_key") {
-		hosts[0], hosts[1] = kiroQHost, kiroCWHost
-	}
+	method := strings.ToLower(stored(a.Conn, "authMethod"))
+	h := kiroHeaders(e, a, method)
+	profile := stored(a.Conn, "profileArn")
+	// Only the Q host is served outside us-east-1.
+	cw, q := kiroCWHost, kiroQHost
 	if region := stored(a.Conn, "region"); region == "eu-central-1" {
-		hosts[0] = strings.Replace(kiroQHost, "us-east-1", region, 1)
+		q = strings.Replace(kiroQHost, "us-east-1", region, 1)
 	}
-	target := hosts[0] + kiroLimits + "?" + kiroUsageQry
-	if profile := stored(a.Conn, "profileArn"); profile != "" {
-		target += "&profileArn=" + url.QueryEscape(profile)
+	post := map[string]string{"origin": "AI_EDITOR", "resourceType": "AGENTIC_REQUEST"}
+	if profile != "" {
+		post["profileArn"] = profile
 	}
-	h := identity(e)
-	bearer(h, a.Token)
+	body, err := json.Marshal(post)
+	if err != nil {
+		return failed("Kiro", err)
+	}
+	getURL := kiroUsageQry
+	if profile != "" {
+		getURL += "&profileArn=" + url.QueryEscape(profile)
+	}
+	postHeaders := maps.Clone(h)
+	postHeaders["Content-Type"] = "application/x-amz-json-1.0"
+	postHeaders["X-Amz-Target"] = kiroTarget
+
+	attempts := []request{
+		{URL: cw + kiroLimits + "?" + getURL, Headers: h},
+		{Method: http.MethodPost, URL: cw, Headers: postHeaders, Body: body},
+		{URL: q + kiroLimits + "?" + getURL, Headers: h},
+	}
+	sawAuth, last := false, 0
+	for _, req := range attempts {
+		code, raw, err := r.do(ctx, req)
+		if err != nil {
+			if ctx.Err() != nil {
+				return failed("Kiro", err)
+			}
+			continue
+		}
+		if code == http.StatusOK {
+			return parseKiro(raw), nil
+		}
+		last = code
+		if code == http.StatusUnauthorized || code == http.StatusForbidden {
+			sawAuth = true
+		}
+	}
+	if sawAuth {
+		return Reading{Message: "Kiro quota API rejected the current token. Chat may still work."}, nil
+	}
+	if last == 0 {
+		return Reading{Message: "Kiro could not be reached"}, nil
+	}
+	return Reading{Message: fmt.Sprintf("Kiro answered %d", last)}, nil
+}
+
+// kiroHeaders is the identity a usage call carries: the token the way the
+// account signed in, and the CLI's own agent string.
+func kiroHeaders(e upstream.Entry, a Access, method string) map[string]string {
+	h := bearerFor(e, a)
+	h["Accept"] = "application/json"
 	h["x-amz-user-agent"] = "aws-sdk-js/1.0.0 KiroIDE"
 	h["User-Agent"] = "aws-sdk-js/1.0.0 KiroIDE"
-	switch strings.ToLower(stored(a.Conn, "authMethod")) {
+	switch method {
 	case "api_key":
 		h["TokenType"] = "API_KEY"
 	case "external_idp":
 		h["TokenType"] = "EXTERNAL_IDP"
 	}
-	code, raw, err := r.do(ctx, request{URL: target, Headers: h})
-	if err != nil {
-		return failed("Kiro", err)
-	}
-	if code != http.StatusOK {
-		return answered("Kiro", code)
-	}
-	return parseKiro(raw), nil
+	return h
 }
 
 func parseKiro(raw []byte) Reading {

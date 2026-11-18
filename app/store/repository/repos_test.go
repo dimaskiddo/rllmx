@@ -727,3 +727,47 @@ func TestAnImportedDatabaseKeepsWhatThisProgramNoLongerOwns(t *testing.T) {
 		t.Error("a fresh database creates the retired table")
 	}
 }
+
+func TestKVDeleteScopeRemovesOnlyThatScope(t *testing.T) {
+	s := newMigrated(t)
+	ctx := context.Background()
+	kv := s.KV()
+	for _, row := range [][2]string{{"a", "pricing"}, {"b", "pricing"}, {"c", "other"}} {
+		if err := kv.Set(ctx, row[1], row[0], `{"x":1}`); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := kv.DeleteScope(ctx, "pricing"); err != nil {
+		t.Fatal(err)
+	}
+	if rows, err := kv.List(ctx, "pricing"); err != nil || len(rows) != 0 {
+		t.Fatalf("the scope stayed: %v %v", rows, err)
+	}
+	if rows, err := kv.List(ctx, "other"); err != nil || len(rows) != 1 {
+		t.Fatalf("another scope was touched: %v %v", rows, err)
+	}
+	if err := kv.DeleteScope(ctx, "pricing"); err != nil {
+		t.Fatalf("an empty scope is not an error: %v", err)
+	}
+}
+
+func TestKVResponseCacheKeysReadsEveryKeyOnceWithTheSameRule(t *testing.T) {
+	s := newMigrated(t)
+	ctx := context.Background()
+	kv := s.KV()
+	for key, raw := range map[string]string{"on": `{"enabled":true}`, "off": `{"enabled":false}`, "string": `{"enabled":"true"}`, "scalar": `true`} {
+		if err := kv.Set(ctx, ScopeResponseCache, key, raw); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := kv.Set(ctx, "otherScope", "elsewhere", `{"enabled":true}`); err != nil {
+		t.Fatal(err)
+	}
+	got, err := kv.ResponseCacheKeys(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got["on"] || got["off"] || got["string"] || got["scalar"] || got["elsewhere"] || got["absent"] {
+		t.Fatalf("%v", got)
+	}
+}

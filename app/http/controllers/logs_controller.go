@@ -32,8 +32,10 @@ type LogsController struct {
 // List answers GET /api/translator/console-logs.
 func (c *LogsController) List(ctx contractshttp.Context) contractshttp.Response {
 	ctx.Response().Header("Cache-Control", "no-store")
+	// One read, so the lines and the generation they belong to cannot differ.
+	logs, generation := c.Book.Snapshot()
 	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{
-		"success": true, "logs": c.lines(logbook.Size), "generation": c.generation(),
+		"success": true, "logs": logs, "generation": generation,
 	})
 }
 
@@ -43,20 +45,6 @@ func (c *LogsController) Clear(ctx contractshttp.Context) contractshttp.Response
 		c.Book.Clear()
 	}
 	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"success": true})
-}
-
-func (c *LogsController) lines(limit int) []logbook.Entry {
-	if c.Book == nil {
-		return []logbook.Entry{}
-	}
-	return c.Book.Lines(limit)
-}
-
-func (c *LogsController) generation() int64 {
-	if c.Book == nil {
-		return 0
-	}
-	return c.Book.Generation()
 }
 
 // Stream answers GET /api/translator/console-logs/stream: the ring on connect,

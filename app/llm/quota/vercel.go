@@ -2,7 +2,6 @@ package quota
 
 import (
 	"context"
-	"net/http"
 
 	"github.com/tidwall/gjson"
 
@@ -15,12 +14,9 @@ const vercelCreditsURL = "https://ai-gateway.vercel.sh/v1/credits"
 // no monthly allowance, so the remaining share is taken against what the account
 // has held in all: the balance plus what it has spent.
 func readVercel(ctx context.Context, r *Reader, e upstream.Entry, a Access) (Reading, error) {
-	code, raw, err := r.do(ctx, request{URL: vercelCreditsURL, Headers: keyed(e, identity(e), a.Token)})
-	if err != nil {
-		return failed("Vercel AI Gateway", err)
-	}
-	if code != http.StatusOK {
-		return answered("Vercel AI Gateway", code)
+	raw, stop, early, earlyErr := r.getOK(ctx, "Vercel AI Gateway", request{URL: vercelCreditsURL, Headers: keyedFor(e, a)})
+	if stop {
+		return early, earlyErr
 	}
 	return parseVercel(raw), nil
 }

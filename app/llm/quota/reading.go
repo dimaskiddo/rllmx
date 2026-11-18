@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/tidwall/gjson"
+
+	"rllmx/app/platform/text"
 )
 
 // Errors a reading reports instead of a quota. They let the route answer a
@@ -48,12 +50,10 @@ type Quota struct {
 	Recurring           bool       `json:"recurring,omitempty"`
 	// Credit marks a balance, whose Total is money or credits rather than a
 	// count of requests.
-	Credit       bool   `json:"isCreditBalance,omitempty"`
-	Currency     string `json:"currency,omitempty"`
-	Unit         string `json:"unit,omitempty"`
-	DisplayName  string `json:"displayName,omitempty"`
-	DetailURL    string `json:"detailUrl,omitempty"`
-	NeverExpires bool   `json:"neverExpires,omitempty"`
+	Credit      bool   `json:"isCreditBalance,omitempty"`
+	Currency    string `json:"currency,omitempty"`
+	Unit        string `json:"unit,omitempty"`
+	DisplayName string `json:"displayName,omitempty"`
 }
 
 // ResetCredits is what an account may still spend to refill its limits: one
@@ -152,3 +152,9 @@ func share(used float64, reset time.Time) Quota {
 func balance(total float64, unit, currency string) Quota {
 	return Quota{Total: total, RemainingPercentage: 100, Credit: true, Unit: unit, Currency: currency}
 }
+
+// maxUpstreamText bounds a sentence taken from a provider's answer before the
+// dashboard shows it.
+const maxUpstreamText = 200
+
+func upstreamText(s string) string { return text.CutBytes(s, maxUpstreamText) }

@@ -88,3 +88,22 @@ func FirstNonEmpty(vals ...string) string {
 	}
 	return ""
 }
+
+const pathSpecials = `.*?#|@\:!=<>%"`
+
+// EscapePath makes a name one literal segment of a gjson or sjson path, so a dot
+// or a wildcard in it is part of the name and not a step.
+func EscapePath(name string) string {
+	if !strings.ContainsAny(name, pathSpecials) {
+		return name
+	}
+	var b strings.Builder
+	b.Grow(len(name) + 4)
+	for i := 0; i < len(name); i++ {
+		if strings.IndexByte(pathSpecials, name[i]) >= 0 {
+			b.WriteByte('\\')
+		}
+		b.WriteByte(name[i])
+	}
+	return b.String()
+}

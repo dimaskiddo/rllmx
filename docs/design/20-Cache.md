@@ -24,11 +24,11 @@
 
 ### What Is Cached
 
-Built (the node model list) and (the response-cache switch and the per-key flag). Rows marked *planned* are read by later steps.
+Built: the node model list, the response-cache switch and the per-key flag, and the naming-filter flag.
 
 | Value | Namespace and key | TTL | Dropped by |
 |---|---|---|---|
-| Naming-filter flag (secret-free projection of the settings row) *(planned)* | `settings` / `pipeline` | 30 s | any settings write |
+| Naming-filter flag (`ccFilterNaming`), read from the effective settings the pipeline shares, which a settings write drops | `providers.cachedSettings` | 5 s | any settings write |
 | Response-cache switch and limits (Built: `{enabled, ttl, maxKb}` with defaults filled in) | `settings` / `response` | 30 s | any settings write |
 | Provider overrides (header values may be credentials) | `overrides` (memory only) / `all` | 30 s | any settings write |
 | Per-key response-cache flag | `apikeys` / `rc:<key id>` | 10 s | `KeyStore.Changed`, which the key API calls when it writes the flag (`responseCache` on `PUT /api/keys/{id}`) |

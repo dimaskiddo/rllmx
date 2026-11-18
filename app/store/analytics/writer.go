@@ -89,11 +89,14 @@ func (w *Writer) enqueue(r row) bool {
 	if w.closed {
 		return false
 	}
+	// Counted before the send: the flusher may take the row at once, and its
+	// removal must find the count already there.
+	w.addPending(r)
 	select {
 	case w.ch <- r:
-		w.addPending(r)
 		return true
 	default:
+		w.subPending([]row{r})
 		w.dropped.Add(1)
 		return false
 	}

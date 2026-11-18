@@ -2,7 +2,6 @@ package quota
 
 import (
 	"context"
-	"net/http"
 
 	"github.com/tidwall/gjson"
 
@@ -27,12 +26,9 @@ func readOpenCode(ctx context.Context, r *Reader, e upstream.Entry, a Access) (R
 	if !ok {
 		return Reading{}, ErrUnsupported
 	}
-	code, raw, err := r.do(ctx, request{URL: target, Headers: keyed(e, identity(e), a.Token)})
-	if err != nil {
-		return failed("OpenCode", err)
-	}
-	if code != http.StatusOK {
-		return answered("OpenCode", code)
+	raw, stop, early, earlyErr := r.getOK(ctx, "OpenCode", request{URL: target, Headers: keyedFor(e, a)})
+	if stop {
+		return early, earlyErr
 	}
 	out := Reading{Quotas: map[string]Quota{}, Plan: a.Conn.Provider}
 	for _, w := range openCodeWindows {

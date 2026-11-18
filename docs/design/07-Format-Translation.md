@@ -1,6 +1,6 @@
 # Design 07 — Format Translation (`app/llm/translate/`)
 
-**Status:** partial
+**Status:** done
 
 OpenAI Chat is the hub: `app/llm/translate`, whose hub is a typed Go value (`Request`, `Message`, `Part`, `Response`, `Chunk`), never a map.
 

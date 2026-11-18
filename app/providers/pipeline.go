@@ -53,7 +53,7 @@ func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.P
 
 	// A failed build here means the embedded table is broken, so the pipeline
 	// refuses to start rather than price every request at zero.
-	if _, err := h.Prices.Get(); err != nil {
+	if _, err := h.Prices.Get(); err != nil && !errors.Is(err, ErrPricingOverrides) {
 		return nil, err
 	}
 	snap, err := h.Snapshot.Get()

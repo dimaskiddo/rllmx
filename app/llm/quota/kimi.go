@@ -2,7 +2,6 @@ package quota
 
 import (
 	"context"
-	"net/http"
 
 	"github.com/tidwall/gjson"
 
@@ -25,12 +24,9 @@ func readKimi(ctx context.Context, r *Reader, e upstream.Entry, a Access) (Readi
 	} else {
 		h = keyed(e, h, a.Token)
 	}
-	code, raw, err := r.do(ctx, request{URL: kimiUsageURL, Headers: h})
-	if err != nil {
-		return failed("Kimi", err)
-	}
-	if code != http.StatusOK {
-		return answered("Kimi", code)
+	raw, stop, early, earlyErr := r.getOK(ctx, "Kimi", request{URL: kimiUsageURL, Headers: h})
+	if stop {
+		return early, earlyErr
 	}
 	return parseKimi(raw), nil
 }

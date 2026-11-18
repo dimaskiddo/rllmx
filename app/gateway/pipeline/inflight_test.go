@@ -1,10 +1,12 @@
 package pipeline
 
 import (
+	"context"
 	"strings"
 	"sync"
 	"testing"
 
+	"rllmx/app/llm/executor"
 	"rllmx/tests"
 )
 
@@ -66,5 +68,24 @@ func TestAFailedAttemptIsReleasedAsFailedAndTheNextIsNot(t *testing.T) {
 	}
 	if len(failed) != 2 || !failed[0] || failed[1] || open != 0 {
 		t.Fatalf("failed %v open=%d", failed, open)
+	}
+}
+
+type panickingExecutor struct{}
+
+func (panickingExecutor) Execute(context.Context, executor.Request) (executor.Response, error) {
+	panic("executor blew up")
+}
+
+func TestAnAttemptThatPanicsStillReleasesItsSlot(t *testing.T) {
+	r := newRig(t)
+	r.conn(nodeID, "k1")
+	r.p.d.Executor = panickingExecutor{}
+	func() {
+		defer func() { _ = recover() }()
+		r.run("/v1/chat/completions", chatBody)
+	}()
+	if _, _, open := r.flg.seen(); open != 0 {
+		t.Fatalf("%d slots are still counted after a panic", open)
 	}
 }

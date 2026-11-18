@@ -105,11 +105,13 @@ type Candidate struct {
 func Rank(in []Candidate, w Weights, p Profile, limit int) []string {
 	type scored struct {
 		c     Candidate
+		tier  int
 		value float64
 	}
 	list := make([]scored, 0, len(in))
 	for _, c := range in {
-		list = append(list, scored{c: c, value: score(c, w, p)})
+		tier := TierOf(c.Model)
+		list = append(list, scored{c: c, tier: tier, value: score(c, tier, w, p)})
 	}
 	sort.SliceStable(list, func(i, j int) bool { return list[i].value > list[j].value })
 
@@ -124,7 +126,7 @@ func Rank(in []Candidate, w Weights, p Profile, limit int) []string {
 	}
 	for _, tier := range []int{TierReasoning, TierFlagship, TierStandard, TierMini} {
 		for _, s := range list {
-			if TierOf(s.c.Model) == tier {
+			if s.tier == tier {
 				take(s)
 				break
 			}
@@ -137,14 +139,14 @@ func Rank(in []Candidate, w Weights, p Profile, limit int) []string {
 }
 
 // score is one model's weighted value before the prompt's boost.
-func score(c Candidate, w Weights, p Profile) float64 {
+func score(c Candidate, tier int, w Weights, p Profile) float64 {
 	latency := 1 - clamp(c.LatencyMs/10000)
 	cost := 0.0
 	if c.KnownCost {
 		cost = 1 - clamp(c.CostPerM/10)
 	}
-	v := w.Reliability*c.Reliability + w.Latency*latency + w.Cost*cost + w.Quality*float64(TierOf(c.Model))/100
-	return v * Boost(TierOf(c.Model), p, c.Model)
+	v := w.Reliability*c.Reliability + w.Latency*latency + w.Cost*cost + w.Quality*float64(tier)/100
+	return v * Boost(tier, p, c.Model)
 }
 
 func clamp(v float64) float64 { return math.Min(math.Max(v, 0), 1) }

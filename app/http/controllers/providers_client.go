@@ -15,6 +15,7 @@ import (
 const (
 	clientPageSize    = 20
 	clientPageSizeMax = 500
+	clientPageMax     = 1_000_000
 )
 
 // Client answers GET /api/providers/client: the connections a quota reading
@@ -28,15 +29,7 @@ func (p *ProvidersController) Client(ctx contractshttp.Context) contractshttp.Re
 	if err != nil {
 		return flat(ctx, http.StatusInternalServerError, "Failed to fetch providers")
 	}
-	var rows []repository.Connection
-	options := map[string]bool{}
-	for _, conn := range list {
-		if !quota.Serves(conn.Provider, conn.AuthType) {
-			continue
-		}
-		options[conn.Provider] = true
-		rows = append(rows, conn)
-	}
+	rows, names := eligibleClients(list)
 	eligible := len(rows)
 
 	provider := strings.TrimSpace(ctx.Request().Query("provider"))
@@ -69,25 +62,11 @@ func (p *ProvidersController) Client(ctx contractshttp.Context) contractshttp.Re
 
 	page, size := clientPaging(ctx.Request().Query("page"), ctx.Request().Query("pageSize"))
 	total := len(rows)
-	pages := (total + size - 1) / size
-	from := (page - 1) * size
-	if from > total {
-		from = total
-	}
-	to := from + size
-	if to > total {
-		to = total
-	}
-
+	from, to, pages := pageSpan(total, page, size)
 	out := make([]map[string]any, 0, to-from)
 	for _, conn := range rows[from:to] {
 		out = append(out, connectionView(conn))
 	}
-	names := make([]string, 0, len(options))
-	for name := range options {
-		names = append(names, name)
-	}
-	sort.Strings(names)
 	return ctx.Response().Json(http.StatusOK, contractshttp.Json{
 		"connections":     out,
 		"providerOptions": names,
@@ -99,6 +78,38 @@ func (p *ProvidersController) Client(ctx contractshttp.Context) contractshttp.Re
 			"providerFilteredConnections": filtered,
 		},
 	})
+}
+
+// eligibleClients keeps the connections a quota reading answers for, and names
+// the providers they belong to, sorted.
+func eligibleClients(list []repository.Connection) ([]repository.Connection, []string) {
+	var rows []repository.Connection
+	seen := map[string]bool{}
+	var names []string
+	for _, conn := range list {
+		if !quota.Serves(conn.Provider, conn.AuthType) {
+			continue
+		}
+		if !seen[conn.Provider] {
+			seen[conn.Provider] = true
+			names = append(names, conn.Provider)
+		}
+		rows = append(rows, conn)
+	}
+	sort.Strings(names)
+	if names == nil {
+		names = []string{}
+	}
+	return rows, names
+}
+
+// pageSpan is the slice bounds of one page of total rows, and how many pages
+// there are. A page past the end is an empty one at the end.
+func pageSpan(total, page, size int) (from, to, pages int) {
+	pages = (total + size - 1) / size
+	from = min((page-1)*size, total)
+	to = min(from+size, total)
+	return from, to, pages
 }
 
 // keepStatus keeps the rows a dashboard filter asks for. A row that never stored
@@ -113,18 +124,18 @@ func keepStatus(rows []repository.Connection, active bool) []repository.Connecti
 	return kept
 }
 
-// clientPaging reads the page and its size, both bounded.
+// clientPaging reads the page and its size, both bounded, so the offset
+// computed from them cannot wrap.
 func clientPaging(page, size string) (int, int) {
-	p, err := strconv.Atoi(page)
-	if err != nil || p < 1 {
-		p = 1
-	}
-	n, err := strconv.Atoi(size)
+	return intParam(page, 1, clientPageMax), intParam(size, clientPageSize, clientPageSizeMax)
+}
+
+// intParam reads a positive whole number from a query value: def when it is
+// empty, not a number or below one, and never more than max.
+func intParam(raw string, def, max int) int {
+	n, err := strconv.Atoi(raw)
 	if err != nil || n < 1 {
-		n = clientPageSize
+		return def
 	}
-	if n > clientPageSizeMax {
-		n = clientPageSizeMax
-	}
-	return p, n
+	return min(n, max)
 }

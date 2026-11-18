@@ -23,15 +23,29 @@ const settleCooldown = 5 * time.Second
 // serves content. `c` is the client's request: access and the budget were
 // already checked on the combo's name, and it owns the one usage row.
 func (c *call) comboRun(ctx context.Context, name string) Output {
+	policy, order, out, ok := c.comboOrder(ctx, name)
+	if !ok {
+		return out
+	}
+	c.row.ComboName = name
+	if policy.Strategy == combo.StrategyFusion {
+		return c.fusion(ctx, policy, order)
+	}
+	return c.walkCombo(ctx, order)
+}
+
+// comboOrder resolves a combo's members and the order this request tries them
+// in. ok is false when the request is already answered, in out.
+func (c *call) comboOrder(ctx context.Context, name string) (policy combo.Policy, order []routing.Member, out Output, ok bool) {
 	// A nested combo arrives from the type assertion below; the resolver is the
 	// one place that knows the members.
 	members, err := c.expand(ctx, name)
 	if err != nil {
-		return c.comboRefused(ctx, err)
+		return policy, nil, c.comboRefused(ctx, err), false
 	}
-	policy, err := c.comboPolicy(ctx, name)
+	policy, err = c.comboPolicy(ctx, name)
 	if err != nil {
-		return c.internal(ctx, err)
+		return policy, nil, c.internal(ctx, err), false
 	}
 	var smart *combo.Smart
 	if policy.Strategy == combo.StrategySmart {
@@ -49,17 +63,18 @@ func (c *call) comboRun(ctx context.Context, name string) Output {
 	if policy.Strategy != combo.StrategyFusion {
 		open = c.providerOpen
 	}
-	order, ok := combo.Order(policy, members, c.comboCaps, open, translate.DetectNeeds(c.req), c.p.d.Rotation, smart)
-	if !ok {
-		return c.fail(http.StatusBadRequest, "invalid_request", "The combo names no model")
+	order, found := combo.Order(ctx, policy, members, c.comboCaps, open, translate.DetectNeeds(c.req), c.p.d.Rotation, smart)
+	if !found {
+		return policy, nil, c.fail(http.StatusBadRequest, "invalid_request", "The combo names no model"), false
 	}
-	if policy.Strategy == combo.StrategyFusion {
-		return c.fusion(ctx, policy, order)
-	}
-	c.row.ComboName = name
+	return policy, order, Output{}, true
+}
 
-	var firstRequestScoped *Output
-	var last *Output
+// walkCombo tries the members in order and answers with the first that serves.
+// When none does, the answer is the first refusal that blamed the request, else
+// the last failure.
+func (c *call) walkCombo(ctx context.Context, order []routing.Member) Output {
+	var firstRequestScoped, last *comboFailure
 	for i, m := range order {
 		out, fail := c.comboMember(ctx, m, nil)
 		if fail == nil {
@@ -67,7 +82,13 @@ func (c *call) comboRun(ctx context.Context, name string) Output {
 			c.row.Provider, c.row.Model = m.Provider, m.Model
 			return out
 		}
-		last = &out
+		if ctx.Err() != nil {
+			return c.closed()
+		}
+		if out.Status == 0 {
+			out = c.upstreamFail(fail)
+		}
+		last = &comboFailure{out: out, class: c.errClass}
 		if fail.expired || fail.gated {
 			continue
 		}
@@ -79,40 +100,59 @@ func (c *call) comboRun(ctx context.Context, name string) Output {
 		switch classifyMember(fail) {
 		case memberRequestScoped:
 			if firstRequestScoped == nil {
-				firstRequestScoped = &out
+				firstRequestScoped = last
 			}
 		case memberRetry:
-			if fail.resetAt.After(c.p.d.Now()) {
-				// A short cooldown is waited out; a long one ends the search, because
-				// it is the answer a single-model request would have got.
-				wait := fail.resetAt.Sub(c.p.d.Now())
-				if wait > settleCooldown {
-					return out
-				}
-				if !sleep(ctx, wait) {
-					return c.closed()
-				}
+			if end, stop := c.settleRetry(ctx, fail, out, i == len(order)-1); stop {
+				return end
 			}
-			if i == len(order)-1 {
-				return out
-			}
-		default:
-			return out
 		}
 	}
 	if firstRequestScoped != nil {
-		return *firstRequestScoped
+		return c.settle(firstRequestScoped)
 	}
 	if last != nil {
-		return *last
+		return c.settle(last)
 	}
 	return c.fail(http.StatusServiceUnavailable, "no_account", "No combo model is available")
+}
+
+// settleRetry decides what a 502, 503 or 504 does to the walk. A short cooldown
+// is waited out; a long one ends the search, because it is the answer a
+// single-model request would have got; the last member's failure ends it as it
+// stands. stop is false when the walk goes on to the next member.
+func (c *call) settleRetry(ctx context.Context, fail *accountFail, out Output, lastMember bool) (Output, bool) {
+	if fail.resetAt.After(c.p.d.Now()) {
+		wait := fail.resetAt.Sub(c.p.d.Now())
+		if wait > settleCooldown {
+			return out, true
+		}
+		if !sleep(ctx, wait) {
+			return c.closed(), true
+		}
+	}
+	return out, lastMember
+}
+
+// comboFailure is a member's answer and the error class its row would carry.
+type comboFailure struct {
+	out   Output
+	class string
+}
+
+// settle answers with a failure and gives the row its class, not the class of
+// a member tried after it.
+func (c *call) settle(f *comboFailure) Output {
+	c.errClass = f.class
+	return f.out
 }
 
 // comboMember runs one member to its answer, with its own request, its own
 // translate context and its own destination. An empty answer counts as a failure
 // for the caller to move past.
 func (c *call) comboMember(ctx context.Context, m routing.Member, shape func(*translate.Request)) (Output, *accountFail) {
+	// What an earlier member left in the row's status fields is not this one's.
+	c.errClass, c.rowStatus = "", 0
 	t, err := c.p.d.Resolver.Resolve(ctx, m.Provider+"/"+m.Model)
 	if err != nil {
 		return Output{}, &accountFail{status: http.StatusBadGateway, text: "The combo member cannot be resolved"}
@@ -264,14 +304,15 @@ func (c *call) emptyDest(t routing.Target) bool {
 type memberClass int
 
 const (
-	memberTerminal memberClass = iota
+	memberFallback memberClass = iota
 	memberRequestScoped
 	memberRetry
 )
 
 // classifyMember sorts one failure: a request-scoped 4xx moves on and is
 // kept as the answer if everything fails; a 502, 503 or 504 with a short reset is
-// waited out; anything else ends the request.
+// waited out, a longer one ends the search; any other failure moves on to the
+// next member.
 func classifyMember(f *accountFail) memberClass {
 	switch {
 	case f.status >= 400 && f.status <= 499 && f.status != http.StatusUnauthorized &&
@@ -280,7 +321,7 @@ func classifyMember(f *accountFail) memberClass {
 	case f.status == http.StatusBadGateway || f.status == http.StatusServiceUnavailable || f.status == http.StatusGatewayTimeout:
 		return memberRetry
 	}
-	return memberTerminal
+	return memberFallback
 }
 
 // sleep waits d or until the request ends; false means the request ended.

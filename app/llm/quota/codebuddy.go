@@ -23,13 +23,10 @@ func readCodeBuddy(ctx context.Context, r *Reader, e upstream.Entry, a Access) (
 	if !ok {
 		return Reading{}, ErrUnsupported
 	}
-	h := keyed(e, identity(e), a.Token)
-	code, raw, err := r.do(ctx, request{Method: http.MethodPost, URL: target, Headers: h, Body: []byte(`{}`)})
-	if err != nil {
-		return failed("CodeBuddy", err)
-	}
-	if code != http.StatusOK {
-		return answered("CodeBuddy", code)
+	h := keyedFor(e, a)
+	raw, stop, early, earlyErr := r.getOK(ctx, "CodeBuddy", request{Method: http.MethodPost, URL: target, Headers: h, Body: []byte(`{}`)})
+	if stop {
+		return early, earlyErr
 	}
 	return parseCodeBuddy(raw), nil
 }

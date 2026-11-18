@@ -1,8 +1,10 @@
 package combo
 
 import (
+	"container/list"
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 )
@@ -12,10 +14,10 @@ import (
 var ErrNoChoice = errors.New("combo: the router named no member")
 
 // Router picks the member a smart combo should try first. It is a plain choice
-// question the router asks of one model; a failure is ErrNoChoice, never an
-// error the client sees.
+// question put to routerModel; a failure is ErrNoChoice, never an error the
+// client sees.
 type Router interface {
-	Choose(ctx context.Context, state string, models []string) (Choice, error)
+	Choose(ctx context.Context, routerModel, state string, models []string) (Choice, error)
 }
 
 // Choice is what the router answered.
@@ -34,19 +36,24 @@ const (
 )
 
 type stickyEntry struct {
+	key   string
 	model string
 	at    time.Time
 }
 
 // Sticky remembers which member a session chose last time. It is process-local,
-// A second instance keeps its own.
+// A second instance keeps its own. The list is in order of last write, oldest
+// first, so a full store drops its oldest entry without a scan.
 type Sticky struct {
 	mu    sync.Mutex
-	items map[string]stickyEntry
+	items map[string]*list.Element
+	order *list.List // of *stickyEntry
 }
 
 // NewSticky builds an empty store.
-func NewSticky() *Sticky { return &Sticky{items: map[string]stickyEntry{}} }
+func NewSticky() *Sticky {
+	return &Sticky{items: map[string]*list.Element{}, order: list.New()}
+}
 
 // Get returns the model this session chose, "" when none is remembered or it has
 // aged out.
@@ -56,38 +63,37 @@ func (s *Sticky) Get(combo, session string, now time.Time) string {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	e, ok := s.items[combo+":"+session]
-	if !ok || now.Sub(e.at) > stickyLife {
+	el, ok := s.items[combo+":"+session]
+	if !ok {
+		return ""
+	}
+	e := el.Value.(*stickyEntry)
+	if now.Sub(e.at) > stickyLife {
 		return ""
 	}
 	return e.model
 }
 
 // Put records the model a session chose, keeping the store bounded: when it is
-// full the oldest entry goes, so one scan, not one per write.
+// full the oldest write goes.
 func (s *Sticky) Put(combo, session, model string, now time.Time) {
 	if s == nil || session == "" || model == "" {
 		return
 	}
+	key := combo + ":" + session
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	key := combo + ":" + session
-	s.items[key] = stickyEntry{model: model, at: now}
-	if len(s.items) <= stickyLimit {
+	if el, ok := s.items[key]; ok {
+		e := el.Value.(*stickyEntry)
+		e.model, e.at = model, now
+		s.order.MoveToBack(el)
 		return
 	}
-	oldestKey := ""
-	var oldestAt time.Time
-	for k, e := range s.items {
-		if k == key {
-			continue
-		}
-		if oldestKey == "" || e.at.Before(oldestAt) {
-			oldestKey, oldestAt = k, e.at
-		}
-	}
-	if oldestKey != "" {
-		delete(s.items, oldestKey)
+	s.items[key] = s.order.PushBack(&stickyEntry{key: key, model: model, at: now})
+	for len(s.items) > stickyLimit {
+		oldest := s.order.Front()
+		s.order.Remove(oldest)
+		delete(s.items, oldest.Value.(*stickyEntry).key)
 	}
 }
 
@@ -106,10 +112,12 @@ func (s *Sticky) Drop(combo string) {
 	if s == nil {
 		return
 	}
+	prefix := combo + ":"
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for k := range s.items {
-		if len(k) > len(combo) && k[:len(combo)+1] == combo+":" {
+	for k, el := range s.items {
+		if strings.HasPrefix(k, prefix) {
+			s.order.Remove(el)
 			delete(s.items, k)
 		}
 	}

@@ -2,7 +2,6 @@ package quota
 
 import (
 	"context"
-	"net/http"
 	"strconv"
 	"strings"
 
@@ -24,12 +23,9 @@ func readGLM(ctx context.Context, r *Reader, e upstream.Entry, a Access) (Readin
 	if !ok {
 		return Reading{}, ErrUnsupported
 	}
-	code, raw, err := r.do(ctx, request{URL: target, Headers: keyed(e, identity(e), a.Token)})
-	if err != nil {
-		return failed("GLM", err)
-	}
-	if code != http.StatusOK {
-		return answered("GLM", code)
+	raw, stop, early, earlyErr := r.getOK(ctx, "GLM", request{URL: target, Headers: keyedFor(e, a)})
+	if stop {
+		return early, earlyErr
 	}
 	return parseGLM(raw), nil
 }

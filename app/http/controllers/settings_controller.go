@@ -81,12 +81,7 @@ func (c *SettingsController) Show(ctx contractshttp.Context) contractshttp.Respo
 	return ctx.Response().Json(nethttp.StatusOK, c.view(d))
 }
 
-func (c *SettingsController) store() *repository.Store {
-	if c.DB == nil {
-		return nil
-	}
-	return c.DB()
-}
+func (c *SettingsController) store() *repository.Store { return storeOf(c.DB) }
 
 // Update answers PATCH /api/settings. Every key is validated before any is
 // written, and a key this build does not read is refused rather than stored.

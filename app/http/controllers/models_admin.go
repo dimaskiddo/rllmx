@@ -42,12 +42,7 @@ type modelAdminView struct {
 	Source      string         `json:"source"`
 }
 
-func (m *ModelsController) store() *repository.Store {
-	if m.DB == nil {
-		return nil
-	}
-	return m.DB()
-}
+func (m *ModelsController) store() *repository.Store { return storeOf(m.DB) }
 
 func (m *ModelsController) changed() {
 	if m.Changed != nil {

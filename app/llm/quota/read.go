@@ -217,6 +217,22 @@ func failed(provider string, err error) (Reading, error) {
 	return Reading{Message: fmt.Sprintf("%s could not be reached", provider)}, nil
 }
 
+// getOK makes one call and returns its body when the provider answered 200. Any
+// other outcome sets stop, and the reading and error that follow are what the
+// caller hands back: a soft message, or ErrAuth for a refused credential.
+func (r *Reader) getOK(ctx context.Context, provider string, q request) (body []byte, stop bool, out Reading, err error) {
+	code, raw, err := r.do(ctx, q)
+	if err != nil {
+		out, err = failed(provider, err)
+		return nil, true, out, err
+	}
+	if code != http.StatusOK {
+		out, err = answered(provider, code)
+		return nil, true, out, err
+	}
+	return raw, false, Reading{}, nil
+}
+
 // identity merges the static headers a provider's data file gives a request: the
 // transport's, then the login's, with the transport winning on a shared name.
 func identity(e upstream.Entry) map[string]string {
@@ -257,6 +273,16 @@ func keyed(e upstream.Entry, h map[string]string, token string) map[string]strin
 		return out
 	}
 	return bearer(out, token)
+}
+
+// keyedFor is keyed over the provider's own headers and the account's token.
+func keyedFor(e upstream.Entry, a Access) map[string]string {
+	return keyed(e, identity(e), a.Token)
+}
+
+// bearerFor is bearer over the provider's own headers and the account's token.
+func bearerFor(e upstream.Entry, a Access) map[string]string {
+	return bearer(identity(e), a.Token)
 }
 
 // atof reads a number given as text, as a rate-limit header is.

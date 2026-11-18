@@ -27,8 +27,11 @@ func (c *call) attempted(ctx context.Context, conn repository.Connection) (Outpu
 		return c.try(ctx, conn)
 	}
 	release := c.p.d.Inflight.Start(c.dest.provider, c.dest.model, conn.ID)
+	failed := false
+	// Deferred so a panic in the attempt cannot leave the slot counted for good.
+	defer func() { release(failed) }()
 	out, fail := c.try(ctx, conn)
-	release(fail != nil)
+	failed = fail != nil
 	return out, fail
 }
 

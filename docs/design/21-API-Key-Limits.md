@@ -10,7 +10,7 @@ The model list and the quota are built. The `kv` scope they read is defined in `
 | Quota | Types: requests, tokens and cost, over a UTC day, month or all time. Stored in the `kv` scope `rllmKeyLimits` under the key's id, so a migrated database is unchanged. Enforced on chat, media, search and fetch before dispatch; a refused call is a 429 `insufficient_quota` naming what is left and when the window resets |
 
 - Usage comes from the analytics rollups (`rollupDaily` is never pruned, and sums one key's day, month or all time) plus an in-memory delta for rows still queued in the writer.
-- Checked before dispatch and before the response cache; the row is counted when it is enqueued. A request the provider never served (a row at 400 or above) does not count.
+- Checked before dispatch and before the response cache; the row is counted when it is enqueued. A request the provider never served (a row at 400 or above) does not count. A stream the client left after tokens flowed was served: its row keeps a countable status and the reason in its error class.
 - The limit is soft: a burst can overshoot by the requests in flight, and a queued row can be counted twice or missed for at most one flush.
 - When analytics cannot be read, a budgeted key fails closed with a 503 and the failure is logged; an unavailable budget must not spend blind.
 
@@ -33,6 +33,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | # | What we do differently | Why it is better |
 |---|---|---|
 | 25 | Per-key request, token and cost budgets over a UTC day, month or all time, refused before dispatch with a 429 and the remaining amount. The reference has no per-key budget. **Built** | **New feature** |
+| 392 | A queued row is counted against its key before it is sent to the writer, and taken back if the queue refuses it. **(built)** | Counting after the send let the flusher write and remove the row first, leaving a count that no flush ever took off, so a key's budget shrank for the life of the process |
 | 334 | A budget whose usage cannot be read fails closed with a 503; a served request alone spends, so a failed call leaves the next caller's budget intact. **Built** | A budget that spends blind is not a budget; the reference has none, so there is nothing to compare (trade-off) |
 
 ---
@@ -42,4 +43,6 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | Finding | Decision |
 |---|---|
 | A budget must not be spent by a failed call. | The reader counts served requests (rollups minus errors) and the writer's delta adds tokens and cost for every row, matching the rollup; a request the provider never served does not spend. |
+| A row must be counted before anyone can remove it. | `Writer.enqueue` adds to the pending totals first and subtracts on a refusal; a test parks the flusher inside the flush and asserts the count is already there. |
+| A request that was paid for must spend the budget however it ended. | A client that leaves a stream after tokens flowed leaves a row at 200 with class `client_closed`; one that leaves before any token is still an error row. |
 | A budget that cannot be read fails closed. | A failed usage read answers 503 rather than spending unbounded; the alternative was chosen against, because a bill has no counterpart to an outage. |

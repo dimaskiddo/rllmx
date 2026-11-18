@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tidwall/gjson"
 
@@ -96,9 +97,9 @@ func TestAComboThatNamesItselfIsRefused(t *testing.T) {
 func TestAComboReadsAMemberFailure(t *testing.T) {
 	cases := map[int]memberClass{
 		400: memberRequestScoped, 404: memberRequestScoped, 422: memberRequestScoped,
-		401: memberTerminal, 402: memberTerminal, 403: memberTerminal, 429: memberTerminal,
+		401: memberFallback, 402: memberFallback, 403: memberFallback, 429: memberFallback,
 		502: memberRetry, 503: memberRetry, 504: memberRetry,
-		500: memberTerminal, 505: memberTerminal,
+		500: memberFallback, 505: memberFallback,
 	}
 	for status, want := range cases {
 		if got := classifyMember(&accountFail{status: status}); got != want {
@@ -375,5 +376,154 @@ func TestAComboReturnsAnEmptyAnswerThatIsTheLastMember(t *testing.T) {
 	out, _ := r.do("/v1/chat/completions", comboAsk)
 	if out.Status != 502 {
 		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+}
+
+func TestAComboMovesOnWhenTheFirstMembersAccountsAreLocked(t *testing.T) {
+	// A 429 locks the first member's only account; the next member answers
+	// instead of the lock ending the search.
+	r := comboRig(t, []string{"forced/fm", "wire/short"},
+		tests.Reply{Status: 429, Body: `{"error":{"message":"slow down"}}`},
+		tests.Reply{ContentType: "application/json", Body: okJSON})
+	r.conn("forced", "k1")
+	r.conn("wire", "k3")
+	out, _ := r.do("/v1/chat/completions", comboAsk)
+	if out.Status != 200 || gjson.GetBytes(out.Body, "choices.0.message.content").String() != "hello" {
+		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+	row := r.last()
+	if row.Provider != "wire" || row.ErrorClass != "none" {
+		t.Fatalf("the row names the failed member or its class: %+v", row)
+	}
+}
+
+func TestAComboThatFailsEverywhereAnswersAFailureNotASuccess(t *testing.T) {
+	r := comboRig(t, []string{"forced/fm", "gem/g-vision"},
+		tests.Reply{Status: 429, Body: `{"error":{"message":"first"}}`},
+		tests.Reply{Status: 401, Body: `{"error":{"message":"second"}}`})
+	r.conn("forced", "k1")
+	r.conn("gem", "k2")
+	out, _ := r.do("/v1/chat/completions", comboAsk)
+	if out.Status < 400 {
+		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+	if calls := len(r.up.Calls()); calls != 2 {
+		t.Fatalf("%d upstream calls, want both members tried", calls)
+	}
+}
+
+func TestAComboOfOneMediaMemberAnswersAnErrorNotStatusZero(t *testing.T) {
+	r := comboRig(t, []string{"forced/fm-img"})
+	r.conn("forced", "k1")
+	out, _ := r.do("/v1/chat/completions", comboAsk)
+	if out.Status < 400 {
+		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+}
+
+func TestAFusionRowCarriesThePanelsAndTheJudgesSpend(t *testing.T) {
+	r := fusionRig(t, `{"comboStrategies":{"chain":{"fallbackStrategy":"fusion","judgeModel":"wire/short"}}}`,
+		[]string{"forced/fm", "wire/short"},
+		tests.Reply{ContentType: "application/json", Body: okJSON},
+		tests.Reply{ContentType: "application/json", Body: okJSON},
+		tests.Reply{ContentType: "application/json", Body: okJSON})
+	r.conn("forced", "k1")
+	r.conn("wire", "k3")
+	out, _ := r.do("/v1/chat/completions", fusionAsk)
+	if out.Status != 200 {
+		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+	row := r.last()
+	if row.ComboName != "chain" || row.Provider != "wire" || row.Model != "short" {
+		t.Fatalf("the row does not name the combo and the judge: %+v", row)
+	}
+	// Two panel answers and the judge, ten and five tokens each.
+	if row.PromptTokens != 30 || row.CompletionTokens != 15 {
+		t.Fatalf("the row holds %d + %d tokens, want the three calls' 30 + 15", row.PromptTokens, row.CompletionTokens)
+	}
+}
+
+func TestAGlobalFusionComboServesWithNoEntryOfItsOwn(t *testing.T) {
+	r := fusionRig(t, `{"comboStrategy":"fusion"}`, []string{"forced/fm", "wire/short"},
+		tests.Reply{ContentType: "application/json", Body: okJSON},
+		tests.Reply{ContentType: "application/json", Body: okJSON},
+		tests.Reply{ContentType: "application/json", Body: okJSON})
+	r.conn("forced", "k1")
+	r.conn("wire", "k3")
+	if out, _ := r.do("/v1/chat/completions", fusionAsk); out.Status != 200 {
+		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+}
+
+func TestTheRowKeepsTheClassOfTheFailureTheClientGets(t *testing.T) {
+	// The first member refuses the request (kept as the answer); the second
+	// fails on its credentials. The client gets the refusal, so the row must
+	// carry the refusal's class, not the later member's.
+	r := comboRig(t, []string{"forced/fm", "gem/g-vision"},
+		tests.Reply{Status: 400, Body: `{"error":{"message":"bad"}}`},
+		tests.Reply{Status: 401, Body: `{"error":{"message":"no"}}`})
+	r.conn("forced", "k1")
+	r.conn("gem", "k2")
+	out, _ := r.do("/v1/chat/completions", comboAsk)
+	if out.Status != 400 {
+		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+	if row := r.last(); row.ErrorClass != "invalid_request" {
+		t.Fatalf("the row's class is %q, want the refusal's", row.ErrorClass)
+	}
+}
+
+func TestThePanelQuorumIsAtLeastTwoAndNeverMoreThanThePanel(t *testing.T) {
+	for _, tt := range []struct{ min, members, want int }{
+		{0, 5, 2}, {1, 5, 2}, {2, 5, 2}, {3, 5, 3}, {9, 5, 5}, {3, 2, 2},
+	} {
+		if got := panelQuorum(combo.Policy{MinPanel: tt.min}, tt.members); got != tt.want {
+			t.Errorf("min %d of %d members: quorum %d, want %d", tt.min, tt.members, got, tt.want)
+		}
+	}
+}
+
+func TestARetryWaitsOutAShortCooldownAndEndsOnALongOneOrTheLastMember(t *testing.T) {
+	now := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	c := &call{p: &Pipeline{d: Deps{Now: func() time.Time { return now }}}}
+	out := Output{Status: http.StatusServiceUnavailable}
+	fail := func(after time.Duration) *accountFail {
+		f := &accountFail{status: http.StatusServiceUnavailable}
+		if after != 0 {
+			f.resetAt = now.Add(after)
+		}
+		return f
+	}
+	for name, tt := range map[string]struct {
+		after time.Duration
+		last  bool
+		stop  bool
+	}{
+		"no cooldown, more members":     {0, false, false},
+		"no cooldown, the last member":  {0, true, true},
+		"a short cooldown goes on":      {time.Millisecond, false, false},
+		"a short cooldown, last member": {time.Millisecond, true, true},
+		"a long cooldown ends it":       {settleCooldown + time.Second, false, true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got, stop := c.settleRetry(context.Background(), fail(tt.after), out, tt.last)
+			if stop != tt.stop {
+				t.Fatalf("stop = %v, want %v", stop, tt.stop)
+			}
+			if stop && got.Status != out.Status {
+				t.Fatalf("the answer changed: %d", got.Status)
+			}
+		})
+	}
+}
+
+func TestARetryWaitThatTheClientEndsAnswersClosed(t *testing.T) {
+	now := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	c := &call{p: &Pipeline{d: Deps{Now: func() time.Time { return now }}}}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	got, stop := c.settleRetry(ctx, &accountFail{status: 503, resetAt: now.Add(time.Second)}, Output{Status: 503}, false)
+	if !stop || got.Status != statusClientClosed {
+		t.Fatalf("%d stop=%v", got.Status, stop)
 	}
 }

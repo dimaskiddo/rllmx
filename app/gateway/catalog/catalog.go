@@ -294,7 +294,7 @@ func (c *Catalog) visible(ctx context.Context, caller identity.Caller, list []En
 	if !caller.Restricted {
 		return list, nil
 	}
-	allow, err := routing.NewAllow(ctx, c.Resolver, c.Registry, caller.Allow)
+	allow, err := routing.NewAllow(ctx, c.Resolver, caller.Allow)
 	if err != nil {
 		return nil, err
 	}

@@ -3,6 +3,7 @@ package quota
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -16,7 +17,7 @@ const commandCodeBase = "https://api.commandcode.ai"
 // readCommandCode reads the account's credits and its two windows. The identity
 // headers are the CLI's, from the provider's data file.
 func readCommandCode(ctx context.Context, r *Reader, e upstream.Entry, a Access) (Reading, error) {
-	h := keyed(e, identity(e), a.Token)
+	h := keyedFor(e, a)
 	h["Accept"] = "application/json"
 	code, raw, err := r.do(ctx, request{URL: commandCodeBase + "/alpha/whoami?limits=1", Headers: h})
 	if err != nil {
@@ -74,5 +75,5 @@ func commandCodeURL(path, org string) string {
 	if org == "" {
 		return commandCodeBase + path
 	}
-	return commandCodeBase + path + "?orgId=" + strings.TrimSpace(org)
+	return commandCodeBase + path + "?orgId=" + url.QueryEscape(strings.TrimSpace(org))
 }

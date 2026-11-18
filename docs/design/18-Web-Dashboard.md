@@ -71,7 +71,7 @@ Plain HTML, ES modules, CSS; same flows and `/api/*` contract (design doc 18).
 - [x] `/api/settings`, `/api/locale`, `/api/tags` and the Console Log ring with its read and stream routes (2.6a); `/api/keys/*` (2.1)
 - [x] `/api/models/*`, `/api/pricing`, `/api/combos/*` and presets (2.6b)
 - [x] `/api/usage/*` and its live feed (2.6c)
-- [ ] catalog sync (2.6e)
+- [x] `/api/models/catalog-sync` and its status route (2.6e)
 - **Done when:** no `innerHTML` from data, every dynamic string escaped.
 
 ---

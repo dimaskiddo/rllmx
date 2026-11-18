@@ -50,6 +50,18 @@ func (f *usageFake) Recent(context.Context, int) ([]analytics.Request, error) {
 	return f.recent, f.err
 }
 
+// RecentServed applies the store's rule: only rows that used tokens, at most
+// limit of them.
+func (f *usageFake) RecentServed(_ context.Context, limit int) ([]analytics.Request, error) {
+	var out []analytics.Request
+	for _, r := range f.recent {
+		if r.Prompt+r.Completion > 0 && len(out) < limit {
+			out = append(out, r)
+		}
+	}
+	return out, f.err
+}
+
 func (f *usageFake) Providers(context.Context) ([]string, error) {
 	return f.providers, f.err
 }
@@ -174,11 +186,31 @@ func TestUsageStatsNameKeysWithoutEverHoldingOne(t *testing.T) {
 	if local.Get("keyName").String() != "Local (No API Key)" || local.Get("apiKeyKey").String() != "local-no-key" {
 		t.Fatalf("a request with no key %s", local.Raw)
 	}
+	endpoint := gjson.Get(raw, `byEndpoint./v1/chat/completions\|gpt-4o\|openai`)
+	if endpoint.Get("requests").Int() != 3 || endpoint.Get("rawModel").String() != "gpt-4o" ||
+		endpoint.Get("provider").String() != display || endpoint.Get("lastUsed").String() != "2026-11-17T09:45:00.000Z" {
+		t.Fatalf("byEndpoint %s", endpoint.Raw)
+	}
 	if gjson.Get(raw, `byEndpoint./v1/messages\|claude-x\|cc`).Get("requests").Int() != 1 {
 		t.Fatalf("byEndpoint %s", raw)
 	}
 	if gjson.Get(raw, "byProvider.cc.provider").Exists() {
 		t.Fatal("a provider entry carries a field it has no use for")
+	}
+}
+
+func TestAKeyThatIsNoLongerStoredIsNamedByAShortIdAndNeverInFull(t *testing.T) {
+	r := newUsageRig(t)
+	a, _ := r.sums()
+	a.APIKeyID = "0123456789abcdef-deleted-key"
+	r.f.sums = []analytics.Sum{a}
+	code, _, raw := r.m.call("GET", "/api/usage/stats?period=all", "", true)
+	if code != 200 {
+		t.Fatalf("%d %s", code, raw)
+	}
+	entry := gjson.Get(raw, `byApiKey.0123456789abcdef-deleted-key\|gpt-4o\|openai`)
+	if entry.Get("keyName").String() != "01234567" || entry.Get("apiKeyMasked").String() != "01234567" {
+		t.Fatalf("a deleted key's entry: %s", entry.Raw)
 	}
 }
 

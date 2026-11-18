@@ -2,7 +2,6 @@ package quota
 
 import (
 	"context"
-	"net/http"
 
 	"github.com/tidwall/gjson"
 
@@ -23,12 +22,9 @@ func readGitHub(ctx context.Context, r *Reader, e upstream.Entry, a Access) (Rea
 		h["User-Agent"] = "GitHubCopilotChat/0.38.0"
 	}
 	h["Authorization"] = "token " + a.Token
-	code, raw, err := r.do(ctx, request{URL: githubUsageURL, Headers: h})
-	if err != nil {
-		return failed("GitHub", err)
-	}
-	if code != http.StatusOK {
-		return answered("GitHub", code)
+	raw, stop, early, earlyErr := r.getOK(ctx, "GitHub", request{URL: githubUsageURL, Headers: h})
+	if stop {
+		return early, earlyErr
 	}
 	return parseGitHub(raw), nil
 }

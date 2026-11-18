@@ -38,12 +38,7 @@ type NodesController struct {
 	Changed func()
 }
 
-func (c *NodesController) store() *repository.Store {
-	if c.DB == nil {
-		return nil
-	}
-	return c.DB()
-}
+func (c *NodesController) store() *repository.Store { return storeOf(c.DB) }
 
 type nodeBody struct {
 	Name    string `json:"name"`

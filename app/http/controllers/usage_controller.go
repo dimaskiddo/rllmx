@@ -15,12 +15,12 @@ import (
 	"rllmx/app/access/auth"
 	"rllmx/app/gateway/health"
 	"rllmx/app/llm/upstream"
+	"rllmx/app/platform/text"
 	"rllmx/app/store/analytics"
 	"rllmx/app/store/repository"
 )
 
 const (
-	usageRecentRead = 100
 	usageRecentShow = 20
 	usageLogRows    = 200
 	usageLastSeen   = 48 * time.Hour
@@ -39,6 +39,7 @@ type UsageReader interface {
 	Buckets(ctx context.Context, from time.Time, hourly bool) ([]analytics.Bucket, error)
 	LastSeen(ctx context.Context, since time.Time) (map[analytics.Dims]time.Time, error)
 	Recent(ctx context.Context, limit int) ([]analytics.Request, error)
+	RecentServed(ctx context.Context, limit int) ([]analytics.Request, error)
 	Providers(ctx context.Context) ([]string, error)
 }
 
@@ -208,15 +209,11 @@ func requestedPeriod(ctx contractshttp.Context, fallback string) string {
 	return fallback
 }
 
-func usageError(ctx contractshttp.Context, status int, msg string) contractshttp.Response {
-	return ctx.Response().Json(status, contractshttp.Json{"error": msg})
-}
-
 func (c *UsageController) failed(ctx contractshttp.Context, route string, msg string, err error) contractshttp.Response {
 	if c.Log != nil && err != nil {
 		c.Log.Warningf("usage: %s: %v", route, err)
 	}
-	return usageError(ctx, nethttp.StatusInternalServerError, msg)
+	return flat(ctx, nethttp.StatusInternalServerError, msg)
 }
 
 // Stats answers GET /api/usage/stats over the requested period.
@@ -232,7 +229,7 @@ func (c *UsageController) History(ctx contractshttp.Context) contractshttp.Respo
 func (c *UsageController) stats(ctx contractshttp.Context, period, msg string) contractshttp.Response {
 	w, ok := c.window(period)
 	if !ok {
-		return usageError(ctx, nethttp.StatusBadRequest, "Invalid period")
+		return flat(ctx, nethttp.StatusBadRequest, "Invalid period")
 	}
 	out, err := c.build(ctx.Request().Origin().Context(), w)
 	if err != nil {
@@ -245,7 +242,7 @@ func (c *UsageController) stats(ctx contractshttp.Context, period, msg string) c
 func (c *UsageController) Chart(ctx contractshttp.Context) contractshttp.Response {
 	w, ok := c.window(requestedPeriod(ctx, "7d"))
 	if !ok {
-		return usageError(ctx, nethttp.StatusBadRequest, "Invalid period")
+		return flat(ctx, nethttp.StatusBadRequest, "Invalid period")
 	}
 	out, err := c.chart(ctx.Request().Origin().Context(), w)
 	if err != nil {
@@ -285,7 +282,7 @@ func (c *UsageController) Providers(ctx contractshttp.Context) contractshttp.Res
 	if err != nil {
 		return c.failed(ctx, "providers", "Failed to fetch providers", err)
 	}
-	nodes := c.nodeNames(rc)
+	nodes := nodeNames(rc, c.store())
 	out := make([]contractshttp.Json, 0, len(ids))
 	for _, id := range ids {
 		out = append(out, contractshttp.Json{"id": id, "name": c.providerName(id, nodes)})
@@ -298,7 +295,7 @@ func (c *UsageController) Providers(ctx contractshttp.Context) contractshttp.Res
 func (c *UsageController) ActiveProviders(ctx contractshttp.Context) contractshttp.Response {
 	period := requestedPeriod(ctx, "today")
 	if _, ok := c.window(period); !ok {
-		return usageError(ctx, nethttp.StatusBadRequest, "Invalid period")
+		return flat(ctx, nethttp.StatusBadRequest, "Invalid period")
 	}
 	seen := map[string]bool{}
 	for _, a := range c.Inflight.Active() {
@@ -320,9 +317,9 @@ func (c *UsageController) build(ctx context.Context, w usageWindow) (usageStats,
 	if err != nil {
 		return usageStats{}, err
 	}
-	nodes := c.nodeNames(ctx)
+	nodes := nodeNames(ctx, c.store())
 	accounts := c.accountNames(ctx)
-	keys := c.keyNames(ctx)
+	names := usageNames{accounts: accounts, keys: c.keyNames(ctx)}
 
 	out := usageStats{
 		ByProvider:     map[string]usageTotals{},
@@ -334,64 +331,12 @@ func (c *UsageController) build(ctx context.Context, w usageWindow) (usageStats,
 		RecentRequests: []usageRecent{},
 	}
 	for _, s := range sums {
-		t := usageTotals{Requests: s.Requests, PromptTokens: s.Prompt, CompletionTokens: s.Completion, CachedTokens: s.Cached, Cost: s.Cost}
 		last := s.Last
 		if at, ok := seen[s.Dims]; ok && at.After(last) {
 			last = at
 		}
-		stamp := last.UTC().Format("2006-01-02T15:04:05.000Z")
-		provider := c.providerName(s.Provider, nodes)
-
-		v := out.ByProvider[s.Provider]
-		v.add(t)
-		out.ByProvider[s.Provider] = v
-		out.TotalRequests += t.Requests
-		out.TotalPromptTokens += t.PromptTokens
-		out.TotalCompletionTokens += t.CompletionTokens
-		out.TotalCachedTokens += t.CachedTokens
-		out.TotalCost += t.Cost
-
-		mk := s.Model + " (" + s.Provider + ")"
-		m := out.ByModel[mk]
-		m.usageTotals.add(t)
-		m.RawModel, m.Provider, m.LastUsed = s.Model, provider, stamp
-		out.ByModel[mk] = m
-
-		name := accounts[s.ConnectionID]
-		ak := s.Model + " (" + provider + " - " + name + ")"
-		a := out.ByAccount[ak]
-		a.usageTotals.add(t)
-		a.RawModel, a.Provider, a.ConnectionID, a.AccountName, a.LastUsed = s.Model, provider, s.ConnectionID, name, stamp
-		out.ByAccount[ak] = a
-
-		k := usageKeyName{}
-		if stored, ok := keys[s.APIKeyID]; ok {
-			k = stored
-		} else if s.APIKeyID != "" {
-			short := s.APIKeyID
-			if len(short) > 8 {
-				short = short[:8]
-			}
-			k = usageKeyName{name: short, masked: short}
-		}
-		keyKey := "local-no-key"
-		if s.APIKeyID != "" {
-			keyKey = s.APIKeyID
-		} else {
-			k = usageKeyName{name: "Local (No API Key)"}
-		}
-		kk := keyKey + "|" + s.Model + "|" + providerOr(s.Provider)
-		ke := out.ByAPIKey[kk]
-		ke.usageTotals.add(t)
-		ke.RawModel, ke.Provider, ke.LastUsed = s.Model, provider, stamp
-		ke.APIKeyKey, ke.APIKeyMasked, ke.KeyName = keyKey, k.masked, k.name
-		out.ByAPIKey[kk] = ke
-
-		ek := s.Endpoint + "|" + s.Model + "|" + providerOr(s.Provider)
-		e := out.ByEndpoint[ek]
-		e.usageTotals.add(t)
-		e.Endpoint, e.RawModel, e.Provider, e.LastUsed = s.Endpoint, s.Model, provider, stamp
-		out.ByEndpoint[ek] = e
+		names.provider = c.providerName(s.Provider, nodes)
+		out.add(s, names, last.UTC().Format("2006-01-02T15:04:05.000Z"))
 	}
 
 	out.Pending, out.ActiveRequests = c.live(accounts)
@@ -405,24 +350,81 @@ func (c *UsageController) build(ctx context.Context, w usageWindow) (usageStats,
 	return out, nil
 }
 
+// usageNames are the display names one sum is filed under.
+type usageNames struct {
+	accounts map[string]string
+	keys     map[string]usageKeyName
+	// provider is the current sum's provider, as the page names it.
+	provider string
+}
+
+// add files one sum under each of the page's groupings. stamp is when the sum
+// was last used.
+func (u *usageStats) add(s analytics.Sum, n usageNames, stamp string) {
+	t := usageTotals{Requests: s.Requests, PromptTokens: s.Prompt, CompletionTokens: s.Completion, CachedTokens: s.Cached, Cost: s.Cost}
+	provider := n.provider
+
+	v := u.ByProvider[s.Provider]
+	v.add(t)
+	u.ByProvider[s.Provider] = v
+	u.TotalRequests += t.Requests
+	u.TotalPromptTokens += t.PromptTokens
+	u.TotalCompletionTokens += t.CompletionTokens
+	u.TotalCachedTokens += t.CachedTokens
+	u.TotalCost += t.Cost
+
+	mk := s.Model + " (" + s.Provider + ")"
+	m := u.ByModel[mk]
+	m.usageTotals.add(t)
+	m.RawModel, m.Provider, m.LastUsed = s.Model, provider, stamp
+	u.ByModel[mk] = m
+
+	name := n.accounts[s.ConnectionID]
+	ak := s.Model + " (" + provider + " - " + name + ")"
+	a := u.ByAccount[ak]
+	a.usageTotals.add(t)
+	a.RawModel, a.Provider, a.ConnectionID, a.AccountName, a.LastUsed = s.Model, provider, s.ConnectionID, name, stamp
+	u.ByAccount[ak] = a
+
+	k := usageKeyName{}
+	if stored, ok := n.keys[s.APIKeyID]; ok {
+		k = stored
+	} else if s.APIKeyID != "" {
+		short := text.CutBytes(s.APIKeyID, 8)
+		k = usageKeyName{name: short, masked: short}
+	}
+	keyKey := "local-no-key"
+	if s.APIKeyID != "" {
+		keyKey = s.APIKeyID
+	} else {
+		k = usageKeyName{name: "Local (No API Key)"}
+	}
+	kk := keyKey + "|" + s.Model + "|" + providerOr(s.Provider)
+	ke := u.ByAPIKey[kk]
+	ke.usageTotals.add(t)
+	ke.RawModel, ke.Provider, ke.LastUsed = s.Model, provider, stamp
+	ke.APIKeyKey, ke.APIKeyMasked, ke.KeyName = keyKey, k.masked, k.name
+	u.ByAPIKey[kk] = ke
+
+	ek := s.Endpoint + "|" + s.Model + "|" + providerOr(s.Provider)
+	e := u.ByEndpoint[ek]
+	e.usageTotals.add(t)
+	e.Endpoint, e.RawModel, e.Provider, e.LastUsed = s.Endpoint, s.Model, provider, stamp
+	u.ByEndpoint[ek] = e
+}
+
 // recent is the newest finished rows the page shows, newest first.
 func (c *UsageController) recent(ctx context.Context) ([]usageRecent, error) {
 	st := c.reader()
 	if st == nil {
 		return []usageRecent{}, errUsageStore
 	}
-	rows, err := st.Recent(ctx, usageRecentRead)
+	rows, err := st.RecentServed(ctx, usageRecentShow)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]usageRecent, 0, usageRecentShow)
+	out := make([]usageRecent, 0, len(rows))
 	for _, r := range rows {
-		if r.Prompt+r.Completion == 0 {
-			continue
-		}
-		if len(out) == usageRecentShow {
-			break
-		}
 		out = append(out, usageRecent{
 			Timestamp: r.Time.UTC().Format("2006-01-02T15:04:05.000Z"), Model: r.Model,
 			Provider: r.Provider, PromptTokens: r.Prompt, CompletionTokens: r.Completion,
@@ -567,12 +569,7 @@ func (c *UsageController) keyNames(ctx context.Context) map[string]usageKeyName 
 	return out
 }
 
-func (c *UsageController) store() *repository.Store {
-	if c.DB == nil {
-		return nil
-	}
-	return c.DB()
-}
+func (c *UsageController) store() *repository.Store { return storeOf(c.DB) }
 
 // accountNames maps a connection to the name the pages show.
 func (c *UsageController) accountNames(ctx context.Context) map[string]string {
@@ -604,26 +601,7 @@ func connectionAccount(row repository.Connection) string {
 	if len(row.ID) <= 8 {
 		return "Account " + row.ID
 	}
-	return "Account " + row.ID[:8] + "..."
-}
-
-// nodeNames maps a provider node id to the name its page shows.
-func (c *UsageController) nodeNames(ctx context.Context) map[string]string {
-	out := map[string]string{}
-	st := c.store()
-	if st == nil {
-		return out
-	}
-	rows, err := st.Nodes().List(ctx, "")
-	if err != nil {
-		return out
-	}
-	for _, row := range rows {
-		if name := strings.TrimSpace(row.Name); name != "" {
-			out[row.ID] = name
-		}
-	}
-	return out
+	return "Account " + text.CutBytes(row.ID, 8) + "..."
 }
 
 func (c *UsageController) providerName(raw string, nodes map[string]string) string {

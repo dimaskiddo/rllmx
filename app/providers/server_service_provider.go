@@ -151,121 +151,159 @@ func (r *ServerServiceProvider) Relationship() binding.Relationship {
 // Register binds the settings, the guard and the authenticator.
 func (r *ServerServiceProvider) Register(app foundation.Application) {
 	app.Singleton(BindingHTTP, func(app foundation.Application) (any, error) {
-		cfg := app.MakeConfig()
-		if cfg == nil {
-			return nil, errors.New("providers: the config facade is not set")
-		}
-		s, err := settings.LoadServer(cfg)
+		// A typed nil would not read as nil through the interface.
+		h, err := buildHTTP(app)
 		if err != nil {
 			return nil, err
 		}
-		var logf func(string, ...any)
-		if l := app.MakeLog(); l != nil {
-			logf = l.Warningf
-		}
-		secret, err := sessionSecretSource(cfg, logf)
-		if err != nil {
-			return nil, err
-		}
-		// The store opens in the data runner, after every provider registered, so
-		// the authenticator reads it through a closure rather than a value.
-		db := func() *repository.Store { return DataOf(app).Runner.Store() }
-		keys := auth.Keys{DB: db, Cache: cacheOrNil(app), Codec: identity.NewKeys(cfg.GetString("auth.api_key_secret"))}
-		upstreamCfg, err := settings.LoadUpstream(cfg)
-		if err != nil {
-			return nil, err
-		}
-		registry, err := upstream.Default()
-		if err != nil {
-			return nil, err
-		}
-		capabilities, err := upstream.LoadCapabilities(registry)
-		if err != nil {
-			return nil, err
-		}
-		streamCfg, err := settings.LoadStream(cfg)
-		if err != nil {
-			return nil, err
-		}
-		oauthCfg, err := settings.LoadOAuth(cfg)
-		if err != nil {
-			return nil, err
-		}
-		mediaCfg, err := settings.LoadMedia(cfg)
-		if err != nil {
-			return nil, err
-		}
-		allowSSO := sso.ParseAllow(cfg.GetString("auth.sso_allow"))
-		a := auth.NewAuthenticator(
-			auth.NewStore(db),
-			&keys,
-			app.MakeHash(),
-			cfg.GetString("auth.initial_password"),
-			secret,
-			s.TrustLoopback,
-			cfg.GetBool("auth.cookie_secure"),
-		)
-		a.OIDCUsable = func(issuer, clientID, secret string) bool {
-			return oidc.Settings{Issuer: issuer, ClientID: clientID, ClientSecret: secret}.Configured()
-		}
-		a.SAMLUsable = func(entryPoint, cert, idpEntity string) bool {
-			s := saml.Settings{EntryPoint: entryPoint, Cert: cert, IDPEntityID: idpEntity}
-			if !s.Configured() || idpEntity == "" {
-				return false
-			}
-			_, err := s.Validate()
-			return err == nil
-		}
-		a.SSOAllow = allowSSO.Allows
-		trust := apphttp.NewTrust(s.TrustedProxies)
-		a.ClientAddr = trust.ClientAddr
-		login, refresher, minter, google, hosted, freebuff := newLogin(app, registry, oauthCfg, upstreamCfg)
-		pipe := NewPipelineSource(app)
-		h := &HTTP{
-			Pipe:          pipe,
-			Probes:        NewProbeSource(app, pipe),
-			Prices:        NewPriceSource(app),
-			Snapshot:      NewSnapshotSource(app),
-			Rotation:      combo.NewRotation(),
-			Sticky:        combo.NewSticky(),
-			Settings:      s,
-			Guard:         apphttp.NewGuard(a, s.TrustLoopback),
-			Trust:         trust,
-			Auth:          a,
-			Limits:        quota.NewLimits(db, time.Now),
-			SSO:           sso.NewClient(upstreamCfg.Allow),
-			Registry:      registry,
-			Checker:       controllers.NewChecker(upstreamCfg.Allow),
-			Capabilities:  capabilities,
-			Health:        health.NewTracker(time.Now),
-			Inflight:      health.NewInflight(time.Now),
-			Stream:        streamCfg,
-			Upstream:      upstreamCfg,
-			Media:         mediaCfg,
-			OAuth:         login,
-			Refresher:     refresher,
-			Minter:        minter,
-			Google:        google,
-			Zed:           hosted,
-			Freebuff:      freebuff,
-			ClaudeCLI:     upstream.NewClaudeCLI(upstreamCfg.ClaudeCLIVersion),
-			OAuthSettings: oauthCfg,
-		}
-		h.Quota = newQuotaReader(h)
-		h.Quota.Cache = cacheOrNil(app)
-		dataDir, err := settings.ResolveDataDir(cfg.GetString("app.data_dir"))
-		if err != nil {
-			return nil, err
-		}
-		h.CatalogSync = newCatalogSync(h.Capabilities, dataDir, func() *http.Client {
-			return network.NewClient(network.Options{
-				ConnectTimeout: h.Upstream.ConnectTimeout, MaxRedirects: 3, Allow: h.Upstream.Allow,
-				BodyCap: upstream.MaxCatalogBytes, Curves: h.Upstream.Curves,
-			})
-		}, app.MakeLog())
-		h.CatalogSync.Enabled = cfg.GetBool("catalog.sync")
 		return h, nil
 	})
+}
+
+// buildHTTP loads every setting the server reads and wires what they build. The
+// store opens later, in the data runner, so what needs it takes a closure.
+func buildHTTP(app foundation.Application) (*HTTP, error) {
+	cfg := app.MakeConfig()
+	if cfg == nil {
+		return nil, errors.New("providers: the config facade is not set")
+	}
+	s, err := settings.LoadServer(cfg)
+	if err != nil {
+		return nil, err
+	}
+	var logf func(string, ...any)
+	if l := app.MakeLog(); l != nil {
+		logf = l.Warningf
+	}
+	secret, err := sessionSecretSource(cfg, logf)
+	if err != nil {
+		return nil, err
+	}
+	db := func() *repository.Store { return DataOf(app).Runner.Store() }
+	upstreamCfg, err := settings.LoadUpstream(cfg)
+	if err != nil {
+		return nil, err
+	}
+	registry, err := upstream.Default()
+	if err != nil {
+		return nil, err
+	}
+	capabilities, err := upstream.LoadCapabilities(registry)
+	if err != nil {
+		return nil, err
+	}
+	rest, err := loadRest(cfg)
+	if err != nil {
+		return nil, err
+	}
+	trust := apphttp.NewTrust(s.TrustedProxies)
+	a := newAuthenticator(app, cfg, db, secret, s, trust)
+	login, refresher, minter, google, hosted, freebuff := newLogin(app, registry, rest.oauth, upstreamCfg)
+	pipe := NewPipelineSource(app)
+	h := &HTTP{
+		Pipe:          pipe,
+		Probes:        NewProbeSource(app, pipe),
+		Prices:        NewPriceSource(app),
+		Snapshot:      NewSnapshotSource(app),
+		Rotation:      combo.NewRotation(),
+		Sticky:        combo.NewSticky(),
+		Settings:      s,
+		Guard:         apphttp.NewGuard(a, s.TrustLoopback),
+		Trust:         trust,
+		Auth:          a,
+		Limits:        quota.NewLimits(db, time.Now),
+		SSO:           sso.NewClient(upstreamCfg.Allow),
+		Registry:      registry,
+		Checker:       controllers.NewChecker(upstreamCfg.Allow),
+		Capabilities:  capabilities,
+		Health:        health.NewTracker(time.Now),
+		Inflight:      health.NewInflight(time.Now),
+		Stream:        rest.stream,
+		Upstream:      upstreamCfg,
+		Media:         rest.media,
+		OAuth:         login,
+		Refresher:     refresher,
+		Minter:        minter,
+		Google:        google,
+		Zed:           hosted,
+		Freebuff:      freebuff,
+		ClaudeCLI:     upstream.NewClaudeCLI(upstreamCfg.ClaudeCLIVersion),
+		OAuthSettings: rest.oauth,
+	}
+	h.Quota = newQuotaReader(h)
+	h.Quota.Cache = cacheOrNil(app)
+	if err := wireCatalogSync(h, app, cfg); err != nil {
+		return nil, err
+	}
+	return h, nil
+}
+
+// serverSettings are the stream, login and media settings, which only their own
+// consumers read.
+type serverSettings struct {
+	stream *settings.Stream
+	oauth  *settings.OAuth
+	media  *settings.Media
+}
+
+// loadRest reads the three groups, refusing the start on the first bad value.
+func loadRest(cfg config.Config) (serverSettings, error) {
+	var out serverSettings
+	var err error
+	if out.stream, err = settings.LoadStream(cfg); err != nil {
+		return out, err
+	}
+	if out.oauth, err = settings.LoadOAuth(cfg); err != nil {
+		return out, err
+	}
+	out.media, err = settings.LoadMedia(cfg)
+	return out, err
+}
+
+// newAuthenticator builds the dashboard and API-key authenticator, with the
+// checks that say whether a single sign-on setting is usable.
+func newAuthenticator(app foundation.Application, cfg config.Config, db func() *repository.Store, secret func() []byte, s *settings.Server, trust apphttp.Trust) *auth.Authenticator {
+	keys := auth.Keys{DB: db, Cache: cacheOrNil(app), Codec: identity.NewKeys(cfg.GetString("auth.api_key_secret"))}
+	a := auth.NewAuthenticator(
+		auth.NewStore(db),
+		&keys,
+		app.MakeHash(),
+		cfg.GetString("auth.initial_password"),
+		secret,
+		s.TrustLoopback,
+		cfg.GetBool("auth.cookie_secure"),
+	)
+	a.OIDCUsable = func(issuer, clientID, secret string) bool {
+		return oidc.Settings{Issuer: issuer, ClientID: clientID, ClientSecret: secret}.Configured()
+	}
+	a.SAMLUsable = func(entryPoint, cert, idpEntity string) bool {
+		s := saml.Settings{EntryPoint: entryPoint, Cert: cert, IDPEntityID: idpEntity}
+		if !s.Configured() || idpEntity == "" {
+			return false
+		}
+		_, err := s.Validate()
+		return err == nil
+	}
+	a.SSOAllow = sso.ParseAllow(cfg.GetString("auth.sso_allow")).Allows
+	a.ClientAddr = trust.ClientAddr
+	return a
+}
+
+// wireCatalogSync gives the HTTP binding its model catalog sync, which owns the
+// catalog file in DATA_DIR and fetches through the guarded client.
+func wireCatalogSync(h *HTTP, app foundation.Application, cfg config.Config) error {
+	dataDir, err := settings.ResolveDataDir(cfg.GetString("app.data_dir"))
+	if err != nil {
+		return err
+	}
+	h.CatalogSync = newCatalogSync(h.Capabilities, dataDir, func() *http.Client {
+		return network.NewClient(network.Options{
+			ConnectTimeout: h.Upstream.ConnectTimeout, MaxRedirects: 3, Allow: h.Upstream.Allow,
+			BodyCap: upstream.MaxCatalogBytes, Curves: h.Upstream.Curves,
+		})
+	}, app.MakeLog())
+	h.CatalogSync.Enabled = cfg.GetBool("catalog.sync")
+	return nil
 }
 
 // sessionSecretSource returns a getter for the session secret. JWT_SECRET wins;

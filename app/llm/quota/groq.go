@@ -14,7 +14,7 @@ const groqModelsURL = "https://api.groq.com/openai/v1/models"
 // readGroq reads the rate limits Groq puts on the answer's headers. The body is
 // drained and dropped: the list itself is not a quota.
 func readGroq(ctx context.Context, r *Reader, e upstream.Entry, a Access) (Reading, error) {
-	code, header, _, err := r.doFull(ctx, request{URL: groqModelsURL, Headers: keyed(e, identity(e), a.Token)})
+	code, header, _, err := r.doFull(ctx, request{URL: groqModelsURL, Headers: keyedFor(e, a)})
 	if err != nil {
 		return failed("Groq", err)
 	}

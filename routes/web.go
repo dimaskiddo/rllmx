@@ -57,6 +57,17 @@ type Base struct {
 // records its class; a route added on router directly is not in the guard's
 // table, and the server refuses to start with one.
 func Web(router route.Route, guard *apphttp.Guard, base Base) {
+	webBase(router, guard, base)
+	webAccess(router, guard, base)
+	webProviders(router, guard, base)
+	webClient(router, guard, base)
+	webDashboard(router, guard, base)
+	webLogin(router, guard, base)
+	router.Fallback(guard.Fallback(router.GetRoutes))
+}
+
+// webBase declares the routes every build has: health, version and setup.
+func webBase(router route.Route, guard *apphttp.Guard, base Base) {
 	health := controllers.NewHealthController()
 	if base.Health != nil {
 		health = base.Health
@@ -69,7 +80,10 @@ func Web(router route.Route, guard *apphttp.Guard, base Base) {
 
 	setup := controllers.NewInitController(base.Connections)
 	guard.Handle(router, apphttp.ClassPublic, nethttp.MethodGet, "/api/init", setup.Index)
+}
 
+// webAccess declares the sign-in routes and the routes that manage keys.
+func webAccess(router route.Route, guard *apphttp.Guard, base Base) {
 	if a := base.Auth; a != nil {
 		guard.Handle(router, apphttp.ClassPublic, nethttp.MethodPost, "/api/auth/login", a.Login)
 		guard.Handle(router, apphttp.ClassPublic, nethttp.MethodPost, "/api/auth/logout", a.Logout)
@@ -98,7 +112,10 @@ func Web(router route.Route, guard *apphttp.Guard, base Base) {
 		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodPut, "/api/keys/{id}", k.Update)
 		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodDelete, "/api/keys/{id}", k.Delete)
 	}
+}
 
+// webProviders declares the provider and node management routes.
+func webProviders(router route.Route, guard *apphttp.Guard, base Base) {
 	if p := base.Providers; p != nil {
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/providers", p.List)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPost, "/api/providers", p.Create)
@@ -123,7 +140,10 @@ func Web(router route.Route, guard *apphttp.Guard, base Base) {
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPut, "/api/provider-nodes/{id}", n.Update)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodDelete, "/api/provider-nodes/{id}", n.Delete)
 	}
+}
 
+// webClient declares the routes an API client calls: chat, media and the model lists.
+func webClient(router route.Route, guard *apphttp.Guard, base Base) {
 	if c := base.Chat; c != nil {
 		for _, path := range []string{
 			"/v1/chat/completions", "/v1/messages", "/v1/responses", "/v1/responses/compact",
@@ -171,7 +191,10 @@ func Web(router route.Route, guard *apphttp.Guard, base Base) {
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/models/catalog-sync", m.CatalogStatus)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPost, "/api/models/catalog-sync", m.CatalogRun)
 	}
+}
 
+// webDashboard declares the dashboard's own reads and settings.
+func webDashboard(router route.Route, guard *apphttp.Guard, base Base) {
 	if cb := base.Combos; cb != nil {
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/combos", cb.List)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPost, "/api/combos", cb.Create)
@@ -205,6 +228,21 @@ func Web(router route.Route, guard *apphttp.Guard, base Base) {
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPost, "/api/usage/{id}/codex-reset-credits", u.CodexResetCredits)
 	}
 
+	if s := base.Settings; s != nil {
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/settings", s.Show)
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodPatch, "/api/settings", s.Update)
+		guard.Handle(router, apphttp.ClassPublic, nethttp.MethodPost, "/api/locale", s.Locale)
+	}
+
+	if l := base.Logs; l != nil {
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/translator/console-logs", l.List)
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodDelete, "/api/translator/console-logs", l.Clear)
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/translator/console-logs/stream", l.Stream)
+	}
+}
+
+// webLogin declares the account login routes and the page a provider redirects to.
+func webLogin(router route.Route, guard *apphttp.Guard, base Base) {
 	if o := base.OAuth; o != nil {
 		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/oauth/{provider}/authorize", o.Authorize)
 		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodPost, "/api/oauth/{provider}/authorize", o.AuthorizeApp)
@@ -218,22 +256,8 @@ func Web(router route.Route, guard *apphttp.Guard, base Base) {
 		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/oauth/status", o.Status)
 	}
 
-	if s := base.Settings; s != nil {
-		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/settings", s.Show)
-		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodPatch, "/api/settings", s.Update)
-		guard.Handle(router, apphttp.ClassPublic, nethttp.MethodPost, "/api/locale", s.Locale)
-	}
-
-	if l := base.Logs; l != nil {
-		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/translator/console-logs", l.List)
-		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodDelete, "/api/translator/console-logs", l.Clear)
-		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/translator/console-logs/stream", l.Stream)
-	}
-
 	if cb := base.Callback; cb != nil {
 		guard.Handle(router, apphttp.ClassPublic, nethttp.MethodGet, "/callback", cb.Page)
 		guard.Handle(router, apphttp.ClassPublic, nethttp.MethodGet, "/static/js/callback.js", cb.Script)
 	}
-
-	router.Fallback(guard.Fallback(router.GetRoutes))
 }

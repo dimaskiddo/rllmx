@@ -26,15 +26,12 @@ const (
 // window as a number used out of 100, and names a model's own weekly window in
 // either the top-level keys or the limits list.
 func readClaude(ctx context.Context, r *Reader, e upstream.Entry, a Access) (Reading, error) {
-	h := bearer(identity(e), a.Token)
+	h := bearerFor(e, a)
 	h["anthropic-beta"] = "oauth-2025-04-20"
 	h["anthropic-version"] = "2023-06-01"
-	code, raw, err := r.do(ctx, request{URL: claudeUsageURL, Headers: h})
-	if err != nil {
-		return failed("Claude", err)
-	}
-	if code != http.StatusOK {
-		return answered("Claude", code)
+	raw, stop, early, earlyErr := r.getOK(ctx, "Claude", request{URL: claudeUsageURL, Headers: h})
+	if stop {
+		return early, earlyErr
 	}
 	return parseClaude(raw), nil
 }
@@ -114,10 +111,10 @@ func (r *Reader) ClaudeReset(ctx context.Context, conn repository.Connection, gr
 	}
 	out := ResetResult{Status: code}
 	data := gjson.ParseBytes(raw)
-	out.Result = data.Get("result").String()
-	out.Reason = data.Get("reason").String()
+	out.Result = upstreamText(data.Get("result").String())
+	out.Reason = upstreamText(data.Get("reason").String())
 	out.ResetsLeft = int(data.Get("resets_left").Int())
-	out.Message = data.Get("error.message").String()
+	out.Message = upstreamText(data.Get("error.message").String())
 	out.OK = code/100 == 2 && out.Result == "reset"
 	// The limits the grant refilled are not what the cache holds any more.
 	if r.Cache != nil {

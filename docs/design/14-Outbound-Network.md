@@ -73,9 +73,9 @@ One `Checker`, built once in the provider wiring (`app/providers`) on `network.N
 The dialer, the transport, the client, the redirect policy and the allow list are built; three consumers use them (SSO, the health probe, the key `Checker`).
 
 - [x] The key `Checker`
-- [x] Web fetch and media run on `network.NewClient`; the provider executors that dial their own clients are the open part
+- [x] Web fetch, media, the provider executors, the quota readers and the catalog sync run on `network.NewClient`
 - [ ] The image prefetch gets the operator's allow list
-- [ ] `UPSTREAM_CONNECT_TIMEOUT` governs the executors
+- [x] `UPSTREAM_CONNECT_TIMEOUT` governs the executors, the quota readers and the catalog sync; the image prefetch client keeps its own fixed timeout and no allow list, which is the open item above
 
 ---
 

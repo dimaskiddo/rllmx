@@ -17,7 +17,7 @@ const (
 // readGrokCLI reads the CLI's billing period and the weekly credit share. The
 // account's own headers are sent, since the service is the CLI's.
 func readGrokCLI(ctx context.Context, r *Reader, e upstream.Entry, a Access) (Reading, error) {
-	h := bearer(identity(e), a.Token)
+	h := bearerFor(e, a)
 	h["User-Agent"] = "grok-shell/1.0.44 (linux; x86_64)"
 	h["x-xai-token-auth"] = "xai-grok-cli"
 	h["x-grok-client-identifier"] = "grok-shell"

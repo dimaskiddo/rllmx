@@ -39,14 +39,42 @@ func (c *call) fusion(ctx context.Context, p combo.Policy, order []routing.Membe
 		}
 		return out
 	}
-	quorum := p.MinPanel
-	if quorum < 2 {
-		quorum = 2
-	}
-	if quorum > len(order) {
-		quorum = len(order)
+	served := c.runPanel(ctx, p, order, panelQuorum(p, len(order)))
+	// The client's one row carries the whole spend: the panel's, then the one
+	// answer the client gets.
+	var spent panelSpend
+	for _, r := range served {
+		spent.add(r)
 	}
 
+	switch len(served) {
+	case 0:
+		return c.fail(http.StatusServiceUnavailable, "no_account", "All fusion panel models failed")
+	case 1:
+		// One answer: re-run that member with the client's own request, so the
+		// tools and the stream setting come back.
+		return c.fusionAnswer(ctx, served[0].member, nil, spent)
+	}
+
+	answers := make([]string, len(served))
+	for i, r := range served {
+		answers[i] = r.text
+	}
+	judge := c.judgeMember(ctx, p, served[0].member)
+	return c.fusionAnswer(ctx, judge, appendAnswers(answers), spent)
+}
+
+// panelQuorum is how many answers end the wait: the policy's, at least two and
+// never more than the panel has.
+func panelQuorum(p combo.Policy, members int) int {
+	return min(max(p.MinPanel, 2), members)
+}
+
+// runPanel asks every member at once and returns the answers that carried text,
+// once the quorum is in and the stragglers' grace has passed, or the panel's
+// hard limit. Every member still running is cancelled and waited for first, so
+// nothing writes after it returns.
+func (c *call) runPanel(ctx context.Context, p combo.Policy, order []routing.Member, quorum int) []panelResult {
 	pctx, cancel := context.WithTimeout(ctx, time.Duration(p.PanelMS)*time.Millisecond)
 	defer cancel()
 	ch := make(chan panelResult, len(order))
@@ -69,7 +97,13 @@ func (c *call) fusion(ctx context.Context, p combo.Policy, order []routing.Membe
 	}
 
 	var served []panelResult
+	var graceTimer *time.Timer
 	var grace <-chan time.Time
+	defer func() {
+		if graceTimer != nil {
+			graceTimer.Stop()
+		}
+	}()
 	collected := 0
 collect:
 	for collected < len(order) {
@@ -79,7 +113,8 @@ collect:
 			if r.fail == nil && r.text != "" {
 				served = append(served, r)
 				if len(served) >= quorum && grace == nil {
-					grace = time.After(time.Duration(p.StragglerMS) * time.Millisecond)
+					graceTimer = time.NewTimer(time.Duration(p.StragglerMS) * time.Millisecond)
+					grace = graceTimer.C
 				}
 			}
 		case <-grace:
@@ -90,34 +125,32 @@ collect:
 	}
 	cancel() // stragglers stop; every goroutine has its own buffered channel slot
 	wg.Wait()
-	for _, r := range served {
-		c.row.PromptTokens += r.prompt
-		c.row.CompletionTokens += r.completion
-		c.row.Cost += r.cost
-	}
+	return served
+}
 
-	switch len(served) {
-	case 0:
-		return c.fail(http.StatusServiceUnavailable, "no_account", "All fusion panel models failed")
-	case 1:
-		// One answer: re-run that member with the client's own request, so the
-		// tools and the stream setting come back.
-		out, fail := c.comboMember(ctx, served[0].member, nil)
-		if fail != nil {
-			return c.upstreamFail(fail)
-		}
-		return out
-	}
+// panelSpend is what the panel's answers used.
+type panelSpend struct {
+	prompt, completion int64
+	cost               float64
+}
 
-	answers := make([]string, len(served))
-	for i, r := range served {
-		answers[i] = r.text
-	}
-	judge := c.judgeMember(ctx, p, served[0].member)
-	out, fail := c.comboMember(ctx, judge, appendAnswers(answers))
+func (s *panelSpend) add(r panelResult) {
+	s.prompt += r.prompt
+	s.completion += r.completion
+	s.cost += r.cost
+}
+
+// fusionAnswer runs the member that answers the client and adds the panel's
+// spend to its row, after the member's own counts replaced what the row held.
+func (c *call) fusionAnswer(ctx context.Context, m routing.Member, shape func(*translate.Request), spent panelSpend) Output {
+	out, fail := c.comboMember(ctx, m, shape)
+	c.row.PromptTokens += spent.prompt
+	c.row.CompletionTokens += spent.completion
+	c.row.Cost += spent.cost
 	if fail != nil {
 		return c.upstreamFail(fail)
 	}
+	c.row.Provider, c.row.Model = m.Provider, m.Model
 	return out
 }
 

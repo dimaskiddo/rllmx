@@ -39,79 +39,7 @@ func Boot(version, commit string) contractsfoundation.Application {
 				MaxBody: int64(h.Settings.MaxBodyMB) << 20,
 			})
 		}).
-		WithRouting(func() {
-			h := providers.HTTPOf(facades.App())
-			base := routeBase(version, commit)
-			base.Auth = controllers.NewAuthController(h.Auth, h.Trust)
-			base.OIDC = oidcController(h)
-			base.SAML = samlController(h)
-			db := func() *repository.Store { return providers.DataOf(facades.App()).Runner.Store() }
-			base.Providers = &controllers.ProvidersController{Registry: h.Registry, DB: db, Checker: h.Checker, Refresher: h.Refresher, Enqueue: h.Probes.Enqueue, Probe: h.Probes.Prober}
-			base.Nodes = &controllers.NodesController{Registry: h.Registry, DB: db, Checker: h.Checker, Changed: h.Snapshot.Invalidate}
-			base.Chat = &controllers.ChatController{Pipe: h.Pipe.Get, Log: facades.Log()}
-			base.Models = &controllers.ModelsController{
-				Catalog: providers.NewCatalogSource(facades.App()).Get, Probe: h.Probes.Prober, Log: facades.Log(),
-				Registry: h.Registry, Caps: h.Capabilities, DB: db, Changed: h.Snapshot.Invalidate,
-				CatalogSync: func() controllers.CatalogSyncer {
-					if h.CatalogSync == nil {
-						return nil
-					}
-					return h.CatalogSync
-				},
-			}
-			base.Combos = &controllers.CombosController{
-				DB: db, Probe: h.Probes.Prober, Tracker: h.Health, Prices: h.Prices.Get, Log: facades.Log(),
-				Registry: h.Registry, Changed: h.Snapshot.Invalidate, Reset: h.ResetCombo,
-			}
-			base.Pricing = &controllers.PricingController{
-				DB: db, Table: h.Prices.Get, Log: facades.Log(),
-				Reload: func() {
-					h.Prices.Reset()
-					if _, err := h.Prices.Get(); err != nil {
-						facades.Log().Warningf("pricing: the table did not reload: %v", err)
-					}
-				},
-			}
-			media := providers.NewMediaSource(facades.App())
-			base.Usage = &controllers.UsageController{
-				Analytics: func() controllers.UsageReader {
-					if s := providers.DataOf(facades.App()).Runner.Analytics(); s != nil {
-						return s
-					}
-					return nil
-				},
-				Flushed: func() uint64 {
-					if w := providers.DataOf(facades.App()).Runner.Writer(); w != nil {
-						return w.Flushed()
-					}
-					return 0
-				},
-				DB: db, Registry: h.Registry, Inflight: h.Inflight, Log: facades.Log(),
-				Quota: func() controllers.QuotaReader {
-					if h.Quota == nil {
-						return nil
-					}
-					return h.Quota
-				},
-			}
-			base.Media = &controllers.MediaController{
-				EmbeddingsPipe: media.Get, ImagesPipe: media.Get, SpeechPipe: media.Get,
-				TranscribePipe: media.Get, VoicesPipe: media.Get, VideosPipe: media.Get,
-				SearchPipe: media.Get, FetchPipe: media.Get, Log: facades.Log(),
-			}
-			base.OAuth = &controllers.OAuthController{Service: h.OAuth, Auth: h.Auth, Server: h.Settings}
-			base.Callback = &controllers.CallbackController{Files: web.Static}
-			base.Health = &controllers.HealthController{DB: db, Tracker: h.Health}
-			base.Settings = &controllers.SettingsController{DB: db, Auth: h.Auth, Secure: h.Trust.SecureRequest}
-			base.Logs = &controllers.LogsController{Book: config.ConsoleLog()}
-			base.Keys = &controllers.KeysController{
-				DB: db, Quota: h.Limits, Codec: identity.NewKeys(facades.Config().GetString("auth.api_key_secret")),
-				Machine: identity.NewMachine(facades.Config().GetString("auth.machine_id_salt")),
-				Dir:     facades.Config().GetString("app.data_dir"),
-				Changed: h.Auth.Keys.Changed, Log: facades.Log(),
-			}
-			routes.Web(facades.Route(), h.Guard, base)
-		}).
+		WithRouting(func() { declareRoutes(version, commit) }).
 		WithProviders(Providers(version)).
 		WithMigrations(func() []contractsschema.Migration {
 			return repository.Migrations(func() contractsschema.Schema { return facades.Schema() }, data.DialectOf(facades.Config()))
@@ -126,6 +54,100 @@ func Boot(version, commit string) contractsfoundation.Application {
 			})
 		}).
 		Create()
+}
+
+// declareRoutes builds every controller from the bound pieces and declares the
+// route tables. The store and the pipeline open later, in runners, so each
+// controller takes them through a closure.
+func declareRoutes(version, commit string) {
+	h := providers.HTTPOf(facades.App())
+	db := func() *repository.Store { return providers.DataOf(facades.App()).Runner.Store() }
+	base := routeBase(version, commit)
+	base.Auth = controllers.NewAuthController(h.Auth, h.Trust)
+	base.OIDC = oidcController(h)
+	base.SAML = samlController(h)
+	base.Providers = &controllers.ProvidersController{Registry: h.Registry, DB: db, Checker: h.Checker, Refresher: h.Refresher, Enqueue: h.Probes.Enqueue, Probe: h.Probes.Prober}
+	base.Nodes = &controllers.NodesController{Registry: h.Registry, DB: db, Checker: h.Checker, Changed: h.Snapshot.Invalidate}
+	base.OAuth = &controllers.OAuthController{Service: h.OAuth, Auth: h.Auth, Server: h.Settings}
+	base.Callback = &controllers.CallbackController{Files: web.Static}
+	base.Health = &controllers.HealthController{DB: db, Tracker: h.Health}
+	base.Settings = &controllers.SettingsController{DB: db, Auth: h.Auth, Secure: h.Trust.SecureRequest}
+	base.Logs = &controllers.LogsController{Book: config.ConsoleLog()}
+	base.Keys = keysController(h, db)
+	clientRoutes(&base, h, db)
+	dashboardRoutes(&base, h, db)
+	routes.Web(facades.Route(), h.Guard, base)
+}
+
+// clientRoutes fills the controllers an API client calls: chat, media and the
+// model lists.
+func clientRoutes(base *routes.Base, h *providers.HTTP, db func() *repository.Store) {
+	media := providers.NewMediaSource(facades.App())
+	base.Chat = &controllers.ChatController{Pipe: h.Pipe.Get, Log: facades.Log()}
+	base.Media = &controllers.MediaController{
+		EmbeddingsPipe: media.Get, ImagesPipe: media.Get, SpeechPipe: media.Get,
+		TranscribePipe: media.Get, VoicesPipe: media.Get, VideosPipe: media.Get,
+		SearchPipe: media.Get, FetchPipe: media.Get, Log: facades.Log(),
+	}
+	base.Models = &controllers.ModelsController{
+		Catalog: providers.NewCatalogSource(facades.App()).Get, Probe: h.Probes.Prober, Log: facades.Log(),
+		Registry: h.Registry, Caps: h.Capabilities, DB: db, Changed: h.Snapshot.Invalidate,
+		CatalogSync: func() controllers.CatalogSyncer {
+			if h.CatalogSync == nil {
+				return nil
+			}
+			return h.CatalogSync
+		},
+	}
+}
+
+// dashboardRoutes fills the controllers behind the dashboard's own pages.
+func dashboardRoutes(base *routes.Base, h *providers.HTTP, db func() *repository.Store) {
+	base.Combos = &controllers.CombosController{
+		DB: db, Probe: h.Probes.Prober, Tracker: h.Health, Prices: h.Prices.Get, Log: facades.Log(),
+		Registry: h.Registry, Changed: h.Snapshot.Invalidate, Reset: h.ResetCombo,
+	}
+	base.Pricing = &controllers.PricingController{
+		DB: db, Table: h.Prices.Get, Log: facades.Log(),
+		Reload: func() {
+			h.Prices.Reset()
+			if _, err := h.Prices.Get(); err != nil {
+				facades.Log().Warningf("pricing: the table did not reload: %v", err)
+			}
+		},
+	}
+	base.Usage = &controllers.UsageController{
+		Analytics: func() controllers.UsageReader {
+			if s := providers.DataOf(facades.App()).Runner.Analytics(); s != nil {
+				return s
+			}
+			return nil
+		},
+		Flushed: func() uint64 {
+			if w := providers.DataOf(facades.App()).Runner.Writer(); w != nil {
+				return w.Flushed()
+			}
+			return 0
+		},
+		DB: db, Registry: h.Registry, Inflight: h.Inflight, Log: facades.Log(),
+		Quota: func() controllers.QuotaReader {
+			if h.Quota == nil {
+				return nil
+			}
+			return h.Quota
+		},
+	}
+}
+
+// keysController is the client-key handler with the codec and the machine id.
+func keysController(h *providers.HTTP, db func() *repository.Store) *controllers.KeysController {
+	cfg := facades.Config()
+	return &controllers.KeysController{
+		DB: db, Quota: h.Limits, Codec: identity.NewKeys(cfg.GetString("auth.api_key_secret")),
+		Machine: identity.NewMachine(cfg.GetString("auth.machine_id_salt")),
+		Dir:     cfg.GetString("app.data_dir"),
+		Changed: h.Auth.Keys.Changed, Log: facades.Log(),
+	}
 }
 
 // oidcController is the single sign-on handler, built from the bound HTTP pieces.

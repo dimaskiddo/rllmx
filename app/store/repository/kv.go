@@ -88,6 +88,11 @@ func (r *KVRepo) Delete(ctx context.Context, scope, key string) error {
 	return r.s.stmt(r.s.on(ctx), `DELETE FROM "kv" WHERE "scope" = ? AND "key" = ?`, dialect.StripNUL(scope), dialect.StripNUL(key))
 }
 
+// DeleteScope removes every value of a scope in one statement.
+func (r *KVRepo) DeleteScope(ctx context.Context, scope string) error {
+	return r.s.stmt(r.s.on(ctx), `DELETE FROM "kv" WHERE "scope" = ?`, dialect.StripNUL(scope))
+}
+
 // Increment adds one to a counter value in one transaction and returns the new
 // value. A missing or non-numeric value counts as zero.
 func (r *KVRepo) Increment(ctx context.Context, scope, key string) (int64, error) {
@@ -139,6 +144,21 @@ func (r *KVRepo) DisabledModels(ctx context.Context, provider string) ([]string,
 		return []string{}, err
 	}
 	return decodeStrings(raw), nil
+}
+
+// ResponseCacheKeys is the response-cache switch of every key that has one, read
+// once, for a list that would otherwise read a row per key. The same rule
+// applies: anything but a JSON true is off.
+func (r *KVRepo) ResponseCacheKeys(ctx context.Context) (map[string]bool, error) {
+	rows, err := r.List(ctx, ScopeResponseCache)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]bool, len(rows))
+	for id, raw := range rows {
+		out[id] = gjson.Get(raw, "enabled").Type == gjson.True
+	}
+	return out, nil
 }
 
 // ResponseCacheEnabled reports whether the API key may use the response cache.

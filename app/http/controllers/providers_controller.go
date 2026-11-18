@@ -58,14 +58,17 @@ type LoginChecker interface {
 	Ensure(ctx context.Context, id string) (refreshed bool, err error)
 }
 
-func (c *ProvidersController) store() *repository.Store {
-	if c.DB == nil {
+func (c *ProvidersController) store() *repository.Store { return storeOf(c.DB) }
+
+// storeOf opens a controller's store, or nil when the controller has none wired.
+func storeOf(open func() *repository.Store) *repository.Store {
+	if open == nil {
 		return nil
 	}
-	return c.DB()
+	return open()
 }
 
-// storage answers a failed or missing store without naming the cause.
+// storageDown answers a failed or missing store without naming the cause.
 func storageDown(ctx contractshttp.Context) contractshttp.Response {
 	return flat(ctx, nethttp.StatusServiceUnavailable, "Storage is not available")
 }
@@ -95,14 +98,21 @@ func (c *ProvidersController) List(ctx contractshttp.Context) contractshttp.Resp
 	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"connections": out})
 }
 
+// nodeNames maps a provider node id to the name its page shows; a node with no
+// name, or a store that cannot be read, adds nothing.
 func nodeNames(ctx context.Context, st *repository.Store) map[string]string {
+	out := map[string]string{}
+	if st == nil {
+		return out
+	}
 	nodes, err := st.Nodes().List(ctx, "")
 	if err != nil {
-		return nil
+		return out
 	}
-	out := make(map[string]string, len(nodes))
 	for _, n := range nodes {
-		out[n.ID] = n.Name
+		if name := strings.TrimSpace(n.Name); name != "" {
+			out[n.ID] = name
+		}
 	}
 	return out
 }

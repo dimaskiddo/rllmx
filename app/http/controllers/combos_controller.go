@@ -139,12 +139,7 @@ func (c *CombosController) Suggest(ctx contractshttp.Context) contractshttp.Resp
 	})
 }
 
-func (c *CombosController) store() *repository.Store {
-	if c.DB == nil {
-		return nil
-	}
-	return c.DB()
-}
+func (c *CombosController) store() *repository.Store { return storeOf(c.DB) }
 
 func (c *CombosController) prober() *probe.Prober {
 	if c.Probe == nil {
@@ -257,11 +252,7 @@ func suggestLimit(q url.Values) int {
 	if raw == "" {
 		raw = q.Get("count")
 	}
-	n, err := strconv.Atoi(raw)
-	if err != nil || n < 1 {
-		return suggestDefault
-	}
-	return min(n, suggestMax)
+	return intParam(raw, suggestDefault, suggestMax)
 }
 
 type acceptBody struct {

@@ -145,6 +145,39 @@ func TestBucketsGroupByHourOrByDay(t *testing.T) {
 	}
 }
 
+func TestAWindowIsLaidOutOverTheTwoRollups(t *testing.T) {
+	s := newStore(t)
+	dayA, dayB, _ := usageRows(t, s)
+	ctx := context.Background()
+	from := dayA.Add(5*time.Hour + 30*time.Minute)
+
+	hourly, err := s.spanOf(ctx, from, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hourly.split != 0 || hourly.dayFrom != 0 || hourly.hourFrom != hourBucket(from) {
+		t.Fatalf("an hourly window reads hours from its own start: %+v", hourly)
+	}
+
+	mixed, err := s.spanOf(ctx, from, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The first kept hour is on day A, so the hours begin on the next day and
+	// the days before it come from the daily rollup.
+	if mixed.split != dayB.UnixMilli() || mixed.dayFrom != dayBucket(from) || mixed.hourFrom != mixed.split {
+		t.Fatalf("a daily window splits at the first kept day: %+v", mixed)
+	}
+
+	all, err := s.spanOf(ctx, time.Time{}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if all.dayFrom != 0 || all.hourFrom != all.split {
+		t.Fatalf("no start reads everything: %+v", all)
+	}
+}
+
 func TestLastSeenGivesTheNewestRequestTime(t *testing.T) {
 	s := newStore(t)
 	_, dayB, _ := usageRows(t, s)
@@ -170,6 +203,39 @@ func TestRecentIsNewestFirstAndCapped(t *testing.T) {
 	}
 	if rows[0].Time != dayB.Add(2*time.Hour) {
 		t.Fatalf("time %v", rows[0].Time)
+	}
+}
+
+func TestRecentServedSkipsRowsThatUsedNoTokensAndStaysCapped(t *testing.T) {
+	s := newStore(t)
+	w := s.NewWriter(WriterOptions{QueueSize: 64, FlushRows: 1000, FlushEvery: time.Hour})
+	for i := 0; i < 30; i++ {
+		r := rec(i, t0.Add(time.Duration(i)*time.Minute))
+		if i%3 == 0 {
+			r.PromptTokens, r.CompletionTokens = 0, 0
+		}
+		w.Enqueue(r)
+	}
+	if err := w.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := s.RecentServed(context.Background(), 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 5 {
+		t.Fatalf("%d rows, want the 5 newest that used tokens", len(rows))
+	}
+	for i, r := range rows {
+		if r.Prompt+r.Completion == 0 {
+			t.Errorf("row %d used no tokens: %+v", i, r)
+		}
+		if i > 0 && !r.Time.Before(rows[i-1].Time) {
+			t.Errorf("row %d is not older than the one before", i)
+		}
+	}
+	if rows[0].Time != t0.Add(29*time.Minute) {
+		t.Fatalf("the newest served row is %v", rows[0].Time)
 	}
 }
 

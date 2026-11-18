@@ -39,7 +39,7 @@ func (c *call) resolve(ctx context.Context) (Output, bool) {
 	// before any account: a check after the cache would let a restricted key read
 	// an answer cached for a model it may not call.
 	if c.in.Caller.Restricted {
-		allow, err := routing.NewAllow(ctx, c.p.d.Resolver, c.p.d.Registry, c.in.Caller.Allow)
+		allow, err := routing.NewAllow(ctx, c.p.d.Resolver, c.in.Caller.Allow)
 		if err != nil {
 			return c.internal(ctx, err), false
 		}

@@ -33,7 +33,7 @@ func readMiniMax(ctx context.Context, r *Reader, e upstream.Entry, a Access) (Re
 	}
 	var last Reading
 	for i, target := range urls {
-		code, raw, err := r.do(ctx, request{URL: target, Headers: keyed(e, identity(e), a.Token)})
+		code, raw, err := r.do(ctx, request{URL: target, Headers: keyedFor(e, a)})
 		if err != nil {
 			return failed("MiniMax", err)
 		}

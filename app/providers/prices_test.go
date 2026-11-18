@@ -59,3 +59,23 @@ func TestThePriceReaderPricesWithTheTableThatStandsNow(t *testing.T) {
 		t.Fatal("an unknown model reported a price")
 	}
 }
+
+var stale = ErrPricingOverrides
+
+func TestThePriceReaderPricesWithTheFallbackWhileTheOverridesCannotBeRead(t *testing.T) {
+	reads := 0
+	s := &PriceSource{}
+	s.build = func(context.Context) (*upstream.Table, error) {
+		reads++
+		return priced(t, 2), stale
+	}
+	read := priceReader{src: s}
+	for i := 0; i < 2; i++ {
+		if cost, ok := read.Cost("", "m", upstream.Usage{Prompt: 1_000_000}); !ok || cost != 2 {
+			t.Fatalf("call %d: %v %v", i, cost, ok)
+		}
+	}
+	if reads != 2 {
+		t.Fatalf("the fallback table was kept after %d reads", reads)
+	}
+}
