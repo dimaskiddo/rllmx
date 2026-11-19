@@ -184,6 +184,7 @@ func (c *call) build(ctx context.Context, d destination) (Output, bool) {
 	if c.p.d.Prefetch != nil && (needsInlineImages(d.format) || d.entry.Transport.Quirks.InlineImages) {
 		c.p.d.Prefetch.Inline(ctx, c.req)
 	}
+	c.applySavers(ctx)
 	body, err := codec.WriteRequest(c.req, c.tctx)
 	switch {
 	case errors.Is(err, translate.ErrImages):

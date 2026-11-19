@@ -81,6 +81,12 @@ func TestASettingsWriteRefusesWhatItCannotValidateAndWritesNothing(t *testing.T)
 		"unknown cache":  `{"responseCache":{"enabled":true,"extra":1}}`,
 		"bad combo knob": `{"comboStrategies":{"fast":{"fallbackStrategy":"random"}}}`,
 		"plain http sso": `{"oidcIssuerUrl":"http://idp.example"}`,
+		"bad headroom":   `{"headroomUrl":"ftp://sidecar:8787"}`,
+		"headroom user":  `{"headroomUrl":"http://u:p@sidecar:8787"}`,
+		"headroom wait":  `{"headroomTimeoutMs":5}`,
+		"bad caveman":    `{"cavemanLevel":"extreme"}`,
+		"bad mode":       `{"ponytailRoutingMode":"sometimes"}`,
+		"long prompt":    `{"customPrompt":"` + strings.Repeat("a", 4001) + `"}`,
 		"password":       `{"newPassword":"a-good-long-password"}`,
 		"not an object":  `[]`,
 		"empty":          `{}`,
@@ -126,6 +132,31 @@ func TestASettingsWriteStoresAValidChangeAndAppliesItAtOnce(t *testing.T) {
 	}
 	if got, _ := d.GetRaw("responseCache"); !strings.Contains(got, `"ttlSeconds":60`) {
 		t.Fatalf("cache switch %s", got)
+	}
+}
+
+func TestASettingsWriteStoresTheSaverKeysAndAnswersThem(t *testing.T) {
+	m := newMgmtRig(t)
+	seededSettings(t, m)
+	m.settingsRoutes(&SettingsController{DB: func() *repository.Store { return m.st.Store }, Auth: m.auth})
+	code, out, raw := m.call(nethttp.MethodPatch, "/api/settings",
+		`{"rtkEnabled":false,"headroomEnabled":true,"headroomUrl":"http://localhost:8787",`+
+			`"headroomCompressUserMessages":true,"headroomTimeoutMs":1500,`+
+			`"cavemanEnabled":true,"cavemanLevel":"wenyan-lite","cavemanRoutingMode":"smart",`+
+			`"ponytailEnabled":true,"ponytailLevel":"ultra","ponytailRoutingMode":"always",`+
+			`"customPromptEnabled":true,"customPrompt":"Answer in one paragraph."}`, true)
+	if code != 200 {
+		t.Fatalf("%d %s", code, raw)
+	}
+	if out["rtkEnabled"] != false || out["cavemanLevel"] != "wenyan-lite" || out["headroomTimeoutMs"] != float64(1500) {
+		t.Fatalf("%v", out)
+	}
+	d, err := m.st.Store.Settings().Effective(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := d.GetString("ponytailRoutingMode"); got != "always" {
+		t.Fatalf("ponytailRoutingMode %q", got)
 	}
 }
 

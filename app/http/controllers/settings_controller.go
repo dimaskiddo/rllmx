@@ -64,7 +64,22 @@ type settingsView struct {
 	// an object holding the connections opted in and their schedules.
 	ClaudeAutoPing json.RawMessage `json:"claudeAutoPing"`
 	CodexAutoPing  json.RawMessage `json:"codexAutoPing"`
-	HasPassword    bool            `json:"hasPassword"`
+
+	RTKEnabled                  bool   `json:"rtkEnabled"`
+	HeadroomEnabled             bool   `json:"headroomEnabled"`
+	HeadroomURL                 string `json:"headroomUrl"`
+	HeadroomCompressUserMessage bool   `json:"headroomCompressUserMessages"`
+	HeadroomTimeoutMS           int    `json:"headroomTimeoutMs"`
+	CavemanEnabled              bool   `json:"cavemanEnabled"`
+	CavemanLevel                string `json:"cavemanLevel"`
+	CavemanRoutingMode          string `json:"cavemanRoutingMode"`
+	PonytailEnabled             bool   `json:"ponytailEnabled"`
+	PonytailLevel               string `json:"ponytailLevel"`
+	PonytailRoutingMode         string `json:"ponytailRoutingMode"`
+	CustomPromptEnabled         bool   `json:"customPromptEnabled"`
+	CustomPrompt                string `json:"customPrompt"`
+
+	HasPassword bool `json:"hasPassword"`
 }
 
 // Show answers GET /api/settings.
@@ -139,30 +154,43 @@ func (c *SettingsController) Update(ctx contractshttp.Context) contractshttp.Res
 // view projects the stored settings through the allow list.
 func (c *SettingsController) view(d document.Doc) settingsView {
 	v := settingsView{
-		RequireLogin:               rawBool(d, "requireLogin", true),
-		RequireAPIKey:              rawBool(d, "requireApiKey", true),
-		AuthMode:                   rawString(d, "authMode", "password"),
-		SSOType:                    rawString(d, "ssoType", "oidc"),
-		OIDCIssuerURL:              rawString(d, "oidcIssuerUrl", ""),
-		OIDCClientID:               rawString(d, "oidcClientId", ""),
-		OIDCScopes:                 rawString(d, "oidcScopes", "openid profile email"),
-		OIDCLoginLabel:             rawString(d, "oidcLoginLabel", "Sign in with OIDC"),
-		SAMLEntryPoint:             rawString(d, "samlEntryPoint", ""),
-		SAMLIssuer:                 rawString(d, "samlIssuer", ""),
-		SAMLCert:                   rawString(d, "samlCert", ""),
-		SAMLIdPEntityID:            rawString(d, "samlIdpEntityId", ""),
-		SAMLLoginLabel:             rawString(d, "samlLoginLabel", "Sign in with SAML SSO"),
-		SAMLAttributeEmail:         rawString(d, "samlAttributeEmail", "email"),
-		SAMLAttributeName:          rawString(d, "samlAttributeName", "name"),
-		ComboStrategy:              rawString(d, "comboStrategy", "fallback"),
-		ComboStrategies:            rawObject(d, "comboStrategies", "{}"),
-		ComboStickyRoundRobinLimit: rawInt(d, "comboStickyRoundRobinLimit", 1),
-		StickyRoundRobinLimit:      rawInt(d, "stickyRoundRobinLimit", 3),
-		ProviderStrategies:         rawObject(d, "providerStrategies", "{}"),
-		CapacityAdapter:            rawObject(d, "capacityAdapter", "{}"),
-		ResponseCache:              rawObject(d, "responseCache", "{}"),
-		ClaudeAutoPing:             rawPing(d, "claudeAutoPing"),
-		CodexAutoPing:              rawPing(d, "codexAutoPing"),
+		RequireLogin:                rawBool(d, "requireLogin", true),
+		RequireAPIKey:               rawBool(d, "requireApiKey", true),
+		AuthMode:                    rawString(d, "authMode", "password"),
+		SSOType:                     rawString(d, "ssoType", "oidc"),
+		OIDCIssuerURL:               rawString(d, "oidcIssuerUrl", ""),
+		OIDCClientID:                rawString(d, "oidcClientId", ""),
+		OIDCScopes:                  rawString(d, "oidcScopes", "openid profile email"),
+		OIDCLoginLabel:              rawString(d, "oidcLoginLabel", "Sign in with OIDC"),
+		SAMLEntryPoint:              rawString(d, "samlEntryPoint", ""),
+		SAMLIssuer:                  rawString(d, "samlIssuer", ""),
+		SAMLCert:                    rawString(d, "samlCert", ""),
+		SAMLIdPEntityID:             rawString(d, "samlIdpEntityId", ""),
+		SAMLLoginLabel:              rawString(d, "samlLoginLabel", "Sign in with SAML SSO"),
+		SAMLAttributeEmail:          rawString(d, "samlAttributeEmail", "email"),
+		SAMLAttributeName:           rawString(d, "samlAttributeName", "name"),
+		ComboStrategy:               rawString(d, "comboStrategy", "fallback"),
+		ComboStrategies:             rawObject(d, "comboStrategies", "{}"),
+		ComboStickyRoundRobinLimit:  rawInt(d, "comboStickyRoundRobinLimit", 1),
+		StickyRoundRobinLimit:       rawInt(d, "stickyRoundRobinLimit", 3),
+		ProviderStrategies:          rawObject(d, "providerStrategies", "{}"),
+		CapacityAdapter:             rawObject(d, "capacityAdapter", "{}"),
+		ResponseCache:               rawObject(d, "responseCache", "{}"),
+		ClaudeAutoPing:              rawPing(d, "claudeAutoPing"),
+		CodexAutoPing:               rawPing(d, "codexAutoPing"),
+		RTKEnabled:                  rawBool(d, "rtkEnabled", true),
+		HeadroomEnabled:             rawBool(d, "headroomEnabled", false),
+		HeadroomURL:                 rawString(d, "headroomUrl", ""),
+		HeadroomCompressUserMessage: rawBool(d, "headroomCompressUserMessages", false),
+		HeadroomTimeoutMS:           rawInt(d, "headroomTimeoutMs", 3000),
+		CavemanEnabled:              rawBool(d, "cavemanEnabled", false),
+		CavemanLevel:                rawString(d, "cavemanLevel", "full"),
+		CavemanRoutingMode:          rawString(d, "cavemanRoutingMode", "always"),
+		PonytailEnabled:             rawBool(d, "ponytailEnabled", false),
+		PonytailLevel:               rawString(d, "ponytailLevel", "full"),
+		PonytailRoutingMode:         rawString(d, "ponytailRoutingMode", "smart"),
+		CustomPromptEnabled:         rawBool(d, "customPromptEnabled", false),
+		CustomPrompt:                rawString(d, "customPrompt", ""),
 	}
 	v.HasPassword = v.HasPassword || rawString(d, "password", "") != ""
 	if c.Auth != nil && c.Auth.OIDCUsable != nil {
@@ -212,31 +240,44 @@ func rawObject(d document.Doc, key, def string) json.RawMessage {
 type settingRule func(json.RawMessage) (string, string)
 
 var settingsRules = map[string]settingRule{
-	"requireLogin":               boolRule,
-	"requireApiKey":              boolRule,
-	"claudeAutoPing":             autoPingRule,
-	"codexAutoPing":              autoPingRule,
-	"authMode":                   enumRule("password", "oidc", "saml", "sso", "both"),
-	"ssoType":                    enumRule("oidc", "saml"),
-	"oidcIssuerUrl":              urlRule("https", 2048),
-	"oidcClientId":               textRule(512),
-	"oidcClientSecret":           textRule(512),
-	"oidcScopes":                 textRule(512),
-	"oidcLoginLabel":             textRule(100),
-	"samlEntryPoint":             urlRule("http", 2048),
-	"samlIssuer":                 textRule(512),
-	"samlCert":                   certRule,
-	"samlIdpEntityId":            textRule(512),
-	"samlLoginLabel":             textRule(100),
-	"samlAttributeEmail":         textRule(128),
-	"samlAttributeName":          textRule(128),
-	"comboStrategy":              enumRule("fallback", "round-robin", "smart", "fusion"),
-	"comboStickyRoundRobinLimit": intRule(1, 1000),
-	"stickyRoundRobinLimit":      intRule(1, 100),
-	"comboStrategies":            comboStrategiesRule,
-	"providerStrategies":         providerStrategiesRule,
-	"capacityAdapter":            capacityAdapterRule,
-	"responseCache":              responseCacheRule,
+	"requireLogin":                 boolRule,
+	"requireApiKey":                boolRule,
+	"claudeAutoPing":               autoPingRule,
+	"codexAutoPing":                autoPingRule,
+	"authMode":                     enumRule("password", "oidc", "saml", "sso", "both"),
+	"ssoType":                      enumRule("oidc", "saml"),
+	"oidcIssuerUrl":                urlRule("https", 2048),
+	"oidcClientId":                 textRule(512),
+	"oidcClientSecret":             textRule(512),
+	"oidcScopes":                   textRule(512),
+	"oidcLoginLabel":               textRule(100),
+	"samlEntryPoint":               urlRule("http", 2048),
+	"samlIssuer":                   textRule(512),
+	"samlCert":                     certRule,
+	"samlIdpEntityId":              textRule(512),
+	"samlLoginLabel":               textRule(100),
+	"samlAttributeEmail":           textRule(128),
+	"samlAttributeName":            textRule(128),
+	"comboStrategy":                enumRule("fallback", "round-robin", "smart", "fusion"),
+	"comboStickyRoundRobinLimit":   intRule(1, 1000),
+	"stickyRoundRobinLimit":        intRule(1, 100),
+	"comboStrategies":              comboStrategiesRule,
+	"providerStrategies":           providerStrategiesRule,
+	"capacityAdapter":              capacityAdapterRule,
+	"responseCache":                responseCacheRule,
+	"rtkEnabled":                   boolRule,
+	"headroomEnabled":              boolRule,
+	"headroomUrl":                  urlRule("http", 2048),
+	"headroomCompressUserMessages": boolRule,
+	"headroomTimeoutMs":            intRule(100, 60000),
+	"cavemanEnabled":               boolRule,
+	"cavemanLevel":                 enumRule("lite", "full", "ultra", "wenyan-lite", "wenyan", "wenyan-ultra"),
+	"cavemanRoutingMode":           enumRule("smart", "always"),
+	"ponytailEnabled":              boolRule,
+	"ponytailLevel":                enumRule("lite", "full", "ultra"),
+	"ponytailRoutingMode":          enumRule("smart", "always"),
+	"customPromptEnabled":          boolRule,
+	"customPrompt":                 textRule(4000),
 }
 
 func boolRule(raw json.RawMessage) (string, string) {

@@ -74,6 +74,8 @@ type HTTP struct {
 	Upstream *settings.Upstream
 	// Media is the checked MEDIA_* configuration.
 	Media *settings.Media
+	// Saver is the checked SAVER_* configuration.
+	Saver *settings.Saver
 	// OAuth runs account logins. Its listeners stop with the server.
 	OAuth *oauth.Service
 	// Refresher renews the tokens of logged-in accounts.
@@ -221,6 +223,7 @@ func buildHTTP(app foundation.Application) (*HTTP, error) {
 		Stream:        rest.stream,
 		Upstream:      upstreamCfg,
 		Media:         rest.media,
+		Saver:         rest.saver,
 		OAuth:         login,
 		Refresher:     refresher,
 		Minter:        minter,
@@ -238,15 +241,16 @@ func buildHTTP(app foundation.Application) (*HTTP, error) {
 	return h, nil
 }
 
-// serverSettings are the stream, login and media settings, which only their own
-// consumers read.
+// serverSettings are the stream, login, media and saver settings, which only
+// their own consumers read.
 type serverSettings struct {
 	stream *settings.Stream
 	oauth  *settings.OAuth
 	media  *settings.Media
+	saver  *settings.Saver
 }
 
-// loadRest reads the three groups, refusing the start on the first bad value.
+// loadRest reads the four groups, refusing the start on the first bad value.
 func loadRest(cfg config.Config) (serverSettings, error) {
 	var out serverSettings
 	var err error
@@ -256,7 +260,10 @@ func loadRest(cfg config.Config) (serverSettings, error) {
 	if out.oauth, err = settings.LoadOAuth(cfg); err != nil {
 		return out, err
 	}
-	out.media, err = settings.LoadMedia(cfg)
+	if out.media, err = settings.LoadMedia(cfg); err != nil {
+		return out, err
+	}
+	out.saver, err = settings.LoadSaver(cfg)
 	return out, err
 }
 

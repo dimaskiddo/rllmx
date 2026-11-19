@@ -51,6 +51,8 @@ type Base struct {
 	Logs *controllers.LogsController
 	// Usage serves the usage pages and their feed; nil leaves those routes out.
 	Usage *controllers.UsageController
+	// Headroom serves the sidecar's dashboard routes; nil leaves them out.
+	Headroom *controllers.HeadroomController
 }
 
 // Web declares the route tables. Every route goes through guard.Handle, which
@@ -238,6 +240,13 @@ func webDashboard(router route.Route, guard *apphttp.Guard, base Base) {
 		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/translator/console-logs", l.List)
 		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodDelete, "/api/translator/console-logs", l.Clear)
 		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/translator/console-logs/stream", l.Stream)
+	}
+
+	if h := base.Headroom; h != nil {
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/headroom/status", h.Status)
+		for _, m := range []string{nethttp.MethodGet, nethttp.MethodPost, nethttp.MethodPut, nethttp.MethodPatch, nethttp.MethodDelete} {
+			guard.Handle(router, apphttp.ClassAlwaysProtected, m, "/api/headroom/proxy/*path", h.Proxy)
+		}
 	}
 }
 

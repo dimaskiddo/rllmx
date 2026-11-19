@@ -19,6 +19,7 @@ var copiedSettings = map[string]bool{
 	"providerThinking": true, "providerOverrides": true, "claudeAutoPing": true, "codexAutoPing": true, "char_limit": true,
 	"rtkEnabled": true, "headroomEnabled": true, "headroomUrl": true, "headroomCompressUserMessages": true, "headroomTimeoutMs": true,
 	"cavemanEnabled": true, "cavemanLevel": true, "ponytailEnabled": true, "ponytailLevel": true,
+	"cavemanRoutingMode": true, "ponytailRoutingMode": true,
 	"customPromptEnabled": true, "customPrompt": true, "tokenSaverEnabled": true, "tokenSaverBudget": true,
 	"autoPlanEnabled": true, "autoPlanMode": true, "autoPlanComboId": true, "autoCodeComboId": true,
 	"autoPlanComplexityThreshold": true, "autoPlanSmartClassify": true, "autoPlanMaxTokens": true,

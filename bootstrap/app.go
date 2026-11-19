@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"errors"
+	nethttp "net/http"
 
 	"github.com/goravel/framework/contracts/console"
 	contractsschema "github.com/goravel/framework/contracts/database/schema"
@@ -17,6 +18,7 @@ import (
 	"rllmx/app/facades"
 	"rllmx/app/http/controllers"
 	"rllmx/app/http/middleware"
+	"rllmx/app/platform/network"
 	"rllmx/app/providers"
 	"rllmx/app/store/data"
 	"rllmx/app/store/repository"
@@ -137,6 +139,29 @@ func dashboardRoutes(base *routes.Base, h *providers.HTTP, db func() *repository
 			return h.Quota
 		},
 	}
+	base.Headroom = &controllers.HeadroomController{
+		DB: db, Client: headroomClient(h), DefaultURL: headroomURL(h),
+	}
+}
+
+// headroomClient builds the guarded client for one sidecar host; the address is
+// the operator's setting, so that host alone is added to the outbound allow list.
+func headroomClient(h *providers.HTTP) func(string) *nethttp.Client {
+	return func(host string) *nethttp.Client {
+		return network.NewClient(network.Options{
+			ConnectTimeout: h.Upstream.ConnectTimeout, MaxRedirects: -1,
+			Allow: h.Upstream.Allow.With(host), BodyCap: -1, Curves: h.Upstream.Curves,
+		})
+	}
+}
+
+// headroomURL is the configured sidecar address, used when the settings row
+// holds none.
+func headroomURL(h *providers.HTTP) string {
+	if h.Saver == nil {
+		return ""
+	}
+	return h.Saver.HeadroomURL
 }
 
 // keysController is the client-key handler with the codec and the machine id.

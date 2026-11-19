@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/netip"
 	"net/url"
+	"strings"
 )
 
 // CheckPublic refuses a client-supplied address that is not plainly public: a
@@ -44,8 +45,10 @@ func checkPublic(ctx context.Context, raw string, allow *Allow, lookup func(cont
 	return nil
 }
 
-// With returns the list extended by one host name, for an operator-set address
-// that is not on the outbound list: a local service this program is told to call.
+// With returns the list extended by one host, for an operator-set address that
+// is not on the outbound list: a local service this program is told to call. An
+// IP literal is added as its own single-address range, because the dialer checks
+// a literal against the ranges and never against the host names.
 func (a *Allow) With(host string) *Allow {
 	host = normalizeHost(host)
 	if host == "" {
@@ -53,10 +56,15 @@ func (a *Allow) With(host string) *Allow {
 	}
 	out := &Allow{hosts: map[string]bool{}}
 	if a != nil {
-		out.prefixes = a.prefixes
+		out.prefixes = append([]netip.Prefix(nil), a.prefixes...)
 		for h := range a.hosts {
 			out.hosts[h] = true
 		}
+	}
+	if ip, err := netip.ParseAddr(strings.Trim(host, "[]")); err == nil {
+		ip = embedded(ip)
+		out.prefixes = append(out.prefixes, netip.PrefixFrom(ip, ip.BitLen()))
+		return out
 	}
 	out.hosts[host] = true
 	return out

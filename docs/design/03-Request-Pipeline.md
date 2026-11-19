@@ -117,7 +117,8 @@ flowchart TD
 - [x] The model catalog routes
 - [x] The response cache
 - [x] Key checks and combos
-- [ ] Token savers, skills and auto plan (`design doc 10`, `design doc 11`, steps 3.1 to 3.4)
+- [x] Token savers (`design doc 10`, step 3.1)
+- [ ] Skills and auto plan (`design doc 11`, steps 3.2 to 3.4)
 - [x] Capability detection (vision, pdf, audio, video): `translate.DetectNeeds` and `Needs.Met`, current turn only; the combo order reads it
 - **Done when:** every endpoint passes golden and end-to-end tests with `-race`; the same prompt through OpenAI, Anthropic, Responses and Gemini yields consistent usage rows.
 

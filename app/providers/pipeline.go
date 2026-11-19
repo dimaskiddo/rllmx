@@ -1,18 +1,17 @@
 package providers
 
 import (
-	"crypto/rsa"
-
 	"context"
+	"crypto/rsa"
 	"errors"
-	"rllmx/app/llm/zed"
-	"rllmx/app/protocol/cosy"
+	"net/http"
 
 	"github.com/goravel/framework/contracts/foundation"
 
 	"rllmx/app/gateway/account"
 	"rllmx/app/gateway/pipeline"
 	"rllmx/app/gateway/prefetch"
+	"rllmx/app/gateway/saver"
 	"rllmx/app/llm/catalog"
 	"rllmx/app/llm/executor"
 	"rllmx/app/llm/executor/mux"
@@ -20,9 +19,11 @@ import (
 	"rllmx/app/llm/routing"
 	"rllmx/app/llm/stream"
 	"rllmx/app/llm/upstream"
+	"rllmx/app/llm/zed"
 	"rllmx/app/platform/cache"
 	"rllmx/app/platform/network"
 	"rllmx/app/platform/settings"
+	"rllmx/app/protocol/cosy"
 	"rllmx/app/store/repository"
 )
 
@@ -99,6 +100,8 @@ func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.P
 		Settings:      settingsRead,
 		Prefetch:      prefetch.New(),
 		ResponseCache: responseCache(app, store),
+		Saver:         saverClient(h),
+		SaverURL:      saverURL(h),
 		Signatures:    signatureCache(app),
 		Replay:        signatureCache(app),
 		Refresher:     h.Refresher,
@@ -142,6 +145,27 @@ func (o headerOverrides) Headers(ctx context.Context, provider string) map[strin
 		return nil
 	}
 	return upstream.HeaderOverrides(raw, provider)
+}
+
+// saverClient builds the Headroom compressor. Its client is built per sidecar
+// host through the outbound guard, with that host added to the allow list: the
+// address is the operator's setting and never a request's.
+func saverClient(h *HTTP) *saver.Compressor {
+	return &saver.Compressor{Client: func(host string) *http.Client {
+		return network.NewClient(network.Options{
+			ConnectTimeout: h.Upstream.ConnectTimeout, MaxRedirects: -1,
+			Allow: h.Upstream.Allow.With(host), BodyCap: -1, Curves: h.Upstream.Curves,
+		})
+	}}
+}
+
+// saverURL is the sidecar address the configuration names, used when the
+// settings row holds none.
+func saverURL(h *HTTP) string {
+	if h.Saver == nil {
+		return ""
+	}
+	return h.Saver.HeadroomURL
 }
 
 // signatureCache is the cache the Gemini signature store reads and writes. A

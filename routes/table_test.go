@@ -31,6 +31,7 @@ func fullBase() Base {
 		Keys: &controllers.KeysController{}, Health: controllers.NewHealthController(),
 		Combos: &controllers.CombosController{}, Settings: &controllers.SettingsController{},
 		Pricing: &controllers.PricingController{}, Logs: &controllers.LogsController{}, Usage: &controllers.UsageController{},
+		Headroom: &controllers.HeadroomController{},
 	}
 }
 

@@ -473,7 +473,7 @@ func TestTheKeyHoldsEveryPartThatDecidesTheAnswer(t *testing.T) {
 		}
 		c.tctx.Thinking = translate.Thinking{Mode: "level", Level: "low", Budget: 0}
 		edit(c)
-		return c.requestKey([]byte(`{"a":1}`))
+		return c.requestKey(context.Background(), []byte(`{"a":1}`))
 	}
 	base := mk(func(*call) {})
 	for name, edit := range map[string]func(c *call){

@@ -9,6 +9,7 @@ import (
 	"rllmx/app/gateway/account"
 	"rllmx/app/gateway/combo"
 	"rllmx/app/gateway/conversation"
+	"rllmx/app/gateway/saver"
 	"rllmx/app/llm/catalog"
 	"rllmx/app/llm/executor"
 	"rllmx/app/llm/routing"
@@ -128,6 +129,10 @@ type Deps struct {
 	Prefetch  Prefetch
 	// ResponseCache is the opt-in answer cache; nil is off.
 	ResponseCache *ResponseCache
+	// Saver is the Headroom client; nil leaves the sidecar saver off.
+	Saver *saver.Compressor
+	// SaverURL is the sidecar address when the settings row holds none.
+	SaverURL string
 	// Signatures keeps provider thought signatures between turns; nil means a
 	// signature the client drops is not restored.
 	Signatures Loader

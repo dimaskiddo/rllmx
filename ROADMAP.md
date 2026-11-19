@@ -38,7 +38,8 @@ Status words: **built** (implemented and tested), **partial** (some behavior mis
 | Executors for the shipped providers | built |
 | Combos and routing strategies (fallback, round-robin, smart, fusion) | built |
 | Response cache | built |
-| Token savers and skills | planned |
+| Token savers (tool-output compaction, Headroom sidecar, built-in and custom prompts) | built |
+| Skills and auto plan | planned |
 
 ## Accounts
 

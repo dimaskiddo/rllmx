@@ -29,7 +29,8 @@ A row naming a package that does not exist yet is a target shape for a later ste
 | Group | Packages |
 |---|---|
 | Built | `repository`, `analytics`, `http`, `http/controllers`, `failure`, `stream`, `cache`, `identity`, `auth`, `sso`, `oidc`, `saml`, `upstream`, `routing`, `account`, `translate`, `executor`, `conversation`, `pipeline`, `combo`, `health`, `probe`, `network`, `settings`, `sealer`, `dialect`, `document`, `file`, `text`, `lock`, `importer`, `redactor` |
-| Planned | `saver.Transformer` (transform a translated body, fails open), `skill.Hook` (evaluate a rule, return actions), `health.Tracker` (record outcomes, report breaker state; built, `app/gateway/health`) |
+| Built | `saver.Apply` (rewrite the hub request, fails open; `app/gateway/saver`, with the `rtk`, `headroom`, `caveman` and `ponytail` packages and the `prompt` framework under it) |
+| Planned | `skill.Hook` (evaluate a rule, return actions), `health.Tracker` (record outcomes, report breaker state; built, `app/gateway/health`) |
 
 ---
 

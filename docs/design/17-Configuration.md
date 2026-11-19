@@ -54,7 +54,7 @@ No code reads rows marked *planned* yet, so setting one in `.env` fails startup 
 | OAuth login | `OAUTH_CALLBACK_HOST` (127.0.0.1): an IP address, the bind address of the fixed-port login listener |
 | OAuth refresh | `OAUTH_BACKGROUND_REFRESH` (true) and `OAUTH_REFRESH_DELAY` (1500ms, 0s to 1m, pause between accounts), built. `OAUTH_REFRESH_GOOGLE_DELAY` (12s, 0s to 1m, the pause after an account of a provider that sets `slowRefresh`, plus 0 to 4 s of jitter), built |
 | Media | `MEDIA_VIDEO_TIMEOUT` (120s, 5s to 10m; one video create or poll), built. `MEDIA_SEARXNG_URL` (empty; an http or https address with a host), built |
-| Token savers | `SAVER_HEADROOM_URL` (`http://localhost:8787`) (planned) |
+| Token savers | `SAVER_HEADROOM_URL` (empty; the settings row's `headroomUrl`, then `http://localhost:8787`) |
 | Catalog | `CATALOG_SYNC` (true; `false` stops the timer, and a file already in `DATA_DIR` is still loaded), built |
 | Translator | `TRANSLATOR_ENABLED` (false) (planned) |
 | OAuth clients | `OAUTH_CLIENT_ID_<PROVIDER>` for antigravity, claude, codex, github, google, kimi, kimi_coding, minimax_code, muse, nous, trae, windsurf, xai; `OAUTH_CLIENT_SECRET_<PROVIDER>` only for antigravity, google, trae. Default empty, which disables that provider's login; `.env.example` carries working values. `google` serves Gemini and Gemini CLI, `minimax_code` both MiniMax Code regions, `xai` xAI and Grok CLI. Built: `OAUTH_CLIENT_ID_CLAUDE` and `OAUTH_CLIENT_ID_CODEX` (at most 256 characters, no spaces or control characters); adds `OAUTH_CLIENT_ID_GITHUB`; adds `OAUTH_CLIENT_ID_GOOGLE`, `OAUTH_CLIENT_SECRET_GOOGLE` (Gemini CLI), `OAUTH_CLIENT_ID_ANTIGRAVITY` and `OAUTH_CLIENT_SECRET_ANTIGRAVITY`; adds `OAUTH_CLIENT_ID_MINIMAX_CODE` (both MiniMax Code sites; CodeBuddy and GLM need none); adds `OAUTH_CLIENT_ID_KIMI`, `OAUTH_CLIENT_ID_MUSE`, `OAUTH_CLIENT_ID_NOUS` and `OAUTH_CLIENT_ID_XAI` (the Grok CLI login reads the xAI one; Kilo Code needs none). iflow is not built (D279), so it has no variable |
@@ -87,7 +87,7 @@ The status column is the v1 target, not the build state: behavior lands later. U
 | `providerThinking` | stored; read by no code yet |
 | `quotaVisibility` | stored; the quota page reads it (`design doc 18`) |
 | `providerOverrides` | honored: read and written by the override routes; applied to an upstream call by the executors |
-| `rtkEnabled`, `headroomEnabled`, `headroomUrl`, `headroomCompressUserMessages`, `headroomTimeoutMs`, `cavemanEnabled`, `cavemanLevel`, `ponytailEnabled`, `ponytailLevel`, `customPromptEnabled`, `customPrompt` | honored |
+| `rtkEnabled`, `headroomEnabled`, `headroomUrl`, `headroomCompressUserMessages`, `headroomTimeoutMs`, `cavemanEnabled`, `cavemanLevel`, `cavemanRoutingMode`, `ponytailEnabled`, `ponytailLevel`, `ponytailRoutingMode`, `customPromptEnabled`, `customPrompt` | honored |
 | `claudeAutoPing`, `codexAutoPing` | stored and round-tripped in the reference's shape (a switch, or an object of connections and schedules); no scheduler reads them yet (`design doc 16`) |
 | `responseCache` | honored (`{enabled, ttlSeconds, maxEntryKb}`, default off; D24, D148); written by the settings API |
 | `ccFilterNaming` | honored (answers the Claude CLI topic-naming probe locally; absent = off; dashboard toggle with the settings API) |
@@ -130,7 +130,7 @@ The status column is the v1 target, not the build state: behavior lands later. U
 | `BG_REFRESH_GOOGLE_DELAY_MS` | `OAUTH_REFRESH_GOOGLE_DELAY` | duration |
 | (browser-built redirect) | `OAUTH_CALLBACK_HOST` | new: fixed-port login listener bind address (default `127.0.0.1`; `0.0.0.0` in a container) |
 | `SEARXNG_URL` | `MEDIA_SEARXNG_URL` | built, |
-| `HEADROOM_URL` | `SAVER_HEADROOM_URL` | planned, step |
+| `HEADROOM_URL` | `SAVER_HEADROOM_URL` | done |
 | `MODEL_CATALOG_SYNC` (`off` disables) | `CATALOG_SYNC` | boolean: `false` stops the timer only; built |
 | `AZURE_ENDPOINT`, `AZURE_DEPLOYMENT`, `AZURE_API_VERSION`, `AZURE_ORGANIZATION` | `PROVIDER_AZURE_*` | planned, |
 | `KIMI_OAUTH_CLIENT_ID`, `KIMI_CODING_OAUTH_CLIENT_ID` | `OAUTH_CLIENT_ID_KIMI`, `OAUTH_CLIENT_ID_KIMI_CODING` | |

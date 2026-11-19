@@ -152,7 +152,7 @@ func (c *call) cached(ctx context.Context) (Output, bool) {
 	if !ok {
 		return Output{}, false
 	}
-	c.cacheKey = c.requestKey(body)
+	c.cacheKey = c.requestKey(ctx, body)
 	c.cacheOpts = s
 	raw, hit := rc.Cache.Get(cache.Response, c.cacheKey)
 	if !hit {
@@ -178,11 +178,11 @@ func (c *call) cached(ctx context.Context) (Output, bool) {
 // upstream requests. The
 // thinking is the decision after the name suffix and the model's own settings,
 // so a setting that changes it can never share an entry with one that does not.
-func (c *call) requestKey(body []byte) string {
+func (c *call) requestKey(ctx context.Context, body []byte) string {
 	t := c.tctx.Thinking
 	return cacheKeyBody([]string{
 		c.in.Caller.ID, c.format, c.dest.provider, c.dest.model, c.client,
-		t.Mode, t.Level, strconv.Itoa(t.Budget), t.Display,
+		t.Mode, t.Level, strconv.Itoa(t.Budget), t.Display, c.saverKey(ctx),
 	}, body)
 }
 

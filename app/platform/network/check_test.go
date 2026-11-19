@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"net/netip"
+	"net/url"
 	"testing"
+	"time"
 )
 
 // resolver answers from a fixed map, so a test never depends on DNS.
@@ -69,5 +71,24 @@ func TestWithPermitsTheHostItAdds(t *testing.T) {
 	allow := (*Allow)(nil).With("Search.Internal")
 	if err := checkPublic(context.Background(), "http://search.internal/search", allow, lookup); err != nil {
 		t.Fatalf("err %v", err)
+	}
+}
+
+func TestWithPermitsALiteralAddress(t *testing.T) {
+	for _, raw := range []string{"http://127.0.0.1:8787/v1/compress", "http://[::1]:8787/x"} {
+		u, err := url.Parse(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := checkPublic(context.Background(), raw, nil, resolver(nil)); !errors.Is(err, ErrBlocked) {
+			t.Fatalf("%s: err %v, want ErrBlocked", raw, err)
+		}
+		if err := checkPublic(context.Background(), raw, (*Allow)(nil).With(u.Hostname()), resolver(nil)); err != nil {
+			t.Fatalf("%s: err %v", raw, err)
+		}
+	}
+	g := NewDialer(time.Second, (*Allow)(nil).With("127.0.0.1"))
+	if _, targets, err := g.targets(context.Background(), "127.0.0.1:8787"); err != nil || len(targets) != 1 {
+		t.Fatalf("targets %v, err %v", targets, err)
 	}
 }

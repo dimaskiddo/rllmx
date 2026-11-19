@@ -1,18 +1,44 @@
-# Design 10 — Token Savers (`app/saver/`)
+# Design 10 — Token Savers (`app/gateway/saver`)
 
-**Status:** todo
+**Status:** done
 
-The token saver does not exist. Everything below is the target.
+The package splits by saver: `rtk` holds the filters and their detector, `headroom` the sidecar client, `caveman` and `ponytail` their own levels and topic, and `prompt` the shared scorer and injector. `saver` itself wires them and holds `Options`, `Stats` and `Apply`.
 
-All savers run after translation and **fail open**: an error leaves the body unchanged. The request header `x-9router-token-saver: off` bypasses all of them.
+The savers run on the hub request inside the pipeline's build step, after `translate.Prepare` and the image prefetch, before the codec writes the body. Every format therefore gets them with no per-format code. The body is built once per destination, so an account retry reuses the compacted request.
+
+Every step fails open: a missing setting, a filter that cannot shorten the text, a sidecar that does not answer or an unknown level leaves the request exactly as it was. A request with the header `x-9router-token-saver: off` runs no saver at all.
 
 | Saver | Setting | Behavior |
 |---|---|---|
-| RTK | `rtkEnabled` (on) | In-process filters shrink bulky tool output (git diff/log/status, grep, ls, tree, find,.) |
-| Two built-in prompt styles | `cavemanEnabled`/`cavemanLevel`, `ponytailEnabled`/`ponytailLevel` | Inject a built-in system prompt |
-| Custom prompt | `customPromptEnabled`, `customPrompt` | Injects the user's own system prompt |
-| Headroom | `headroomEnabled`, `headroomUrl`, `headroomTimeoutMs` | HTTP call to an external compression sidecar. The router never installs or starts it |
-| PXPIPE | | Deferred |
+| RTK | `rtkEnabled` (on) | Compacts the text of successful tool results in place: git diff/log/status, grep, find, ls, tree, search lists, build output, line-numbered dumps, duplicate logs, long unstructured blobs |
+| Headroom | `headroomEnabled`, `headroomUrl`, `headroomCompressUserMessages`, `headroomTimeoutMs` | Sends tool output, and user text when allowed, to the operator's compression sidecar at `<url>/v1/compress` |
+| Caveman | `cavemanEnabled`, `cavemanLevel`, `cavemanRoutingMode` | Appends a terse-answer instruction to the system prompt |
+| Ponytail | `ponytailEnabled`, `ponytailLevel`, `ponytailRoutingMode` | Appends a minimal-code instruction to the system prompt |
+| Custom prompt | `customPromptEnabled`, `customPrompt` | Appends the operator's own text, independent of the two above |
+| PXPIPE | `pxpipe*` | Deferred |
+| Sliding-window trim | `tokenSaverEnabled`, `tokenSaverBudget` | Stored and imported, no behavior (D9) |
+
+The order is RTK, Headroom, caveman, ponytail, custom prompt. Each prompt is appended to the first system message as its own `"\n\n"`-delimited segment, or the message is created at the top. An existing segment is never added twice, so a rebuilt body cannot double it.
+
+**Activation modes.** `cavemanRoutingMode` and `ponytailRoutingMode` take `always` or `smart`. The defaults are the extended fork's: caveman `always`, ponytail `smart`.
+
+In `smart` mode the latest user text is scored against that saver's own triggers, keywords and description. The instruction is injected only above a threshold: 0.35 for caveman, 0.30 for ponytail. Greetings and bare arithmetic never match, and the scorer reads at most 4 KiB and 400 tokens.
+
+**RTK details.** A block under 500 bytes or over 10 MiB is passed through, and the detector reads only its first 1 KiB. The most specific shape wins, and a filter's output is accepted only when it is non-empty and strictly shorter than its input. A tool result the client marked as failed is never touched.
+
+Every cap is a package constant: 100 lines per diff hunk and 500 for a whole diff, 200 log lines, 10 matches per file, 10 names per directory and 20 directories, 10 files per status block, 200 tree lines, and 120 head with 60 tail lines for a truncated block.
+
+**Headroom details.** The client posts `{messages, model}` to `<url>/v1/compress`, under a timeout from 100 ms to 60 s (default 3 s), and reads at most 8 MiB. The projection sends every successful tool result, and user text when `headroomCompressUserMessages` is on. The system prompt and any message with more than one part are never sent.
+
+An answer is applied only when the row count, roles and tool call ids all match, and only for a row whose text is non-empty and shorter. One mismatch discards the whole answer.
+
+The sidecar address is the settings row's `headroomUrl`, then the `SAVER_HEADROOM_URL` configuration value, then `http://localhost:8787`. Each distinct host gets a client built through the outbound guard with that host added to the allow list, so a local sidecar needs no `UPSTREAM_ALLOW_PRIVATE` entry.
+
+**Dashboard routes.** `GET /api/headroom/status` answers the configured address and whether it serves `/health` within 1.5 s. `/api/headroom/proxy/*path` forwards GET, POST, PUT, PATCH and DELETE to the sidecar. Both need a dashboard session.
+
+The proxy strips hop-by-hop headers, does not forward `Host`, follows no redirect, and caps the body at 8 MiB. `Cookie` and `Authorization` travel only to a loopback address, and any user info is stripped from an address before it is shown.
+
+**Response cache.** The key carries a saver fingerprint: the enabled switches, the levels, both activation modes, the user-message flag, and a hash of the custom prompt and the sidecar address. An answer produced with one configuration is never served for another.
 
 ---
 
@@ -20,20 +46,22 @@ All savers run after translation and **fail open**: an error leaves the body unc
 
 | Feature | Reference | Package | Status |
 |---|---|---|---|
-| RTK filters | `open-sse/rtk/filters/*` | `app/saver` | todo |
-| The two built-in prompt styles | the reference's `rtk` prompt files | `app/saver` | todo |
-| Custom prompt (baseline) | `open-sse/rtk/customPrompt.js` | `app/saver` | todo |
-| Headroom client | `open-sse/rtk/headroom.js` | `app/saver` | todo |
-| `x-9router-token-saver: off` bypass header | `open-sse/handlers/chatCore.js` | `app/saver` | todo |
+| RTK filters (12) | `open-sse/rtk/filters/*` | `saver/rtk` | done |
+| Detection and the smaller-only rule | `open-sse/rtk/autodetect.js`, `applyFilter.js` | `saver/rtk` | done |
+| The two built-in prompt styles, level and activation mode | the reference's `rtk` prompt files, the extended fork's skill manifests | `saver/caveman`, `saver/ponytail`, `saver/prompt` | done |
+| Custom prompt | `open-sse/rtk/customPrompt.js` | `saver`, `saver/prompt` | done |
+| Headroom client | `open-sse/rtk/headroom.js` | `saver/headroom` | done |
+| `/api/headroom/status`, `/api/headroom/proxy` | `src/app/api/headroom/{status,proxy}` | `app/http/controllers` | done |
+| Sidecar process management (`start`, `stop`, `restart`, `detect-port`, `extras`, `auto-setup`, `update`) | `src/app/api/headroom/*`, `src/lib/headroom/process.js` | none | out (D398) |
+| Dashboard HTML rewrite inside the proxy | `headroom/proxy/[...path]/route.js` | none | out (D399) |
+| `x-9router-token-saver: off` bypass header | `open-sse/handlers/chatCore.js` | `app/gateway/pipeline` | done |
 | Sliding-window trim (dead code in the extended fork) | extended `open-sse/rtk/trim.js` | none | out (D9) |
 | PXPIPE | `open-sse/rtk/pxpipe.js` | none | deferred |
 
 ---
 
 ## Remaining work
-**Step.** The token saver does not exist.
-
-- [ ] `app/saver` with the savers in this design doc and the parity table below, applied after translation, failing open
+**Step.** None. A live Headroom sidecar was never called here; the tests stand a fake one in its place, so a real deployment is the missing evidence.
 
 ---
 
@@ -45,9 +73,18 @@ Deliberate differences from the references in this area. Numbers are stable and 
 |---|---|---|
 | 134 | Kept as entered (spaces trimmed) | Providers with trailing slash validate |
 | 9 | Dropped; `tokenSaverEnabled`, `tokenSaverBudget` kept and imported with no behavior | Dead in the reference (scope cut) |
+| 395 | `cavemanRoutingMode` and `ponytailRoutingMode` are honored | The extended fork ships the option in its manifests but injects from the enable flags alone, so its "Smart" label does nothing |
+| 396 | The prompt texts are written from the reference's rule list in our own words | Clean-room rule: the reference's texts are adapted from two outside skill repositories and are not ours to copy |
+| 397 | Headroom is sent tool output and, when allowed, user text; the system prompt is never sent | A compression proxy that rewrites the operator's instructions can change behavior in ways no setting explains |
+| 398 | No sidecar install, start, stop, restart, port detection, extras or update | Process management is out of scope (`design doc 22`); the operator runs the sidecar |
+| 399 | The proxy does not rewrite the sidecar's dashboard HTML | The sidecar's own UI is not part of v1, and rewriting a third party's HTML invites breakage |
 
 ---
 
 ## Findings
 
-None recorded.
+| Finding | Decision |
+|---|---|
+| `tools/mutant.sh` marks the case-insensitive bypass, inject-once, the failed-tool-result skip, the minimum size, the UTF-8 head cut, the cache fingerprint, the sidecar row identity, the no-grow rule, the proxy credential rule and the loopback rule CAUGHT | pinned by tests |
+| Three designed mutants are equivalent and stay MISSED: the arithmetic skip (an all-digit query tokenizes to nothing), the trigger boost (a trigger's own words are already in the document vector) and the segment separator (every built-in prompt is one line) | accepted, no behavior to pin |
+| The extended fork's `routing_mode` is honored here and ignored there (D395) | fixed |
