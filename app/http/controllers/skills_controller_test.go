@@ -1,0 +1,113 @@
+package controllers
+
+import (
+	"context"
+	nethttp "net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"rllmx/app/gateway/skill"
+	apphttp "rllmx/app/http"
+	"rllmx/app/store/repository"
+)
+
+func skillRegistry(t *testing.T) *skill.Registry {
+	t.Helper()
+	root := t.TempDir()
+	files := map[string]string{
+		"terse/manifest.json": `{"id":"terse","name":"Terse","description":"short answers",` +
+			`"hook":"system-prompt","default_enabled":true,"routing_mode":"always"}`,
+		"terse/prompt.txt": "PROMPT TEXT THAT MUST NOT LEAVE",
+		"simple/manifest.json": `{"id":"simple","name":"Simplifier","description":"smallest change",` +
+			`"hook":"system-prompt","routable":true,"default_enabled":true,"routing_mode":"smart"}`,
+		"simple/prompt.txt":    "SIMPLE PROMPT",
+		"broken/manifest.json": `{"id":"broken","name":"","description":"","hook":"nope"}`,
+		"broken/prompt.txt":    "text",
+	}
+	for name, body := range files {
+		p := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return skill.NewRegistry(root, nil)
+}
+
+func skillsRoutes(m *mgmtRig, c *SkillsController) {
+	m.guard.Handle(m.router, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/skills", c.List)
+	m.guard.Handle(m.router, apphttp.ClassAlwaysProtected, nethttp.MethodPost, "/api/skills/sync", c.Sync)
+}
+
+func TestTheSkillsListCarriesTheEffectiveSwitch(t *testing.T) {
+	m := newMgmtRig(t)
+	seededSettings(t, m)
+	if err := m.st.Store.Settings().Patch(context.Background(), map[string]string{
+		"terseEnabled": `false`, "simpleRoutingMode": `"always"`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	c := &SkillsController{DB: func() *repository.Store { return m.st.Store }, Reg: skillRegistry(t), Dir: t.TempDir()}
+	skillsRoutes(m, c)
+	code, out, raw := m.call(nethttp.MethodGet, "/api/skills", "", true)
+	if code != 200 {
+		t.Fatalf("%d %s", code, raw)
+	}
+	if strings.Contains(raw, "PROMPT TEXT THAT MUST NOT LEAVE") {
+		t.Fatalf("prompt text left the route: %s", raw)
+	}
+	list, _ := out["skills"].([]any)
+	if len(list) != 2 {
+		t.Fatalf("skills %v", out["skills"])
+	}
+	seen := map[string]map[string]any{}
+	for _, item := range list {
+		row, _ := item.(map[string]any)
+		seen[row["id"].(string)] = row
+	}
+	if seen["terse"]["enabled"] != false || seen["terse"]["mode"] != "always" {
+		t.Fatalf("terse %v", seen["terse"])
+	}
+	if seen["simple"]["enabled"] != true || seen["simple"]["mode"] != "always" {
+		t.Fatalf("simple %v", seen["simple"])
+	}
+	if problems, _ := out["problems"].([]any); len(problems) != 1 {
+		t.Fatalf("problems %v", out["problems"])
+	}
+}
+
+func TestTheSkillSyncRefusesWhatTheRouteMayNotDo(t *testing.T) {
+	m := newMgmtRig(t)
+	seededSettings(t, m)
+	c := &SkillsController{DB: func() *repository.Store { return m.st.Store }, Reg: skillRegistry(t), Dir: t.TempDir()}
+	skillsRoutes(m, c)
+	for name, body := range map[string]string{
+		"not json":   `nope`,
+		"local path": `{"source":"/etc/skills"}`,
+		"plain http": `{"source":"http://example.com/x"}`,
+		"not listed": `{"source":"https://github.com/acme/skills"}`,
+	} {
+		code, _, raw := m.call(nethttp.MethodPost, "/api/skills/sync", body, true)
+		if code != 400 && code != 502 {
+			t.Errorf("%s: %d %s", name, code, raw)
+		}
+	}
+}
+
+func TestTheSkillsRoutesNeedASession(t *testing.T) {
+	m := newMgmtRig(t)
+	c := &SkillsController{DB: func() *repository.Store { return m.st.Store }, Reg: skillRegistry(t), Dir: t.TempDir()}
+	skillsRoutes(m, c)
+	for _, call := range []struct{ method, path string }{
+		{nethttp.MethodGet, "/api/skills"},
+		{nethttp.MethodPost, "/api/skills/sync"},
+	} {
+		if code, _, _ := m.call(call.method, call.path, "", false); code != 401 {
+			t.Errorf("%s %s: %d", call.method, call.path, code)
+		}
+	}
+}

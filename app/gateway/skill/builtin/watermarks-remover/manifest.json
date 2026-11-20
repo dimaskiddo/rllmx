@@ -1,0 +1,14 @@
+{
+  "id": "watermarks-remover",
+  "name": "Watermarks Remover",
+  "description": "Strip AI provenance marks (invisible Unicode, C2PA) and AI transition clichés from outputs",
+  "category": "hygiene",
+  "hook": "system-prompt",
+  "default_enabled": false,
+  "routable": true,
+  "routing_mode": "always",
+  "routing_threshold": 0.4,
+  "triggers": ["remove watermark", "strip metadata", "invisible unicode", "content credentials"],
+  "keywords": ["watermark", "metadata", "exif", "c2pa", "provenance"],
+  "version": "1.0.0"
+}

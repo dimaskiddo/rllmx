@@ -55,7 +55,7 @@ func TestTheCommandsTheProjectUsesAreKept(t *testing.T) {
 		"make:command", "make:controller", "make:filter", "make:middleware", "make:migration", "make:package",
 		"make:provider", "make:request", "make:rule", "make:test", "make:view",
 		"db:backup", "db:check", "db:vacuum", "db:import-analytics", "db:import-config", "db:export-plain",
-		"keys:create", "keys:list", "keys:revoke {id}", "password:reset",
+		"keys:create", "keys:list", "keys:revoke {id}", "password:reset", "skills:sync",
 	} {
 		if !kept(sig) {
 			t.Errorf("%s is dropped", sig)

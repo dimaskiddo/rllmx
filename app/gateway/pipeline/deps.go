@@ -10,6 +10,7 @@ import (
 	"rllmx/app/gateway/combo"
 	"rllmx/app/gateway/conversation"
 	"rllmx/app/gateway/saver"
+	"rllmx/app/gateway/skill"
 	"rllmx/app/llm/catalog"
 	"rllmx/app/llm/executor"
 	"rllmx/app/llm/routing"
@@ -133,6 +134,8 @@ type Deps struct {
 	Saver *saver.Compressor
 	// SaverURL is the sidecar address when the settings row holds none.
 	SaverURL string
+	// Skills is the installed skill registry; nil leaves every skill off.
+	Skills *skill.Registry
 	// Signatures keeps provider thought signatures between turns; nil means a
 	// signature the client drops is not restored.
 	Signatures Loader

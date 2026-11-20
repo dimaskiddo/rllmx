@@ -53,6 +53,9 @@ type Base struct {
 	Usage *controllers.UsageController
 	// Headroom serves the sidecar's dashboard routes; nil leaves them out.
 	Headroom *controllers.HeadroomController
+	// Skills serves the installed skills and the catalog sync; nil leaves them
+	// out.
+	Skills *controllers.SkillsController
 }
 
 // Web declares the route tables. Every route goes through guard.Handle, which
@@ -247,6 +250,11 @@ func webDashboard(router route.Route, guard *apphttp.Guard, base Base) {
 		for _, m := range []string{nethttp.MethodGet, nethttp.MethodPost, nethttp.MethodPut, nethttp.MethodPatch, nethttp.MethodDelete} {
 			guard.Handle(router, apphttp.ClassAlwaysProtected, m, "/api/headroom/proxy/*path", h.Proxy)
 		}
+	}
+
+	if s := base.Skills; s != nil {
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/skills", s.List)
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodPost, "/api/skills/sync", s.Sync)
 	}
 }
 

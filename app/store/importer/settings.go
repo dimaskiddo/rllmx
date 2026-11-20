@@ -24,6 +24,7 @@ var copiedSettings = map[string]bool{
 	"autoPlanEnabled": true, "autoPlanMode": true, "autoPlanComboId": true, "autoCodeComboId": true,
 	"autoPlanComplexityThreshold": true, "autoPlanSmartClassify": true, "autoPlanMaxTokens": true,
 	"autoPlanTimeoutMs": true, "autoPlanShowInResponse": true, "ccFilterNaming": true, "responseCache": true,
+	"skillSources": true,
 }
 
 // securitySettings are the login policy. They move only with --with-sso.

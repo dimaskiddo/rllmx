@@ -32,6 +32,7 @@ func (*fakeConsole) Value(any) any               { return nil }
 func (f *fakeConsole) Line(m string)             { f.lines = append(f.lines, m) }
 func (f *fakeConsole) Info(m string)             { f.lines = append(f.lines, m) }
 func (f *fakeConsole) Error(m string)            { f.errs = append(f.errs, m) }
+func (f *fakeConsole) Warning(m string)          { f.lines = append(f.lines, "warning: "+m) }
 func (f *fakeConsole) output() string            { return strings.Join(f.lines, "\n") }
 
 var _ context.Context = (*fakeConsole)(nil)

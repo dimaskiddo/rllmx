@@ -1,0 +1,14 @@
+{
+  "id": "code-humanizer",
+  "name": "Code Humanizer",
+  "description": "remove AI coding slop from a change without changing behavior",
+  "category": "writing",
+  "hook": "system-prompt",
+  "default_enabled": false,
+  "routable": true,
+  "routing_mode": "smart",
+  "routing_threshold": 0.35,
+  "triggers": ["code slop", "deslop", "duplicated helper", "humanize the code"],
+  "keywords": ["slop", "duplication", "abstraction", "refactor", "humanize"],
+  "version": "1.0.0"
+}

@@ -22,7 +22,7 @@ const (
 var readHeaders = []string{
 	"User-Agent", "X-App", "Originator", "Anthropic-Beta", "Openai-Intent", "X-Initiator",
 	"X-Claude-Code-Session-Id", "X-Session-Id", "Session-Id", "Session_id", "X-Amp-Thread-Id", "X-Client-Request-Id",
-	"X-9router-Token-Saver",
+	"X-9router-Token-Saver", "X-9router-Local-Skill-Router", "X-9router-Skill-Router",
 }
 
 // PickHeaders copies the headers the pipeline reads.

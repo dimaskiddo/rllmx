@@ -1,0 +1,14 @@
+{
+  "id": "caveman-style",
+  "name": "Caveman",
+  "description": "Terse-style system prompt: fewer output tokens",
+  "category": "style",
+  "hook": "system-prompt",
+  "default_enabled": false,
+  "routable": true,
+  "routing_mode": "always",
+  "routing_threshold": 0.35,
+  "triggers": ["be concise", "terse answer", "short answer", "no filler", "drop pleasantries"],
+  "keywords": ["terse", "concise", "brief", "filler", "compress"],
+  "version": "1.0.0"
+}

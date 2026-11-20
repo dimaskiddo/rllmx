@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	nethttp "net/http"
 	"net/url"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -79,6 +80,11 @@ type settingsView struct {
 	CustomPromptEnabled         bool   `json:"customPromptEnabled"`
 	CustomPrompt                string `json:"customPrompt"`
 
+	SkillSources                 json.RawMessage `json:"skillSources"`
+	ECCAutoSkillRouterEnabled    bool            `json:"ecc_auto_skill_routerEnabled"`
+	ECCAutoSkillRouterConfidence float64         `json:"ecc_auto_skill_routerConfidence"`
+	ECCAutoSkillRouterMaxSkills  int             `json:"ecc_auto_skill_routerMaxSkills"`
+
 	HasPassword bool `json:"hasPassword"`
 }
 
@@ -124,7 +130,7 @@ func (c *SettingsController) Update(ctx contractshttp.Context) contractshttp.Res
 		case "newPassword", "currentPassword":
 			return flat(ctx, nethttp.StatusBadRequest, "Change the password with POST /api/auth/change-password")
 		}
-		rule, ok := settingsRules[key]
+		rule, ok := ruleFor(key)
 		if !ok {
 			return flat(ctx, nethttp.StatusBadRequest, "Unknown setting: "+text.CutRunes(text.StripControl(key), 64))
 		}
@@ -154,43 +160,47 @@ func (c *SettingsController) Update(ctx contractshttp.Context) contractshttp.Res
 // view projects the stored settings through the allow list.
 func (c *SettingsController) view(d document.Doc) settingsView {
 	v := settingsView{
-		RequireLogin:                rawBool(d, "requireLogin", true),
-		RequireAPIKey:               rawBool(d, "requireApiKey", true),
-		AuthMode:                    rawString(d, "authMode", "password"),
-		SSOType:                     rawString(d, "ssoType", "oidc"),
-		OIDCIssuerURL:               rawString(d, "oidcIssuerUrl", ""),
-		OIDCClientID:                rawString(d, "oidcClientId", ""),
-		OIDCScopes:                  rawString(d, "oidcScopes", "openid profile email"),
-		OIDCLoginLabel:              rawString(d, "oidcLoginLabel", "Sign in with OIDC"),
-		SAMLEntryPoint:              rawString(d, "samlEntryPoint", ""),
-		SAMLIssuer:                  rawString(d, "samlIssuer", ""),
-		SAMLCert:                    rawString(d, "samlCert", ""),
-		SAMLIdPEntityID:             rawString(d, "samlIdpEntityId", ""),
-		SAMLLoginLabel:              rawString(d, "samlLoginLabel", "Sign in with SAML SSO"),
-		SAMLAttributeEmail:          rawString(d, "samlAttributeEmail", "email"),
-		SAMLAttributeName:           rawString(d, "samlAttributeName", "name"),
-		ComboStrategy:               rawString(d, "comboStrategy", "fallback"),
-		ComboStrategies:             rawObject(d, "comboStrategies", "{}"),
-		ComboStickyRoundRobinLimit:  rawInt(d, "comboStickyRoundRobinLimit", 1),
-		StickyRoundRobinLimit:       rawInt(d, "stickyRoundRobinLimit", 3),
-		ProviderStrategies:          rawObject(d, "providerStrategies", "{}"),
-		CapacityAdapter:             rawObject(d, "capacityAdapter", "{}"),
-		ResponseCache:               rawObject(d, "responseCache", "{}"),
-		ClaudeAutoPing:              rawPing(d, "claudeAutoPing"),
-		CodexAutoPing:               rawPing(d, "codexAutoPing"),
-		RTKEnabled:                  rawBool(d, "rtkEnabled", true),
-		HeadroomEnabled:             rawBool(d, "headroomEnabled", false),
-		HeadroomURL:                 rawString(d, "headroomUrl", ""),
-		HeadroomCompressUserMessage: rawBool(d, "headroomCompressUserMessages", false),
-		HeadroomTimeoutMS:           rawInt(d, "headroomTimeoutMs", 3000),
-		CavemanEnabled:              rawBool(d, "cavemanEnabled", false),
-		CavemanLevel:                rawString(d, "cavemanLevel", "full"),
-		CavemanRoutingMode:          rawString(d, "cavemanRoutingMode", "always"),
-		PonytailEnabled:             rawBool(d, "ponytailEnabled", false),
-		PonytailLevel:               rawString(d, "ponytailLevel", "full"),
-		PonytailRoutingMode:         rawString(d, "ponytailRoutingMode", "smart"),
-		CustomPromptEnabled:         rawBool(d, "customPromptEnabled", false),
-		CustomPrompt:                rawString(d, "customPrompt", ""),
+		RequireLogin:                 rawBool(d, "requireLogin", true),
+		RequireAPIKey:                rawBool(d, "requireApiKey", true),
+		AuthMode:                     rawString(d, "authMode", "password"),
+		SSOType:                      rawString(d, "ssoType", "oidc"),
+		OIDCIssuerURL:                rawString(d, "oidcIssuerUrl", ""),
+		OIDCClientID:                 rawString(d, "oidcClientId", ""),
+		OIDCScopes:                   rawString(d, "oidcScopes", "openid profile email"),
+		OIDCLoginLabel:               rawString(d, "oidcLoginLabel", "Sign in with OIDC"),
+		SAMLEntryPoint:               rawString(d, "samlEntryPoint", ""),
+		SAMLIssuer:                   rawString(d, "samlIssuer", ""),
+		SAMLCert:                     rawString(d, "samlCert", ""),
+		SAMLIdPEntityID:              rawString(d, "samlIdpEntityId", ""),
+		SAMLLoginLabel:               rawString(d, "samlLoginLabel", "Sign in with SAML SSO"),
+		SAMLAttributeEmail:           rawString(d, "samlAttributeEmail", "email"),
+		SAMLAttributeName:            rawString(d, "samlAttributeName", "name"),
+		ComboStrategy:                rawString(d, "comboStrategy", "fallback"),
+		ComboStrategies:              rawObject(d, "comboStrategies", "{}"),
+		ComboStickyRoundRobinLimit:   rawInt(d, "comboStickyRoundRobinLimit", 1),
+		StickyRoundRobinLimit:        rawInt(d, "stickyRoundRobinLimit", 3),
+		ProviderStrategies:           rawObject(d, "providerStrategies", "{}"),
+		CapacityAdapter:              rawObject(d, "capacityAdapter", "{}"),
+		ResponseCache:                rawObject(d, "responseCache", "{}"),
+		ClaudeAutoPing:               rawPing(d, "claudeAutoPing"),
+		CodexAutoPing:                rawPing(d, "codexAutoPing"),
+		RTKEnabled:                   rawBool(d, "rtkEnabled", true),
+		HeadroomEnabled:              rawBool(d, "headroomEnabled", false),
+		HeadroomURL:                  rawString(d, "headroomUrl", ""),
+		HeadroomCompressUserMessage:  rawBool(d, "headroomCompressUserMessages", false),
+		HeadroomTimeoutMS:            rawInt(d, "headroomTimeoutMs", 3000),
+		CavemanEnabled:               rawBool(d, "cavemanEnabled", false),
+		CavemanLevel:                 rawString(d, "cavemanLevel", "full"),
+		CavemanRoutingMode:           rawString(d, "cavemanRoutingMode", "always"),
+		PonytailEnabled:              rawBool(d, "ponytailEnabled", false),
+		PonytailLevel:                rawString(d, "ponytailLevel", "full"),
+		PonytailRoutingMode:          rawString(d, "ponytailRoutingMode", "smart"),
+		CustomPromptEnabled:          rawBool(d, "customPromptEnabled", false),
+		CustomPrompt:                 rawString(d, "customPrompt", ""),
+		SkillSources:                 rawArray(d, "skillSources", "[]"),
+		ECCAutoSkillRouterEnabled:    rawBool(d, "ecc_auto_skill_routerEnabled", false),
+		ECCAutoSkillRouterConfidence: rawFloat(d, "ecc_auto_skill_routerConfidence", 0.35),
+		ECCAutoSkillRouterMaxSkills:  rawInt(d, "ecc_auto_skill_routerMaxSkills", 1),
 	}
 	v.HasPassword = v.HasPassword || rawString(d, "password", "") != ""
 	if c.Auth != nil && c.Auth.OIDCUsable != nil {
@@ -235,49 +245,86 @@ func rawObject(d document.Doc, key, def string) json.RawMessage {
 	return json.RawMessage(def)
 }
 
+func rawArray(d document.Doc, key, def string) json.RawMessage {
+	if v := rawOf(d, key); v.IsArray() {
+		return json.RawMessage(v.Raw)
+	}
+	return json.RawMessage(def)
+}
+
+func rawFloat(d document.Doc, key string, def float64) float64 {
+	if v := rawOf(d, key); v.Type == gjson.Number {
+		return v.Float()
+	}
+	return def
+}
+
 // settingRule validates one writable key and returns the JSON to store, or a
 // message the form shows. The map is the allow list.
 type settingRule func(json.RawMessage) (string, string)
 
 var settingsRules = map[string]settingRule{
-	"requireLogin":                 boolRule,
-	"requireApiKey":                boolRule,
-	"claudeAutoPing":               autoPingRule,
-	"codexAutoPing":                autoPingRule,
-	"authMode":                     enumRule("password", "oidc", "saml", "sso", "both"),
-	"ssoType":                      enumRule("oidc", "saml"),
-	"oidcIssuerUrl":                urlRule("https", 2048),
-	"oidcClientId":                 textRule(512),
-	"oidcClientSecret":             textRule(512),
-	"oidcScopes":                   textRule(512),
-	"oidcLoginLabel":               textRule(100),
-	"samlEntryPoint":               urlRule("http", 2048),
-	"samlIssuer":                   textRule(512),
-	"samlCert":                     certRule,
-	"samlIdpEntityId":              textRule(512),
-	"samlLoginLabel":               textRule(100),
-	"samlAttributeEmail":           textRule(128),
-	"samlAttributeName":            textRule(128),
-	"comboStrategy":                enumRule("fallback", "round-robin", "smart", "fusion"),
-	"comboStickyRoundRobinLimit":   intRule(1, 1000),
-	"stickyRoundRobinLimit":        intRule(1, 100),
-	"comboStrategies":              comboStrategiesRule,
-	"providerStrategies":           providerStrategiesRule,
-	"capacityAdapter":              capacityAdapterRule,
-	"responseCache":                responseCacheRule,
-	"rtkEnabled":                   boolRule,
-	"headroomEnabled":              boolRule,
-	"headroomUrl":                  urlRule("http", 2048),
-	"headroomCompressUserMessages": boolRule,
-	"headroomTimeoutMs":            intRule(100, 60000),
-	"cavemanEnabled":               boolRule,
-	"cavemanLevel":                 enumRule("lite", "full", "ultra", "wenyan-lite", "wenyan", "wenyan-ultra"),
-	"cavemanRoutingMode":           enumRule("smart", "always"),
-	"ponytailEnabled":              boolRule,
-	"ponytailLevel":                enumRule("lite", "full", "ultra"),
-	"ponytailRoutingMode":          enumRule("smart", "always"),
-	"customPromptEnabled":          boolRule,
-	"customPrompt":                 textRule(4000),
+	"requireLogin":                    boolRule,
+	"requireApiKey":                   boolRule,
+	"claudeAutoPing":                  autoPingRule,
+	"codexAutoPing":                   autoPingRule,
+	"authMode":                        enumRule("password", "oidc", "saml", "sso", "both"),
+	"ssoType":                         enumRule("oidc", "saml"),
+	"oidcIssuerUrl":                   urlRule("https", 2048),
+	"oidcClientId":                    textRule(512),
+	"oidcClientSecret":                textRule(512),
+	"oidcScopes":                      textRule(512),
+	"oidcLoginLabel":                  textRule(100),
+	"samlEntryPoint":                  urlRule("http", 2048),
+	"samlIssuer":                      textRule(512),
+	"samlCert":                        certRule,
+	"samlIdpEntityId":                 textRule(512),
+	"samlLoginLabel":                  textRule(100),
+	"samlAttributeEmail":              textRule(128),
+	"samlAttributeName":               textRule(128),
+	"comboStrategy":                   enumRule("fallback", "round-robin", "smart", "fusion"),
+	"comboStickyRoundRobinLimit":      intRule(1, 1000),
+	"stickyRoundRobinLimit":           intRule(1, 100),
+	"comboStrategies":                 comboStrategiesRule,
+	"providerStrategies":              providerStrategiesRule,
+	"capacityAdapter":                 capacityAdapterRule,
+	"responseCache":                   responseCacheRule,
+	"rtkEnabled":                      boolRule,
+	"headroomEnabled":                 boolRule,
+	"headroomUrl":                     urlRule("http", 2048),
+	"headroomCompressUserMessages":    boolRule,
+	"headroomTimeoutMs":               intRule(100, 60000),
+	"cavemanEnabled":                  boolRule,
+	"cavemanLevel":                    enumRule("lite", "full", "ultra", "wenyan-lite", "wenyan", "wenyan-ultra"),
+	"cavemanRoutingMode":              enumRule("smart", "always"),
+	"ponytailEnabled":                 boolRule,
+	"ponytailLevel":                   enumRule("lite", "full", "ultra"),
+	"ponytailRoutingMode":             enumRule("smart", "always"),
+	"customPromptEnabled":             boolRule,
+	"customPrompt":                    textRule(4000),
+	"skillSources":                    urlListRule("https", 10, 2048),
+	"ecc_auto_skill_routerEnabled":    boolRule,
+	"ecc_auto_skill_routerConfidence": floatRule(0, 1),
+	"ecc_auto_skill_routerMaxSkills":  intRule(1, 5),
+}
+
+// reSkillKey matches the per-skill keys the dashboard writes for an installed
+// skill: <id>Enabled and <id>RoutingMode, with the id bounded to the manifest's
+// alphabet. Without this an imported skill's own switch could not be saved.
+var reSkillKey = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}(Enabled|RoutingMode)$`)
+
+// ruleFor answers the rule for a key: the fixed table, then the per-skill shape.
+func ruleFor(key string) (settingRule, bool) {
+	if r, ok := settingsRules[key]; ok {
+		return r, true
+	}
+	if reSkillKey.MatchString(key) {
+		if strings.HasSuffix(key, "Enabled") {
+			return boolRule, true
+		}
+		return enumRule("smart", "always"), true
+	}
+	return nil, false
 }
 
 func boolRule(raw json.RawMessage) (string, string) {
@@ -373,6 +420,45 @@ func scheduleRule(raw json.RawMessage) string {
 		}
 	}
 	return ""
+}
+
+func floatRule(min, max float64) settingRule {
+	return func(raw json.RawMessage) (string, string) {
+		var f float64
+		if err := json.Unmarshal(raw, &f); err != nil {
+			return "", "must be a number"
+		}
+		if f < min || f > max {
+			return "", "is out of range"
+		}
+		out, _ := json.Marshal(f)
+		return string(out), ""
+	}
+}
+
+// urlListRule bounds a JSON list of operator-set origins, the allowlist a skill
+// sync may clone from. A bad entry is refused rather than dropped.
+func urlListRule(scheme string, max, maxLen int) settingRule {
+	return func(raw json.RawMessage) (string, string) {
+		var list []string
+		if err := json.Unmarshal(raw, &list); err != nil {
+			return "", "must be a list of URLs"
+		}
+		if len(list) > max {
+			return "", "holds too many entries"
+		}
+		for _, s := range list {
+			u, err := url.Parse(s)
+			if err != nil || u.Host == "" || u.User != nil || u.Fragment != "" || len(s) > maxLen {
+				return "", "each entry must be a plain URL"
+			}
+			if scheme == "https" && u.Scheme != "https" {
+				return "", "each entry must use https"
+			}
+		}
+		out, _ := json.Marshal(list)
+		return string(out), ""
+	}
 }
 
 func intRule(min, max int) settingRule {

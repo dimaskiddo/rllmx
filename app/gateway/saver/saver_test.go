@@ -69,7 +69,7 @@ func TestAnAlwaysPromptIsAddedOnce(t *testing.T) {
 	if len(st.Prompts) != 1 || st.Prompts[0] != "caveman" {
 		t.Fatalf("stats %+v", st)
 	}
-	if r.Messages[0].Role != translate.RoleSystem || !strings.Contains(r.Messages[0].Text(), "Answer without filler") {
+	if r.Messages[0].Role != translate.RoleSystem || !strings.Contains(r.Messages[0].Text(), "Respond like terse caveman") {
 		t.Fatalf("system message %q", r.Messages[0].Text())
 	}
 	before := r.Messages[0].Text()

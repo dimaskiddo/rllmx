@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	nethttp "net/http"
+	"path/filepath"
 
 	"github.com/goravel/framework/contracts/console"
 	contractsschema "github.com/goravel/framework/contracts/database/schema"
@@ -16,6 +17,7 @@ import (
 	"rllmx/app/access/saml"
 	"rllmx/app/access/sso"
 	"rllmx/app/facades"
+	"rllmx/app/gateway/skill"
 	"rllmx/app/http/controllers"
 	"rllmx/app/http/middleware"
 	"rllmx/app/platform/network"
@@ -141,6 +143,12 @@ func dashboardRoutes(base *routes.Base, h *providers.HTTP, db func() *repository
 	}
 	base.Headroom = &controllers.HeadroomController{
 		DB: db, Client: headroomClient(h), DefaultURL: headroomURL(h),
+	}
+	// The pipeline builds its registry from the same resolved folder, so a
+	// dashboard sync and a request see the same skills.
+	dir := providers.DataOf(facades.App()).Settings.DataDir
+	base.Skills = &controllers.SkillsController{
+		DB: db, Dir: dir, Reg: skill.NewRegistry(filepath.Join(dir, "skills"), skill.Builtin()), Log: facades.Log(),
 	}
 }
 

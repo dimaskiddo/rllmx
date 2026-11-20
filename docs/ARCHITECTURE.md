@@ -2,7 +2,7 @@
 
 Router-LLM is an LLM gateway in Go on Goravel Lite v1.18.0. A client sends a request in the OpenAI, Anthropic, Gemini or Responses format. The router picks an account for the model, translates the request to the provider's format, streams the answer back in the client's format and records usage.
 
-It is one static binary. Once `app/git` lands, the only process it ever starts is `git`, for the skill update. Configuration defaults live in `.env.example`; never guess a value.
+It is one static binary. The only process it ever starts is `git`, for the skill sync. Configuration defaults live in `.env.example`; never guess a value.
 
 This file holds what cuts across every area:
 
@@ -90,7 +90,7 @@ Every node in the diagram is built. The table says what each package holds and w
 
 The root `tests` package may import only packages whose own tests do not import it back, and `tests/imports_test.go` fails when it does. A helper that needs `repository` or `analytics` lives in a sub-package.
 
-Planned, not built: `saver`, `skill` and `plan`. `combo`, `health` and `probe` are built. See `ROADMAP.md`.
+Built: `saver`, `skill`, `combo`, `health`, `probe` and `app/git`. Planned, not built: `plan`. See `ROADMAP.md`.
 
 ---
 
@@ -111,7 +111,7 @@ Planned, not built: `saver`, `skill` and `plan`. `combo`, `health` and `probe` a
 13. **Plain-web dashboard.** Embedded static files and the reference's API contract.
 14. **Env-only configuration.** Process environment and `.env`; runtime behavior in the settings row.
 15. **SQLite and PostgreSQL** through the Goravel `DB` and `Schema` facades (`goravel/sqlite` and `goravel/postgres`), one test suite on both. No `database/sql` handle, pool, `sqlx` wrapper or migration runner of ours; `dialect.Rebind` is the only gap filler.
-16. **`os/exec` behind one filter gate.** `app/git` does not exist yet. When it lands it is deny-by-default and the only code that builds an `exec.Cmd`: `git`, only as `clone`, with a fixed flag set, a validated ref, an `https` URL from the admin's list that passes the guard, a directory inside the data area, a minimal environment, a 60 s timeout and size caps. A test fails if any other file imports `os/exec`. Any other spawned process is out.
+16. **`os/exec` behind one filter gate.** `app/git` is deny-by-default and the only code that builds an `exec.Cmd`: `git`, only as `clone`, with a fixed flag set, a validated ref, an `https` URL from the admin's list that passes the guard, a directory inside the data area, a minimal environment, a 60 s timeout and size caps. A test fails if any other file imports `os/exec`. Any other spawned process is out.
 17. **Usage is metadata only.** One structured row per request in a separate store; no prompt, body or header is ever persisted.
 18. **The cache never breaks a request.** Every cache failure is a miss; credentials stay in process memory.
 19. **The server decides OAuth redirects.** The browser never supplies a `redirect_uri`, and every login has a single-use server-side session.

@@ -3,6 +3,7 @@ package commands
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/goravel/framework/contracts/console"
 	"github.com/goravel/framework/contracts/console/command"
@@ -28,6 +29,7 @@ func (c *DBImportConfig) Extend() command.Extend {
 		&command.BoolFlag{Name: "dry-run", Usage: "show what would be copied and write nothing"},
 		&command.BoolFlag{Name: "yes", Usage: "do not ask for confirmation"},
 		&command.BoolFlag{Name: "with-sso", Usage: "also copy the login policy (authMode, OIDC and SAML settings)"},
+		&command.StringFlag{Name: "skills-from", Usage: "also copy skill folders from a local folder or an https repository"},
 	}}
 }
 
@@ -53,12 +55,33 @@ func (c *DBImportConfig) Handle(ctx console.Context) error {
 	return c.R.withLock(cfg.DataDir, func() error {
 		cleanup := takeWorkDir(cfg.DataDir)
 		defer cleanup()
+		if from := strings.TrimSpace(ctx.Option("skills-from")); from != "" {
+			if err := c.copySkills(ctx, cfg, from); err != nil {
+				return err
+			}
+		}
 		plan, err := c.plan(ctx, fc, src, cfg.DataDir)
 		if err != nil {
 			return err
 		}
 		return c.run(ctx, fc, plan, cfg)
 	})
+}
+
+// copySkills copies the folders named by --skills-from. A remote source needs
+// the operator's allowlist, which is read from an existing database.
+func (c *DBImportConfig) copySkills(ctx console.Context, cfg *settings.Store, src string) error {
+	var sources []string
+	if isRemote(src) {
+		h, err := c.R.Open(ctx, data.ModeRead)
+		if err != nil {
+			return err
+		}
+		if sources, err = configuredSources(ctx, h); err != nil {
+			return err
+		}
+	}
+	return importSkills(ctx, cfg.DataDir, src, "main", sources, ctx.OptionBool("dry-run"))
 }
 
 // plan reads the source through a private copy and returns the plan. The copy

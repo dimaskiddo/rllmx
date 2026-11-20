@@ -1,0 +1,14 @@
+{
+  "id": "prose-humanizer",
+  "name": "Human Handwritten & Anti-Slop",
+  "description": "Natural human phrasing, zero AI slop, clean code and verified functional solutions",
+  "category": "writing",
+  "hook": "system-prompt",
+  "default_enabled": false,
+  "routable": true,
+  "routing_mode": "smart",
+  "routing_threshold": 0.35,
+  "triggers": ["sounds like ai", "ai slop", "humanize this", "rewrite naturally"],
+  "keywords": ["humanize", "rewrite", "prose", "filler", "slop"],
+  "version": "1.0.0"
+}

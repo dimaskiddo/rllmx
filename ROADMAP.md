@@ -39,7 +39,8 @@ Status words: **built** (implemented and tested), **partial** (some behavior mis
 | Combos and routing strategies (fallback, round-robin, smart, fusion) | built |
 | Response cache | built |
 | Token savers (tool-output compaction, Headroom sidecar, built-in and custom prompts) | built |
-| Skills and auto plan | planned |
+| Skills registry, local and catalog routers, catalog sync | built |
+| Rule hooks, Skills Studio and auto plan | planned |
 
 ## Accounts
 

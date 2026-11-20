@@ -74,7 +74,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 134 | Kept as entered (spaces trimmed) | Providers with trailing slash validate |
 | 9 | Dropped; `tokenSaverEnabled`, `tokenSaverBudget` kept and imported with no behavior | Dead in the reference (scope cut) |
 | 395 | `cavemanRoutingMode` and `ponytailRoutingMode` are honored | The extended fork ships the option in its manifests but injects from the enable flags alone, so its "Smart" label does nothing |
-| 396 | The prompt texts are written from the reference's rule list in our own words | Clean-room rule: the reference's texts are adapted from two outside skill repositories and are not ours to copy |
+| 396 | Retired: the level texts are the reference's own, kept verbatim | The maintainer directed using the reference texts directly; each package names its source, and an edit tracks the reference |
 | 397 | Headroom is sent tool output and, when allowed, user text; the system prompt is never sent | A compression proxy that rewrites the operator's instructions can change behavior in ways no setting explains |
 | 398 | No sidecar install, start, stop, restart, port detection, extras or update | Process management is out of scope (`design doc 22`); the operator runs the sidecar |
 | 399 | The proxy does not rewrite the sidecar's dashboard HTML | The sidecar's own UI is not part of v1, and rewriting a third party's HTML invites breakage |
@@ -88,3 +88,4 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | `tools/mutant.sh` marks the case-insensitive bypass, inject-once, the failed-tool-result skip, the minimum size, the UTF-8 head cut, the cache fingerprint, the sidecar row identity, the no-grow rule, the proxy credential rule and the loopback rule CAUGHT | pinned by tests |
 | Three designed mutants are equivalent and stay MISSED: the arithmetic skip (an all-digit query tokenizes to nothing), the trigger boost (a trigger's own words are already in the document vector) and the segment separator (every built-in prompt is one line) | accepted, no behavior to pin |
 | The extended fork's `routing_mode` is honored here and ignored there (D395) | fixed |
+| The caveman and ponytail level texts are the reference's own, with their source named in each package (D396 retired) | kept verbatim; an edit tracks the reference |

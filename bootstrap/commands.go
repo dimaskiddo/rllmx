@@ -33,6 +33,7 @@ func Commands(version, commit string) []console.Command {
 		&commands.DBVacuum{R: db},
 		&commands.DBImportAnalytics{R: db},
 		&commands.DBImportConfig{R: db},
+		&commands.SkillsSync{R: db},
 		&commands.KeysCreate{R: ar},
 		&commands.KeysList{R: ar},
 		&commands.KeysRevoke{R: ar},

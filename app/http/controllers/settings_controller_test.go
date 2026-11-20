@@ -160,6 +160,50 @@ func TestASettingsWriteStoresTheSaverKeysAndAnswersThem(t *testing.T) {
 	}
 }
 
+func TestASettingsWriteAcceptsAPerSkillSwitch(t *testing.T) {
+	m := newMgmtRig(t)
+	seededSettings(t, m)
+	m.settingsRoutes(&SettingsController{DB: func() *repository.Store { return m.st.Store }, Auth: m.auth})
+	code, _, raw := m.call(nethttp.MethodPatch, "/api/settings",
+		`{"terseEnabled":true,"terseRoutingMode":"always","skillSources":["https://github.com/acme/skills"],`+
+			`"ecc_auto_skill_routerEnabled":true,"ecc_auto_skill_routerConfidence":0.5,"ecc_auto_skill_routerMaxSkills":2}`, true)
+	if code != 200 {
+		t.Fatalf("%d %s", code, raw)
+	}
+	d, err := m.st.Store.Settings().Effective(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := d.GetString("terseRoutingMode"); got != "always" {
+		t.Fatalf("terseRoutingMode %q", got)
+	}
+	if got, _ := d.GetRaw("skillSources"); !strings.Contains(got, "github.com/acme/skills") {
+		t.Fatalf("skillSources %s", got)
+	}
+	if got, _ := d.GetRaw("ecc_auto_skill_routerConfidence"); got != "0.5" {
+		t.Fatalf("confidence %s", got)
+	}
+}
+
+func TestASettingsWriteRefusesABadSkillKey(t *testing.T) {
+	m := newMgmtRig(t)
+	seededSettings(t, m)
+	m.settingsRoutes(&SettingsController{DB: func() *repository.Store { return m.st.Store }, Auth: m.auth})
+	for name, body := range map[string]string{
+		"bad mode":      `{"terseRoutingMode":"sometimes"}`,
+		"plain http":    `{"skillSources":["http://github.com/acme/skills"]}`,
+		"user info":     `{"skillSources":["https://u:p@github.com/acme/skills"]}`,
+		"confidence":    `{"ecc_auto_skill_routerConfidence":1.5}`,
+		"max skills":    `{"ecc_auto_skill_routerMaxSkills":9}`,
+		"parent path":   `{"../terseEnabled":true}`,
+		"upper-case id": `{"TerseEnabled":true}`,
+	} {
+		if code, _, raw := m.call(nethttp.MethodPatch, "/api/settings", body, true); code != 400 {
+			t.Errorf("%s: %d %s", name, code, raw)
+		}
+	}
+}
+
 func TestABlankSSOSecretKeepsTheStoredOne(t *testing.T) {
 	m := newMgmtRig(t)
 	seededSettings(t, m)

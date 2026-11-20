@@ -1,46 +1,57 @@
-# Design 11 — Skills, Session & Auto Plan (`app/skill/`, `app/gateway/conversation/`, `app/plan/`)
+# Design 11 — Skills, Session & Auto Plan (`app/gateway/skill/`, `app/gateway/conversation/`, `app/plan/`)
 
-**Status:** todo
+**Status:** partial
 
-Nothing exists yet. Skills are and; Auto Plan is.
+The skills registry, both routers, the catalog sync and the dashboard's read and sync routes are built (step 3.2). Rule hooks and Skills Studio are step 3.3; Auto Plan is 3.4. Session ids are built; the session cache is not.
 
 ### Skill Layout
 
-A folder under `DATA_DIR/skills/<id>/`; built-in skills ship embedded in the binary.
+A folder under `DATA_DIR/skills/<id>/`; the six core skills ship embedded in the binary (`app/gateway/skill/builtin/`). An operator folder with the same id replaces the embedded one.
 
 | File | Content |
 |---|---|
-| `manifest.json` | id, name, description, hook type, enabled flag (`<id>Enabled`), config schema, routing mode |
-| `prompt.txt` or `prompt.md` | The prompt. `{key}` placeholders are filled from the skill's config; remaining values are appended as an "Active Configuration" block |
-| `rules.json` | Optional declarative rules |
+| `manifest.json` | id, name, description, hook, default enabled, legacy enabled key, routing mode, threshold, triggers, keywords, config schema |
+| `prompt.txt` or `prompt.md` | The prompt. `prompt.txt` wins over `prompt.md`. |
+| `rules.json` | Optional declarative rules (step 3.3) |
 
-**Skills Studio** (dashboard page, `/api/skills`) creates, edits and deletes custom skills and toggles built-ins. It writes only the files above. `hook.js` and install, update or uninstall commands in imported skills are ignored and shown as unsupported.
+Bounds: manifest 32 KiB, prompt 64 KiB, id `^[a-z0-9][a-z0-9_-]{0,63}$`, name 128 bytes, description 4 KiB, 100 triggers or keywords of 128 bytes each, control characters refused. A folder that fails a check is skipped and listed under `problems`; it is never half-loaded.
 
-### Update From a Git Repository (`app/git`)
+`install_command`, `update_command`, `uninstall_command` and `hook.js` are read only to be reported as unsupported. Nothing in a skill folder is executed.
 
-A skill update starts a process, and only on an admin action.
+The core prompts are the reference's own where it has a skill: caveman, ponytail, watermarks-remover, human-handwritten (our `prose-humanizer`) and commit-lint. Each built-in folder names its source, and an edit tracks it. `code-humanizer` has no reference counterpart and keeps this router's own text.
 
-- Two entry points: `rllmx artisan skills:sync` and an always-protected dashboard route.
-- Never at start-up, from a client request, or from a skill's own content.
-- When `git` is missing or the filter fails, it falls back to the GitHub API over the guarded client (`design doc 14`).
-- A failure never fails a request.
+### Packages
 
-`app/git` is the only code that builds an `exec.Cmd`. A test fails any other non-test file that imports `os/exec`. Every filter passes before a process exists; a failure returns an error and logs at WARN without argument values.
+`app/gateway/skill` holds the registry (`manifest.go`, `registry.go`), the scorer (`scorer.go`), the two routers (`local.go`, `ecc.go`), the injector and `Apply` (`skill.go`), the settings projection (`setting.go`) and the catalog sync (`sync_ecc.go`). `app/git` is the only package that starts a process (`clone.go`), and it downloads a tarball when git is missing (`github.go`).
 
-| Filter | Rule |
-|---|---|
-| Program | `git`, found once with `exec.LookPath` and used by absolute path. No other program is ever started |
-| Subcommand | The first argument is `clone`. Any other subcommand is refused until added, with user approval |
-| Arguments | An array, never joined, never given to a shell. The fixed set `--depth 1 --single-branch --no-tags --branch <ref>`, then `--`, `<url>`, `<dir>`. `<ref>` matches `^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$` and holds no `..`. `<url>` is `https`, has no user info, is on the admin's skill-source list and its host passes the SSRF guard. `<dir>` is a new directory inside the clone area under `DATA_DIR` |
-| Environment | Only `PATH`, `HOME` set to the clone area, `GIT_TERMINAL_PROMPT=0`, `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL` at the null device and `GIT_ALLOW_PROTOCOL=https`. No inherited secret, credential helper or git config |
-| Limits | 60 s through `CommandContext`, capped output, a clone-size cap checked while running and cut off, one clone at a time |
-| After the clone | Only `SKILL.md` text is read. No git command runs inside the clone; nothing from it is executed |
+The scorer is our own copy, not a shared package. `tests/imports_test.go` forbids a sub-package from importing a sibling, and the only shared home would be a parent with one consumer (divergence 400).
 
-The program, subcommand and flags are one literal in the package. Adding any changes the rule first, with user approval.
+### Routers
+
+| Router | Behavior | Bypass header |
+|---|---|---|
+| Local skill router | A routable skill in `smart` mode is injected when its own TF-IDF score clears its own threshold, at most two per request. An `always` skill is injected on every request. | `x-9router-local-skill-router: off` |
+| ECC auto router | Skills with `source: "ecc"` are scored with id x5, name x4, keywords x3, triggers x3 and description x1. Settings: `ecc_auto_skill_routerEnabled`, `...Confidence` (0.35), `...MaxSkills` (1, clamped to 1-5). | `x-9router-skill-router: off` |
+
+Scoring is TF-IDF over lower-cased, stemmed words. A score is `min(1, dot x 1.8 + 0.35 trigger boost)`; a greeting or a bare sum is skipped; the query is cut at 4 KiB and 400 tokens.
+
+The enabled switch is `<id>Enabled`, then the manifest's `legacy_enabled_key`, then `default_enabled`. The mode is `<id>RoutingMode`, then the manifest's `routing_mode`, then `smart`. Both live in the settings row, so a toggle never rewrites an imported file (divergence 401).
+
+Matched skills are not stored with the usage row (metadata only).
+
+### Catalog Sync (`skills:sync`, `/api/skills/sync`)
+
+Two entry points, both admin actions: `rllmx artisan skills:sync --source <folder|https-url> [--tag main] [--force]` and `POST /api/skills/sync`. The route accepts only an https source on the `skillSources` allowlist; a local folder is the command line's business. Never at start-up, from a client request or from a skill's content.
+
+A remote source is cloned through `app/git`; when git is missing or refuses, the GitHub tarball is fetched over the guarded client. The clone is bounded at 60 s and 64 MiB, checked while it runs (divergence 403). One sync runs at a time; the route answers 503 when one is in flight.
+
+The sync reads only `SKILL.md` text: YAML frontmatter with `name` and `description`, then the body. It writes our own `manifest.json`, `prompt.md` and `_index.json` into `DATA_DIR/skills/ecc-imported/<id>/`. A destination whose manifest no longer says `source: ecc` belongs to the operator and is skipped unless `--force`. The source is operator-named; no catalog is bundled or hardcoded (divergence 402).
+
+`db:import-config --skills-from <folder|https-url>` copies whole skill folders, manifest and prompt, into `DATA_DIR/skills/`. It skips an invalid folder with a warning and reports the ignored files.
 
 ### Rules
 
-Each rule has a `stage` (`pre-route` or `pre-request`), a `when` and a `then`:
+Each rule has a `stage` (`pre-route` or `pre-request`), a `when` and a `then` (step 3.3):
 
 ```json
 {
@@ -56,14 +67,9 @@ Each rule has a `stage` (`pre-route` or `pre-request`), a `when` and a `then`:
 | `setHeader` | Upstream request only. `authorization`, `host`, `cookie` and `content-length` are refused |
 | `rerouteModel` | Goes through key access again, so a rule cannot widen a restricted key |
 
-### Routers
+### Dashboard
 
-| Router | Behavior | Bypass header |
-|---|---|---|
-| ECC auto router | TF-IDF and cosine similarity over a catalog index (weights: id x5, name x4, keywords x3, triggers x3, description x1). Settings `ecc_auto_skill_routerEnabled`, `...Confidence` (0.35), `...MaxSkills` (1). The catalog is not shipped: `POST /api/skills/sync-ecc` downloads it over HTTPS into `DATA_DIR/skills/ecc-imported/` | `x-9router-skill-router: off` |
-| Local skill router | Skills with routing mode `smart` are injected only when their TF-IDF score clears the threshold, at most two per request | `x-9router-local-skill-router: off` |
-
-Matched skills are not stored with the usage row (metadata only); a later phase may add a nullable column.
+`GET /api/skills` lists every installed skill with its effective switch, mode and unsupported files, plus the folders that were skipped. It never returns prompt text. The Studio routes that create, edit and delete skills are step 3.3.
 
 ### Session Id (`app/gateway/conversation/`, built)
 
@@ -83,11 +89,11 @@ A made-up id is a random UUID plus the time in milliseconds, and it expires afte
 - The pipeline holds one store (`Deps.Sessions`, made when none is given) and resolves the id once an account is chosen, because the last fallback is one id per account.
 - The Claude user id and `x-claude-code-session-id` carry the id without its `claude:` prefix.
 - Codex's `session_id` carries `Bound`, the keyed hash, never the client's value.
-- `translate.SessionOf` reads the session out of a user id; the earlier draft helpers listed here were never written.
+- `translate.SessionOf` reads the session out of a user id.
 
 **Session cache** (planned, `app/gateway/conversation/`). In-memory LRU, 2000 entries, 4 hours, keyed by `x-session-id` or `session-id`. On repeat turns a skill already injected becomes a one-line reminder. After an account failover every later turn of that session gets a short continuity notice.
 
-### Auto Plan-Then-Code (`app/plan/`)
+### Auto Plan-Then-Code (`app/plan/`, step 3.4)
 
 Settings: `autoPlanEnabled`, `autoPlanMode`, `autoPlanComboId`, `autoCodeComboId`, `autoPlanComplexityThreshold`, `autoPlanSmartClassify`, `autoPlanMaxTokens`, `autoPlanTimeoutMs`.
 
@@ -106,7 +112,7 @@ flowchart TD
     H --> I[Optionally reroute to the code combo]
 ```
 
-An error at any step fails open. Bypass: `x-9router-auto-plan: off`. The outcome is logged at DEBUG; storing it with the usage row is decided in step.
+An error at any step fails open. Bypass: `x-9router-auto-plan: off`. The outcome is logged at DEBUG.
 
 ---
 
@@ -121,11 +127,11 @@ An error at any step fails open. Bypass: `x-9router-auto-plan: off`. The outcome
 | Model ranking, combo suggestion | `src/lib/routing/modelRanking.js`, `/api/combos/suggest` | `app/gateway` | todo |
 | Latency SSE | `/api/health/latency-stream` | `app/health` | todo |
 | OpenRouter live model sync | `src/app/api/v1/models/route.js` | `app/gateway/catalog` | todo |
-| Skills registry (system-prompt hooks) | `src/lib/skillsRegistry.js` | `app/skill` | todo |
-| ECC auto skill router | `src/skills/autoRouter.js` | `app/skill` | todo |
-| Local skill router | `src/skills/localSkillRouter.js` | `app/skill` | todo |
+| Skills registry (system-prompt hooks) | `src/lib/skillsRegistry.js` | `app/gateway/skill` | done (3.2) |
+| ECC auto skill router | `src/skills/autoRouter.js` | `app/gateway/skill` | done (3.2) |
+| Local skill router | `src/skills/localSkillRouter.js` | `app/gateway/skill` | done (3.2) |
 | Session LRU and continuity notice | `src/lib/session/cache.js` | `app/gateway/conversation` | todo |
-| Skills Studio | `src/app/api/skills`, dashboard skills page | `app/skill`, `web` | diverged (declarative rules, no scripts) |
+| Skills Studio | `src/app/api/skills`, dashboard skills page | `app/gateway/skill`, `web` | partial: list and sync built; create, edit, delete in 3.3 |
 | Auto Plan-Then-Code | `src/lib/autoPlanRouter.js` | `app/plan` | todo |
 | Setup wizard | `src/app/setup/page.js` | `web` | todo |
 | Proxy-pool fitness | `open-sse/services/proxyPoolFitness.js`, `proxyPoolFitnessRepo.js` | none | out (no proxies) |
@@ -137,12 +143,11 @@ An error at any step fails open. Bypass: `x-9router-auto-plan: off`. The outcome
 ---
 
 ## Remaining work
-**Steps to.** Nothing built.
+**Step 3.3 and 3.4.**
 
-- [ ] Skill registry and `<id>Enabled` / `<id>RoutingMode` handling
-- [ ] `--skills-from` import in `db:import-config`; `skills:sync` through the `app/git` gate
 - [ ] Rule hooks: RE2 on bounded input (last user message, 64 KB); inject, reroute or set a header; deny `authorization`, `host`, `cookie`, `content-length`
-- [ ] Skills Studio routes (`/api/skills`)
+- [ ] Skills Studio routes: create, edit and delete a custom skill under `DATA_DIR/skills/`
+- [ ] Session cache: the LRU and the continuity notice
 - [ ] `app/plan`, driven by the `autoPlan*` settings
 - **Done when:** the session cache evicts and expires per spec; an imported skill's `hook.js` and install commands are ignored and reported.
 
@@ -159,11 +164,21 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 179 | Workspace ids, session ids, identity values must match plain token pattern, else left out | Stored value cannot add a header line |
 | 180 | Falls back to id derived from provider and connection | Accounts of one router do not look like one machine to the provider |
 | 200 | `os/exec` in one package, `git`, running only `git clone --depth 1 --single-branch --no-tags --branch <ref> -- <url> <dir>`; argument array; `https` URL on admin list that passes SSRF guard; minimal environment; timeout; size cap; falls back to GitHub API | Ref or URL injectable into the reference's shell string |
-| 3, 11 | No install commands; declarative rules only **(planned)** | No code execution; only spawned process is allowlisted `git clone` (scope cut) |
+| 3, 11 | No install commands; declarative rules only (3.3) | No code execution; only spawned process is allowlisted `git clone` (scope cut) |
+| 400 | The skill scorer is a copy inside `app/gateway/skill`, not a package shared with the token savers | The import rule forbids a sibling import; a shared parent would serve one consumer and would couple two packages that change separately (trade-off) |
+| 401 | A skill's switch and mode live in the settings row (`<id>Enabled`, `<id>RoutingMode`); the manifest only supplies the default | A dashboard toggle never rewrites an imported folder, so `skills:sync` keeps a clean diff and `--force` stays meaningful |
+| 402 | The catalog sync takes an operator-named, allowlisted source; nothing is bundled or hardcoded | The reference pins an outside repository in a script; ours cannot fetch a catalog the operator did not name |
+| 403 | The clone and the tarball are bounded at 64 MiB, checked while the clone runs and cut off | A repository cannot fill the data directory before an admin notices |
+| 404 | The embedded style skills use the ids `caveman-style` and `ponytail-style` | The saver already owns `cavemanEnabled` and `ponytailEnabled`; separate ids keep the two switches from turning each other on |
 
 ---
 
 ## Findings
 
-Nothing built. `app/skill`, `app/gateway/conversation` and `app/plan` do not exist.
-
+| Finding | Decision |
+|---|---|
+| The extended fork stores `routing_mode` but never reads it for caveman and ponytail | Both routers honor it; recorded in design doc 10 as the same reference defect |
+| The settings writer rejected any key it did not list, so an imported skill's switch could not be saved | PATCH accepts `<id>Enabled` and `<id>RoutingMode` for the manifest's id alphabet, and nothing else |
+| The response-cache key hashed the client body before any skill ran | The key now carries the installed-set signature and the skill keys (design doc 20) |
+| The reference catalog script trusts a fixed repository and unbounded checkout | The source is allowlisted and the clone is size-bounded (divergences 402, 403) |
+| Six core skills duplicated the savers' style keys | Distinct ids keep both switches independent (divergence 404) |

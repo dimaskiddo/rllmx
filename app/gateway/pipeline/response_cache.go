@@ -182,7 +182,7 @@ func (c *call) requestKey(ctx context.Context, body []byte) string {
 	t := c.tctx.Thinking
 	return cacheKeyBody([]string{
 		c.in.Caller.ID, c.format, c.dest.provider, c.dest.model, c.client,
-		t.Mode, t.Level, strconv.Itoa(t.Budget), t.Display, c.saverKey(ctx),
+		t.Mode, t.Level, strconv.Itoa(t.Budget), t.Display, c.saverKey(ctx), c.skillKey(ctx),
 	}, body)
 }
 

@@ -1,0 +1,14 @@
+{
+  "id": "commit-lint",
+  "name": "Commit Lint",
+  "description": "Enforce Conventional Commits for every commit message",
+  "category": "workflow",
+  "hook": "system-prompt",
+  "default_enabled": false,
+  "routable": true,
+  "routing_mode": "smart",
+  "routing_threshold": 0.3,
+  "triggers": ["commit message", "git commit", "write a commit"],
+  "keywords": ["commit", "message", "lint", "conventional"],
+  "version": "1.0.0"
+}

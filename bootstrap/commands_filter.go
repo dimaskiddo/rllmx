@@ -18,5 +18,6 @@ func CommandsAllowlist() []string {
 		"health", "version",
 		"db:backup", "db:check", "db:vacuum", "db:import-analytics", "db:import-config", "db:export-plain",
 		"keys:create", "keys:list", "keys:revoke {id}", "password:reset",
+		"skills:sync",
 	}
 }

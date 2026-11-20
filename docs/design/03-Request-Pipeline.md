@@ -47,7 +47,7 @@ flowchart TD
 4. Decide streaming: the client's `stream`, unless the provider forces streaming or the model is an image model. `Accept: application/json` (without `text/event-stream`) turns off a stream the format starts by default (Ollama) when the body has no `stream` field; an explicit `stream: true` and a Gemini URL action are never overridden.
 5. **Native passthrough** when client and provider speak the same native dialect (Claude Code to Anthropic, Gemini CLI, Antigravity, Codex). The client tool is read from headers only (user agent, `x-app`, `originator`,.) and never trusted for access. A native client keeps its own shape; every Claude-format body still gets the cleanup Anthropic needs.
 6. Otherwise strip modalities the model cannot read, prefetch remote images, translate.
-7. De-duplicate tools; run token savers and skill prompts (fail open).
+7. De-duplicate tools; run token savers, then the skill routers (fail open, with a bypass header for each).
 8. `Executor.Execute`. On 401 or 403, refresh credentials (up to three tries), persist them, run once more.
 9. Non-OK upstream: parse the error and return it to the account loop. OK: stream it, convert SSE to JSON, or translate a non-stream body. An OK answer whose type is HTML, or is neither a stream nor JSON on a streaming call, is a 502 in the client's shape with the page title; nothing is locked or cleared.
 
@@ -118,6 +118,7 @@ flowchart TD
 - [x] The response cache
 - [x] Key checks and combos
 - [x] Token savers (`design doc 10`, step 3.1)
+- [x] Skill prompts: the local and catalog routers on the hub request, after the savers (`design doc 11`, step 3.2)
 - [ ] Skills and auto plan (`design doc 11`, steps 3.2 to 3.4)
 - [x] Capability detection (vision, pdf, audio, video): `translate.DetectNeeds` and `Needs.Met`, current turn only; the combo order reads it
 - **Done when:** every endpoint passes golden and end-to-end tests with `-race`; the same prompt through OpenAI, Anthropic, Responses and Gemini yields consistent usage rows.

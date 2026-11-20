@@ -1,0 +1,14 @@
+{
+  "id": "ponytail-style",
+  "name": "Ponytail",
+  "description": "Bias the model toward minimal code: YAGNI, reuse stdlib, deletion over addition",
+  "category": "style",
+  "hook": "system-prompt",
+  "default_enabled": false,
+  "routable": true,
+  "routing_mode": "smart",
+  "routing_threshold": 0.3,
+  "triggers": ["keep it simple", "minimal code", "delete unused", "reduce complexity"],
+  "keywords": ["refactor", "simplify", "boilerplate", "minimal", "stdlib"],
+  "version": "1.0.0"
+}

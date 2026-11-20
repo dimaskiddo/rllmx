@@ -185,6 +185,7 @@ func (c *call) build(ctx context.Context, d destination) (Output, bool) {
 		c.p.d.Prefetch.Inline(ctx, c.req)
 	}
 	c.applySavers(ctx)
+	c.applySkills(ctx)
 	body, err := codec.WriteRequest(c.req, c.tctx)
 	switch {
 	case errors.Is(err, translate.ErrImages):
