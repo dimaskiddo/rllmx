@@ -8,8 +8,8 @@ import (
 	"rllmx/app/platform/text"
 )
 
-// MaxPlanBytes bounds what one plan may add to a request.
-const MaxPlanBytes = 32 << 10
+// maxPlanBytes bounds what one plan may add to a request.
+const maxPlanBytes = 32 << 10
 
 // planPrompt is the architect instruction, carried verbatim as prompt data.
 const planPrompt = `You are a software architect. The user is requesting a non-trivial code implementation or architecture change.
@@ -34,11 +34,8 @@ Rules:
 - Keep it concise, high-signal, zero fluff. No explanations outside the tags.
 - Focus on concrete file paths, API contracts, and key algorithms.`
 
-// PlanPrompt is the system turn the planning call is asked with.
-func PlanPrompt() string { return planPrompt }
-
-// PlanBlock is the system turn a generated plan becomes.
-func PlanBlock(planText string) string {
+// planBlock is the system turn a generated plan becomes.
+func planBlock(planText string) string {
 	return "The following architecture plan was generated for this implementation task:\n" +
 		strings.TrimSpace(planText) + "\nImplement the code following this plan faithfully."
 }
@@ -62,11 +59,11 @@ func PlanMessages(r *translate.Request) []translate.Message {
 // it at the top. The same plan is never inserted twice, so a retry or a second
 // account cannot stack it.
 func Inject(r *translate.Request, planText string) {
-	planText = strings.TrimSpace(text.CutBytes(planText, MaxPlanBytes))
+	planText = strings.TrimSpace(text.CutBytes(planText, maxPlanBytes))
 	if planText == "" {
 		return
 	}
-	block := PlanBlock(planText)
+	block := planBlock(planText)
 	for _, m := range r.Messages {
 		if m.Role == translate.RoleSystem && m.Text() == block {
 			return
@@ -87,8 +84,8 @@ func Inject(r *translate.Request, planText string) {
 	r.Messages = out
 }
 
-// HasPlan reports whether the text already carries a plan marker.
-func HasPlan(body string) bool {
+// hasPlan reports whether the text already carries a plan marker.
+func hasPlan(body string) bool {
 	return strings.Contains(body, "<PLAN>") || strings.Contains(body, "</PLAN>")
 }
 

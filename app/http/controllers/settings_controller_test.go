@@ -163,12 +163,32 @@ func TestASettingsWriteStoresTheSaverKeysAndAnswersThem(t *testing.T) {
 	}
 }
 
+// terseRegistry is a registry holding one custom skill, "terse".
+func terseRegistry(t *testing.T) *skill.Registry {
+	t.Helper()
+	dir := t.TempDir()
+	for name, body := range map[string]string{
+		"terse/manifest.json": `{"id":"terse","name":"Terse","description":"short","hook":"system-prompt",` +
+			`"legacy_enabled_key":"terseLegacyOn"}`,
+		"terse/prompt.txt": "Answer briefly.",
+	} {
+		p := filepath.Join(dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return skill.NewRegistry(dir, nil)
+}
+
 func TestASettingsWriteAcceptsAPerSkillSwitch(t *testing.T) {
 	m := newMgmtRig(t)
 	seededSettings(t, m)
-	m.settingsRoutes(&SettingsController{DB: func() *repository.Store { return m.st.Store }, Auth: m.auth})
+	m.settingsRoutes(&SettingsController{DB: func() *repository.Store { return m.st.Store }, Auth: m.auth, Skills: terseRegistry(t)})
 	code, _, raw := m.call(nethttp.MethodPatch, "/api/settings",
-		`{"terseEnabled":true,"terseRoutingMode":"always","skillSources":["https://github.com/acme/skills"],`+
+		`{"terseEnabled":true,"terseLegacyOn":false,"terseRoutingMode":"always","skillSources":["https://github.com/acme/skills"],`+
 			`"ecc_auto_skill_routerEnabled":true,"ecc_auto_skill_routerConfidence":0.5,"ecc_auto_skill_routerMaxSkills":2}`, true)
 	if code != 200 {
 		t.Fatalf("%d %s", code, raw)
@@ -231,15 +251,19 @@ func TestASettingsWriteAcceptsASkillConfigField(t *testing.T) {
 func TestASettingsWriteRefusesABadSkillKey(t *testing.T) {
 	m := newMgmtRig(t)
 	seededSettings(t, m)
-	m.settingsRoutes(&SettingsController{DB: func() *repository.Store { return m.st.Store }, Auth: m.auth})
+	m.settingsRoutes(&SettingsController{DB: func() *repository.Store { return m.st.Store }, Auth: m.auth, Skills: terseRegistry(t)})
 	for name, body := range map[string]string{
-		"bad mode":      `{"terseRoutingMode":"sometimes"}`,
-		"plain http":    `{"skillSources":["http://github.com/acme/skills"]}`,
-		"user info":     `{"skillSources":["https://u:p@github.com/acme/skills"]}`,
-		"confidence":    `{"ecc_auto_skill_routerConfidence":1.5}`,
-		"max skills":    `{"ecc_auto_skill_routerMaxSkills":9}`,
-		"parent path":   `{"../terseEnabled":true}`,
-		"upper-case id": `{"TerseEnabled":true}`,
+		"bad mode":       `{"terseRoutingMode":"sometimes"}`,
+		"plain http":     `{"skillSources":["http://github.com/acme/skills"]}`,
+		"user info":      `{"skillSources":["https://u:p@github.com/acme/skills"]}`,
+		"confidence":     `{"ecc_auto_skill_routerConfidence":1.5}`,
+		"max skills":     `{"ecc_auto_skill_routerMaxSkills":9}`,
+		"parent path":    `{"../terseEnabled":true}`,
+		"upper-case id":  `{"TerseEnabled":true}`,
+		"not a skill":    `{"tunnelEnabled":true}`,
+		"legacy not on":  `{"terseLegacyOn":"yes"}`,
+		"foreign legacy": `{"otherLegacyOn":true}`,
+		"not installed":  `{"ghostRoutingMode":"smart"}`,
 	} {
 		if code, _, raw := m.call(nethttp.MethodPatch, "/api/settings", body, true); code != 400 {
 			t.Errorf("%s: %d %s", name, code, raw)

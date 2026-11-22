@@ -30,17 +30,17 @@ func (g *Gate) Fetch(ctx context.Context, cfg Config, client *http.Client, rawUR
 	if err == nil {
 		return dir, func() { _ = os.RemoveAll(dir) }, nil
 	}
-	dir, derr := g.Download(ctx, cfg, client, rawURL, ref)
+	dir, derr := g.download(ctx, cfg, client, rawURL, ref)
 	if derr != nil {
 		return "", nil, fmt.Errorf("%w; the tarball fallback said: %w", err, derr)
 	}
 	return dir, func() { _ = os.RemoveAll(dir) }, nil
 }
 
-// Download fetches a GitHub repository tarball, for a host where git is missing
+// download fetches a GitHub repository tarball, for a host where git is missing
 // or the clone failed. It applies the same source, ref and network checks,
 // derives the API address from the source, and extracts only regular files.
-func (g *Gate) Download(ctx context.Context, cfg Config, client *http.Client, rawURL, ref string) (string, error) {
+func (g *Gate) download(ctx context.Context, cfg Config, client *http.Client, rawURL, ref string) (string, error) {
 	if err := cfg.validate(rawURL, ref); err != nil {
 		return "", err
 	}
@@ -128,6 +128,16 @@ func extract(r io.Reader, parent string, max int64) (string, error) {
 		entries++
 		if entries > maxEntries {
 			return "", errors.New("git: the tarball holds too many entries")
+		}
+		// GitHub opens every tarball with a global header that carries the commit
+		// id and no file.
+		if h.Typeflag == tar.TypeXGlobalHeader {
+			continue
+		}
+		// A backslash or a drive colon steps out of the folder on Windows, where
+		// path.Clean does not see it.
+		if strings.ContainsAny(h.Name, `\:`) {
+			return "", errors.New("git: the tarball steps out of its folder")
 		}
 		name := path.Clean(strings.TrimPrefix(h.Name, "./"))
 		if name == "." || name == "" {

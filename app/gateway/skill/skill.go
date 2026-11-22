@@ -1,11 +1,10 @@
 package skill
 
 import (
-	"slices"
 	"strings"
 
 	"rllmx/app/llm/translate"
-	"rllmx/app/platform/text"
+	"rllmx/app/platform/relevance"
 )
 
 // The bypass headers keep the reference's names so an existing client keeps
@@ -21,10 +20,6 @@ const (
 // caps it.
 const maxLocal = 2
 
-// sep separates one injected prompt from the text around it, and is how a
-// second run recognises its own earlier work.
-const sep = "\n\n"
-
 // Setting is the settings row's view of one skill: the two keys the dashboard
 // writes, each with whether it was present at all.
 type Setting struct {
@@ -39,6 +34,8 @@ type Options struct {
 	// Setting reads a skill's stored switch and mode. A nil reader leaves every
 	// skill to its manifest.
 	Setting func(id string) Setting
+	// Legacy reads a switch a manifest names by its whole key. Nil ignores it.
+	Legacy func(key string) (enabled, ok bool)
 	// Value reads one config_schema value by its settings key, as the prompt
 	// should render it. A nil reader leaves every field to its default.
 	Value func(key string) (string, bool)
@@ -94,7 +91,7 @@ func Apply(reg *Registry, r *translate.Request, o Options) Stats {
 		if m.Hook != "system-prompt" {
 			continue
 		}
-		enabled, mode := Switch(m, o.Setting)
+		enabled, mode := Switch(m, o.Setting, o.Legacy)
 		if !enabled {
 			continue
 		}
@@ -110,14 +107,14 @@ func Apply(reg *Registry, r *translate.Request, o Options) Stats {
 			return
 		}
 		if routable && o.Prior[InjectedKey(router, m.ID)] {
-			if InjectPrompt(r, reminder(m.Name, routerPrefix(router))) {
+			if r.AppendSystem(reminder(m.Name, routerPrefix(router))) {
 				seen[m.ID] = true
 				st.Reminded = append(st.Reminded, m.ID)
 			}
 			return
 		}
 		body := Render(m, reg.Prompt(m.ID), o.Value)
-		if body == "" || !InjectPrompt(r, body) {
+		if body == "" || !r.AppendSystem(body) {
 			return
 		}
 		seen[m.ID] = true
@@ -125,7 +122,7 @@ func Apply(reg *Registry, r *translate.Request, o Options) Stats {
 		st.Session = append(st.Session, InjectedKey(router, m.ID))
 	}
 	if o.Notice {
-		st.Notice = InjectPrompt(r, FailoverNotice)
+		st.Notice = r.AppendSystem(failoverNotice)
 	}
 	for _, m := range always {
 		inject(m, "", false)
@@ -134,12 +131,12 @@ func Apply(reg *Registry, r *translate.Request, o Options) Stats {
 		query := LatestUser(r)
 		for _, match := range ClassifyLocal(reg, smart, query) {
 			if m, ok := reg.Find(match.ID); ok {
-				inject(m, RouterLocal, true)
+				inject(m, routerLocal, true)
 			}
 		}
 		for _, match := range ClassifyECC(reg, query, o.ECC) {
 			if m, ok := reg.Find(match.ID); ok {
-				inject(m, RouterECC, true)
+				inject(m, routerECC, true)
 			}
 		}
 	}
@@ -148,12 +145,12 @@ func Apply(reg *Registry, r *translate.Request, o Options) Stats {
 
 // The two routers' names in the per-session table and the reminder's prefix.
 const (
-	RouterLocal = "local"
-	RouterECC   = "ecc"
+	routerLocal = "local"
+	routerECC   = "ecc"
 )
 
-// FailoverNotice is the reference's text, carried verbatim.
-const FailoverNotice = "--- Failover Notice: Upstream model/account switched. Check prior turns for existing tool results before searching again. ---"
+// failoverNotice is the reference's text, carried verbatim.
+const failoverNotice = "--- Failover Notice: Upstream model/account switched. Check prior turns for existing tool results before searching again. ---"
 
 // InjectedKey names one skill in the per-session table, split by which router
 // matched it, as the reference does.
@@ -162,7 +159,7 @@ func InjectedKey(router, id string) string {
 }
 
 func routerPrefix(router string) string {
-	if router == RouterECC {
+	if router == routerECC {
 		return "ECC Skill"
 	}
 	return "Local Skill"
@@ -178,57 +175,8 @@ func reminder(name, prefix string) string {
 		" (already active this conversation — see earlier turn for full instructions; do not repeat completed steps) ---"
 }
 
-// InjectPrompt appends a prompt to the request's first system message, creating
-// one at the top when there is none. It reports whether the request changed; a
-// prompt already present as its own segment is not added twice, so an account
-// retry never doubles it.
-func InjectPrompt(r *translate.Request, prompt string) bool {
-	for i := range r.Messages {
-		if r.Messages[i].Role != translate.RoleSystem {
-			continue
-		}
-		msg := &r.Messages[i]
-		if hasSegment(msg.Text(), prompt) {
-			return false
-		}
-		if msg.Text() == "" {
-			msg.Content = translate.TextPart(prompt)
-			return true
-		}
-		msg.Content = append(msg.Content, translate.Part{Type: translate.PartText, Text: sep + prompt})
-		return true
-	}
-	r.Messages = append([]translate.Message{{
-		Role:    translate.RoleSystem,
-		Content: translate.TextPart(prompt),
-	}}, r.Messages...)
-	return true
-}
-
-// hasSegment reports the prompt as its own segment of the text, so unrelated
-// text that happens to contain it is left alone.
-func hasSegment(body, target string) bool {
-	if body == target {
-		return true
-	}
-	for segment := range strings.SplitSeq(body, sep) {
-		if segment == target {
-			return true
-		}
-	}
-	return false
-}
-
 // LatestUser is the query the routers score: the last user message, cut to the
 // routing bound.
 func LatestUser(r *translate.Request) string {
-	for i := range slices.Backward(r.Messages) {
-		if r.Messages[i].Role != translate.RoleUser {
-			continue
-		}
-		if t := strings.TrimSpace(r.Messages[i].Text()); t != "" {
-			return text.CutBytes(t, queryBytes)
-		}
-	}
-	return ""
+	return relevance.Cut(r.LastUserText())
 }

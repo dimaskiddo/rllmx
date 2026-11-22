@@ -23,7 +23,7 @@ func ClassifyECC(reg *Registry, query string, o ECCOptions) []Match {
 		count = 1
 	}
 	count = min(count, 5)
-	out := reg.ECCIndex().Score(query, floor)
+	out := reg.eccIndex().Score(query, floor)
 	if len(out) > count {
 		out = out[:count]
 	}

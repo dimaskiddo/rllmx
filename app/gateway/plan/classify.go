@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"math"
 	"regexp"
-	"slices"
 	"strings"
 
 	"rllmx/app/llm/translate"
@@ -19,17 +18,18 @@ import (
 // BypassHeader turns auto plan off for one request.
 const BypassHeader = "x-9router-auto-plan"
 
-// The settings' defaults and bounds, as the dashboard offers them.
+// The settings' defaults and bounds, as the dashboard offers them. The settings
+// API validates a write against the same bounds this reader clamps to.
 const (
-	defaultThreshold = 6
-	defaultMaxTokens = 800
-	defaultTimeoutMS = 15000
-	minThreshold     = 1
-	maxThreshold     = 10
-	minMaxTokens     = 200
-	maxMaxTokens     = 4000
-	minTimeoutMS     = 1000
-	maxTimeoutMS     = 60000
+	DefaultThreshold = 6
+	DefaultMaxTokens = 800
+	DefaultTimeoutMS = 15000
+	MinThreshold     = 1
+	MaxThreshold     = 10
+	MinMaxTokens     = 200
+	MaxMaxTokens     = 4000
+	MinTimeoutMS     = 1000
+	MaxTimeoutMS     = 60000
 )
 
 // maxScan bounds the text the classifier reads. A keyword past this point sits
@@ -63,12 +63,12 @@ type Settings struct {
 // predate the bounds or have been edited by hand.
 func Read(doc document.Doc) Settings {
 	s := Settings{
-		Enabled:       rawBool(doc, "autoPlanEnabled"),
+		Enabled:       doc.Bool("autoPlanEnabled", false),
 		Mode:          "auto",
-		Threshold:     clamp(rawInt(doc, "autoPlanComplexityThreshold", defaultThreshold), minThreshold, maxThreshold),
-		SmartClassify: rawBool(doc, "autoPlanSmartClassify"),
-		MaxTokens:     clamp(rawInt(doc, "autoPlanMaxTokens", defaultMaxTokens), minMaxTokens, maxMaxTokens),
-		TimeoutMS:     clamp(rawInt(doc, "autoPlanTimeoutMs", defaultTimeoutMS), minTimeoutMS, maxTimeoutMS),
+		Threshold:     clamp(doc.Int("autoPlanComplexityThreshold", DefaultThreshold), MinThreshold, MaxThreshold),
+		SmartClassify: doc.Bool("autoPlanSmartClassify", false),
+		MaxTokens:     clamp(doc.Int("autoPlanMaxTokens", DefaultMaxTokens), MinMaxTokens, MaxMaxTokens),
+		TimeoutMS:     clamp(doc.Int("autoPlanTimeoutMs", DefaultTimeoutMS), MinTimeoutMS, MaxTimeoutMS),
 	}
 	if v, ok := doc.GetString("autoPlanMode"); ok && v == "manual" {
 		s.Mode = "manual"
@@ -90,19 +90,6 @@ func comboRef(doc document.Doc, key string) string {
 		return ""
 	}
 	return v
-}
-
-func rawBool(doc document.Doc, key string) bool {
-	raw, ok := doc.GetRaw(key)
-	return ok && raw == "true"
-}
-
-func rawInt(doc document.Doc, key string, def int) int {
-	n, ok := doc.GetInt(key)
-	if !ok {
-		return def
-	}
-	return int(n)
 }
 
 func clamp(v, lo, hi int) int {
@@ -168,26 +155,32 @@ var questionPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\b(what is|apa itu|apakah)\b`),
 }
 
-// Classify is the always-on tier: a pure heuristic over the conversation, with
+// classify is the always-on tier: a pure heuristic over the conversation, with
 // the reference's skip reasons.
-func Classify(r *translate.Request, s Settings) Verdict {
+func classify(r *translate.Request, s Settings) Verdict {
 	if !s.Enabled {
 		return Verdict{Confidence: 1, Reason: "disabled"}
 	}
 	if r == nil || len(r.Messages) == 0 {
 		return Verdict{Confidence: 1, Reason: "empty_messages"}
 	}
-	for _, m := range r.Messages {
-		if HasPlan(m.Text()) {
-			return Verdict{Confidence: 1, Reason: "already_planned"}
-		}
-	}
+	// One pass, parts read in place: an agent session is long, and joining every
+	// message's text to find a marker would cost more than the verdict is worth.
+	toolLoop := false
 	for _, m := range r.Messages {
 		if m.Role == translate.RoleTool || len(m.ToolCalls) > 0 {
-			return Verdict{Confidence: 1, Reason: "agent_tool_loop"}
+			toolLoop = true
+		}
+		for _, p := range m.Content {
+			if p.Type == translate.PartText && hasPlan(p.Text) {
+				return Verdict{Confidence: 1, Reason: "already_planned"}
+			}
 		}
 	}
-	body := lastUser(r)
+	if toolLoop {
+		return Verdict{Confidence: 1, Reason: "agent_tool_loop"}
+	}
+	body := text.CutBytes(r.LastUserText(), maxScan)
 	if body == "" {
 		return Verdict{Confidence: 1, Reason: "no_user_turn"}
 	}
@@ -214,7 +207,7 @@ func Classify(r *translate.Request, s Settings) Verdict {
 	}
 	score = min(1, max(0, score))
 
-	threshold := float64(clamp(s.Threshold, minThreshold, maxThreshold)) / 10
+	threshold := float64(clamp(s.Threshold, MinThreshold, MaxThreshold)) / 10
 	needs := score >= threshold
 	reason := "below_threshold"
 	if needs {
@@ -236,14 +229,14 @@ type Judge func(ctx context.Context, question string) (answer string, ok bool)
 // heuristic is unsure and the setting is on, one YES/NO model call. Every
 // failure keeps the heuristic's verdict.
 func Decide(ctx context.Context, r *translate.Request, s Settings, j Judge) Verdict {
-	v := Classify(r, s)
+	v := classify(r, s)
 	if !s.SmartClassify || j == nil || v.Confidence >= smartConfidence {
 		return v
 	}
 	if v.Reason != "heuristic_match" && v.Reason != "below_threshold" {
 		return v
 	}
-	answer, ok := j(ctx, Question(lastUser(r)))
+	answer, ok := j(ctx, question(text.CutBytes(r.LastUserText(), maxScan)))
 	if !ok {
 		return v
 	}
@@ -253,26 +246,10 @@ func Decide(ctx context.Context, r *translate.Request, s Settings, j Judge) Verd
 	return Verdict{NeedsPlan: false, Score: 0.1, Confidence: 0.9, Reason: "tier2"}
 }
 
-// Question is the one-shot classifier question, bounded to the turn's opening.
-func Question(body string) string {
+// question is the one-shot classifier question, bounded to the turn's opening.
+func question(body string) string {
 	return `Jawab hanya YES atau NO: apakah task berikut butuh perencanaan arsitektur multi-langkah sebelum ditulis kodenya?` +
 		"\nTask: \"" + text.CutRunes(body, 300) + `"`
-}
-
-// lastUser is the turn the classifier reads: the last non-empty user message,
-// cut to the scan bound.
-func lastUser(r *translate.Request) string {
-	for _, m := range slices.Backward(r.Messages) {
-		if m.Role != translate.RoleUser {
-			continue
-		}
-		t := strings.TrimSpace(m.Text())
-		if t == "" {
-			continue
-		}
-		return text.CutBytes(t, maxScan)
-	}
-	return ""
 }
 
 // countMatches counts the patterns that match, once each as the reference does.
@@ -295,7 +272,7 @@ func anyMatches(patterns []*regexp.Regexp, body string) bool {
 	return false
 }
 
-// Reason renders the verdict for the DEBUG line, never the text it read.
+// String renders the verdict for the DEBUG line, never the text it read.
 func (v Verdict) String() string {
 	return fmt.Sprintf("%s score=%.2f conf=%.2f", v.Reason, v.Score, v.Confidence)
 }

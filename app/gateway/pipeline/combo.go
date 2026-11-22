@@ -206,9 +206,6 @@ func (c *call) comboMember(ctx context.Context, m routing.Member, shape func(*tr
 	return out, nil
 }
 
-// comboContext gives one member a fresh translate context, so nothing the last
-// member set leaks into it, and a fresh copy of the client's request, because
-// building one member's body edits the request in place.
 // comboContext fills the member's translate context from the request that was
 // just read into it; the context itself is created before the read.
 func (c *call) comboContext(dest destination, t routing.Target) {
@@ -247,15 +244,7 @@ func (c *call) comboSession() string {
 // comboState is the latest user text the router is asked about, capped at
 // smartStateChars.
 func (c *call) comboState() string {
-	if c.req == nil {
-		return ""
-	}
-	for i := len(c.req.Messages) - 1; i >= 0; i-- {
-		if c.req.Messages[i].Role == translate.RoleUser {
-			return apptext.CutRunes(c.req.Messages[i].Text(), smartStateChars)
-		}
-	}
-	return ""
+	return apptext.CutRunes(c.req.LastUserText(), smartStateChars)
 }
 
 // smartStateChars caps the state text the router reads.

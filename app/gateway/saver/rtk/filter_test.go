@@ -170,17 +170,6 @@ func TestATinyBlockIsLeftAlone(t *testing.T) {
 	}
 }
 
-func TestTheHeadWindowStaysOnARuneBoundary(t *testing.T) {
-	long := strings.Repeat("é", 3000)
-	got := cutUTF8(long, 4097)
-	if len(got) > 4097 || !utf8.ValidString(got) {
-		t.Fatalf("cut to %d bytes, valid=%v", len(got), utf8.ValidString(got))
-	}
-	if got := cutUTF8(long, 2*len(long)); got != long {
-		t.Fatal("a short enough string changed")
-	}
-}
-
 func TestACompressionMustBeShorterAndNonEmpty(t *testing.T) {
 	var big strings.Builder
 	big.WriteString(diffFixture)
@@ -222,4 +211,13 @@ func FuzzCompressKeepsTheContract(f *testing.F) {
 			t.Fatalf("%s was accepted but did not shrink", name)
 		}
 	})
+}
+
+func TestTheDetectWindowIsCutOnARuneBoundary(t *testing.T) {
+	// A block whose detect window ends inside a multi-byte character must still
+	// be classified from valid text, not from half a rune.
+	block := strings.Repeat("é", detectWindow)
+	if out, _ := Compress(block); !utf8.ValidString(out) {
+		t.Fatal("the compressed block is not valid UTF-8")
+	}
 }

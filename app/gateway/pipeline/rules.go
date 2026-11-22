@@ -20,15 +20,16 @@ func (c *call) evaluateRules(ctx context.Context) {
 	}
 	// Both skill bypass headers leave the rules off too, so a client asking for
 	// an untouched request gets one.
-	if c.skillsOff(skill.BypassLocal) && c.skillsOff(skill.BypassECC) {
+	if c.skillsBypassed() {
 		return
 	}
 	doc, err := c.p.d.Settings.Effective(ctx)
 	if err != nil {
 		return
 	}
+	setting, legacy := skill.Readers(doc.GetRaw)
 	enabled := func(m skill.Manifest) bool {
-		on, _ := skill.Switch(m, func(id string) skill.Setting { return readSetting(doc, id) })
+		on, _ := skill.Switch(m, setting, legacy)
 		return on
 	}
 	rules := c.p.d.Skills.Rules(skill.StagePreRoute, enabled)
@@ -36,7 +37,7 @@ func (c *call) evaluateRules(ctx context.Context) {
 	if len(rules) == 0 {
 		return
 	}
-	c.rules = skill.MatchRules(rules, c.req.Model, skill.LatestUser(c.req), c.in.Header)
+	c.rules = skill.MatchRules(rules, c.req.Model, c.req.LastUserText(), c.in.Header)
 	if !c.rules.Empty() && c.p.d.Log != nil {
 		c.p.d.Log.Debugf("rules: %s", strings.Join(c.rules.IDs, "+"))
 	}
@@ -51,6 +52,10 @@ func (c *call) routeRule(ctx context.Context) (Output, bool) {
 	}
 	t, err := c.p.d.Resolver.Resolve(ctx, c.req.Model)
 	if err != nil {
+		// The name the client sent is not one a key could have been allowed, so
+		// the rule's target must not stand in for it: the request goes on with its
+		// own name and the ordinary check refuses it.
+		c.rules.Reroute = ""
 		return Output{}, true
 	}
 	allow, err := routing.NewAllow(ctx, c.p.d.Resolver, c.in.Caller.Allow)
@@ -68,7 +73,7 @@ func (c *call) routeRule(ctx context.Context) (Output, bool) {
 // member never carries the text twice.
 func (c *call) applyRulePrompts() {
 	for _, prompt := range c.rules.Prompts {
-		skill.InjectPrompt(c.req, prompt)
+		c.req.AppendSystem(prompt)
 	}
 }
 

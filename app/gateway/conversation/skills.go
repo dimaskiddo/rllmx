@@ -2,7 +2,6 @@ package conversation
 
 import (
 	"container/list"
-	"strings"
 	"sync"
 	"time"
 )
@@ -11,7 +10,7 @@ import (
 // per-session skill list.
 const (
 	maxSessions      = 2000
-	SessionLife      = 4 * time.Hour
+	sessionLife      = 4 * time.Hour
 	maxSessionSkills = 64
 )
 
@@ -122,7 +121,7 @@ func (s *SkillSessions) touchLocked(key string) *sessionState {
 	}
 	e := el.Value.(*sessionState)
 	now := s.now()
-	if now.Sub(e.lastUsed) > SessionLife {
+	if now.Sub(e.lastUsed) > sessionLife {
 		s.removeLocked(el)
 		return nil
 	}
@@ -135,7 +134,7 @@ func (s *SkillSessions) touchLocked(key string) *sessionState {
 // table is full.
 func (s *SkillSessions) addLocked(key string) *sessionState {
 	now := s.now()
-	for el := s.order.Front(); el != nil && now.Sub(el.Value.(*sessionState).lastUsed) > SessionLife; el = s.order.Front() {
+	for el := s.order.Front(); el != nil && now.Sub(el.Value.(*sessionState).lastUsed) > sessionLife; el = s.order.Front() {
 		s.removeLocked(el)
 	}
 	for s.order.Len() >= maxSessions {
@@ -149,10 +148,4 @@ func (s *SkillSessions) addLocked(key string) *sessionState {
 func (s *SkillSessions) removeLocked(el *list.Element) {
 	delete(s.byKey, el.Value.(*sessionState).key)
 	s.order.Remove(el)
-}
-
-// InjectedKey names one skill in the per-session table, split by which router
-// matched it, as the reference does.
-func InjectedKey(router, id string) string {
-	return strings.TrimSpace(router) + "-" + id
 }

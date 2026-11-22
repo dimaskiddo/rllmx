@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -15,6 +14,7 @@ import (
 	"regexp"
 	"strings"
 
+	"rllmx/app/platform/file"
 	"rllmx/app/platform/text"
 )
 
@@ -22,11 +22,13 @@ import (
 // the loader or the request path allocate without limit.
 const (
 	maxManifest = 32 << 10
-	maxPrompt   = 64 << 10
-	maxName     = 128
-	maxDesc     = 4 << 10
-	maxTerms    = 100
-	maxTermLen  = 128
+	// MaxFolderFile bounds the manifest and the rules file a folder import copies.
+	MaxFolderFile = maxManifest
+	maxPrompt     = 64 << 10
+	maxName       = 128
+	maxDesc       = 4 << 10
+	maxTerms      = 100
+	maxTermLen    = 128
 	// DefaultThreshold is the score a routable skill must reach when it names
 	// no threshold of its own.
 	DefaultThreshold = 0.35
@@ -34,8 +36,9 @@ const (
 
 var (
 	reID = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
-	// hooks are the row types a manifest may name. Only system-prompt runs in
-	// this step; the rest load so a manifest can be inspected, never dispatched.
+	// hooks are the row types a manifest may name. The router runs system-prompt
+	// and the two rule stages; the others load so a manifest can be inspected, and
+	// are never dispatched.
 	hooks = map[string]bool{
 		"system-prompt": true, "install-cli": true, "pre-route": true, "pre-request": true, "post-response": true,
 	}
@@ -137,10 +140,16 @@ func Validate(m Manifest) []string {
 	return problems
 }
 
-// LoadDir reads one skill folder on disk.
+// LoadDir reads one skill folder on disk. The folder is opened as a root, so a
+// link inside it that points outside cannot make a prompt out of another file.
 func LoadDir(dir string) (Manifest, string, error) {
 	clean := filepath.Clean(dir)
-	m, prompt, _, err := loadFS(os.DirFS(clean), ".", filepath.Base(clean))
+	root, err := os.OpenRoot(clean)
+	if err != nil {
+		return Manifest{}, "", err
+	}
+	defer root.Close()
+	m, prompt, _, err := loadFS(root.FS(), ".", filepath.Base(clean))
 	return m, prompt, err
 }
 
@@ -209,7 +218,7 @@ func readPrompt(fsys fs.FS, dir string) (string, error) {
 	return "", fmt.Errorf("no prompt.txt or prompt.md in %s", dir)
 }
 
-// unsupported names what the folder carried that this step will never run.
+// unsupported names what the folder carried that this router never runs.
 func unsupported(fsys fs.FS, dir string, w wire) []string {
 	var out []string
 	for _, c := range []struct{ name, cmd string }{
@@ -235,12 +244,9 @@ func readCapped(fsys fs.FS, name string, max int64) ([]byte, error) {
 		return nil, err
 	}
 	defer f.Close()
-	b, err := io.ReadAll(io.LimitReader(f, max+1))
-	if err != nil {
-		return nil, err
-	}
-	if int64(len(b)) > max {
+	b, err := file.ReadCapped(f, max)
+	if errors.Is(err, file.ErrTooLarge) {
 		return nil, fmt.Errorf("%s is larger than %d bytes", path.Base(name), max)
 	}
-	return b, nil
+	return b, err
 }

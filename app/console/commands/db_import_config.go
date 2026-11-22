@@ -55,11 +55,6 @@ func (c *DBImportConfig) Handle(ctx console.Context) error {
 	return c.R.withLock(cfg.DataDir, func() error {
 		cleanup := takeWorkDir(cfg.DataDir)
 		defer cleanup()
-		if from := strings.TrimSpace(ctx.Option("skills-from")); from != "" {
-			if err := c.copySkills(ctx, cfg, from); err != nil {
-				return err
-			}
-		}
 		plan, err := c.plan(ctx, fc, src, cfg.DataDir)
 		if err != nil {
 			return err
@@ -68,9 +63,14 @@ func (c *DBImportConfig) Handle(ctx console.Context) error {
 	})
 }
 
-// copySkills copies the folders named by --skills-from. A remote source needs
-// the operator's allowlist, which is read from an existing database.
-func (c *DBImportConfig) copySkills(ctx console.Context, cfg *settings.Store, src string) error {
+// copySkills copies the folders named by --skills-from, after the operator has
+// agreed to the import, or lists them on a dry run. A remote source needs the
+// operator's allowlist, which is read from an existing database.
+func (c *DBImportConfig) copySkills(ctx console.Context, cfg *settings.Store) error {
+	src := strings.TrimSpace(ctx.Option("skills-from"))
+	if src == "" {
+		return nil
+	}
 	var sources []string
 	if isRemote(src) {
 		h, err := c.R.Open(ctx, data.ModeRead)
@@ -110,10 +110,16 @@ func (c *DBImportConfig) run(ctx console.Context, fc Facades, plan *importer.Pla
 		if err := c.checkDestination(ctx, fc, cfg); err != nil {
 			return err
 		}
+		if err := c.copySkills(ctx, cfg); err != nil {
+			return err
+		}
 		ctx.Line("dry run: nothing was written")
 		return nil
 	}
 	if err := c.R.confirm(ctx, "import-config", "Import this into the destination database? [y/N]"); err != nil {
+		return err
+	}
+	if err := c.copySkills(ctx, cfg); err != nil {
 		return err
 	}
 	h, err := c.R.Open(ctx, data.ModeWrite)

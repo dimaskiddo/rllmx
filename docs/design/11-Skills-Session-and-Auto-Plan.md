@@ -43,7 +43,9 @@ Matched skills are not stored with the usage row (metadata only).
 
 Two entry points, both admin actions: `rllmx artisan skills:sync --source <folder|https-url> [--tag main] [--force]` and `POST /api/skills/sync`. The route accepts only an https source on the `skillSources` allowlist; a local folder is the command line's business. Never at start-up, from a client request or from a skill's content.
 
-A remote source is cloned through `app/git`; when git is missing or refuses, the GitHub tarball is fetched over the guarded client. The clone is bounded at 60 s and 64 MiB, checked while it runs (divergence 403). One sync runs at a time; the route answers 503 when one is in flight.
+A remote source is cloned through `app/git`; when git is missing or refuses, the GitHub tarball is fetched over the guarded client. The clone is bounded at 60 s and 64 MiB, checked while it runs (divergence 403), is made beside the skills folder, and follows no redirect.
+
+A skill folder is read through a root, so a link out of it is refused (divergence 420), and a catalog skill never replaces another of the same id (divergence 423). One sync runs at a time; the route answers 503 when one is in flight.
 
 The sync reads only `SKILL.md` text: YAML frontmatter with `name` and `description`, then the body. It writes our own `manifest.json`, `prompt.md` and `_index.json` into `DATA_DIR/skills/ecc-imported/<id>/`. A destination whose manifest no longer says `source: ecc` belongs to the operator and is skipped unless `--force`. The source is operator-named; no catalog is bundled or hardcoded (divergence 402).
 
@@ -154,7 +156,7 @@ A verdict within 0.25 of the threshold, with smart classify on, asks one member 
 
 The answer is cut at 32 KiB and inserted as one system turn before the last user turn; the same plan is never inserted twice. A combo member re-reads the client body, so the plan is put back into every member.
 
-**The code switch** names the configured combo and resolves it like any client-named model: a restricted key must be allowed its final name. A key that may not call the planning combo is not planned for, rather than refused for a model it never named.
+**The code switch** names the configured combo. A restricted key must be allowed both the planning combo and the code combo; a key that is not allowed either is not planned for, and its request runs as it named it, rather than paying for a plan and being refused a model it never named.
 
 A request whose plan was injected is not read from or stored in the response cache.
 
@@ -227,8 +229,14 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 413 | The smart classifier asks the planning combo's first member | The reference pins `gpt-4o-mini`; on a router with no such connection its second tier fails open every time, silently spending nothing and classifying nothing |
 | 414 | The plan call is hermetic: an OpenAI-format body, no tools, no rules, no skills, no second plan, cancelled when its timeout expires | The reference copies the client body with its tools and leaves a timed-out plan request running; a tool-calling model would answer the planner with a tool call instead of a plan |
 | 415 | A request whose plan was injected is neither read from nor stored in the response cache | The key hashes the client's body, which cannot see a plan written afterwards; a cached answer would stand in for a planned one (trade-off) |
-| 416 | The code-combo switch is checked against the caller's model list like any named target | The reference renames the model after its access check, so a restricted key can be moved onto a combo it may not call |
+| 416 | A restricted key that may not call the planning combo or the code combo is not planned for, and its request runs as it named it | The reference renames the model after its access check, so a restricted key can be moved onto a combo it may not call; refusing after the plan call is paid for would charge the key for a model it never named |
 | 417 | No `/api/auto-plan/settings`; the nine keys live in `/api/settings` | The reference's own dashboard never calls that route and patches `/api/settings` directly, and one settings row is one place to validate and read |
+| 419 | A manifest field's `legacy_key` may not name a credential, and a stored value under one is never rendered | The reference reads any settings key into a prompt, so a skill folder could send the dashboard hash or the SSO secret upstream |
+| 420 | A skill folder is read through a root: a link to a file outside it is refused | A cloned or downloaded folder is not trusted, and a link to `jwt-secret` would become a prompt every request carries |
+| 421 | `legacy_enabled_key` is read as the whole key the manifest names | The reference's reader appends its own suffix, so the legacy key could not be found |
+| 422 | A skill is recorded in the conversation when the turn is answered, not when its body is built | A failed turn that the client retries would otherwise get a reminder for a prompt no model read |
+| 423 | The catalog folder fills only ids nothing else holds | The reference lets a later folder replace an earlier one by listing order, so an import could replace a skill the operator wrote |
+| 424 | Every internal call (the plan, its question and the smart router's) carries every bypass switch and no session id | A call this router makes for itself must not run a skill, a saver or a rule, or mark the conversation |
 
 ---
 
@@ -248,6 +256,10 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | The reference's `dispatchHook` imports `hook.js` with no sandbox and is never called | Rules are data; nothing in a skill folder runs (design doc 22) |
 | The reference's repeat-turn reminder keyed on the client's session id alone | The key includes the caller, so one key never reads another's state (divergence 409) |
 | The reference's classifier pins `gpt-4o-mini`, a model the router may not serve | The second tier asks a member of the planning combo, so it spends a call the operator already configured (divergence 413) |
-| The reference's code-combo switch runs after its key check | The final model name is checked, so a restricted key is never moved to a combo it may not call (divergence 416) |
+| The reference's code-combo switch runs after its key check | A key that may not call the code combo is not planned for, so it is never moved onto one and never charged for a plan it cannot use (divergence 416) |
+| The 3.5 audit found the Studio wrote to the data directory and not the skills folder, so no skill could be created through the dashboard | one `skillsDir()` for the registry and the Studio |
+| `legacy_enabled_key` never matched: the reader added `Enabled` to the whole key | `Readers` builds both readers in one place (divergence 421) |
+| A skill folder could link `prompt.txt` to a file outside it, and a `legacy_key` could name a credential | the folder is read through a root and a credential key is refused (divergences 419, 420) |
+| The smart router's question ran skills and savers and marked the session, so the real request got a reminder | every internal call carries every bypass switch and no session id (divergence 424) |
 | The reference's plan call keeps the client's tools, and `Promise.race` leaves the timed-out request running | The internal call carries no tools and is cancelled by its context (divergence 414) |
 | The reference's `stripPlanMarkersForClient` is imported and never called, so `autoPlanShowInResponse` is decorative | The flag is stored and answered, and the design says plainly that it changes nothing: the plan never travels in the answer |

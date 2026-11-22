@@ -10,6 +10,8 @@ import (
 	"github.com/tidwall/gjson"
 
 	"rllmx/app/access/identity"
+	"rllmx/app/gateway/plan"
+	"rllmx/app/gateway/skill"
 	"rllmx/app/llm/stream"
 	"rllmx/app/llm/upstream"
 	"rllmx/app/store/repository"
@@ -439,5 +441,23 @@ func TestTheClientToolIsPartOfTheCacheKey(t *testing.T) {
 	}
 	if out, _ := r.send(b); out.Header.Get(CacheHeader) != "miss" {
 		t.Fatalf("another client shared the entry: %v", out.Header)
+	}
+}
+
+func TestEveryBypassSwitchSurvivesPickHeaders(t *testing.T) {
+	in := http.Header{}
+	names := []string{saverBypassHeader, skill.BypassLocal, skill.BypassECC, plan.BypassHeader}
+	for _, n := range names {
+		in.Set(n, "off")
+	}
+	in.Set("Cookie", "session=1")
+	got := PickHeaders(in)
+	for _, n := range names {
+		if got.Get(n) != "off" {
+			t.Errorf("%s was dropped, so the client's bypass never reaches the pipeline", n)
+		}
+	}
+	if got.Get("Cookie") != "" {
+		t.Error("a header the pipeline does not read was kept")
 	}
 }

@@ -5,7 +5,6 @@ import (
 	"crypto/rsa"
 	"errors"
 	"net/http"
-	"path/filepath"
 
 	"github.com/goravel/framework/contracts/foundation"
 
@@ -14,7 +13,6 @@ import (
 	"rllmx/app/gateway/pipeline"
 	"rllmx/app/gateway/prefetch"
 	"rllmx/app/gateway/saver"
-	"rllmx/app/gateway/skill"
 	"rllmx/app/llm/catalog"
 	"rllmx/app/llm/executor"
 	"rllmx/app/llm/executor/mux"
@@ -105,7 +103,7 @@ func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.P
 		ResponseCache: responseCache(app, store),
 		Saver:         saverClient(h),
 		SaverURL:      saverURL(h),
-		Skills:        skill.NewRegistry(filepath.Join(DataOf(app).Settings.DataDir, "skills"), skill.Builtin()),
+		Skills:        h.Skills,
 		SkillSessions: conversation.NewSkillSessions(nil),
 		Signatures:    signatureCache(app),
 		Replay:        signatureCache(app),

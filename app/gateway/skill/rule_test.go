@@ -157,11 +157,11 @@ func TestMatchRulesCutsTheMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	long := strings.Repeat("a", MatchMessage) + "z"
+	long := strings.Repeat("a", matchMessage) + "z"
 	if got := MatchRules(rules, "m", long, http.Header{}); !got.Empty() {
 		t.Fatal("the tail past the cap matched")
 	}
-	if got := MatchRules(rules, "m", strings.Repeat("a", MatchMessage-1)+"z", http.Header{}); len(got.IDs) != 1 {
+	if got := MatchRules(rules, "m", strings.Repeat("a", matchMessage-1)+"z", http.Header{}); len(got.IDs) != 1 {
 		t.Fatal("a message inside the cap did not match")
 	}
 }

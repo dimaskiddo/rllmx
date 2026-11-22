@@ -33,7 +33,7 @@ type SkillsSync struct{ R *DatabaseRuntime }
 func (c *SkillsSync) Signature() string { return "skills:sync" }
 
 func (c *SkillsSync) Description() string {
-	return "Import Agent Skills folders into DATA_DIR/skills/ecc-imported"
+	return "Import Agent Skills folders into DATA_DIR/skills/" + skill.CatalogDir
 }
 
 func (c *SkillsSync) Extend() command.Extend {
@@ -68,7 +68,7 @@ func (c *SkillsSync) Handle(ctx console.Context) error {
 		return err
 	}
 	defer cleanup()
-	res, err := skill.SyncECC(ctx, dir, filepath.Join(h.DataDir, "skills", "ecc-imported"), ctx.OptionBool("force"))
+	res, err := skill.SyncECC(ctx, dir, filepath.Join(h.DataDir, "skills", skill.CatalogDir), ctx.OptionBool("force"))
 	if err != nil {
 		return err
 	}
@@ -95,7 +95,7 @@ func catalogSource(ctx context.Context, dataDir, src, ref string, sources []stri
 		}
 		return src, func() {}, nil
 	}
-	cfg := git.Config{Parent: filepath.Join(dataDir, "skills"), Sources: sources}
+	cfg := git.Config{Parent: skill.FetchDir(dataDir), Sources: sources}
 	client := network.NewClient(network.Options{ConnectTimeout: git.Timeout, BodyCap: git.MaxSize})
 	return git.NewGate().Fetch(ctx, cfg, client, src, ref)
 }
@@ -169,14 +169,41 @@ func findSkillDirs(root string) []string {
 	return out
 }
 
+// copySkill writes the validated folder as plain files. It reads the manifest
+// and the rules through a root, so a link in a downloaded folder cannot make
+// either one another file of this machine.
 func copySkill(src, dest string, m skill.Manifest, prompt string) error {
-	raw, err := os.ReadFile(filepath.Join(src, "manifest.json"))
+	root, err := os.OpenRoot(src)
 	if err != nil {
 		return err
 	}
+	defer root.Close()
 	target := filepath.Join(dest, m.ID)
-	if err := file.WritePrivate(target, "manifest.json", raw); err != nil {
-		return err
+	for _, name := range []string{"manifest.json", "rules.json"} {
+		raw, err := readFromRoot(root, name)
+		if errors.Is(err, fs.ErrNotExist) && name == "rules.json" {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if err := file.WritePrivate(target, name, raw); err != nil {
+			return err
+		}
+	}
+	if prompt == "" {
+		return nil
 	}
 	return file.WritePrivate(target, "prompt.txt", []byte(prompt))
+}
+
+// readFromRoot reads one small file of a skill folder under the folder's own
+// byte bound.
+func readFromRoot(root *os.Root, name string) ([]byte, error) {
+	f, err := root.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return file.ReadCapped(f, skill.MaxFolderFile)
 }

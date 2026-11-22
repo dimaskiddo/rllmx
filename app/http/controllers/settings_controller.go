@@ -13,6 +13,9 @@ import (
 	"github.com/tidwall/gjson"
 
 	"rllmx/app/access/auth"
+	"rllmx/app/gateway/combo"
+	"rllmx/app/gateway/plan"
+	"rllmx/app/gateway/saver/headroom"
 	"rllmx/app/gateway/skill"
 	"rllmx/app/platform/text"
 	"rllmx/app/store/document"
@@ -173,61 +176,62 @@ func (c *SettingsController) Update(ctx contractshttp.Context) contractshttp.Res
 
 // view projects the stored settings through the allow list.
 func (c *SettingsController) view(d document.Doc) settingsView {
+	auto := plan.Read(d)
 	v := settingsView{
-		RequireLogin:                 rawBool(d, "requireLogin", true),
-		RequireAPIKey:                rawBool(d, "requireApiKey", true),
-		AuthMode:                     rawString(d, "authMode", "password"),
-		SSOType:                      rawString(d, "ssoType", "oidc"),
-		OIDCIssuerURL:                rawString(d, "oidcIssuerUrl", ""),
-		OIDCClientID:                 rawString(d, "oidcClientId", ""),
-		OIDCScopes:                   rawString(d, "oidcScopes", "openid profile email"),
-		OIDCLoginLabel:               rawString(d, "oidcLoginLabel", "Sign in with OIDC"),
-		SAMLEntryPoint:               rawString(d, "samlEntryPoint", ""),
-		SAMLIssuer:                   rawString(d, "samlIssuer", ""),
-		SAMLCert:                     rawString(d, "samlCert", ""),
-		SAMLIdPEntityID:              rawString(d, "samlIdpEntityId", ""),
-		SAMLLoginLabel:               rawString(d, "samlLoginLabel", "Sign in with SAML SSO"),
-		SAMLAttributeEmail:           rawString(d, "samlAttributeEmail", "email"),
-		SAMLAttributeName:            rawString(d, "samlAttributeName", "name"),
-		ComboStrategy:                rawString(d, "comboStrategy", "fallback"),
+		RequireLogin:                 d.Bool("requireLogin", true),
+		RequireAPIKey:                d.Bool("requireApiKey", true),
+		AuthMode:                     d.Str("authMode", "password"),
+		SSOType:                      d.Str("ssoType", "oidc"),
+		OIDCIssuerURL:                d.Str("oidcIssuerUrl", ""),
+		OIDCClientID:                 d.Str("oidcClientId", ""),
+		OIDCScopes:                   d.Str("oidcScopes", "openid profile email"),
+		OIDCLoginLabel:               d.Str("oidcLoginLabel", "Sign in with OIDC"),
+		SAMLEntryPoint:               d.Str("samlEntryPoint", ""),
+		SAMLIssuer:                   d.Str("samlIssuer", ""),
+		SAMLCert:                     d.Str("samlCert", ""),
+		SAMLIdPEntityID:              d.Str("samlIdpEntityId", ""),
+		SAMLLoginLabel:               d.Str("samlLoginLabel", "Sign in with SAML SSO"),
+		SAMLAttributeEmail:           d.Str("samlAttributeEmail", "email"),
+		SAMLAttributeName:            d.Str("samlAttributeName", "name"),
+		ComboStrategy:                d.Str("comboStrategy", combo.DefaultStrategy),
 		ComboStrategies:              rawObject(d, "comboStrategies", "{}"),
-		ComboStickyRoundRobinLimit:   rawInt(d, "comboStickyRoundRobinLimit", 1),
-		StickyRoundRobinLimit:        rawInt(d, "stickyRoundRobinLimit", 3),
+		ComboStickyRoundRobinLimit:   d.Int("comboStickyRoundRobinLimit", 1),
+		StickyRoundRobinLimit:        d.Int("stickyRoundRobinLimit", 3),
 		ProviderStrategies:           rawObject(d, "providerStrategies", "{}"),
 		CapacityAdapter:              rawObject(d, "capacityAdapter", "{}"),
 		ResponseCache:                rawObject(d, "responseCache", "{}"),
 		ClaudeAutoPing:               rawPing(d, "claudeAutoPing"),
 		CodexAutoPing:                rawPing(d, "codexAutoPing"),
-		RTKEnabled:                   rawBool(d, "rtkEnabled", true),
-		HeadroomEnabled:              rawBool(d, "headroomEnabled", false),
-		HeadroomURL:                  rawString(d, "headroomUrl", ""),
-		HeadroomCompressUserMessage:  rawBool(d, "headroomCompressUserMessages", false),
-		HeadroomTimeoutMS:            rawInt(d, "headroomTimeoutMs", 3000),
-		CavemanEnabled:               rawBool(d, "cavemanEnabled", false),
-		CavemanLevel:                 rawString(d, "cavemanLevel", "full"),
-		CavemanRoutingMode:           rawString(d, "cavemanRoutingMode", "always"),
-		PonytailEnabled:              rawBool(d, "ponytailEnabled", false),
-		PonytailLevel:                rawString(d, "ponytailLevel", "full"),
-		PonytailRoutingMode:          rawString(d, "ponytailRoutingMode", "smart"),
-		CustomPromptEnabled:          rawBool(d, "customPromptEnabled", false),
-		CustomPrompt:                 rawString(d, "customPrompt", ""),
-		AutoPlanEnabled:              rawBool(d, "autoPlanEnabled", false),
-		AutoPlanMode:                 rawString(d, "autoPlanMode", "auto"),
-		AutoPlanComboID:              rawString(d, "autoPlanComboId", ""),
-		AutoCodeComboID:              rawString(d, "autoCodeComboId", ""),
-		AutoPlanThreshold:            rawInt(d, "autoPlanComplexityThreshold", 6),
-		AutoPlanSmartClassify:        rawBool(d, "autoPlanSmartClassify", false),
-		AutoPlanMaxTokens:            rawInt(d, "autoPlanMaxTokens", 800),
-		AutoPlanTimeoutMS:            rawInt(d, "autoPlanTimeoutMs", 15000),
-		AutoPlanShowInResponse:       rawBool(d, "autoPlanShowInResponse", false),
+		RTKEnabled:                   d.Bool("rtkEnabled", true),
+		HeadroomEnabled:              d.Bool("headroomEnabled", false),
+		HeadroomURL:                  d.Str("headroomUrl", ""),
+		HeadroomCompressUserMessage:  d.Bool("headroomCompressUserMessages", false),
+		HeadroomTimeoutMS:            d.Int("headroomTimeoutMs", headroom.DefaultTimeoutMS),
+		CavemanEnabled:               d.Bool("cavemanEnabled", false),
+		CavemanLevel:                 d.Str("cavemanLevel", "full"),
+		CavemanRoutingMode:           d.Str("cavemanRoutingMode", "always"),
+		PonytailEnabled:              d.Bool("ponytailEnabled", false),
+		PonytailLevel:                d.Str("ponytailLevel", "full"),
+		PonytailRoutingMode:          d.Str("ponytailRoutingMode", "smart"),
+		CustomPromptEnabled:          d.Bool("customPromptEnabled", false),
+		CustomPrompt:                 d.Str("customPrompt", ""),
+		AutoPlanEnabled:              auto.Enabled,
+		AutoPlanMode:                 auto.Mode,
+		AutoPlanComboID:              auto.PlanCombo,
+		AutoCodeComboID:              auto.CodeCombo,
+		AutoPlanThreshold:            auto.Threshold,
+		AutoPlanSmartClassify:        auto.SmartClassify,
+		AutoPlanMaxTokens:            auto.MaxTokens,
+		AutoPlanTimeoutMS:            auto.TimeoutMS,
+		AutoPlanShowInResponse:       d.Bool("autoPlanShowInResponse", false),
 		SkillSources:                 rawArray(d, "skillSources", "[]"),
-		ECCAutoSkillRouterEnabled:    rawBool(d, "ecc_auto_skill_routerEnabled", false),
-		ECCAutoSkillRouterConfidence: rawFloat(d, "ecc_auto_skill_routerConfidence", 0.35),
-		ECCAutoSkillRouterMaxSkills:  rawInt(d, "ecc_auto_skill_routerMaxSkills", 1),
+		ECCAutoSkillRouterEnabled:    d.Bool("ecc_auto_skill_routerEnabled", false),
+		ECCAutoSkillRouterConfidence: d.Float("ecc_auto_skill_routerConfidence", skill.DefaultThreshold),
+		ECCAutoSkillRouterMaxSkills:  d.Int("ecc_auto_skill_routerMaxSkills", 1),
 	}
-	v.HasPassword = v.HasPassword || rawString(d, "password", "") != ""
+	v.HasPassword = v.HasPassword || d.Str("password", "") != ""
 	if c.Auth != nil && c.Auth.OIDCUsable != nil {
-		v.OIDCConfigured = c.Auth.OIDCUsable(v.OIDCIssuerURL, v.OIDCClientID, rawString(d, "oidcClientSecret", ""))
+		v.OIDCConfigured = c.Auth.OIDCUsable(v.OIDCIssuerURL, v.OIDCClientID, d.Str("oidcClientSecret", ""))
 	}
 	return v
 }
@@ -238,27 +242,6 @@ func rawOf(d document.Doc, key string) gjson.Result {
 		return gjson.Result{}
 	}
 	return gjson.Parse(raw)
-}
-
-func rawString(d document.Doc, key, def string) string {
-	if v := rawOf(d, key); v.Type == gjson.String {
-		return v.String()
-	}
-	return def
-}
-
-func rawBool(d document.Doc, key string, def bool) bool {
-	if v := rawOf(d, key); v.Type == gjson.True || v.Type == gjson.False {
-		return v.Bool()
-	}
-	return def
-}
-
-func rawInt(d document.Doc, key string, def int) int {
-	if v := rawOf(d, key); v.Type == gjson.Number {
-		return int(v.Int())
-	}
-	return def
 }
 
 func rawObject(d document.Doc, key, def string) json.RawMessage {
@@ -273,13 +256,6 @@ func rawArray(d document.Doc, key, def string) json.RawMessage {
 		return json.RawMessage(v.Raw)
 	}
 	return json.RawMessage(def)
-}
-
-func rawFloat(d document.Doc, key string, def float64) float64 {
-	if v := rawOf(d, key); v.Type == gjson.Number {
-		return v.Float()
-	}
-	return def
 }
 
 // settingRule validates one writable key and returns the JSON to store, or a
@@ -305,7 +281,7 @@ var settingsRules = map[string]settingRule{
 	"samlLoginLabel":                  textRule(100),
 	"samlAttributeEmail":              textRule(128),
 	"samlAttributeName":               textRule(128),
-	"comboStrategy":                   enumRule("fallback", "round-robin", "smart", "fusion"),
+	"comboStrategy":                   enumRule(combo.StrategyFallback, combo.StrategyRoundRobin, combo.StrategySmart, combo.StrategyFusion),
 	"comboStickyRoundRobinLimit":      intRule(1, 1000),
 	"stickyRoundRobinLimit":           intRule(1, 100),
 	"comboStrategies":                 comboStrategiesRule,
@@ -316,7 +292,7 @@ var settingsRules = map[string]settingRule{
 	"headroomEnabled":                 boolRule,
 	"headroomUrl":                     urlRule("http", 2048),
 	"headroomCompressUserMessages":    boolRule,
-	"headroomTimeoutMs":               intRule(100, 60000),
+	"headroomTimeoutMs":               intRule(headroom.MinTimeoutMS, headroom.MaxTimeoutMS),
 	"cavemanEnabled":                  boolRule,
 	"cavemanLevel":                    enumRule("lite", "full", "ultra", "wenyan-lite", "wenyan", "wenyan-ultra"),
 	"cavemanRoutingMode":              enumRule("smart", "always"),
@@ -329,10 +305,10 @@ var settingsRules = map[string]settingRule{
 	"autoPlanMode":                    enumRule("auto", "manual"),
 	"autoPlanComboId":                 textRule(128),
 	"autoCodeComboId":                 textRule(128),
-	"autoPlanComplexityThreshold":     intRule(1, 10),
+	"autoPlanComplexityThreshold":     intRule(plan.MinThreshold, plan.MaxThreshold),
 	"autoPlanSmartClassify":           boolRule,
-	"autoPlanMaxTokens":               intRule(200, 4000),
-	"autoPlanTimeoutMs":               intRule(1000, 60000),
+	"autoPlanMaxTokens":               intRule(plan.MinMaxTokens, plan.MaxMaxTokens),
+	"autoPlanTimeoutMs":               intRule(plan.MinTimeoutMS, plan.MaxTimeoutMS),
 	"autoPlanShowInResponse":          boolRule,
 	"skillSources":                    urlListRule("https", 10, 2048),
 	"ecc_auto_skill_routerEnabled":    boolRule,
@@ -343,7 +319,7 @@ var settingsRules = map[string]settingRule{
 // reSkillKey matches the per-skill keys the dashboard writes for an installed
 // skill: <id>Enabled and <id>RoutingMode, with the id bounded to the manifest's
 // alphabet. Without this an imported skill's own switch could not be saved.
-var reSkillKey = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}(Enabled|RoutingMode)$`)
+var reSkillKey = regexp.MustCompile(`^([a-z0-9][a-z0-9_-]{0,63})(Enabled|RoutingMode)$`)
 
 // ruleFor answers the rule for a key: the fixed table, then the per-skill shape,
 // then a config_schema field of an installed skill.
@@ -351,15 +327,24 @@ func (c *SettingsController) ruleFor(key string) (settingRule, bool) {
 	if r, ok := settingsRules[key]; ok {
 		return r, true
 	}
-	if reSkillKey.MatchString(key) {
-		if strings.HasSuffix(key, "Enabled") {
-			return boolRule, true
+	// Only a skill this build holds may have a switch, so the settings row cannot
+	// be grown with a key nothing reads.
+	if m := reSkillKey.FindStringSubmatch(key); m != nil && c.Skills != nil {
+		if _, installed := c.Skills.Find(m[1]); installed {
+			if m[2] == "Enabled" {
+				return boolRule, true
+			}
+			return enumRule("smart", "always"), true
 		}
-		return enumRule("smart", "always"), true
 	}
 	if c.Skills != nil {
 		if f, ok := c.Skills.FieldFor(key); ok {
 			return skillFieldRule(f), true
+		}
+		for _, m := range c.Skills.List() {
+			if m.LegacyEnabledKey == key {
+				return boolRule, true
+			}
 		}
 	}
 	return nil, false
@@ -636,7 +621,7 @@ func comboStrategiesRule(raw json.RawMessage) (string, string) {
 	}
 	validStrategy := func(v gjson.Result) bool {
 		switch v.String() {
-		case "fallback", "round-robin", "smart", "fusion":
+		case combo.StrategyFallback, combo.StrategyRoundRobin, combo.StrategySmart, combo.StrategyFusion:
 			return true
 		}
 		return false

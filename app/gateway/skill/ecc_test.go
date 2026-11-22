@@ -48,7 +48,7 @@ func TestSyncImportsTheCatalog(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dest, "_index.json")); err != nil {
 		t.Fatalf("index: %v", err)
 	}
-	if got := NewRegistry(dest, nil).ECCIndex().Score("dependency graph of the modules", 0.2); len(got) == 0 || got[0].ID != "graphify" {
+	if got := NewRegistry(dest, nil).eccIndex().Score("dependency graph of the modules", 0.2); len(got) == 0 || got[0].ID != "graphify" {
 		t.Fatalf("routing after sync %+v", got)
 	}
 }
@@ -100,7 +100,7 @@ func TestTheCatalogFolderLoadsUnderTheSkillsFolder(t *testing.T) {
 	if !slices.Equal(ids, []string{"graphify", "lint-commit"}) {
 		t.Fatalf("list %v", ids)
 	}
-	if got := r.ECCIndex().Score("dependency graph of the modules", 0.2); len(got) == 0 || got[0].ID != "graphify" {
+	if got := r.eccIndex().Score("dependency graph of the modules", 0.2); len(got) == 0 || got[0].ID != "graphify" {
 		t.Fatalf("routing %+v", got)
 	}
 }
@@ -168,4 +168,89 @@ func TestSlug(t *testing.T) {
 			t.Errorf("%q: %q, want %q", raw, got, want)
 		}
 	}
+}
+
+func TestSyncSkipsASkillFileThatIsALink(t *testing.T) {
+	outside := filepath.Join(t.TempDir(), "notes.md")
+	if err := os.WriteFile(outside, []byte("---\nname: Leak\ndescription: read from outside\n---\n\nsigning secret\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	src := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(src, "leak"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(src, "leak", "SKILL.md")); err != nil {
+		t.Skipf("no symlinks here: %v", err)
+	}
+	dest := filepath.Join(t.TempDir(), "ecc-imported")
+	res, err := SyncECC(context.Background(), src, dest, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Updated != 0 {
+		t.Fatalf("a linked SKILL.md was imported: %+v", res)
+	}
+}
+
+func TestSyncRefusesASkillFileOverTheBound(t *testing.T) {
+	src := t.TempDir()
+	writeFiles(t, src, map[string]string{
+		"big/SKILL.md": "---\nname: Big\ndescription: too long\n---\n\n" + strings.Repeat("x", maxCatalogFile),
+	})
+	res, err := SyncECC(context.Background(), src, filepath.Join(t.TempDir(), "d"), false)
+	if err != nil || res.Updated != 0 {
+		t.Fatalf("an oversized SKILL.md was imported: %+v err %v", res, err)
+	}
+}
+
+func TestSyncImportsAFileOnceNotOncePerLink(t *testing.T) {
+	src := t.TempDir()
+	writeFiles(t, src, map[string]string{
+		"real/SKILL.md": "---\nname: Real\ndescription: the one file\n---\n\nBody text here.\n",
+	})
+	if err := os.MkdirAll(filepath.Join(src, "alias"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../real/SKILL.md", filepath.Join(src, "alias", "SKILL.md")); err != nil {
+		t.Skipf("no symlinks here: %v", err)
+	}
+	res, err := SyncECC(context.Background(), src, filepath.Join(t.TempDir(), "d"), false)
+	if err != nil || res.Updated != 1 || !slices.Equal(res.Skills, []string{"real"}) {
+		t.Fatalf("a linked SKILL.md became a second skill: %+v err %v", res, err)
+	}
+}
+
+func FuzzReadSKILL(f *testing.F) {
+	f.Add("---\nname: A\ndescription: d\n---\n\nbody\n")
+	f.Add("no frontmatter")
+	f.Add("---\nname: \xff\xfe\n---\n")
+	f.Add("---\n---\n")
+	f.Add(strings.Repeat("---\n", 200))
+	f.Fuzz(func(t *testing.T, body string) {
+		if len(body) > maxCatalogFile {
+			return
+		}
+		dir := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(dir, "x"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "x", "SKILL.md"), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		root, err := os.OpenRoot(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer root.Close()
+		m, prompt, err := readSKILL(root, "x/SKILL.md")
+		if err != nil {
+			return
+		}
+		if !reID.MatchString(m.ID) || strings.TrimSpace(prompt) == "" {
+			t.Fatalf("a skill with id %q and prompt %q was accepted", m.ID, prompt)
+		}
+		if problems := Validate(m); len(problems) != 0 {
+			t.Fatalf("an accepted skill does not validate: %v", problems)
+		}
+	})
 }

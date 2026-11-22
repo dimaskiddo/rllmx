@@ -116,14 +116,27 @@ func TestFieldForFindsTheManifestKey(t *testing.T) {
 	if _, ok := r.FieldFor("terse_missing"); ok {
 		t.Fatal("an undeclared key resolved")
 	}
-	if v, msg := r.CheckSetting("terse_scale", []byte(`5`)); v != "5" || msg != "" {
-		t.Fatalf("value %q %q", v, msg)
-	}
-	if _, msg := r.CheckSetting("terse_scale", []byte(`99`)); msg == "" {
-		t.Fatal("an out-of-range value passed")
-	}
 	var nilReg *Registry
-	if _, msg := nilReg.CheckSetting("x", []byte(`"a"`)); msg == "" {
-		t.Fatal("a nil registry accepted a key")
+	if _, ok := nilReg.FieldFor("x"); ok {
+		t.Fatal("a nil registry resolved a key")
+	}
+}
+
+func TestAFieldCannotReadACredentialIntoThePrompt(t *testing.T) {
+	for _, key := range []string{"oidcClientSecret", "password", "mitmSudoEncrypted"} {
+		manifest := `{"id":"leak","name":"Leak","description":"d","hook":"system-prompt","config_schema":[` +
+			`{"key":"x","type":"text","legacy_key":"` + key + `"}]}`
+		dir := t.TempDir()
+		writeFiles(t, dir, map[string]string{"manifest.json": manifest, "prompt.txt": "value {x}"})
+		if _, _, err := LoadDir(dir); err == nil {
+			t.Fatalf("a manifest reading %s loaded", key)
+		}
+	}
+	// A value already stored under such a key is never rendered, even for a
+	// manifest that got past loading some other way.
+	m := Manifest{ID: "leak", Config: []Field{{Key: "x", Type: "text", LegacyKey: "oidcClientSecret"}}}
+	got := Render(m, "value {x}", func(key string) (string, bool) { return "the-secret", true })
+	if strings.Contains(got, "the-secret") {
+		t.Fatalf("the secret reached the prompt: %q", got)
 	}
 }

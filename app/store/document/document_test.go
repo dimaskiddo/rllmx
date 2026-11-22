@@ -181,3 +181,28 @@ func TestFirstStringSkipsEmptyAndNonStringValues(t *testing.T) {
 		t.Fatalf("%q", got)
 	}
 }
+
+func TestTypedGettersTakeTheDefaultForAMissingOrWronglyTypedValue(t *testing.T) {
+	d := From(`{"s":"x","b":true,"f":false,"n":3,"x":0.5,"str":"no","num":"7","null":null}`)
+	if v := d.Str("s", "d"); v != "x" {
+		t.Errorf("Str %q", v)
+	}
+	if v := d.Str("n", "d"); v != "d" {
+		t.Errorf("a number read as a string: %q", v)
+	}
+	if v := d.Str("missing", "d"); v != "d" {
+		t.Errorf("a missing key: %q", v)
+	}
+	if !d.Bool("b", false) || d.Bool("f", true) {
+		t.Error("Bool did not read both values")
+	}
+	if !d.Bool("str", true) || d.Bool("num", false) || !d.Bool("null", true) || !d.Bool("missing", true) {
+		t.Error("Bool did not take the default for the wrong type")
+	}
+	if d.Int("n", 9) != 3 || d.Int("num", 9) != 9 || d.Int("missing", 9) != 9 {
+		t.Errorf("Int %d %d %d", d.Int("n", 9), d.Int("num", 9), d.Int("missing", 9))
+	}
+	if d.Float("x", 1) != 0.5 || d.Float("n", 1) != 3 || d.Float("str", 1) != 1 || d.Float("missing", 1) != 1 {
+		t.Error("Float")
+	}
+}

@@ -29,9 +29,10 @@ A row naming a package that does not exist yet is a target shape for a later ste
 | Group | Packages |
 |---|---|
 | Built | `repository`, `analytics`, `http`, `http/controllers`, `failure`, `stream`, `cache`, `identity`, `auth`, `sso`, `oidc`, `saml`, `upstream`, `routing`, `account`, `translate`, `executor`, `conversation`, `pipeline`, `combo`, `health`, `probe`, `network`, `settings`, `sealer`, `dialect`, `document`, `file`, `text`, `lock`, `importer`, `redactor` |
-| Built | `saver.Apply` (rewrite the hub request, fails open; `app/gateway/saver`, with the `rtk`, `headroom`, `caveman` and `ponytail` packages and the `prompt` framework under it) |
+| Built | `saver.Apply` (rewrite the hub request, fails open; `app/gateway/saver`, with the `rtk`, `headroom`, `caveman` and `ponytail` packages and the `prompt` topic under it) |
+| Built | `relevance.Tokens`, `relevance.Weigh`, `relevance.Cosine`, `relevance.TriggerBoost`, `translate.Request.LastUserText`, `translate.Request.AppendSystem`, `document.Doc.Str/Bool/Int/Float`, `repository.IsSecretSetting` (the helpers the skill routers, the savers and the settings readers share) |
 | Built | `skill.Registry`, `skill.Apply`, `skill.ClassifyLocal`, `skill.ClassifyECC`, `skill.SyncECC`, `skill.MatchRules`, `skill.Create/Update/Delete`, `conversation.SkillSessions` (`app/gateway/skill`: manifests, both TF-IDF routers, the injector, config fields, declarative rules, the Studio and the catalog sync, all fail open; the session table in `app/gateway/conversation`) |
-| Built | `plan.Read`, `plan.Classify`, `plan.Decide`, `plan.Inject`, `plan.Combos` (`app/gateway/plan`: the auto plan classifier, the architect prompt, the plan turn and the combo choice, no I/O; `pipeline.Input.Internal` marks the router's own calls, and `routing.Resolver.ComboList` is the ordered list the picker reads) |
+| Built | `plan.Read`, `plan.Decide`, `plan.Inject`, `plan.Combos` (`app/gateway/plan`: the auto plan classifier, the architect prompt, the plan turn and the combo choice, no I/O; `pipeline.Input.Internal` marks the router's own calls, and `routing.Resolver.ComboList` is the ordered list the picker reads) |
 | Built | `git.Gate.Clone`, `git.Gate.Download`, `git.Gate.Fetch` (`app/git`: the one process launcher, allowlisted arguments and a minimal environment) |
 | Planned | `health.Tracker` (record outcomes, report breaker state; built, `app/gateway/health`) |
 

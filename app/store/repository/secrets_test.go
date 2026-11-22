@@ -186,3 +186,16 @@ func TestSealedSecretsOfADatabaseSealedByAnotherSecretAreCountedUnopenable(t *te
 		t.Fatalf("sealed values were counted as plain: %d", sp.values())
 	}
 }
+
+func TestIsSecretSettingNamesEveryCredentialKey(t *testing.T) {
+	for _, key := range []string{"oidcClientSecret", "password", "mitmSudoEncrypted"} {
+		if !IsSecretSetting(key) {
+			t.Errorf("%s is a credential and was not named", key)
+		}
+	}
+	for _, key := range []string{"oidcClientId", "headroomUrl", "cavemanLevel", ""} {
+		if IsSecretSetting(key) {
+			t.Errorf("%s is not a credential", key)
+		}
+	}
+}

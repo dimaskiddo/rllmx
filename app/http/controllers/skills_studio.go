@@ -42,7 +42,7 @@ func (c *SkillsController) Get(ctx contractshttp.Context) contractshttp.Response
 // Create answers POST /api/skills: a new custom skill under the skills folder.
 func (c *SkillsController) Create(ctx contractshttp.Context) contractshttp.Response {
 	return c.write(ctx, nethttp.StatusCreated, func(d skill.Draft) error {
-		return skill.Create(c.Dir, d)
+		return skill.Create(c.skillsDir(), d)
 	}, "")
 }
 
@@ -51,7 +51,7 @@ func (c *SkillsController) Create(ctx contractshttp.Context) contractshttp.Respo
 func (c *SkillsController) Update(ctx contractshttp.Context) contractshttp.Response {
 	id := ctx.Request().Route("id")
 	return c.write(ctx, nethttp.StatusOK, func(d skill.Draft) error {
-		return skill.Update(c.Dir, id, d)
+		return skill.Update(c.skillsDir(), id, d)
 	}, id)
 }
 
@@ -60,11 +60,15 @@ func (c *SkillsController) Delete(ctx contractshttp.Context) contractshttp.Respo
 	c.studio.Lock()
 	defer c.studio.Unlock()
 	id := ctx.Request().Route("id")
-	if err := skill.Delete(c.Dir, id); err != nil {
+	err := skill.Delete(c.skillsDir(), id)
+	c.Reg.Invalidate()
+	if err != nil {
 		return studioError(ctx, err)
 	}
 	ctx.Response().Header("Cache-Control", "no-store")
-	return ctx.Response().Json(nethttp.StatusOK, map[string]any{"success": true})
+	return ctx.Response().Json(nethttp.StatusOK, struct {
+		Success bool `json:"success"`
+	}{true})
 }
 
 // write runs one Studio change under the write lock and answers the stored
@@ -80,6 +84,7 @@ func (c *SkillsController) write(ctx contractshttp.Context, status int, apply fu
 	c.studio.Lock()
 	err := apply(d)
 	c.studio.Unlock()
+	c.Reg.Invalidate()
 	if err != nil {
 		return studioError(ctx, err)
 	}
@@ -105,9 +110,9 @@ func (c *SkillsController) studioItem(ctx contractshttp.Context, m skill.Manifes
 	if err != nil {
 		return studioItem{}, nethttp.StatusServiceUnavailable, "Storage is not available"
 	}
-	get := func(id string) skill.Setting { return skill.ReadSetting(doc.GetRaw, id) }
-	enabled, mode := skill.Switch(m, get)
-	rules, err := skill.RulesFile(c.Dir, m.ID)
+	get, legacy := skill.Readers(doc.GetRaw)
+	enabled, mode := skill.Switch(m, get, legacy)
+	rules, err := skill.RulesFile(c.skillsDir(), m.ID)
 	if err != nil {
 		return studioItem{}, nethttp.StatusInternalServerError, "The skill's rules could not be read"
 	}

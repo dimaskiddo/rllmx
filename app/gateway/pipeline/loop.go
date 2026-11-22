@@ -35,12 +35,26 @@ func (c *call) attempted(ctx context.Context, conn repository.Connection) (Outpu
 	return out, fail
 }
 
+// beginAttempt books one attempt on the row. A later attempt of the same model
+// is a move to another account, whatever ends it: a failure that stops the
+// request never reaches the next one. The count is this model's own, so a
+// combo's next member is not one.
+func (c *call) beginAttempt(connID string, movedOn bool) {
+	c.attempt++
+	c.row.Attempt = c.attempt
+	c.row.ConnectionID = connID
+	if movedOn {
+		c.failover()
+	}
+}
+
 // serveFail is serve that also says why it stopped, for a combo that decides
 // whether the next member may answer. A nil fail is a served answer.
 func (c *call) serveFail(ctx context.Context) (Output, *accountFail) {
 	exclude := map[string]bool{}
 	var last *accountFail
 	sawExpired := false
+	tried := 0
 	for {
 		sel, err := c.p.d.Selector.Select(ctx, account.Request{
 			Provider: c.dest.provider, Model: c.dest.model, RequestedModel: c.requested, Exclude: exclude,
@@ -62,10 +76,8 @@ func (c *call) serveFail(ctx context.Context) (Output, *accountFail) {
 				"["+c.dest.provider+"/"+c.dest.model+"] The pinned connection is not available")
 			return out, &accountFail{status: http.StatusServiceUnavailable, class: "no_account"}
 		}
-		c.attempt++
-		c.row.Attempt = c.attempt
-		c.row.ConnectionID = sel.Conn.ID
-
+		tried++
+		c.beginAttempt(sel.Conn.ID, tried > 1)
 		// A model the account's own provider does not list is the client's
 		// mistake, not the account's: it ends the request here, before a send,
 		// so no lock is written and no other account is tried for it.
@@ -76,9 +88,6 @@ func (c *call) serveFail(ctx context.Context) (Output, *accountFail) {
 		if f == nil {
 			return out, nil
 		}
-		// Another account answered the next attempt, so this conversation's later
-		// turns carry the continuity notice.
-		c.failover()
 		if f.expired {
 			exclude[sel.Conn.ID] = true
 			sawExpired = true

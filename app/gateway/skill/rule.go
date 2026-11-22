@@ -21,8 +21,8 @@ const (
 	maxInject    = 4 << 10
 	maxHeaderVal = 1 << 10
 	maxActions   = 8
-	// MatchMessage is how much of the last user message a rule sees.
-	MatchMessage = 64 << 10
+	// matchMessage is how much of the last user message a rule sees.
+	matchMessage = 64 << 10
 )
 
 // A rule's stage is also the hook its manifest must name, so a rule file and the
@@ -49,9 +49,6 @@ type Rule struct {
 	setValue  string
 	hasHeader bool
 }
-
-// Stage is when the rule runs.
-func (r Rule) Stage() string { return r.stage }
 
 // Actions is what a request's matched rules do, in rule order.
 type Actions struct {
@@ -96,15 +93,15 @@ type ruleWire struct {
 // rulesFrom parses and compiles a rules file. hook is the manifest's hook; every
 // rule must name it.
 func rulesFrom(raw []byte, id, hook string) ([]Rule, error) {
-	var doc ruleDoc
-	if err := json.Unmarshal(raw, &doc); err != nil {
+	var file ruleDoc
+	if err := json.Unmarshal(raw, &file); err != nil {
 		return nil, fmt.Errorf("rules.json: %w", err)
 	}
-	if len(doc.Rules) > maxRules {
-		return nil, fmt.Errorf("rules.json holds %d rules, the cap is %d", len(doc.Rules), maxRules)
+	if len(file.Rules) > maxRules {
+		return nil, fmt.Errorf("rules.json holds %d rules, the cap is %d", len(file.Rules), maxRules)
 	}
-	out := make([]Rule, 0, len(doc.Rules))
-	for i, w := range doc.Rules {
+	out := make([]Rule, 0, len(file.Rules))
+	for i, w := range file.Rules {
 		r, err := compileRule(w, id)
 		if err != nil {
 			return nil, fmt.Errorf("rules.json rule %d: %w", i+1, err)
@@ -140,7 +137,7 @@ func compileRule(w ruleWire, id string) (Rule, error) {
 		}
 	}
 	if when.Header != nil {
-		if !MatchHeader(when.Header.Name) {
+		if !matchHeader(when.Header.Name) {
 			return r, fmt.Errorf("header %q is not a request header a rule may read", when.Header.Name)
 		}
 		r.header = http.CanonicalHeaderKey(when.Header.Name)
@@ -213,15 +210,14 @@ func deniedHeader(name string) bool {
 	return upstream.ReservedHeader(name)
 }
 
-// MatchHeader reports a request header a rule may match on. The pipeline copies
+// matchHeader reports a request header a rule may match on. The pipeline copies
 // only these into a request, so a rule can never read a client header the
 // pipeline itself does not keep.
-func MatchHeader(name string) bool {
+func matchHeader(name string) bool {
 	switch strings.ToLower(name) {
 	case "user-agent", "x-app", "x-client", "originator", "anthropic-beta", "openai-intent", "x-initiator",
 		"x-claude-code-session-id", "x-session-id", "session-id", "session_id", "x-amp-thread-id",
-		"x-client-request-id", "x-9router-token-saver", "x-9router-local-skill-router",
-		"x-9router-skill-router":
+		"x-client-request-id", "x-9router-token-saver", BypassLocal, BypassECC:
 		return true
 	}
 	return false
@@ -233,11 +229,8 @@ func (r *Registry) Rules(stage string, enabled func(Manifest) bool) []Rule {
 	if r == nil {
 		return nil
 	}
-	r.refresh()
-	r.mu.Lock()
-	defer r.mu.Unlock()
 	var out []Rule
-	for _, e := range r.entries {
+	for _, e := range r.refresh().entries {
 		if len(e.rules) == 0 || e.m.Hook != stage {
 			continue
 		}
@@ -257,7 +250,7 @@ func MatchRules(rules []Rule, model, message string, h http.Header) Actions {
 	if len(rules) == 0 {
 		return a
 	}
-	message = text.CutBytes(message, MatchMessage)
+	message = text.CutBytes(message, matchMessage)
 	seenHeader := map[string]bool{}
 	seenID := map[string]bool{}
 	for _, r := range rules {

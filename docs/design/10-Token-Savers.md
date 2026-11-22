@@ -32,11 +32,11 @@ Every cap is a package constant: 100 lines per diff hunk and 500 for a whole dif
 
 An answer is applied only when the row count, roles and tool call ids all match, and only for a row whose text is non-empty and shorter. One mismatch discards the whole answer.
 
-The sidecar address is the settings row's `headroomUrl`, then the `SAVER_HEADROOM_URL` configuration value, then `http://localhost:8787`. Each distinct host gets a client built through the outbound guard with that host added to the allow list, so a local sidecar needs no `UPSTREAM_ALLOW_PRIVATE` entry.
+The sidecar address is the settings row's `headroomUrl`, which is empty until the operator sets it, then the `SAVER_HEADROOM_URL` configuration value, then `http://localhost:8787`. Each distinct host gets a client built through the outbound guard with that host added to the allow list, so a local sidecar needs no `UPSTREAM_ALLOW_PRIVATE` entry.
 
 **Dashboard routes.** `GET /api/headroom/status` answers the configured address and whether it serves `/health` within 1.5 s. `/api/headroom/proxy/*path` forwards GET, POST, PUT, PATCH and DELETE to the sidecar. Both need a dashboard session.
 
-The proxy strips hop-by-hop headers, does not forward `Host`, follows no redirect, and caps the body at 8 MiB. `Cookie` and `Authorization` travel only to a loopback address, and any user info is stripped from an address before it is shown.
+The proxy strips hop-by-hop headers, does not forward `Host`, follows no redirect, and caps the body at 8 MiB. `Cookie`, `Authorization` and `Set-Cookie` never cross it in either direction, the answer is sent under `Content-Security-Policy: sandbox` and `nosniff`, and any user info is stripped from an address before it is shown.
 
 **Response cache.** The key carries a saver fingerprint: the enabled switches, the levels, both activation modes, the user-message flag, and a hash of the custom prompt and the sidecar address. An answer produced with one configuration is never served for another.
 
@@ -78,6 +78,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 397 | Headroom is sent tool output and, when allowed, user text; the system prompt is never sent | A compression proxy that rewrites the operator's instructions can change behavior in ways no setting explains |
 | 398 | No sidecar install, start, stop, restart, port detection, extras or update | Process management is out of scope (`design doc 22`); the operator runs the sidecar |
 | 399 | The proxy does not rewrite the sidecar's dashboard HTML | The sidecar's own UI is not part of v1, and rewriting a third party's HTML invites breakage |
+| 418 | The proxy never forwards the dashboard session or an `Authorization` header, drops `Set-Cookie`, and sandboxes what the sidecar sends | A sidecar page is served on the dashboard's origin: a process that took the port could have read the session and run script as the administrator |
 
 ---
 
@@ -88,4 +89,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | `tools/mutant.sh` marks the case-insensitive bypass, inject-once, the failed-tool-result skip, the minimum size, the UTF-8 head cut, the cache fingerprint, the sidecar row identity, the no-grow rule, the proxy credential rule and the loopback rule CAUGHT | pinned by tests |
 | Three designed mutants are equivalent and stay MISSED: the arithmetic skip (an all-digit query tokenizes to nothing), the trigger boost (a trigger's own words are already in the document vector) and the segment separator (every built-in prompt is one line) | accepted, no behavior to pin |
 | The extended fork's `routing_mode` is honored here and ignored there (D395) | fixed |
+| The settings row seeded `headroomUrl` with the localhost default, so `SAVER_HEADROOM_URL` was never read on a fresh install | the seed is empty |
+| The response key left out whether caveman and ponytail were on, so toggling one served the old style for the cache lifetime | both switches are in the key |
+| The scorer was a copy of the skill scorer (D400) | one package, `app/platform/relevance`; the 24 smart verdicts are pinned |
 | The caveman and ponytail level texts are the reference's own, with their source named in each package (D396 retired) | kept verbatim; an edit tracks the reference |

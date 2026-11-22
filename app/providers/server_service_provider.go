@@ -25,6 +25,7 @@ import (
 	"rllmx/app/access/sso"
 	"rllmx/app/gateway/combo"
 	"rllmx/app/gateway/health"
+	"rllmx/app/gateway/skill"
 	apphttp "rllmx/app/http"
 	"rllmx/app/http/controllers"
 	"rllmx/app/llm/oauth"
@@ -113,6 +114,10 @@ type HTTP struct {
 	Quota *llmquota.Reader
 	// CatalogSync writes and installs the synced model catalog.
 	CatalogSync *CatalogSync
+	// Skills is the one registry of installed skills: the request pipeline reads
+	// it and the dashboard writes it, so a change made there is seen by the next
+	// request.
+	Skills *skill.Registry
 }
 
 // HTTPOf returns the bound HTTP pieces. A missing binding means the provider is
@@ -297,12 +302,14 @@ func newAuthenticator(app foundation.Application, cfg config.Config, db func() *
 }
 
 // wireCatalogSync gives the HTTP binding its model catalog sync, which owns the
-// catalog file in DATA_DIR and fetches through the guarded client.
+// catalog file in DATA_DIR and fetches through the guarded client, and the one
+// registry of installed skills, which lives in the same folder.
 func wireCatalogSync(h *HTTP, app foundation.Application, cfg config.Config) error {
 	dataDir, err := settings.ResolveDataDir(cfg.GetString("app.data_dir"))
 	if err != nil {
 		return err
 	}
+	h.Skills = skill.NewRegistry(filepath.Join(dataDir, "skills"), skill.Builtin())
 	h.CatalogSync = newCatalogSync(h.Capabilities, dataDir, func() *http.Client {
 		return network.NewClient(network.Options{
 			ConnectTimeout: h.Upstream.ConnectTimeout, MaxRedirects: 3, Allow: h.Upstream.Allow,

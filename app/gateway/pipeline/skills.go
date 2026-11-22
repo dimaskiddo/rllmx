@@ -5,20 +5,45 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"maps"
+	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/tidwall/gjson"
 
 	"rllmx/app/gateway/conversation"
+	"rllmx/app/gateway/plan"
 	"rllmx/app/gateway/skill"
 	"rllmx/app/platform/text"
 	"rllmx/app/store/document"
 )
 
-// skillsOff is true when the client asked this router to keep the request as
-// it is. The two routers have their own header, as in the reference.
-func (c *call) skillsOff(header string) bool {
+// headerOff is true when the client asked, with this header, for the request to be
+// kept as it is. Each router and saver has its own header, as in the reference.
+func (c *call) headerOff(header string) bool {
 	return strings.EqualFold(strings.TrimSpace(c.in.Header.Get(header)), "off")
+}
+
+// skillsBypassed is true when the client switched both skill routers off, which
+// leaves the request with no skill, no rule and no notice.
+func (c *call) skillsBypassed() bool {
+	return c.headerOff(skill.BypassLocal) && c.headerOff(skill.BypassECC)
+}
+
+// internalHeader is the whole header set a call this router makes for itself
+// carries: the client's User-Agent, which decides how a body is shaped, and every
+// bypass switch. No session id or other client header reaches it, so it runs no
+// skill, rule, saver or plan and marks nothing in the conversation.
+func (c *call) internalHeader() http.Header {
+	h := http.Header{}
+	if ua := c.in.Header.Get("User-Agent"); ua != "" {
+		h.Set("User-Agent", ua)
+	}
+	for _, name := range []string{skill.BypassLocal, skill.BypassECC, plan.BypassHeader, saverBypassHeader} {
+		h.Set(name, "off")
+	}
+	return h
 }
 
 // skillOptions reads the registry switches for this request. A nil registry, a
@@ -27,7 +52,7 @@ func (c *call) skillOptions(ctx context.Context) skill.Options {
 	if c.p == nil || c.p.d.Skills == nil || c.p.d.Settings == nil {
 		return skill.Options{}
 	}
-	if c.skillsOff(skill.BypassLocal) && c.skillsOff(skill.BypassECC) {
+	if c.skillsBypassed() {
 		return skill.Options{}
 	}
 	doc, err := c.p.d.Settings.Effective(ctx)
@@ -35,26 +60,23 @@ func (c *call) skillOptions(ctx context.Context) skill.Options {
 		return skill.Options{}
 	}
 	_, prior, notice := c.sessionInfo()
+	setting, legacy := skill.Readers(doc.GetRaw)
 	o := skill.Options{
-		Setting: func(id string) skill.Setting { return readSetting(doc, id) },
+		Setting: setting,
+		Legacy:  legacy,
 		Value:   func(key string) (string, bool) { return configValue(doc, key) },
 		Prior:   prior,
 		Notice:  notice,
 		ECC: skill.ECCOptions{
-			Enabled:    rawTrue(doc, "ecc_auto_skill_routerEnabled", false) && !c.skillsOff(skill.BypassECC),
-			Confidence: rawFloat(doc, "ecc_auto_skill_routerConfidence", skill.DefaultThreshold),
-			MaxSkills:  rawInt(doc, "ecc_auto_skill_routerMaxSkills", 1),
+			Enabled:    doc.Bool("ecc_auto_skill_routerEnabled", false) && !c.headerOff(skill.BypassECC),
+			Confidence: doc.Float("ecc_auto_skill_routerConfidence", skill.DefaultThreshold),
+			MaxSkills:  doc.Int("ecc_auto_skill_routerMaxSkills", 1),
 		},
 	}
-	if c.skillsOff(skill.BypassLocal) {
+	if c.headerOff(skill.BypassLocal) {
 		o.Setting = func(string) skill.Setting { return skill.Setting{HasEnabled: true, Enabled: false} }
 	}
 	return o
-}
-
-// readSetting projects the two keys the dashboard writes for one skill.
-func readSetting(doc document.Doc, id string) skill.Setting {
-	return skill.ReadSetting(doc.GetRaw, id)
 }
 
 // configValue reads one config_schema value as the prompt renders it: a string
@@ -85,13 +107,13 @@ func (c *call) applySkills(ctx context.Context) {
 	// Both bypass headers ask for an untouched request. A nil settings reader
 	// would still leave every "always" skill to its manifest, so the routers are
 	// skipped outright.
-	if c.skillsOff(skill.BypassLocal) && c.skillsOff(skill.BypassECC) {
+	if c.skillsBypassed() {
 		return
 	}
 	st := skill.Apply(c.p.d.Skills, c.req, c.skillOptions(ctx))
-	if key, _, _ := c.sessionInfo(); key != "" && len(st.Session) > 0 {
-		c.p.d.SkillSessions.Mark(key, st.Session)
-	}
+	// Kept until the turn is answered: a turn that failed carried a prompt no
+	// model read, so a retry must carry it again in full.
+	c.sessionPending = append(c.sessionPending, st.Session...)
 	if st.Changed() && c.p.d.Log != nil {
 		c.p.d.Log.Debugf("skills: %s", st.Line())
 	}
@@ -127,7 +149,17 @@ func (c *call) sessionInfo() (key string, prior map[string]bool, notice bool) {
 	return c.sessionKey, c.sessionPrior, c.sessionNotice
 }
 
-// failover records that this conversation moved to another account.
+// markSkills records the skills an answered turn carried in full.
+func (c *call) markSkills(status int) {
+	if status < 200 || status > 299 || len(c.sessionPending) == 0 {
+		return
+	}
+	if key, _, _ := c.sessionInfo(); key != "" && c.p != nil && c.p.d.SkillSessions != nil {
+		c.p.d.SkillSessions.Mark(key, c.sessionPending)
+	}
+}
+
+// failover marks the conversation so its later turns carry the continuity notice.
 func (c *call) failover() {
 	if key, _, _ := c.sessionInfo(); key != "" && c.p != nil && c.p.d.SkillSessions != nil {
 		c.p.d.SkillSessions.Failover(key)
@@ -137,7 +169,8 @@ func (c *call) failover() {
 // skillKey is the part of the response-cache key that names what the skills
 // would change. The cache key hashes the client's own body, before any skill
 // rewrites it, so two requests with the same words but different skills must
-// not share an answer.
+// not share an answer. It is built from the options the request would run with,
+// so what a bypass, a session or a notice changes is in it too.
 func (c *call) skillKey(ctx context.Context) string {
 	if c.p == nil || c.p.d.Skills == nil || c.p.d.Settings == nil {
 		return ""
@@ -150,10 +183,13 @@ func (c *call) skillKey(ctx context.Context) string {
 	if err != nil {
 		return ""
 	}
-	var b strings.Builder
-	b.WriteString("sig=" + c.p.d.Skills.Signature() + ";")
+	h := sha256.New()
+	fmt.Fprintf(h, "sig=%s;local=%t;notice=%t;", c.p.d.Skills.Signature(), !c.headerOff(skill.BypassLocal), o.Notice)
+	for _, id := range slices.Sorted(maps.Keys(o.Prior)) {
+		fmt.Fprintf(h, "prior=%s;", id)
+	}
 	for _, id := range c.rules.IDs {
-		b.WriteString("rule=" + id + ";")
+		fmt.Fprintf(h, "rule=%s;", id)
 	}
 	for _, m := range c.p.d.Skills.List() {
 		keys := []string{m.ID + "Enabled", m.ID + "RoutingMode"}
@@ -165,24 +201,10 @@ func (c *call) skillKey(ctx context.Context) string {
 		}
 		for _, key := range keys {
 			if raw, ok := doc.GetRaw(key); ok {
-				b.WriteString(key + "=" + raw + ";")
+				fmt.Fprintf(h, "%s=%s;", key, raw)
 			}
 		}
 	}
-	fmt.Fprintf(&b, "ecc=%t/%v/%d", o.ECC.Enabled, o.ECC.Confidence, o.ECC.MaxSkills)
-	sum := sha256.Sum256([]byte(b.String()))
-	return "sk=" + hex.EncodeToString(sum[:6])
-}
-
-// rawFloat reads a stored number, taking the default for a missing or unusable
-// value.
-func rawFloat(doc document.Doc, key string, def float64) float64 {
-	raw, ok := doc.GetRaw(key)
-	if !ok {
-		return def
-	}
-	if v := gjson.Parse(raw); v.Type == gjson.Number {
-		return v.Float()
-	}
-	return def
+	fmt.Fprintf(h, "ecc=%t/%v/%d", o.ECC.Enabled, o.ECC.Confidence, o.ECC.MaxSkills)
+	return "sk=" + hex.EncodeToString(h.Sum(nil)[:6])
 }

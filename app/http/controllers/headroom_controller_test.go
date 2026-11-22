@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"rllmx/app/access/auth"
 	apphttp "rllmx/app/http"
 	"rllmx/app/store/repository"
 )
@@ -100,25 +101,33 @@ func TestTheProxyNeedsASession(t *testing.T) {
 	}
 }
 
-func TestARemoteSidecarGetsNoCredentials(t *testing.T) {
-	if !isLoopback("http://localhost:8787/x") || !isLoopback("http://127.0.0.1:1/x") || !isLoopback("http://[::1]:1/x") {
-		t.Fatal("a local address did not read as this machine")
-	}
-	if isLoopback("https://sidecar.example/x") {
-		t.Fatal("a remote host read as this machine")
-	}
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.Header.Set("Cookie", "session=1")
+func TestNoSidecarGetsTheSessionCredentials(t *testing.T) {
+	var got http.Header
+	srv := sidecar(t, func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Clone()
+		w.Header().Set("Set-Cookie", "stolen=1")
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte("<script>alert(1)</script>"))
+	})
+	m := headroomRig(t, srv)
+	req := httptest.NewRequest(http.MethodGet, "/api/headroom/proxy/page", nil)
+	req.RemoteAddr, req.Host = localPeer, localHost
+	req.AddCookie(&http.Cookie{Name: auth.CookieName, Value: m.cookie})
 	req.Header.Set("Authorization", "Bearer k")
-	out := http.Header{}
-	copyProxyHeaders(out, req.Header, isLoopback("https://sidecar.example/x"))
-	if out.Get("Cookie") != "" || out.Get("Authorization") != "" {
-		t.Fatalf("credentials forwarded: %v", out)
+	rec := httptest.NewRecorder()
+	m.route.ServeHTTP(rec, req)
+	hdr := rec.Header()
+	if rec.Code != 200 {
+		t.Fatalf("%d", rec.Code)
 	}
-	out = http.Header{}
-	copyProxyHeaders(out, req.Header, isLoopback("http://127.0.0.1:1/x"))
-	if out.Get("Cookie") == "" || out.Get("Authorization") == "" {
-		t.Fatal("credentials withheld from a local sidecar")
+	if got.Get("Cookie") != "" || got.Get("Authorization") != "" {
+		t.Fatalf("the sidecar received credentials: %v", got)
+	}
+	if hdr.Get("Set-Cookie") != "" {
+		t.Fatalf("the sidecar set a cookie on the dashboard origin: %v", hdr)
+	}
+	if !strings.Contains(hdr.Get("Content-Security-Policy"), "sandbox") || hdr.Get("X-Content-Type-Options") != "nosniff" {
+		t.Fatalf("a sidecar page is not boxed in: %v", hdr)
 	}
 }
 

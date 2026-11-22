@@ -109,7 +109,7 @@ func Apply(ctx context.Context, comp *Compressor, r *translate.Request, o Option
 	applyPrompt(r, o.Caveman, caveman.Level, cavemanTopic, query, "caveman", &st)
 	applyPrompt(r, o.Ponytail, ponytail.Level, ponytailTopic, query, "ponytail", &st)
 	if o.Custom.Enabled {
-		if prompt.Inject(r, strings.TrimSpace(o.Custom.Text)) {
+		if r.AppendSystem(strings.TrimSpace(o.Custom.Text)) {
 			st.Prompts = append(st.Prompts, "custom")
 		}
 	}
@@ -153,7 +153,7 @@ func applyPrompt(r *translate.Request, p Prompt, level func(string) string, t pr
 	if p.Mode == "smart" && !t.Match(query, saverTopics...) {
 		return
 	}
-	if prompt.Inject(r, text) {
+	if r.AppendSystem(text) {
 		st.Prompts = append(st.Prompts, label)
 	}
 }

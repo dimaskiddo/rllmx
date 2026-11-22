@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	nethttp "net/http"
-	"path/filepath"
 
 	"github.com/goravel/framework/contracts/console"
 	contractsschema "github.com/goravel/framework/contracts/database/schema"
@@ -75,11 +74,11 @@ func declareRoutes(version, commit string) {
 	base.OAuth = &controllers.OAuthController{Service: h.OAuth, Auth: h.Auth, Server: h.Settings}
 	base.Callback = &controllers.CallbackController{Files: web.Static}
 	base.Health = &controllers.HealthController{DB: db, Tracker: h.Health}
-	// The dashboard's two skill-aware controllers share one registry, so a
-	// setting the Studio writes is validated by the same manifests a request
-	// routes with.
+	// The dashboard's two skill-aware controllers and the request pipeline share
+	// one registry, so a setting the Studio writes is validated by the same
+	// manifests a request routes with, and a skill it saves is read by the next one.
 	dir := providers.DataOf(facades.App()).Settings.DataDir
-	skills := skill.NewRegistry(filepath.Join(dir, "skills"), skill.Builtin())
+	skills := h.Skills
 	base.Settings = &controllers.SettingsController{DB: db, Auth: h.Auth, Skills: skills, Secure: h.Trust.SecureRequest}
 	base.Logs = &controllers.LogsController{Book: config.ConsoleLog()}
 	base.Keys = keysController(h, db)

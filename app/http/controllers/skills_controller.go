@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"errors"
 	nethttp "net/http"
 	"path/filepath"
 	"strings"
@@ -18,8 +19,9 @@ import (
 // SkillsController answers the dashboard's skills routes: what is installed,
 // and the catalog sync.
 type SkillsController struct {
-	DB   func() *repository.Store
-	Reg  *skill.Registry
+	DB  func() *repository.Store
+	Reg *skill.Registry
+	// Dir is the data directory; the skills live in its "skills" folder.
 	Dir  string
 	Log  log.Log
 	gate sync.Mutex
@@ -28,11 +30,40 @@ type SkillsController struct {
 	studio sync.Mutex
 }
 
+// skillsDir is the folder the registry reads and the Studio writes.
+func (c *SkillsController) skillsDir() string { return filepath.Join(c.Dir, "skills") }
+
 // skillItem is one installed skill with the switch the settings row gives it.
 type skillItem struct {
 	skill.Manifest
 	Enabled bool   `json:"enabled"`
 	Mode    string `json:"mode"`
+}
+
+// fetchClass names why a fetch failed, without the address or the output, which
+// can carry a source's credentials or a remote message.
+func fetchClass(err error) string {
+	switch {
+	case errors.Is(err, git.ErrRefused):
+		return "refused"
+	case errors.Is(err, git.ErrFailed):
+		return "failed"
+	}
+	return "error"
+}
+
+// skillList is the answer to GET /api/skills.
+type skillList struct {
+	Skills   []skillItem `json:"skills"`
+	Problems []string    `json:"problems"`
+}
+
+// syncAnswer is the answer to POST /api/skills/sync.
+type syncAnswer struct {
+	Total   int      `json:"total"`
+	Updated int      `json:"updated"`
+	Skipped int      `json:"skipped"`
+	Skills  []string `json:"skills"`
 }
 
 // List answers GET /api/skills: every installed skill, its effective switch,
@@ -46,16 +77,14 @@ func (c *SkillsController) List(ctx contractshttp.Context) contractshttp.Respons
 	if err != nil {
 		return storageDown(ctx)
 	}
-	get := func(id string) skill.Setting { return skill.ReadSetting(doc.GetRaw, id) }
+	get, legacy := skill.Readers(doc.GetRaw)
 	items := make([]skillItem, 0, 16)
 	for _, m := range c.Reg.List() {
-		enabled, mode := skill.Switch(m, get)
+		enabled, mode := skill.Switch(m, get, legacy)
 		items = append(items, skillItem{Manifest: m, Enabled: enabled, Mode: mode})
 	}
 	ctx.Response().Header("Cache-Control", "no-store")
-	return ctx.Response().Json(nethttp.StatusOK, map[string]any{
-		"skills": items, "problems": c.Reg.Problems(),
-	})
+	return ctx.Response().Json(nethttp.StatusOK, skillList{Skills: items, Problems: c.Reg.Problems()})
 }
 
 // syncBody is what the dashboard sends to start a catalog sync.
@@ -93,24 +122,26 @@ func (c *SkillsController) Sync(ctx contractshttp.Context) contractshttp.Respons
 	if ref == "" {
 		ref = "main"
 	}
-	cfg := git.Config{Parent: filepath.Join(c.Dir, "skills"), Sources: skill.Sources(doc.GetRaw("skillSources"))}
+	cfg := git.Config{Parent: skill.FetchDir(c.Dir), Sources: skill.Sources(doc.GetRaw("skillSources"))}
 	client := network.NewClient(network.Options{ConnectTimeout: git.Timeout, BodyCap: git.MaxSize})
 	dir, cleanup, err := git.NewGate().Fetch(ctx.Request().Origin().Context(), cfg, client, source, ref)
 	if err != nil {
 		if c.Log != nil {
-			c.Log.Warning("skills: sync could not fetch the catalog")
+			c.Log.Warningf("skills: sync could not fetch the catalog: %s", fetchClass(err))
 		}
 		return flat(ctx, nethttp.StatusBadGateway, "The catalog could not be fetched")
 	}
 	defer cleanup()
-	res, err := skill.SyncECC(ctx.Request().Origin().Context(), dir, filepath.Join(c.Dir, "skills", "ecc-imported"), body.Force)
+	res, err := skill.SyncECC(ctx.Request().Origin().Context(), dir, filepath.Join(c.skillsDir(), skill.CatalogDir), body.Force)
+	c.Reg.Invalidate()
 	if err != nil {
+		if c.Log != nil {
+			c.Log.Warning("skills: sync could not import the catalog")
+		}
 		return flat(ctx, nethttp.StatusInternalServerError, "The catalog could not be imported")
 	}
 	if c.Log != nil {
 		c.Log.Debugf("skills: sync imported %d of %d", res.Updated, res.Total)
 	}
-	return ctx.Response().Json(nethttp.StatusOK, map[string]any{
-		"total": res.Total, "updated": res.Updated, "skipped": res.Skipped, "skills": res.Skills,
-	})
+	return ctx.Response().Json(nethttp.StatusOK, syncAnswer{Total: res.Total, Updated: res.Updated, Skipped: res.Skipped, Skills: res.Skills})
 }

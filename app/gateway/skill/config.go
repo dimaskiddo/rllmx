@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"rllmx/app/platform/text"
+	"rllmx/app/store/repository"
 )
 
 // What one config_schema field may carry. Every value the dashboard writes goes
@@ -80,6 +81,9 @@ func checkFields(fields []Field) []string {
 		}
 		if f.LegacyKey != "" && !reLegacy.MatchString(f.LegacyKey) {
 			add("config key %q has legacy_key %q, which is not a settings key", f.Key, f.LegacyKey)
+		}
+		if repository.IsSecretSetting(f.LegacyKey) {
+			add("config key %q has legacy_key %q, which holds a credential", f.Key, f.LegacyKey)
 		}
 		if len(f.Label) > maxFieldLabel || text.HasControl(f.Label) {
 			add("config key %q has a label over %d bytes or with control characters", f.Key, maxFieldLabel)
@@ -201,7 +205,7 @@ func Render(m Manifest, prompt string, get func(key string) (string, bool)) stri
 
 // valueOf is a stored value checked against its field, else the field default.
 func valueOf(m Manifest, f Field, get func(key string) (string, bool)) (string, bool) {
-	if get != nil {
+	if get != nil && !repository.IsSecretSetting(SettingKey(m, f)) {
 		if v, ok := get(SettingKey(m, f)); ok {
 			if _, msg := checkString(f, v); msg == "" {
 				return v, true
@@ -229,13 +233,4 @@ func (r *Registry) FieldFor(key string) (Field, bool) {
 		}
 	}
 	return Field{}, false
-}
-
-// CheckSetting validates a settings value by the key a manifest gives it.
-func (r *Registry) CheckSetting(key string, raw json.RawMessage) (string, string) {
-	f, ok := r.FieldFor(key)
-	if !ok {
-		return "", "is not a setting this router knows"
-	}
-	return CheckValue(f, raw)
 }

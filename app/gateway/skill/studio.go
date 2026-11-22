@@ -201,7 +201,15 @@ func RulesFile(dir, id string) (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	raw, err := readCapped(os.DirFS(target), "rules.json", maxRulesFile)
+	root, err := os.OpenRoot(target)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	defer root.Close()
+	raw, err := readCapped(root.FS(), "rules.json", maxRulesFile)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, nil

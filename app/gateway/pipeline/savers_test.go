@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"rllmx/app/gateway/saver"
+	"rllmx/app/gateway/saver/headroom"
 	"rllmx/app/llm/translate"
 	"rllmx/app/store/document"
 	"rllmx/tests"
@@ -70,7 +71,7 @@ func TestSaverOptionsTakeTheConfiguredAddressWhenTheRowHasNone(t *testing.T) {
 		t.Fatalf("url %q", got)
 	}
 	c = saverCall(`{"headroomEnabled":true,"headroomUrl":""}`, nil)
-	if got := c.saverOptions(context.Background()).Headroom.URL; got != saverDefaultURL {
+	if got := c.saverOptions(context.Background()).Headroom.URL; got != headroom.DefaultURL {
 		t.Fatalf("url %q", got)
 	}
 }
@@ -147,5 +148,52 @@ func TestApplySaversCallsTheSidecar(t *testing.T) {
 	c.applySavers(context.Background())
 	if hits != 1 || c.req.Messages[0].Content[0].Text != "short" {
 		t.Fatalf("hits %d, text %.20q", hits, c.req.Messages[0].Content[0].Text)
+	}
+}
+
+func TestEverySaverSwitchIsPartOfTheResponseKey(t *testing.T) {
+	ctx := context.Background()
+	base := saverCall(`{"rtkEnabled":true}`, nil).saverKey(ctx)
+	for name, row := range map[string]string{
+		"caveman":  `{"rtkEnabled":true,"cavemanEnabled":true}`,
+		"ponytail": `{"rtkEnabled":true,"ponytailEnabled":true}`,
+		"custom":   `{"rtkEnabled":true,"customPromptEnabled":true,"customPrompt":"x"}`,
+		"headroom": `{"rtkEnabled":true,"headroomEnabled":true}`,
+	} {
+		if got := saverCall(row, nil).saverKey(ctx); got == base {
+			t.Errorf("turning %s on left the response key unchanged: %q", name, got)
+		}
+	}
+	lite := saverCall(`{"rtkEnabled":true,"cavemanEnabled":true,"cavemanLevel":"lite"}`, nil).saverKey(ctx)
+	full := saverCall(`{"rtkEnabled":true,"cavemanEnabled":true,"cavemanLevel":"full"}`, nil).saverKey(ctx)
+	if lite == full {
+		t.Errorf("a switched-on saver's level is not in the key: %q", lite)
+	}
+	// Levels and modes alone, with the saver off, change nothing the answer carries.
+	off := saverCall(`{"rtkEnabled":true,"cavemanEnabled":false,"cavemanLevel":"lite"}`, nil).saverKey(ctx)
+	if off != base {
+		t.Errorf("a level of a switched-off saver changed the key: %q vs %q", off, base)
+	}
+}
+
+func TestTheConfiguredSidecarAddressIsUsedWhenTheRowNamesNone(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	doc, err := r.st.Settings().Effective(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := readSaverOptions(doc, "http://cfg:1").Headroom.URL; got != "http://cfg:1" {
+		t.Fatalf("a fresh row hid the configured address: %q", got)
+	}
+	if got := readSaverOptions(doc, "").Headroom.URL; got != headroom.DefaultURL {
+		t.Fatalf("no row and no configuration: %q", got)
+	}
+	if err := r.st.Settings().Patch(ctx, map[string]string{"headroomUrl": `"http://row:2"`}); err != nil {
+		t.Fatal(err)
+	}
+	doc, _ = r.st.Settings().Effective(ctx)
+	if got := readSaverOptions(doc, "http://cfg:1").Headroom.URL; got != "http://row:2" {
+		t.Fatalf("the row's address did not win: %q", got)
 	}
 }

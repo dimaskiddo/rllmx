@@ -55,7 +55,9 @@ func TestTheStudioCreatesReadsUpdatesAndDeletes(t *testing.T) {
 	m := newMgmtRig(t)
 	seededSettings(t, m)
 	dir := t.TempDir()
-	reg := skill.NewRegistry(dir, skill.Builtin())
+	// The registry reads DATA_DIR/skills and the controller is given DATA_DIR, as
+	// the server wires them.
+	reg := skill.NewRegistry(filepath.Join(dir, "skills"), skill.Builtin())
 	c := &SkillsController{DB: func() *repository.Store { return m.st.Store }, Reg: reg, Dir: dir}
 	studioRoutes(m, c)
 
@@ -92,7 +94,7 @@ func TestTheStudioRefusesWhatItMayNotWrite(t *testing.T) {
 	seededSettings(t, m)
 	dir := t.TempDir()
 	writeFiles := func(name, body string) {
-		p := filepath.Join(dir, filepath.FromSlash(name))
+		p := filepath.Join(dir, "skills", filepath.FromSlash(name))
 		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -102,7 +104,7 @@ func TestTheStudioRefusesWhatItMayNotWrite(t *testing.T) {
 	}
 	writeFiles("hand/manifest.json", `{"id":"hand","name":"Hand","description":"placed by hand","hook":"system-prompt"}`)
 	writeFiles("hand/prompt.txt", "text")
-	reg := skill.NewRegistry(dir, skill.Builtin())
+	reg := skill.NewRegistry(filepath.Join(dir, "skills"), skill.Builtin())
 	c := &SkillsController{DB: func() *repository.Store { return m.st.Store }, Reg: reg, Dir: dir}
 	studioRoutes(m, c)
 

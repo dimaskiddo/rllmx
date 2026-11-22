@@ -143,3 +143,19 @@ func TestAProcessThatWouldStepOutIsRefused(t *testing.T) {
 		t.Fatalf("no clone area was accepted: %v", err)
 	}
 }
+
+func TestCloneFollowsNoRedirect(t *testing.T) {
+	args := cloneArgs(source, "main", t.TempDir())
+	var on bool
+	for i, a := range args {
+		if a == "-c" && i+1 < len(args) && args[i+1] == "http.followRedirects=false" {
+			on = true
+		}
+		if a == "clone" && !on {
+			t.Fatalf("the redirect switch must precede the sub-command: %q", args)
+		}
+	}
+	if !on {
+		t.Fatalf("a redirect could carry the clone past the checked address: %q", args)
+	}
+}

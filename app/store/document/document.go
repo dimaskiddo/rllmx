@@ -162,6 +162,42 @@ func (d Doc) GetInt(key string) (int64, bool) {
 	return r.Int(), true
 }
 
+// Str returns a string value, or def when the key is missing or is not a
+// string. The typed getters below share that rule, so a hand-edited row of the
+// wrong shape reads as unset and never as a surprise.
+func (d Doc) Str(key, def string) string {
+	if v, ok := d.GetString(key); ok {
+		return v
+	}
+	return def
+}
+
+// Bool returns a boolean value, or def for a missing or non-boolean key.
+func (d Doc) Bool(key string, def bool) bool {
+	r := gjson.Get(d.raw, pathKey(key))
+	if r.Type == gjson.True || r.Type == gjson.False {
+		return r.Bool()
+	}
+	return def
+}
+
+// Int returns an integer value, or def for a missing or non-number key.
+func (d Doc) Int(key string, def int) int {
+	if n, ok := d.GetInt(key); ok {
+		return int(n)
+	}
+	return def
+}
+
+// Float returns a number value, or def for a missing or non-number key.
+func (d Doc) Float(key string, def float64) float64 {
+	r := gjson.Get(d.raw, pathKey(key))
+	if r.Type == gjson.Number {
+		return r.Float()
+	}
+	return def
+}
+
 // FirstString returns the first of vals that is a non-empty JSON string, or "".
 func FirstString(vals ...gjson.Result) string {
 	for _, v := range vals {

@@ -15,7 +15,7 @@ func ClassifyLocal(reg *Registry, cands []Manifest, query string) []Match {
 		floor = min(floor, m.Threshold())
 	}
 	var out []Match
-	for _, m := range reg.LocalIndex().Score(query, floor) {
+	for _, m := range reg.localIndex().Score(query, floor) {
 		th, ok := byID[m.ID]
 		if !ok || m.Score < th {
 			continue

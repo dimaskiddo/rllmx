@@ -150,6 +150,7 @@ func normalizeSource(s string) string {
 // into a shell string.
 func cloneArgs(rawURL, ref, dir string) []string {
 	return []string{
+		"-c", "http.followRedirects=false",
 		"clone", "--depth", "1", "--single-branch", "--no-tags",
 		"--branch", ref, "--", rawURL, dir,
 	}

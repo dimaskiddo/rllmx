@@ -51,7 +51,7 @@ func TestClassifySkipsWhatCannotNeedAPlan(t *testing.T) {
 			if name == "disabled" {
 				s.Enabled = false
 			}
-			got := Classify(c.request, s)
+			got := classify(c.request, s)
 			if got.NeedsPlan || got.Reason != c.reason {
 				t.Fatalf("verdict %+v, want reason %q", got, c.reason)
 			}
@@ -77,7 +77,7 @@ func TestClassifyScoresABuildTask(t *testing.T) {
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
-			got := Classify(ask(c.body), enabled())
+			got := classify(ask(c.body), enabled())
 			if got.NeedsPlan != c.plan || math.Abs(got.Score-c.score) > 1e-9 {
 				t.Fatalf("verdict %+v, want plan=%t score=%v", got, c.plan, c.score)
 			}
@@ -89,12 +89,12 @@ func TestTheThresholdRaisesTheBar(t *testing.T) {
 	body := "build a full auth service across multiple files with database and tokens"
 	loose := enabled()
 	loose.Threshold = 10
-	if got := Classify(ask(body), loose); got.NeedsPlan || got.Reason != "below_threshold" {
+	if got := classify(ask(body), loose); got.NeedsPlan || got.Reason != "below_threshold" {
 		t.Fatalf("threshold 10 planned: %+v", got)
 	}
 	tight := enabled()
 	tight.Threshold = 1
-	if got := Classify(ask("refactor the module loader so it reports every failure with a clear error"), tight); !got.NeedsPlan {
+	if got := classify(ask("refactor the module loader so it reports every failure with a clear error"), tight); !got.NeedsPlan {
 		t.Fatalf("threshold 1 did not plan a build word: %+v", got)
 	}
 }
@@ -102,7 +102,7 @@ func TestTheThresholdRaisesTheBar(t *testing.T) {
 func TestClassifyBoundsItsScan(t *testing.T) {
 	// The only build word sits past the scan bound, so only the length is seen.
 	body := strings.Repeat("x ", maxScan/2+100) + "build"
-	if got := Classify(ask(body), enabled()); math.Abs(got.Score-0.45) > 1e-9 {
+	if got := classify(ask(body), enabled()); math.Abs(got.Score-0.45) > 1e-9 {
 		t.Fatalf("the tail past the scan bound was read: %+v", got)
 	}
 }
@@ -136,7 +136,7 @@ const ambiguous = "please refactor and implement the module loader with clearer 
 func TestDecideAsksTheModelWhenUnsure(t *testing.T) {
 	s := enabled()
 	s.SmartClassify = true
-	v := Classify(ask(ambiguous), s)
+	v := classify(ask(ambiguous), s)
 	if v.Confidence >= smartConfidence {
 		t.Fatalf("the fixture is not ambiguous: %+v", v)
 	}
@@ -159,7 +159,7 @@ func TestDecideAsksTheModelWhenUnsure(t *testing.T) {
 func TestDecideKeepsTheHeuristicWhenTheJudgeFails(t *testing.T) {
 	s := enabled()
 	s.SmartClassify = true
-	base := Classify(ask(ambiguous), s)
+	base := classify(ask(ambiguous), s)
 	if got := Decide(context.Background(), ask(ambiguous), s, func(context.Context, string) (string, bool) { return "", false }); got != base {
 		t.Fatalf("verdict %+v, want %+v", got, base)
 	}
@@ -181,8 +181,38 @@ func TestDecideAsksNothingWhenTheSettingIsOff(t *testing.T) {
 }
 
 func TestQuestionCutsTheTurn(t *testing.T) {
-	q := Question(strings.Repeat("a", 400))
+	q := question(strings.Repeat("a", 400))
 	if !strings.HasSuffix(q, "\"") || strings.Contains(q, strings.Repeat("a", 301)) {
 		t.Fatalf("question %q", q)
+	}
+}
+
+func TestAPlanMarkerOutranksAToolLoopAndIsFoundInAnyPart(t *testing.T) {
+	s := enabled()
+	marked := &translate.Request{Messages: []translate.Message{
+		{Role: translate.RoleUser, Content: []translate.Part{
+			{Type: translate.PartText, Text: "build the auth service across multiple files"},
+			{Type: translate.PartText, Text: "here is the plan <PLAN>1. x</PLAN>"},
+		}},
+		{Role: translate.RoleTool, Content: translate.TextPart("ok")},
+	}}
+	if got := classify(marked, s); got.Reason != "already_planned" {
+		t.Fatalf("the marker in a later part, with a tool turn, gave %q", got.Reason)
+	}
+	// The tool turn comes first, so a verdict taken at the first message would
+	// miss the marker that follows it.
+	late := &translate.Request{Messages: []translate.Message{
+		{Role: translate.RoleTool, Content: translate.TextPart("ok")},
+		{Role: translate.RoleUser, Content: translate.TextPart("build it <PLAN>1. x</PLAN>")},
+	}}
+	if got := classify(late, s); got.Reason != "already_planned" {
+		t.Fatalf("a marker after a tool turn gave %q", got.Reason)
+	}
+	loop := &translate.Request{Messages: []translate.Message{
+		{Role: translate.RoleUser, Content: translate.TextPart("build the auth service across multiple files")},
+		{Role: translate.RoleTool, Content: translate.TextPart("ok")},
+	}}
+	if got := classify(loop, s); got.Reason != "agent_tool_loop" {
+		t.Fatalf("a tool loop gave %q", got.Reason)
 	}
 }

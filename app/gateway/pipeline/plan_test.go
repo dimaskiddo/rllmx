@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"rllmx/app/access/identity"
+	"rllmx/app/gateway/combo"
 	"rllmx/app/gateway/conversation"
 	"rllmx/app/gateway/skill"
 	"rllmx/app/llm/routing"
@@ -328,16 +330,23 @@ func TestTheCodeComboAnswersTheRequest(t *testing.T) {
 }
 
 func TestACodeComboCannotWidenARestrictedKey(t *testing.T) {
-	r := planRig(t, planSettings(`"autoCodeComboId":"coder"`), planReply(), codeReply())
+	r := planRig(t, planSettings(`"autoCodeComboId":"coder"`), codeReply(), codeReply())
 	r.conn("forced", "k1")
 	r.conn("wire", "kw")
 	key := identity.Caller{ID: "k", Restricted: true, Allow: []string{"wire/short", "planner"}}
 	out := r.runAs(key, "/v1/chat/completions", chatJSON("wire/short", buildAsk))
-	if out.Status != http.StatusForbidden {
+	if out.Status != http.StatusOK {
 		t.Fatalf("%d %s", out.Status, out.Body)
 	}
-	if n := len(r.up.Calls()); n != 1 {
-		t.Fatalf("%d upstream calls; the code combo was reached", n)
+	// The key may call the planning combo but not the code combo, so no plan is
+	// paid for and the request is answered as the client named it.
+	calls := r.up.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("%d upstream calls, want the one answer", len(calls))
+	}
+	body := string(calls[0].Body)
+	if hasPlanTurn(t, body) || !strings.Contains(body, "vendor/long-name") {
+		t.Fatalf("the request was planned or moved: %s", body)
 	}
 }
 
@@ -376,5 +385,92 @@ func TestAPlanIsNotServedFromTheCache(t *testing.T) {
 	}
 	if n := len(cr.up.Calls()); n != 4 {
 		t.Fatalf("%d upstream calls, so a planned answer was stored", n)
+	}
+}
+
+// routerAnswer is a complete answer naming the second member, so the smart
+// combo's choice is made without a retry.
+func routerAnswer() tests.Reply {
+	return tests.Reply{ContentType: "application/json", Body: answerJSON(`{"model":"forced/fm","confidence":0.9}`)}
+}
+
+func TestAnInternalCallCarriesNoSkillSaverOrSession(t *testing.T) {
+	r := comboRig(t, []string{"wire/short", "forced/fm"}, routerAnswer(), codeReply())
+	r.p.d.Skills = hermeticRegistry(t)
+	r.p.d.SkillSessions = conversation.NewSkillSessions(nil)
+	r.p.d.Rotation = combo.NewRotation()
+	r.p.d.Sticky = combo.NewSticky()
+	r.p.d.Settings = tests.Settings{JSON: `{"comboStrategies":{"chain":{"fallbackStrategy":"smart","routerModel":"wire/short"}},` +
+		`"customPromptEnabled":true,"customPrompt":"ANSWER IN FRENCH"}`}
+	r.conn("forced", "k1")
+	r.conn("wire", "kw")
+	rec := httptest.NewRecorder()
+	in := Input{
+		Path: "/v1/chat/completions", Body: []byte(comboAsk), Caller: identity.Caller{ID: "key-1", Name: "ci"}, RequestID: "rid-1",
+		Header: http.Header{"X-Session-Id": []string{"s-1"}},
+	}
+	out := r.p.Handle(context.Background(), in, func() (stream.Client, error) { return stream.NewSSE(rec, stream.Options{}) })
+	if out.Status != 200 {
+		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+	calls := r.up.Calls()
+	if len(calls) < 2 {
+		t.Fatalf("%d upstream calls, the router was not asked", len(calls))
+	}
+	question := string(calls[0].Body)
+	for _, unwanted := range []string{"STYLE PROMPT", "ANSWER IN FRENCH"} {
+		if strings.Contains(question, unwanted) {
+			t.Fatalf("the router question carries %q: %s", unwanted, question)
+		}
+	}
+	real := string(calls[len(calls)-1].Body)
+	if !strings.Contains(real, "STYLE PROMPT") {
+		t.Fatalf("the real request lost the skill prompt: %s", real)
+	}
+}
+
+func TestAKeyThatMayNotCallThePlanningComboIsNotPlannedEvenWithoutACodeCombo(t *testing.T) {
+	r := planRig(t, planSettings(), planReply(), codeReply())
+	r.conn("forced", "k1")
+	r.conn("wire", "kw")
+	key := identity.Caller{ID: "k", Restricted: true, Allow: []string{"forced/fm"}}
+	out := r.runAs(key, "/v1/chat/completions", chatJSON("forced/fm", buildAsk))
+	if out.Status != http.StatusOK {
+		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+	if n := len(r.up.Calls()); n != 1 || hasPlanTurn(t, lastBody(t, r, 0)) {
+		t.Fatalf("%d upstream calls; a plan was made for a key that may not call the planning combo", n)
+	}
+	// The key is not even tried against the planning combo, which would leave a
+	// refused row of its own.
+	if rows := len(r.rows.All()); rows != 1 {
+		t.Fatalf("%d usage rows, want the one for the request", rows)
+	}
+}
+
+const ambiguousAsk = "please refactor and implement the module loader with clearer errors over the whole tree"
+
+func TestTheClassifierQuestionGoesToThePlanningComboByName(t *testing.T) {
+	// A key allowed the combo and nothing else must be able to ask the question,
+	// which a member model of the combo would refuse.
+	r := planRig(t, planSettings(`"autoPlanSmartClassify":true`),
+		tests.Reply{ContentType: "application/json", Body: answerJSON("YES")}, planReply(), codeReply())
+	r.conn("forced", "k1")
+	r.conn("wire", "kw")
+	key := identity.Caller{ID: "k", Restricted: true, Allow: []string{"planner", "forced/fm"}}
+	out := r.runAs(key, "/v1/chat/completions", chatJSON("forced/fm", ambiguousAsk))
+	if out.Status != http.StatusOK {
+		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+	if n := len(r.up.Calls()); n != 3 {
+		t.Fatalf("%d upstream calls, want the question, the plan and the answer", n)
+	}
+	if !strings.Contains(lastBody(t, r, 0), "Jawab hanya YES atau NO") {
+		t.Fatalf("the first call was not the classifier question: %s", lastBody(t, r, 0))
+	}
+	for _, row := range r.rows.All() {
+		if row.Status == http.StatusForbidden {
+			t.Fatalf("an internal call was refused for the key: %+v", row)
+		}
 	}
 }

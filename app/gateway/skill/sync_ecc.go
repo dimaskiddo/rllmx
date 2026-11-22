@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"rllmx/app/platform/file"
+	"rllmx/app/platform/relevance"
 	"rllmx/app/platform/text"
 )
 
@@ -47,6 +48,11 @@ func SyncECC(ctx context.Context, srcDir, destDir string, force bool) (ECCSyncRe
 	if err := os.MkdirAll(destDir, 0o700); err != nil {
 		return res, err
 	}
+	root, err := os.OpenRoot(srcDir)
+	if err != nil {
+		return res, err
+	}
+	defer root.Close()
 	seen := map[string]bool{}
 	err = filepath.WalkDir(srcDir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -61,7 +67,9 @@ func SyncECC(ctx context.Context, srcDir, destDir string, force bool) (ECCSyncRe
 			}
 			return nil
 		}
-		if d.Name() != "SKILL.md" {
+		// A link, a pipe or a device named SKILL.md is not a skill file: reading it
+		// could pull in another file of this machine or never return.
+		if d.Name() != "SKILL.md" || !d.Type().IsRegular() {
 			return nil
 		}
 		rel, err := filepath.Rel(srcDir, p)
@@ -71,7 +79,7 @@ func SyncECC(ctx context.Context, srcDir, destDir string, force bool) (ECCSyncRe
 		if len(seen) >= maxCatalog {
 			return fmt.Errorf("sync: more than %d skills", maxCatalog)
 		}
-		m, prompt, err := readSKILL(p)
+		m, prompt, err := readSKILL(root, rel)
 		if err != nil || seen[m.ID] {
 			res.Skipped++
 			return nil
@@ -113,15 +121,16 @@ func slug(s string) string {
 
 // readSKILL parses one Agent Skills file: YAML frontmatter with a name and a
 // description, then the body that becomes the prompt.
-func readSKILL(p string) (Manifest, string, error) {
-	info, err := os.Stat(p)
+func readSKILL(root *os.Root, p string) (Manifest, string, error) {
+	f, err := root.Open(p)
 	if err != nil {
 		return Manifest{}, "", err
 	}
-	if info.Size() > maxCatalogFile {
+	defer f.Close()
+	raw, err := file.ReadCapped(f, maxCatalogFile)
+	if errors.Is(err, file.ErrTooLarge) {
 		return Manifest{}, "", fmt.Errorf("%s is larger than %d bytes", filepath.Base(p), maxCatalogFile)
 	}
-	raw, err := os.ReadFile(p)
 	if err != nil {
 		return Manifest{}, "", err
 	}
@@ -159,7 +168,7 @@ func readSKILL(p string) (Manifest, string, error) {
 }
 
 // frontmatter reads the two keys the registry needs and returns the body. The
-// format is hand-parsed: a YAML module is not a dependency this step earns.
+// format is hand-parsed: two keys do not justify a YAML module.
 func frontmatter(raw string) (name, desc, body string, err error) {
 	raw = strings.TrimPrefix(raw, "\ufeff")
 	raw = strings.ReplaceAll(raw, "\r\n", "\n")
@@ -206,7 +215,7 @@ func unquote(s string) string {
 func deriveKeywords(s string) []string {
 	seen := map[string]bool{}
 	var out []string
-	for _, term := range tokenize(s) {
+	for _, term := range relevance.Tokens(s) {
 		if len(term) < 4 || seen[term] {
 			continue
 		}
@@ -246,11 +255,16 @@ func writeECC(destDir string, m Manifest, prompt string, force bool) (bool, erro
 }
 
 func writeIndex(destDir string, ids []string) error {
-	entries := make([]map[string]string, 0, len(ids))
-	for _, id := range ids {
-		entries = append(entries, map[string]string{"id": id})
+	type listed struct {
+		ID string `json:"id"`
 	}
-	raw, err := json.MarshalIndent(map[string]any{"skills": entries}, "", "  ")
+	entries := make([]listed, 0, len(ids))
+	for _, id := range ids {
+		entries = append(entries, listed{ID: id})
+	}
+	raw, err := json.MarshalIndent(struct {
+		Skills []listed `json:"skills"`
+	}{entries}, "", "  ")
 	if err != nil {
 		return err
 	}

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -131,11 +132,11 @@ func TestDownloadAppliesTheSameFilters(t *testing.T) {
 		"not github":    "https://gitlab.com/acme/skills",
 		"no repository": "https://github.com/acme",
 	} {
-		if _, err := NewGate().Download(ctx, cfg, http.DefaultClient, url, "main"); !errors.Is(err, ErrRefused) {
+		if _, err := NewGate().download(ctx, cfg, http.DefaultClient, url, "main"); !errors.Is(err, ErrRefused) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
-	if _, err := NewGate().Download(ctx, cfg, nil, source, "main"); err == nil || errors.Is(err, ErrRefused) {
+	if _, err := NewGate().download(ctx, cfg, nil, source, "main"); err == nil || errors.Is(err, ErrRefused) {
 		t.Errorf("a missing client: %v", err)
 	}
 }
@@ -157,4 +158,94 @@ func TestSplitRepo(t *testing.T) {
 			t.Errorf("%q: %q, want %q", raw, got, want)
 		}
 	}
+}
+
+// githubTarball is what a repository download looks like: a global pax header
+// carrying the commit id, then the one root folder.
+func githubTarball(t *testing.T, names ...string) io.Reader {
+	t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	if err := tw.WriteHeader(&tar.Header{
+		Name: "pax_global_header", Typeflag: tar.TypeXGlobalHeader,
+		PAXRecords: map[string]string{"comment": "0123456789abcdef"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range names {
+		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o600, Typeflag: tar.TypeReg, Size: 4}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write([]byte("text")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return &buf
+}
+
+func TestExtractReadsATarballThatStartsWithTheGlobalHeader(t *testing.T) {
+	dir, err := extractTarGz(githubTarball(t, "acme-skills-abc123/skills/graphify/SKILL.md"), t.TempDir())
+	if err != nil {
+		t.Fatalf("a GitHub tarball was refused: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "skills", "graphify", "SKILL.md")); err != nil {
+		t.Fatalf("the root folder was not unpacked: %v", err)
+	}
+}
+
+func TestExtractRefusesNamesThatStepOutOnWindows(t *testing.T) {
+	for _, name := range []string{`acme/..\..\x`, `acme/C:\x`, `acme/a\b`} {
+		if _, err := extractTarGz(tarball(t, entry{name: name, body: "text"}), t.TempDir()); err == nil {
+			t.Errorf("%q was accepted", name)
+		}
+	}
+}
+
+func FuzzExtract(f *testing.F) {
+	f.Add("repo/skills/a/SKILL.md", "text", false)
+	f.Add("../escape", "x", false)
+	f.Add("/abs", "x", false)
+	f.Add(`repo/..\..\x`, "x", false)
+	f.Add("repo/C:/x", "x", false)
+	f.Add("repo/", "", true)
+	f.Fuzz(func(t *testing.T, name, body string, dir bool) {
+		if len(name) > 512 || len(body) > 4096 {
+			return
+		}
+		parent := t.TempDir()
+		var buf bytes.Buffer
+		gz := gzip.NewWriter(&buf)
+		tw := tar.NewWriter(gz)
+		h := &tar.Header{Name: name, Mode: 0o600, Typeflag: tar.TypeReg, Size: int64(len(body))}
+		if dir {
+			h.Typeflag, h.Mode, h.Size = tar.TypeDir, 0o700, 0
+		}
+		if tw.WriteHeader(h) == nil && !dir {
+			_, _ = tw.Write([]byte(body))
+		}
+		_ = tw.Close()
+		_ = gz.Close()
+		out, err := extractTarGz(&buf, parent)
+		if err != nil {
+			return
+		}
+		// Whatever was unpacked is inside the folder made for it, which is inside
+		// the parent: nothing escaped.
+		if filepath.Dir(out) != parent {
+			t.Fatalf("the folder %q is not directly under %q", out, parent)
+		}
+		_ = filepath.WalkDir(parent, func(p string, _ os.DirEntry, _ error) error {
+			if rel, err := filepath.Rel(parent, p); err != nil || strings.HasPrefix(rel, "..") {
+				t.Fatalf("%q is outside %q", p, parent)
+			}
+			return nil
+		})
+	})
 }

@@ -133,14 +133,10 @@ func TestSettingOverridesTheManifest(t *testing.T) {
 }
 
 func TestTheLegacyKeyEnablesASkill(t *testing.T) {
-	o := Options{Setting: func(id string) Setting {
-		if id == "commitLintEnabled" {
-			return Setting{HasEnabled: true, Enabled: true}
-		}
-		return Setting{}
-	}}
+	row := map[string]string{"commitLintEnabled": "true"}
+	setting, legacy := Readers(func(key string) (string, bool) { v, ok := row[key]; return v, ok })
 	r := ask("lint my commit message")
-	Apply(standard(t), r, o)
+	Apply(standard(t), r, Options{Setting: setting, Legacy: legacy})
 	if !strings.Contains(systemText(r), "COMMIT PROMPT") {
 		t.Fatal("the legacy enabled key did not enable the skill")
 	}
@@ -224,10 +220,10 @@ func TestTheECCRouterScoresItsOwnCatalog(t *testing.T) {
 			`"triggers":["dependency upgrade"],"keywords":["upgrade","dependencies"]}`,
 		"local/prompt.txt": "LOCAL PROMPT",
 	})
-	if got := reg.ECCIndex().Score("please upgrade the dependencies", 0); len(got) != 1 || got[0].ID != "catalog-one" {
+	if got := reg.eccIndex().Score("please upgrade the dependencies", 0); len(got) != 1 || got[0].ID != "catalog-one" {
 		t.Fatalf("ecc index %+v", got)
 	}
-	if got := reg.LocalIndex().Score("please upgrade the dependencies", 0); len(got) != 1 || got[0].ID != "local-one" {
+	if got := reg.localIndex().Score("please upgrade the dependencies", 0); len(got) != 1 || got[0].ID != "local-one" {
 		t.Fatalf("local index %+v", got)
 	}
 

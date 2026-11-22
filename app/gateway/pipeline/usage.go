@@ -23,6 +23,7 @@ func (c *call) setUsage(u translate.Usage) {
 
 // finish enqueues the one row the request leaves.
 func (c *call) finish(out Output) {
+	c.markSkills(out.Status)
 	r := &c.row
 	r.Status = out.Status
 	if c.rowStatus != 0 {

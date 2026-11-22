@@ -4,8 +4,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"testing/fstest"
+	"time"
 )
 
 const goodManifest = `{"id":"terse","name":"Terse","description":"short answers","hook":"system-prompt",` +
@@ -191,6 +193,9 @@ func TestRegistryReloadsWhenAPromptChanges(t *testing.T) {
 		t.Fatalf("prompt %q", got)
 	}
 	writeFiles(t, root, map[string]string{"terse/prompt.txt": "a longer second text"})
+	// A hand edit is seen within recheckEvery; a write through the router asks
+	// for the look at once.
+	r.Invalidate()
 	if got := r.Prompt("terse"); got != "a longer second text" {
 		t.Fatalf("prompt after rewrite %q", got)
 	}
@@ -258,5 +263,153 @@ func TestANilRegistryIsQuiet(t *testing.T) {
 	var r *Registry
 	if r.List() != nil || r.Prompt("x") != "" || r.Signature() != "" || r.Problems() != nil {
 		t.Fatal("a nil registry answered")
+	}
+}
+
+func TestLoadDirRefusesALinkOutOfTheFolder(t *testing.T) {
+	outside := filepath.Join(t.TempDir(), "secret")
+	if err := os.WriteFile(outside, []byte("signing secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"prompt.txt", "prompt.md", "rules.json", "manifest.json"} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			files := map[string]string{"manifest.json": goodManifest, "prompt.txt": "text"}
+			delete(files, name)
+			if name == "prompt.md" {
+				delete(files, "prompt.txt")
+			}
+			writeFiles(t, dir, files)
+			if err := os.Symlink(outside, filepath.Join(dir, name)); err != nil {
+				t.Skipf("no symlinks here: %v", err)
+			}
+			if _, prompt, err := LoadDir(dir); err == nil || strings.Contains(prompt, "signing secret") {
+				t.Fatalf("a link out of the folder was followed: prompt %q err %v", prompt, err)
+			}
+		})
+	}
+}
+
+func TestLoadDirFollowsALinkInsideTheFolder(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{"manifest.json": goodManifest, "real.txt": "inside"})
+	if err := os.Symlink("real.txt", filepath.Join(dir, "prompt.txt")); err != nil {
+		t.Skipf("no symlinks here: %v", err)
+	}
+	if _, prompt, err := LoadDir(dir); err != nil || prompt != "inside" {
+		t.Fatalf("prompt %q err %v", prompt, err)
+	}
+}
+
+func TestAHiddenFolderIsNeverASkill(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{
+		"terse/manifest.json":       goodManifest,
+		"terse/prompt.txt":          "real",
+		".clone-1234/manifest.json": `{"id":"halfway","name":"Half","description":"d","hook":"system-prompt"}`,
+		".clone-1234/prompt.txt":    "unfinished",
+		".download-9/manifest.json": `{"id":"unpacked","name":"U","description":"d","hook":"system-prompt"}`,
+		".download-9/prompt.txt":    "unfinished",
+	})
+	r := NewRegistry(dir, nil)
+	if ids := r.List(); len(ids) != 1 || ids[0].ID != "terse" {
+		t.Fatalf("skills %+v", ids)
+	}
+	if p := r.Problems(); len(p) != 0 {
+		t.Fatalf("problems %v", p)
+	}
+}
+
+func TestTheFetchFolderIsBesideTheSkillsFolder(t *testing.T) {
+	if got := FetchDir("/data"); filepath.Dir(got) != "/data" || filepath.Base(got) != ".skill-fetch" {
+		t.Fatalf("fetch folder %q", got)
+	}
+}
+
+func TestTheFolderIsNotLookedAtOnEveryRead(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{"terse/manifest.json": goodManifest, "terse/prompt.txt": "one"})
+	r := NewRegistry(root, nil)
+	if r.Prompt("terse") != "one" {
+		t.Fatal("first read")
+	}
+	writeFiles(t, root, map[string]string{"terse/prompt.txt": "a longer second text"})
+	if got := r.Prompt("terse"); got != "one" {
+		t.Fatalf("the folder was read again inside the recheck window: %q", got)
+	}
+	r.checked.Store(time.Now().Add(-2 * recheckEvery).UnixNano())
+	if got := r.Prompt("terse"); got != "a longer second text" {
+		t.Fatalf("a hand edit was not seen after the window: %q", got)
+	}
+}
+
+func TestManyReadersShareOneView(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{"terse/manifest.json": goodManifest, "terse/prompt.txt": "one"})
+	r := NewRegistry(root, nil)
+	var wg sync.WaitGroup
+	for range 32 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 200 {
+				if len(r.List()) != 1 || r.Prompt("terse") != "one" {
+					t.Error("a reader saw a partial view")
+					return
+				}
+				r.Invalidate()
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+func TestACatalogSkillNeverReplacesAnotherOfTheSameId(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{
+		// "abc" sorts before the catalog folder, "zed" after it, so the result
+		// must not depend on the order the folders are read in.
+		"abc/manifest.json":                 `{"id":"mine","name":"Mine","description":"custom","hook":"system-prompt"}`,
+		"abc/prompt.txt":                    "CUSTOM",
+		"zed/manifest.json":                 `{"id":"zed","name":"Zed","description":"custom","hook":"system-prompt"}`,
+		"zed/prompt.txt":                    "ZED",
+		CatalogDir + "/mine/manifest.json":  `{"id":"mine","name":"Mine","description":"imported","hook":"system-prompt","source":"ecc"}`,
+		CatalogDir + "/mine/prompt.md":      "IMPORTED",
+		CatalogDir + "/zed/manifest.json":   `{"id":"zed","name":"Zed","description":"imported","hook":"system-prompt","source":"ecc"}`,
+		CatalogDir + "/zed/prompt.md":       "IMPORTED",
+		CatalogDir + "/terse/manifest.json": goodManifest,
+		CatalogDir + "/terse/prompt.md":     "IMPORTED TERSE",
+	})
+	builtins := fstest.MapFS{
+		"builtin/terse/manifest.json": {Data: []byte(goodManifest)},
+		"builtin/terse/prompt.txt":    {Data: []byte("BUILTIN TERSE")},
+	}
+	r := NewRegistry(root, builtins)
+	for id, want := range map[string]string{"mine": "CUSTOM", "zed": "ZED", "terse": "BUILTIN TERSE"} {
+		if got := r.Prompt(id); got != want {
+			t.Errorf("%s answers %q, want %q", id, got, want)
+		}
+	}
+}
+
+func TestTheRegistryRefusesAnInstalledFolderThatLinksOutside(t *testing.T) {
+	secret := filepath.Join(t.TempDir(), "jwt-secret")
+	if err := os.WriteFile(secret, []byte("signing secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{"terse/manifest.json": goodManifest})
+	if err := os.Symlink(secret, filepath.Join(root, "terse", "prompt.txt")); err != nil {
+		t.Skipf("no symlinks here: %v", err)
+	}
+	r := NewRegistry(root, nil)
+	if got := r.Prompt("terse"); strings.Contains(got, "signing secret") {
+		t.Fatalf("the registry followed a link out of the skill folder: %q", got)
+	}
+	if _, ok := r.Find("terse"); ok {
+		t.Fatal("a skill whose prompt is a link outside its folder was installed")
+	}
+	if len(r.Problems()) != 1 {
+		t.Fatalf("problems %v", r.Problems())
 	}
 }

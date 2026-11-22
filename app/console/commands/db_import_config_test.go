@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"rllmx/app/gateway/skill"
 	"rllmx/app/store/lock"
 	"rllmx/tests"
 )
@@ -295,5 +296,75 @@ func TestImportConfigDeclaresItsFlags(t *testing.T) {
 	}
 	if (&DBImportConfig{}).Signature() != "db:import-config" {
 		t.Fatalf("signature %q", (&DBImportConfig{}).Signature())
+	}
+}
+
+// skillsSource is a folder of skills holding one that acts only on a rule.
+func skillsSource(t *testing.T) string {
+	t.Helper()
+	src := t.TempDir()
+	for name, body := range map[string]string{
+		"terse/manifest.json":  skillManifest,
+		"terse/prompt.txt":     "Answer briefly.",
+		"router/manifest.json": `{"id":"router","name":"Router","description":"reroutes","hook":"pre-route"}`,
+		"router/rules.json":    `{"rules":[{"stage":"pre-route","when":{"modelRegex":"^m$"},"then":{"rerouteModel":"wire/short"}}]}`,
+	} {
+		p := filepath.Join(src, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return src
+}
+
+func TestImportConfigWritesNoSkillsWhenTheOperatorDeclines(t *testing.T) {
+	r := newImportRig(t)
+	c := &importConsole{dbConsole{
+		opts:    map[string]string{"from": legacySource(t), "skills-from": skillsSource(t)},
+		answers: []string{"n"},
+	}}
+	if err := (&DBImportConfig{R: r.runtime()}).Handle(c); err == nil {
+		t.Fatal("a declined import did not stop")
+	}
+	if _, err := os.Stat(filepath.Join(r.dir, "skills")); err == nil {
+		t.Fatal("skills were copied although the operator declined")
+	}
+}
+
+func TestImportConfigCopiesSkillsAfterTheConfirmationWithTheirRules(t *testing.T) {
+	r := newImportRig(t)
+	c := &importConsole{dbConsole{
+		opts:  map[string]string{"from": legacySource(t), "skills-from": skillsSource(t)},
+		flags: map[string]bool{"yes": true},
+	}}
+	if err := (&DBImportConfig{R: r.runtime()}).Handle(c); err != nil {
+		t.Fatal(err)
+	}
+	reg := skill.NewRegistry(filepath.Join(r.dir, "skills"), nil)
+	if _, ok := reg.Find("terse"); !ok {
+		t.Fatalf("terse missing: %v", reg.Problems())
+	}
+	if _, ok := reg.Find("router"); !ok {
+		t.Fatalf("a rule-only skill did not load after the copy: %v", reg.Problems())
+	}
+}
+
+func TestImportConfigDryRunListsSkillsAndWritesNone(t *testing.T) {
+	r := newImportRig(t)
+	c := &importConsole{dbConsole{
+		opts:  map[string]string{"from": legacySource(t), "skills-from": skillsSource(t)},
+		flags: map[string]bool{"dry-run": true},
+	}}
+	if err := (&DBImportConfig{R: r.runtime()}).Handle(c); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(c.output(), "would copy terse") {
+		t.Fatalf("the dry run did not list the skills: %q", c.output())
+	}
+	if _, err := os.Stat(filepath.Join(r.dir, "skills")); err == nil {
+		t.Fatal("a dry run wrote skills")
 	}
 }

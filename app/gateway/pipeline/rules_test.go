@@ -210,3 +210,16 @@ func TestTheCacheKeyNamesTheMatchedRules(t *testing.T) {
 		t.Fatal("a matched rule did not change the cache key")
 	}
 }
+
+func TestARerouteFromANameThatDoesNotResolveIsRefusedForARestrictedKey(t *testing.T) {
+	r := ruleRig(t, skill.StagePreRoute,
+		`{"rules":[{"stage":"pre-route","when":{"modelRegex":"^bad"},"then":{"rerouteModel":"wire/short"}}]}`)
+	r.conn("wire", "k2")
+	key := identity.Caller{ID: "k", Restricted: true, Allow: []string{"wire/short"}}
+	// A control character in the name makes it unresolvable: the key was never
+	// allowed what it asked for, and a rule may not turn that into a model it is.
+	out := r.runAs(key, "/v1/chat/completions", `{"model":"bad\u0007name","messages":[{"role":"user","content":"hi"}]}`)
+	if out.Status == http.StatusOK || len(r.up.Calls()) != 0 {
+		t.Fatalf("%d %s after %d upstream calls", out.Status, out.Body, len(r.up.Calls()))
+	}
+}

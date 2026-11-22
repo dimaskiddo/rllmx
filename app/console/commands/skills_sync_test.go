@@ -111,3 +111,44 @@ func TestCatalogSourceRefusesARemoteSourceWithNoAllowlist(t *testing.T) {
 		t.Fatalf("err %v", err)
 	}
 }
+
+func TestImportSkillsRefusesALinkToAFileOutsideTheFolder(t *testing.T) {
+	secret := filepath.Join(t.TempDir(), "jwt-secret")
+	if err := os.WriteFile(secret, []byte("signing secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"prompt.txt", "manifest.json", "rules.json"} {
+		t.Run(name, func(t *testing.T) {
+			src := t.TempDir()
+			folder := filepath.Join(src, "terse")
+			if err := os.MkdirAll(folder, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			files := map[string]string{"manifest.json": skillManifest, "prompt.txt": "Answer briefly."}
+			delete(files, name)
+			for f, body := range files {
+				if err := os.WriteFile(filepath.Join(folder, f), []byte(body), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.Symlink(secret, filepath.Join(folder, name)); err != nil {
+				t.Skipf("no symlinks here: %v", err)
+			}
+			dataDir := t.TempDir()
+			c := &fakeConsole{}
+			_ = importSkills(c, dataDir, src, "main", nil, false)
+			var found bool
+			_ = filepath.WalkDir(dataDir, func(p string, d os.DirEntry, err error) error {
+				if err == nil && !d.IsDir() {
+					if b, _ := os.ReadFile(p); strings.Contains(string(b), "signing secret") {
+						found = true
+					}
+				}
+				return nil
+			})
+			if found {
+				t.Fatalf("the secret was copied into the data directory (%s)", name)
+			}
+		})
+	}
+}

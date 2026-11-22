@@ -18,9 +18,18 @@ import (
 // Headroom client bounds. The body a sidecar may answer is capped, and a request
 // never waits longer than the largest allowed timeout.
 const (
-	headroomDefaultTimeout = 3 * time.Second
-	headroomMinTimeout     = 100 * time.Millisecond
-	headroomMaxTimeout     = time.Minute
+	// DefaultURL is the sidecar's address when neither the settings row nor the
+	// configuration names one.
+	DefaultURL = "http://localhost:8787"
+	// DefaultTimeoutMS, MinTimeoutMS and MaxTimeoutMS bound the per-call wait the
+	// settings row may name.
+	DefaultTimeoutMS = 3000
+	MinTimeoutMS     = 100
+	MaxTimeoutMS     = 60000
+
+	headroomDefaultTimeout = DefaultTimeoutMS * time.Millisecond
+	headroomMinTimeout     = MinTimeoutMS * time.Millisecond
+	headroomMaxTimeout     = MaxTimeoutMS * time.Millisecond
 	headroomAnswerCap      = 8 << 20
 	headroomPath           = "/v1/compress"
 )
@@ -117,7 +126,8 @@ func (c *Compressor) Apply(ctx context.Context, r *translate.Request, o Options)
 	return res
 }
 
-// post sends the rows and decodes the answer.
+// post is the one outbound call. The answer is read under a size cap, so a
+// sidecar cannot fill memory.
 func (c *Compressor) post(ctx context.Context, endpoint, model string, o Options, rows []headroomMessage) ([]headroomMessage, error) {
 	payload := struct {
 		Messages []headroomMessage `json:"messages"`

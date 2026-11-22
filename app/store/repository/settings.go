@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/tidwall/gjson"
@@ -38,6 +39,13 @@ func (s *Store) settingsChanged() {
 
 var protectedSettings = map[string]bool{"password": true, "mitmSudoEncrypted": true}
 
+// IsSecretSetting reports a settings key that holds a credential or a hash: one
+// with its own writer, or one stored sealed. Anything that copies a setting into
+// text a client or an upstream can read must refuse these.
+func IsSecretSetting(key string) bool {
+	return protectedSettings[key] || slices.Contains(settingsSecretPaths, key)
+}
+
 type settingDefault struct{ key, raw string }
 
 // settingDefaults are merged in on read and never stored. The values and the
@@ -57,7 +65,7 @@ var settingDefaults = []settingDefault{
 	{"observabilityMaxRecords", "1000"}, {"observabilityBatchSize", "20"}, {"observabilityFlushIntervalMs", "5000"},
 	{"observabilityMaxJsonSize", "5"},
 	{"mitmRouterBaseUrl", `"http://localhost:20128"`}, {"dnsToolEnabled", "{}"}, {"rtkEnabled", "true"},
-	{"headroomEnabled", "false"}, {"headroomUrl", `"http://localhost:8787"`}, {"headroomCompressUserMessages", "false"},
+	{"headroomEnabled", "false"}, {"headroomUrl", `""`}, {"headroomCompressUserMessages", "false"},
 	{"headroomTimeoutMs", "3000"}, {"cavemanEnabled", "false"}, {"cavemanLevel", `"full"`}, {"cavemanRoutingMode", `"always"`},
 	{"ponytailEnabled", "false"}, {"ponytailLevel", `"full"`}, {"ponytailRoutingMode", `"smart"`}, {"customPromptEnabled", "false"}, {"customPrompt", `""`}, {"pxpipeEnabled", "false"},
 	{"pxpipeAutoInstall", "true"}, {"pxpipeMinChars", "25000"}, {"pxpipeTimeoutMs", "15000"}, {"providerOverrides", "{}"},

@@ -132,3 +132,44 @@ func TestEachTopicScoresItsOwnRequests(t *testing.T) {
 		}
 	}
 }
+
+// smartVerdicts is what the smart mode decides for fixed requests, with the real
+// caveman and ponytail routing tables. It pins the scorer's output so a change to
+// how the topics are scored cannot move a verdict unnoticed.
+func smartVerdicts() map[string][2]bool {
+	out := map[string][2]bool{}
+	for _, q := range []string{
+		"please simplify the handler", "be concise about it", "keep it simple and refactor", "What is the capital of France?",
+		"terse brief concise", "refactor", "refactoring simplified minimal strategies", "Keep It Simple",
+		"explain the history of the roman empire in detail", "hi", "2+2", "drop the filler and answer briefly",
+		"this code is over-engineered, remove dead code", "too much boilerplate in this module", "short answer please",
+		"compression of tokens", "delete unused helpers", "give me a caveman style answer", "write a poem about the sea",
+		"lean native stdlib solution", "yagni", "reduce complexity of the parser", "no filler", "clean up the tests",
+	} {
+		out[q] = [2]bool{cavemanTopic.Match(q, saverTopics...), ponytailTopic.Match(q, saverTopics...)}
+	}
+	return out
+}
+
+func TestTheSmartTopicsDecideAsTheyAlwaysDid(t *testing.T) {
+	want := map[string][2]bool{
+		"2+2": {false, false}, "Keep It Simple": {false, true}, "What is the capital of France?": {false, false},
+		"be concise about it": {true, false}, "clean up the tests": {false, true}, "compression of tokens": {true, false},
+		"delete unused helpers": {false, true}, "drop the filler and answer briefly": {true, false},
+		"explain the history of the roman empire in detail": {false, false}, "give me a caveman style answer": {true, false},
+		"hi": {false, false}, "keep it simple and refactor": {false, true}, "lean native stdlib solution": {false, true},
+		"no filler": {true, false}, "please simplify the handler": {false, true}, "reduce complexity of the parser": {false, true},
+		"refactor": {false, true}, "refactoring simplified minimal strategies": {false, true}, "short answer please": {true, false},
+		"terse brief concise": {true, false}, "this code is over-engineered, remove dead code": {false, true},
+		"too much boilerplate in this module": {false, true}, "write a poem about the sea": {false, false}, "yagni": {false, true},
+	}
+	got := smartVerdicts()
+	if len(got) != len(want) {
+		t.Fatalf("%d queries, %d pinned", len(got), len(want))
+	}
+	for q, w := range want {
+		if got[q] != w {
+			t.Errorf("%q decided %v, want %v", q, got[q], w)
+		}
+	}
+}

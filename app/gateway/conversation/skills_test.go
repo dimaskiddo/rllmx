@@ -13,7 +13,7 @@ func TestSkillSessionsExpireAndEvict(t *testing.T) {
 	if got := s.Injected("a"); !got["local-one"] {
 		t.Fatalf("state %v", got)
 	}
-	now = now.Add(SessionLife + time.Second)
+	now = now.Add(sessionLife + time.Second)
 	if got := s.Injected("a"); got != nil {
 		t.Fatalf("an expired entry survived: %v", got)
 	}

@@ -184,6 +184,9 @@ type call struct {
 	sessionKey    string
 	sessionPrior  map[string]bool
 	sessionNotice bool
+	// sessionPending is what this call's attempts injected in full, recorded
+	// once the call is answered.
+	sessionPending []string
 }
 
 func (c *call) run(ctx context.Context) Output {

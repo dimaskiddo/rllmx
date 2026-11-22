@@ -7,6 +7,8 @@ package rtk
 import (
 	"slices"
 	"strings"
+
+	apptext "rllmx/app/platform/text"
 )
 
 // Caps bound what one filter may read and emit, so a crafted tool result can
@@ -62,7 +64,7 @@ var filters = []filter{
 func detect(text string) *filter {
 	head := text
 	if len(head) > detectWindow {
-		head = cutUTF8(head, detectWindow)
+		head = apptext.CutBytes(head, detectWindow)
 	}
 	switch {
 	case reCommitHeader.MatchString(head):
@@ -125,16 +127,6 @@ func Compress(text string) (string, string) {
 		return text, ""
 	}
 	return out, f.name
-}
-
-func cutUTF8(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	for n > 0 && s[n]&0xC0 == 0x80 {
-		n--
-	}
-	return s[:n]
 }
 
 func nonEmptyLines(text string) []string {

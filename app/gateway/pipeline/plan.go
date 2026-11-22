@@ -3,12 +3,10 @@ package pipeline
 import (
 	"context"
 	"errors"
-	"net/http"
 	"strings"
 	"time"
 
 	"rllmx/app/gateway/plan"
-	"rllmx/app/gateway/skill"
 	"rllmx/app/llm/routing"
 	"rllmx/app/llm/stream"
 	"rllmx/app/llm/translate"
@@ -31,7 +29,7 @@ func (c *call) autoPlan(ctx context.Context) (Output, bool) {
 	if c.in.Internal || c.p == nil || c.p.d.Settings == nil || c.p.d.Resolver == nil || c.req == nil {
 		return Output{}, false
 	}
-	if c.skillsOff(plan.BypassHeader) {
+	if c.headerOff(plan.BypassHeader) {
 		return Output{}, false
 	}
 	doc, err := c.p.d.Settings.Effective(ctx)
@@ -46,16 +44,17 @@ func (c *call) autoPlan(ctx context.Context) (Output, bool) {
 	if out, ok := c.budget(ctx); !ok {
 		return out, true
 	}
-	planCombo, codeCombo, members, ok := c.autoPlanCombos(ctx, s)
+	planCombo, codeCombo, ok := c.autoPlanCombos(ctx, s)
 	if !ok {
 		return Output{}, false
 	}
-	// A restricted key may not call the planning combo, so it plans nothing: it
-	// is not refused for a model it never named.
-	if !c.planReachable(ctx, planCombo) {
+	// A restricted key that may not call the planning combo, or the combo the
+	// code would move to, plans nothing: it is not refused for a model it never
+	// named, and it does not pay for a plan it cannot use.
+	if !c.reachable(ctx, planCombo) || (codeCombo != "" && !c.reachable(ctx, codeCombo)) {
 		return Output{}, false
 	}
-	v := plan.Decide(ctx, c.req, s, c.planJudge(members[0], s))
+	v := plan.Decide(ctx, c.req, s, c.planJudge(planCombo, s))
 	if !v.NeedsPlan {
 		return Output{}, false
 	}
@@ -84,15 +83,16 @@ type comboLister interface {
 	ComboList(ctx context.Context) ([]repository.Combo, error)
 }
 
-// autoPlanCombos chooses the two combos and resolves the planning one's members.
-func (c *call) autoPlanCombos(ctx context.Context, s plan.Settings) (string, string, []routing.Member, bool) {
+// autoPlanCombos chooses the two combos and checks the planning one has a
+// member to call.
+func (c *call) autoPlanCombos(ctx context.Context, s plan.Settings) (string, string, bool) {
 	lister, ok := c.p.d.Resolver.(comboLister)
 	if !ok {
-		return "", "", nil, false
+		return "", "", false
 	}
 	rows, err := lister.ComboList(ctx)
 	if err != nil || len(rows) == 0 {
-		return "", "", nil, false
+		return "", "", false
 	}
 	list := make([]plan.Combo, 0, len(rows))
 	for _, r := range rows {
@@ -100,18 +100,18 @@ func (c *call) autoPlanCombos(ctx context.Context, s plan.Settings) (string, str
 	}
 	planCombo, codeCombo := plan.Combos(list, s, c.req.Model)
 	if planCombo == "" {
-		return "", "", nil, false
+		return "", "", false
 	}
 	members, err := c.expand(ctx, planCombo)
 	if err != nil || len(members) == 0 {
-		return "", "", nil, false
+		return "", "", false
 	}
-	return planCombo, codeCombo, members, true
+	return planCombo, codeCombo, true
 }
 
-// planReachable reports whether a restricted key's list covers the planning
-// combo, resolved the way a request resolves it.
-func (c *call) planReachable(ctx context.Context, name string) bool {
+// reachable reports whether a restricted key's list covers a combo, resolved
+// the way a request resolves it.
+func (c *call) reachable(ctx context.Context, name string) bool {
 	if !c.in.Caller.Restricted {
 		return true
 	}
@@ -126,7 +126,8 @@ func (c *call) planReachable(ctx context.Context, name string) bool {
 	return allow.Target(t)
 }
 
-// runPlan asks the planning combo for a plan.
+// runPlan sends the conversation to the planning combo under the architect
+// prompt, with no tools, so what comes back is text.
 func (c *call) runPlan(ctx context.Context, combo string, s plan.Settings) (translate.Response, bool) {
 	n := s.MaxTokens
 	req := &translate.Request{
@@ -137,14 +138,14 @@ func (c *call) runPlan(ctx context.Context, combo string, s plan.Settings) (tran
 	return c.internalCall(ctx, req, "-plan", s)
 }
 
-// planJudge asks one member of the planning combo the YES/NO question. A failed
-// call is reported, so the classifier keeps its heuristic verdict.
-func (c *call) planJudge(member routing.Member, s plan.Settings) plan.Judge {
-	model := member.Provider + "/" + member.Model
+// planJudge asks the planning combo the YES/NO question, by its name: a key that
+// may call the combo may not call one of its members. A failed call is reported,
+// so the classifier keeps its heuristic verdict.
+func (c *call) planJudge(combo string, s plan.Settings) plan.Judge {
 	return func(ctx context.Context, question string) (string, bool) {
 		n, temp := maxJudgeTokens, 0.1
 		req := &translate.Request{
-			Model:    model,
+			Model:    combo,
 			Messages: []translate.Message{{Role: translate.RoleUser, Content: translate.TextPart(question)}},
 			Params:   translate.Params{MaxTokens: &n, Temperature: &temp},
 		}
@@ -179,7 +180,7 @@ func (c *call) internalCall(ctx context.Context, req *translate.Request, suffix 
 		Caller:     c.in.Caller,
 		RequestID:  c.in.RequestID + suffix,
 		UserAgent:  c.in.UserAgent,
-		Header:     c.planHeader(),
+		Header:     c.internalHeader(),
 		AcceptJSON: true,
 		Internal:   true,
 		NoRules:    true,
@@ -192,18 +193,4 @@ func (c *call) internalCall(ctx context.Context, req *translate.Request, suffix 
 		return translate.Response{}, false
 	}
 	return *ans, true
-}
-
-// planHeader is the whole header set an internal call carries: the client's
-// User-Agent (it decides how a body is shaped) and the three bypass switches,
-// so no session id, rule or second plan reaches it.
-func (c *call) planHeader() http.Header {
-	h := http.Header{}
-	if ua := c.in.Header.Get("User-Agent"); ua != "" {
-		h.Set("User-Agent", ua)
-	}
-	h.Set(skill.BypassLocal, "off")
-	h.Set(skill.BypassECC, "off")
-	h.Set(plan.BypassHeader, "off")
-	return h
 }

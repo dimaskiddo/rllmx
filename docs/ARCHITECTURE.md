@@ -28,7 +28,7 @@ graph LR
         ACC["access/ auth identity oidc saml sso"]
         ST["store/ repository data importer analytics sealer dialect document lock"]
         PROT["protocol/ sigv4 eventstream cosy keccak"]
-        PLAT["platform/ cache network settings file text ttl redactor logbook failure"]
+        PLAT["platform/ cache network settings file text relevance ttl redactor logbook failure"]
         API["http, routes/"]
     end
 
@@ -71,7 +71,7 @@ Every node in the diagram is built. The table says what each package holds and w
 | `access/*` | Callers, API keys, dashboard sessions and OIDC, SAML and SSO | `http` |
 | `store/*` | The repositories, the analytics store, the importer, the sealer, the document and dialect formats, and the data lock | `llm`, `gateway` |
 | `protocol/*` | `sigv4`, `eventstream`, `cosy`, `keccak`, `websocket`: wire code that imports nothing in `app/` | `llm`, `store` |
-| `platform/*` | `cache`, `network`, `settings`, `file`, `text`, `ttl`, `redactor`, `logbook`, `failure` | every domain |
+| `platform/*` | `cache`, `network`, `settings`, `file`, `text`, `relevance`, `ttl`, `redactor`, `logbook`, `failure` | every domain |
 | `web/` | The embedded login and callback pages | `http` |
 
 | Source | Why it is built lazily |
