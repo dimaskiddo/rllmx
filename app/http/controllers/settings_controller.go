@@ -84,6 +84,16 @@ type settingsView struct {
 	CustomPromptEnabled         bool   `json:"customPromptEnabled"`
 	CustomPrompt                string `json:"customPrompt"`
 
+	AutoPlanEnabled        bool   `json:"autoPlanEnabled"`
+	AutoPlanMode           string `json:"autoPlanMode"`
+	AutoPlanComboID        string `json:"autoPlanComboId"`
+	AutoCodeComboID        string `json:"autoCodeComboId"`
+	AutoPlanThreshold      int    `json:"autoPlanComplexityThreshold"`
+	AutoPlanSmartClassify  bool   `json:"autoPlanSmartClassify"`
+	AutoPlanMaxTokens      int    `json:"autoPlanMaxTokens"`
+	AutoPlanTimeoutMS      int    `json:"autoPlanTimeoutMs"`
+	AutoPlanShowInResponse bool   `json:"autoPlanShowInResponse"`
+
 	SkillSources                 json.RawMessage `json:"skillSources"`
 	ECCAutoSkillRouterEnabled    bool            `json:"ecc_auto_skill_routerEnabled"`
 	ECCAutoSkillRouterConfidence float64         `json:"ecc_auto_skill_routerConfidence"`
@@ -201,6 +211,15 @@ func (c *SettingsController) view(d document.Doc) settingsView {
 		PonytailRoutingMode:          rawString(d, "ponytailRoutingMode", "smart"),
 		CustomPromptEnabled:          rawBool(d, "customPromptEnabled", false),
 		CustomPrompt:                 rawString(d, "customPrompt", ""),
+		AutoPlanEnabled:              rawBool(d, "autoPlanEnabled", false),
+		AutoPlanMode:                 rawString(d, "autoPlanMode", "auto"),
+		AutoPlanComboID:              rawString(d, "autoPlanComboId", ""),
+		AutoCodeComboID:              rawString(d, "autoCodeComboId", ""),
+		AutoPlanThreshold:            rawInt(d, "autoPlanComplexityThreshold", 6),
+		AutoPlanSmartClassify:        rawBool(d, "autoPlanSmartClassify", false),
+		AutoPlanMaxTokens:            rawInt(d, "autoPlanMaxTokens", 800),
+		AutoPlanTimeoutMS:            rawInt(d, "autoPlanTimeoutMs", 15000),
+		AutoPlanShowInResponse:       rawBool(d, "autoPlanShowInResponse", false),
 		SkillSources:                 rawArray(d, "skillSources", "[]"),
 		ECCAutoSkillRouterEnabled:    rawBool(d, "ecc_auto_skill_routerEnabled", false),
 		ECCAutoSkillRouterConfidence: rawFloat(d, "ecc_auto_skill_routerConfidence", 0.35),
@@ -306,6 +325,15 @@ var settingsRules = map[string]settingRule{
 	"ponytailRoutingMode":             enumRule("smart", "always"),
 	"customPromptEnabled":             boolRule,
 	"customPrompt":                    textRule(4000),
+	"autoPlanEnabled":                 boolRule,
+	"autoPlanMode":                    enumRule("auto", "manual"),
+	"autoPlanComboId":                 textRule(128),
+	"autoCodeComboId":                 textRule(128),
+	"autoPlanComplexityThreshold":     intRule(1, 10),
+	"autoPlanSmartClassify":           boolRule,
+	"autoPlanMaxTokens":               intRule(200, 4000),
+	"autoPlanTimeoutMs":               intRule(1000, 60000),
+	"autoPlanShowInResponse":          boolRule,
 	"skillSources":                    urlListRule("https", 10, 2048),
 	"ecc_auto_skill_routerEnabled":    boolRule,
 	"ecc_auto_skill_routerConfidence": floatRule(0, 1),

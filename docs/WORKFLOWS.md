@@ -2,7 +2,7 @@
 
 Flow: env load, store open, authenticate, resolve, select account, translate, execute, stream, record usage. Owns startup order and operator procedures (migration, imports). Component detail: the design document for that area in [`docs/design/`](design/). Reference tracking: [`PARITY.md`](PARITY.md).
 
-**Built today:** the whole flow below, from boot through the request stages to the usage row. Combinations, token savers and skills are planned and appear where the flow would use them.
+**Built today:** the whole flow below, from boot through the request stages to the usage row, including combinations, token savers, skills, rule hooks and Auto Plan.
 
 ---
 
@@ -248,7 +248,7 @@ flowchart TD
     Steps --> Resp
 ```
 
-Skills and Auto Plan are planned. Detail: design doc 11.
+The plan hook runs after the client bypass and before the model is resolved: the classifier reads the last user turn, asks a planning combo for a plan when the turn looks like a build task, puts the plan in front of that turn, and may switch the request to a code combo. Detail: design doc 11.
 
 ### 12. Usage Save & Live Stats
 

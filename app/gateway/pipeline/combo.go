@@ -8,6 +8,7 @@ import (
 
 	"rllmx/app/gateway/combo"
 	"rllmx/app/gateway/conversation"
+	"rllmx/app/gateway/plan"
 	"rllmx/app/llm/routing"
 	"rllmx/app/llm/translate"
 	"rllmx/app/llm/upstream"
@@ -186,6 +187,9 @@ func (c *call) comboMember(ctx context.Context, m routing.Member, shape func(*tr
 		shape(req)
 	}
 	c.req = req
+	if c.planTurn != "" {
+		plan.Inject(c.req, c.planTurn)
+	}
 	c.requested = m.Provider + "/" + m.Model
 	c.comboContext(dest, t)
 

@@ -82,6 +82,12 @@ func (c *call) applySkills(ctx context.Context) {
 	if c.p == nil || c.p.d.Skills == nil {
 		return
 	}
+	// Both bypass headers ask for an untouched request. A nil settings reader
+	// would still leave every "always" skill to its manifest, so the routers are
+	// skipped outright.
+	if c.skillsOff(skill.BypassLocal) && c.skillsOff(skill.BypassECC) {
+		return
+	}
 	st := skill.Apply(c.p.d.Skills, c.req, c.skillOptions(ctx))
 	if key, _, _ := c.sessionInfo(); key != "" && len(st.Session) > 0 {
 		c.p.d.SkillSessions.Mark(key, st.Session)

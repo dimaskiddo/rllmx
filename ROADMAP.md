@@ -41,7 +41,7 @@ Status words: **built** (implemented and tested), **partial** (some behavior mis
 | Token savers (tool-output compaction, Headroom sidecar, built-in and custom prompts) | built |
 | Skills registry, local and catalog routers, catalog sync | built |
 | Skills Studio, declarative rule hooks, config fields and the session cache | built |
-| Auto plan | planned |
+| Auto plan: the heuristic and smart classifier, the planning combo, the plan turn and the code-combo switch | built |
 
 ## Accounts
 

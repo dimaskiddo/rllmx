@@ -64,8 +64,9 @@ func TestOnlyTheHeadersThePipelineReadsAreKept(t *testing.T) {
 	in.Set("User-Agent", "ua")
 	in.Set("Anthropic-Beta", "a,b")
 	in.Add("Anthropic-Beta", "c")
+	in.Set("X-9router-Auto-Plan", "off")
 	out := PickHeaders(in)
-	if len(out) != 2 || out.Get("User-Agent") != "ua" || len(out.Values("Anthropic-Beta")) != 2 {
+	if len(out) != 3 || out.Get("User-Agent") != "ua" || len(out.Values("Anthropic-Beta")) != 2 || out.Get("X-9router-Auto-Plan") != "off" {
 		t.Fatalf("%v", out)
 	}
 }

@@ -219,6 +219,8 @@ func (c *call) memberCopy() *call {
 	sub.req, sub.tctx, sub.body, sub.dest = nil, nil, nil, destination{}
 	sub.cacheKey, sub.errClass, sub.rowStatus = "", "", 0
 	sub.attempt = 0
+	// A panel member is the same request again: it must not plan a second time.
+	sub.in.Internal = true
 	sub.open = nil
 	sub.clientStream = false
 	sub.upStream = false

@@ -123,7 +123,9 @@ func (c *call) keyFlag(ctx context.Context) bool {
 // wantsCache is true for a request the cache may answer: a non-stream call from
 // a real API key that asked for it or pinned the temperature at zero.
 func (c *call) wantsCache() bool {
-	if c.in.Cache == cacheBypass || c.clientStream || c.in.Caller.Anonymous || c.in.Caller.ID == "" {
+	// An injected plan is not in the key, which hashes the client's own body, so
+	// a planned request neither reads nor stores an entry.
+	if c.planInjected || c.in.Cache == cacheBypass || c.clientStream || c.in.Caller.Anonymous || c.in.Caller.ID == "" {
 		return false
 	}
 	if len(c.in.Body) > maxCachedRequest {

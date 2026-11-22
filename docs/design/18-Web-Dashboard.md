@@ -56,7 +56,7 @@ Plain HTML, ES modules, CSS; same flows and `/api/*` contract (design doc 18).
 | Pages | Status |
 |---|---|
 | home, providers (list, new, detail), combos, endpoint (base URL, keys, token saver), token saver, login and setup, i18n `en`, `id` | todo |
-| usage, quota, console log, media providers (per kind, combos), profile, translator playground, basic chat, pricing settings, skills Studio (extended), routing health, auto plan (extended) | todo |
+| usage, quota, console log, media providers (per kind, combos), profile, translator playground, basic chat, pricing settings, skills Studio (extended), routing health, auto plan (extended) | todo; auto plan's nine keys are already readable and writable through `/api/settings` |
 | cli-tools, mitm, pxpipe, other i18n locales | deferred |
 | proxy pages and the per-connection proxy fields | out |
 | landing | out |

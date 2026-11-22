@@ -264,3 +264,23 @@ func TestReadSettingReadsTheTwoKeys(t *testing.T) {
 		t.Fatalf("a typo was accepted: %+v", s)
 	}
 }
+
+func TestBothBypassHeadersStopEverySkill(t *testing.T) {
+	files := map[string]string{
+		"always/manifest.json": `{"id":"always","name":"Always","description":"d","hook":"system-prompt","default_enabled":true,"routing_mode":"always"}`,
+		"always/prompt.txt":    "ALWAYS PROMPT",
+	}
+	on := skillCall(t, `{}`, nil, files)
+	on.applySkills(context.Background())
+	if !strings.Contains(hubSystem(on), "ALWAYS PROMPT") {
+		t.Fatalf("the skill was not injected: %q", hubSystem(on))
+	}
+	h := http.Header{}
+	h.Set(skill.BypassLocal, "off")
+	h.Set(skill.BypassECC, "off")
+	off := skillCall(t, `{}`, h, files)
+	off.applySkills(context.Background())
+	if got := hubSystem(off); got != "" {
+		t.Fatalf("a bypassed request carried %q", got)
+	}
+}

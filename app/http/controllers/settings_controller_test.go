@@ -247,6 +247,57 @@ func TestASettingsWriteRefusesABadSkillKey(t *testing.T) {
 	}
 }
 
+func TestTheAutoPlanSettingsAreValidatedAndRead(t *testing.T) {
+	m := newMgmtRig(t)
+	m.settingsRoutes(&SettingsController{DB: func() *repository.Store { return m.st.Store }, Auth: m.auth})
+
+	code, out, raw := m.call(nethttp.MethodGet, "/api/settings", "", true)
+	if code != 200 {
+		t.Fatalf("%d %s", code, raw)
+	}
+	for key, want := range map[string]any{
+		"autoPlanEnabled":             false,
+		"autoPlanMode":                "auto",
+		"autoPlanComboId":             "",
+		"autoCodeComboId":             "",
+		"autoPlanComplexityThreshold": float64(6),
+		"autoPlanSmartClassify":       false,
+		"autoPlanMaxTokens":           float64(800),
+		"autoPlanTimeoutMs":           float64(15000),
+		"autoPlanShowInResponse":      false,
+	} {
+		if out[key] != want {
+			t.Errorf("%s = %v, want %v", key, out[key], want)
+		}
+	}
+
+	body := `{"autoPlanEnabled":true,"autoPlanMode":"manual","autoPlanComboId":"planner",` +
+		`"autoCodeComboId":"coder","autoPlanComplexityThreshold":8,"autoPlanSmartClassify":true,` +
+		`"autoPlanMaxTokens":1200,"autoPlanTimeoutMs":20000,"autoPlanShowInResponse":true}`
+	code, out, raw = m.call(nethttp.MethodPatch, "/api/settings", body, true)
+	if code != 200 {
+		t.Fatalf("%d %s", code, raw)
+	}
+	if out["autoPlanMode"] != "manual" || out["autoPlanComboId"] != "planner" || out["autoPlanMaxTokens"] != float64(1200) {
+		t.Fatalf("%v", out)
+	}
+
+	for name, body := range map[string]string{
+		"bad mode":       `{"autoPlanMode":"sometimes"}`,
+		"low threshold":  `{"autoPlanComplexityThreshold":0}`,
+		"high threshold": `{"autoPlanComplexityThreshold":11}`,
+		"few tokens":     `{"autoPlanMaxTokens":199}`,
+		"many tokens":    `{"autoPlanMaxTokens":4001}`,
+		"short timeout":  `{"autoPlanTimeoutMs":999}`,
+		"long combo id":  `{"autoPlanComboId":"` + strings.Repeat("a", 129) + `"}`,
+		"control char":   `{"autoCodeComboId":"a\nb"}`,
+	} {
+		if code, _, raw := m.call(nethttp.MethodPatch, "/api/settings", body, true); code != 400 {
+			t.Errorf("%s: %d %s", name, code, raw)
+		}
+	}
+}
+
 func TestABlankSSOSecretKeepsTheStoredOne(t *testing.T) {
 	m := newMgmtRig(t)
 	seededSettings(t, m)

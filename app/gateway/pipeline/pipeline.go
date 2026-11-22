@@ -63,6 +63,9 @@ type Input struct {
 	// NoRules skips the skill rule hooks. The smart router sets it on its own
 	// question, so a rule cannot rewrite or decorate that internal call.
 	NoRules bool
+	// Internal marks a call this router makes for itself, such as a smart
+	// router's question or an auto plan request: no auto plan runs on it.
+	Internal bool
 }
 
 // Output is the answer. A streamed answer has already been written through the
@@ -170,6 +173,12 @@ type call struct {
 	rowStatus int
 	// rules is what this request's declarative hooks matched.
 	rules skill.Actions
+	// planInjected marks that an auto plan was written into the request, which
+	// the response cache must not answer for or store.
+	planInjected bool
+	// planTurn is the plan text to put back into a body re-read for a combo
+	// member, because a member never reuses the previous one's request.
+	planTurn string
 	// The conversation's skill state, resolved once per call.
 	sessionLoaded bool
 	sessionKey    string
@@ -183,6 +192,9 @@ func (c *call) run(ctx context.Context) Output {
 	}
 	c.evaluateRules(ctx)
 	if out, ok := c.bypass(ctx); ok {
+		return out
+	}
+	if out, ok := c.autoPlan(ctx); ok {
 		return out
 	}
 	if out, ok := c.resolve(ctx); !ok {

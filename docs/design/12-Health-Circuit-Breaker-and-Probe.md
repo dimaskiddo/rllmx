@@ -33,7 +33,7 @@
 | `/api/providers/test-batch`, `/api/providers/{id}/test-models`, `/api/models/test` | `app/http/controllers`, `app/gateway/probe` | done (llm models only) |
 | `/api/headroom/{status,proxy}` | `app/http/controllers` | done |
 | `/api/skills`, `/api/skills/{id}`, `/api/skills/sync` | `app/gateway/skill`, `app/http/controllers` | done (the Studio's write routes are 3.3) |
-| `/api/auto-plan/settings` | `app/plan` | todo |
+| `/api/auto-plan/settings` | `app/gateway/plan` | out: the `autoPlan*` keys travel in `/api/settings` (divergence 417) |
 
 ---
 
@@ -46,7 +46,7 @@
 - [x] `providers/test-batch`, `providers/{id}/test-models`, `models/test` through the pipeline
 - [x] `/api/combos/suggest` and `/suggest/accept`, `/api/health/latency-stream`
 - [x] `/api/usage/active-providers` and the in-flight table with the usage routes (`design doc 16`)
-- [ ] `/api/auto-plan/settings` with its area (3.4); the skills routes landed in 3.2
+- [x] The auto plan area (3.4); its keys travel in `/api/settings`, not the reference's dedicated route
 
 ---
 

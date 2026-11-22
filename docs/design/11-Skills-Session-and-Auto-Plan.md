@@ -1,8 +1,8 @@
-# Design 11 — Skills, Session & Auto Plan (`app/gateway/skill/`, `app/gateway/conversation/`, `app/plan/`)
+# Design 11 — Skills, Session & Auto Plan (`app/gateway/skill/`, `app/gateway/conversation/`, `app/gateway/plan/`)
 
-**Status:** partial
+**Status:** done
 
-The skills registry, both routers, the catalog sync, the dashboard's read and sync routes, the Studio, rule hooks, config fields and the session cache are built (steps 3.2 and 3.3). Auto Plan is 3.4. Session ids are built.
+The skills registry, both routers, the catalog sync, the dashboard's read and sync routes, the Studio, rule hooks, config fields, the session cache and Auto Plan are built (steps 3.2, 3.3 and 3.4). Session ids are built.
 
 ### Skill Layout
 
@@ -116,26 +116,49 @@ A made-up id is a random UUID plus the time in milliseconds, and it expires afte
 
 On a repeat turn a matched skill becomes the reference's one-line reminder instead of its full prompt. "Always" skills are never reminded. After a turn moves to another account, later turns of that conversation carry the failover notice. A request with no session header keeps no state. Session state is not part of the response-cache key (divergence 410).
 
-### Auto Plan-Then-Code (`app/plan/`, step 3.4)
+### Auto Plan-Then-Code (`app/gateway/plan/`, built)
 
-Settings: `autoPlanEnabled`, `autoPlanMode`, `autoPlanComboId`, `autoCodeComboId`, `autoPlanComplexityThreshold`, `autoPlanSmartClassify`, `autoPlanMaxTokens`, `autoPlanTimeoutMs`.
+Settings, all in the settings row: `autoPlanEnabled`, `autoPlanMode` (`auto` or `manual`), `autoPlanComboId`, `autoCodeComboId` (an id or a name), `autoPlanComplexityThreshold` (1-10, default 6), `autoPlanSmartClassify`, `autoPlanMaxTokens` (200-4000, default 800), `autoPlanTimeoutMs` (1000-60000, default 15000) and `autoPlanShowInResponse`. The last one is stored and answered but changes nothing: the plan never travels in the answer, as in the reference.
+
+The package is `app/gateway/plan`, not `app/plan`: `gateway/pipeline` must import it, and imports run down the domains only.
 
 ```mermaid
 flowchart TD
-    A[Request] --> B{Has a plan, in a tool loop, or under 8 words?}
-    B -- Yes --> Z[Skip]
-    B -- No --> C[Classify complexity: keywords and scope]
-    C --> D{Smart classify on?}
-    D -- Yes --> E[Cheap YES/NO model call]
-    D -- No --> F{Plan needed?}
-    E --> F
-    F -- No --> Z
-    F -- Yes --> G[Run plan combo, non-streaming, bounded by timeout]
-    G --> H[Insert PLAN system message before the last user turn]
-    H --> I[Optionally reroute to the code combo]
+    A[Request] --> B{Internal call, bypass header, or settings off?}
+    B -- Yes --> Z[Unchanged]
+    B -- No --> C{Pick the combos}
+    C -- None --> Z
+    C --> D{Restricted key may call the plan combo?}
+    D -- No --> Z
+    D -- Yes --> E{Has a plan, in a tool loop, or under 8 words?}
+    E -- Yes --> Z
+    E -- No --> F[Heuristic score from words, build words and scope]
+    F --> G{Unsure and smart classify on?}
+    G -- Yes --> H[One YES/NO call to a plan combo member]
+    G -- No --> I{Plan needed?}
+    H --> I
+    I -- No --> Z
+    I -- Yes --> J[Run the plan combo, non-streaming, bounded by timeout]
+    J -- Failed or empty --> Z
+    J --> K[Plan turn before the last user turn]
+    K --> L[Optionally switch to the code combo]
 ```
 
-An error at any step fails open. Bypass: `x-9router-auto-plan: off`. The outcome is logged at DEBUG.
+**Classifier.** The heuristic scans the last user turn, cut at 16 KiB. A turn already carrying a `<PLAN>` marker, any tool turn or tool call, and a turn under eight words are skipped by name. A question or typo wording is skipped unless the turn also builds something and runs 25 words.
+
+The score adds `0.15` at 12, 25 and 50 words each, `0.2` per build word capped at `0.4`, `0.2` per scope phrase capped at `0.4`, and `0.2` when both are present, clamped to 0..1. The plan is needed at `score >= threshold/10`.
+
+A verdict within 0.25 of the threshold, with smart classify on, asks one member of the planning combo one YES/NO question; a failed call keeps the heuristic.
+
+**The plan call** is a pipeline call of the router's own: an OpenAI-format body whatever the client speaks. It carries the client's turns with the architect instruction in front, and no tools, rules, skills or second plan. Its context is bounded by `autoPlanTimeoutMs`, and it leaves its own usage row.
+
+The answer is cut at 32 KiB and inserted as one system turn before the last user turn; the same plan is never inserted twice. A combo member re-reads the client body, so the plan is put back into every member.
+
+**The code switch** names the configured combo and resolves it like any client-named model: a restricted key must be allowed its final name. A key that may not call the planning combo is not planned for, rather than refused for a model it never named.
+
+A request whose plan was injected is not read from or stored in the response cache.
+
+An error at any step fails open. Bypass: `x-9router-auto-plan: off`. The outcome is one DEBUG line naming the verdict, the tokens and the combo, never the text.
 
 ---
 
@@ -153,9 +176,9 @@ An error at any step fails open. Bypass: `x-9router-auto-plan: off`. The outcome
 | Skills registry (system-prompt hooks) | `src/lib/skillsRegistry.js` | `app/gateway/skill` | done (3.2) |
 | ECC auto skill router | `src/skills/autoRouter.js` | `app/gateway/skill` | done (3.2) |
 | Local skill router | `src/skills/localSkillRouter.js` | `app/gateway/skill` | done (3.2) |
-| Session LRU and continuity notice | `src/lib/session/cache.js` | `app/gateway/conversation` | todo |
-| Skills Studio | `src/app/api/skills`, dashboard skills page | `app/gateway/skill`, `web` | partial: list and sync built; create, edit, delete in 3.3 |
-| Auto Plan-Then-Code | `src/lib/autoPlanRouter.js` | `app/plan` | todo |
+| Session LRU and continuity notice | `src/lib/session/cache.js` | `app/gateway/conversation` | done (3.3) |
+| Skills Studio | `src/app/api/skills`, dashboard skills page | `app/gateway/skill`, `web` | done (3.3): routes; the dashboard page is not built yet |
+| Auto Plan-Then-Code | `src/lib/autoPlanRouter.js` | `app/gateway/plan` | done (3.4) |
 | Setup wizard | `src/app/setup/page.js` | `web` | todo |
 | Proxy-pool fitness | `open-sse/services/proxyPoolFitness.js`, `proxyPoolFitnessRepo.js` | none | out (no proxies) |
 | Hermes plugin (memory injection, process manager) | `src/lib/plugins/hermes/*` | none | out |
@@ -166,12 +189,12 @@ An error at any step fails open. Bypass: `x-9router-auto-plan: off`. The outcome
 ---
 
 ## Remaining work
-**Step 3.4.**
+**Nothing.**
 
 - [x] Rule hooks: RE2 on bounded input; inject, reroute or set a header; deny `authorization`, `host`, `cookie`, `content-length`
 - [x] Skills Studio routes: create, edit and delete a custom skill under `DATA_DIR/skills/`
 - [x] Session cache: the LRU and the continuity notice
-- [ ] `app/plan`, driven by the `autoPlan*` settings
+- [x] `app/gateway/plan`, driven by the `autoPlan*` settings
 - **Done when:** Auto Plan's settings drive the plan-then-code flow.
 
 ---
@@ -200,6 +223,12 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 409 | Session state is keyed by the caller's id and the session id together | The reference keys by a client-chosen session id, so one client can read or mark another's conversation state |
 | 410 | Session state is not part of the response-cache key | The reminder and the full prompt carry the same instruction and the notice is advisory; adding it would split the cache per turn (trade-off) |
 | 411 | An edit removes a prompt or rules file the new body drops | The reference leaves a stale `prompt.txt` or `hook.js` behind, so the old text keeps applying |
+| 412 | Auto plan runs for every client format and every chat path the pipeline serves; the reference plans only inside its OpenAI-compatible handler | One router serves five client APIs, and Gemini names its model in the path, so a hook inside one handler would work for one client only |
+| 413 | The smart classifier asks the planning combo's first member | The reference pins `gpt-4o-mini`; on a router with no such connection its second tier fails open every time, silently spending nothing and classifying nothing |
+| 414 | The plan call is hermetic: an OpenAI-format body, no tools, no rules, no skills, no second plan, cancelled when its timeout expires | The reference copies the client body with its tools and leaves a timed-out plan request running; a tool-calling model would answer the planner with a tool call instead of a plan |
+| 415 | A request whose plan was injected is neither read from nor stored in the response cache | The key hashes the client's body, which cannot see a plan written afterwards; a cached answer would stand in for a planned one (trade-off) |
+| 416 | The code-combo switch is checked against the caller's model list like any named target | The reference renames the model after its access check, so a restricted key can be moved onto a combo it may not call |
+| 417 | No `/api/auto-plan/settings`; the nine keys live in `/api/settings` | The reference's own dashboard never calls that route and patches `/api/settings` directly, and one settings row is one place to validate and read |
 
 ---
 
@@ -214,6 +243,11 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | Six core skills duplicated the savers' style keys | Distinct ids keep both switches independent (divergence 404) |
 | The 3.2 loader read `config_schema` as a single object, so every reference manifest that carries an array (caveman, commit-lint) failed to load | `config_schema` is a list of typed fields, checked field by field (design doc 10's prompt list) |
 | The 3.2 registry scanned one level of the skills folder, so `skills/ecc-imported/<id>/` never loaded and the catalog folder itself was reported as broken | The registry reads the catalog folder's children, and the folder signature covers them |
+| The 3.3 double skill bypass left every "always" skill to its manifest, so a bypassed request still carried them | Both bypass headers now stop the routers before any skill is scored |
 | The reference's Studio deletes and writes any path a request names | The router refuses a non-custom folder, an embedded id, the catalog folder and a symlink before any write (divergence 405) |
 | The reference's `dispatchHook` imports `hook.js` with no sandbox and is never called | Rules are data; nothing in a skill folder runs (design doc 22) |
 | The reference's repeat-turn reminder keyed on the client's session id alone | The key includes the caller, so one key never reads another's state (divergence 409) |
+| The reference's classifier pins `gpt-4o-mini`, a model the router may not serve | The second tier asks a member of the planning combo, so it spends a call the operator already configured (divergence 413) |
+| The reference's code-combo switch runs after its key check | The final model name is checked, so a restricted key is never moved to a combo it may not call (divergence 416) |
+| The reference's plan call keeps the client's tools, and `Promise.race` leaves the timed-out request running | The internal call carries no tools and is cancelled by its context (divergence 414) |
+| The reference's `stripPlanMarkersForClient` is imported and never called, so `autoPlanShowInResponse` is decorative | The flag is stored and answered, and the design says plainly that it changes nothing: the plan never travels in the answer |

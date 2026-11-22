@@ -21,6 +21,26 @@ var (
 	ErrComboEmpty = errors.New("routing: the combo names no model")
 )
 
+// ComboList returns every stored combo in the order the dashboard lists them,
+// which is the order auto plan picks a planning combo from.
+func (r *Resolver) ComboList(ctx context.Context) ([]repository.Combo, error) {
+	names, err := r.Snapshot.ComboNames(ctx)
+	if err != nil {
+		return nil, err
+	}
+	byName, err := r.Snapshot.Combos(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]repository.Combo, 0, len(names))
+	for _, name := range names {
+		if c, ok := byName[name]; ok {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
 // Member is one target a combo may reach: what a member string resolves to.
 type Member struct {
 	Provider string

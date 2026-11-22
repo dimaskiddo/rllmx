@@ -16,7 +16,7 @@ One file per area. Each carries its status, the design, its parity table against
 | 08 | [Executors](08-Executors.md) | partial |
 | 09 | [Streaming](09-Streaming.md) | partial |
 | 10 | [Token Savers](10-Token-Savers.md) | todo |
-| 11 | [Skills, Session & Auto Plan](11-Skills-Session-and-Auto-Plan.md) | todo |
+| 11 | [Skills, Session & Auto Plan](11-Skills-Session-and-Auto-Plan.md) | done |
 | 12 | [Health, Circuit Breaker & Probe](12-Health-Circuit-Breaker-and-Probe.md) | partial |
 | 13 | [Media Endpoints](13-Media-Endpoints.md) | done |
 | 14 | [Outbound Network](14-Outbound-Network.md) | partial |
