@@ -10,6 +10,7 @@ import (
 	"github.com/goravel/framework/contracts/foundation"
 
 	"rllmx/app/gateway/account"
+	"rllmx/app/gateway/conversation"
 	"rllmx/app/gateway/pipeline"
 	"rllmx/app/gateway/prefetch"
 	"rllmx/app/gateway/saver"
@@ -105,6 +106,7 @@ func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.P
 		Saver:         saverClient(h),
 		SaverURL:      saverURL(h),
 		Skills:        skill.NewRegistry(filepath.Join(DataOf(app).Settings.DataDir, "skills"), skill.Builtin()),
+		SkillSessions: conversation.NewSkillSessions(nil),
 		Signatures:    signatureCache(app),
 		Replay:        signatureCache(app),
 		Refresher:     h.Refresher,

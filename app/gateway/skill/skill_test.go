@@ -73,6 +73,30 @@ func TestApplyLeavesAnUnrelatedQuestionAlone(t *testing.T) {
 	}
 }
 
+func TestApplyRendersTheConfiguredValues(t *testing.T) {
+	reg := installed(t, map[string]string{
+		"terse/manifest.json": `{"id":"terse","name":"Terse","description":"short","hook":"system-prompt",` +
+			`"default_enabled":true,"routing_mode":"always","config_schema":[` +
+			`{"key":"level","type":"enum","label":"Level","default":"full","options":[{"value":"lite"},{"value":"full"}]},` +
+			`{"key":"scale","type":"slider","label":"Scale","default":2,"min":1,"max":5}]}`,
+		"terse/prompt.txt": "Answer at {level}.",
+	})
+	values := map[string]string{"terse_level": "lite"}
+	o := Options{Value: func(k string) (string, bool) { v, ok := values[k]; return v, ok }}
+	r := ask("hello there")
+	Apply(reg, r, o)
+	body := systemText(r)
+	if !strings.HasPrefix(body, "Answer at lite.") {
+		t.Fatalf("placeholder %q", body)
+	}
+	if !strings.Contains(body, "- Scale: 2 (scale 1-5)") {
+		t.Fatalf("configuration %q", body)
+	}
+	if strings.Contains(body, "Level:") {
+		t.Fatalf("the filled field was listed too: %q", body)
+	}
+}
+
 func TestSettingOverridesTheManifest(t *testing.T) {
 	off := Options{Setting: func(id string) Setting {
 		if id == "terse" {

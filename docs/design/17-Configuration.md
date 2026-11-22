@@ -93,6 +93,7 @@ The status column is the v1 target, not the build state: behavior lands later. U
 | `ccFilterNaming` | honored (answers the Claude CLI topic-naming probe locally; absent = off; dashboard toggle with the settings API) |
 | `autoPlan*`, `<skillId>Enabled`, `<skillId>RoutingMode`, `ecc_auto_skill_router*` (extended) | honored; the per-skill keys are accepted for the manifest's id alphabet by the settings API |
 | `skillSources` | honored: the https allowlist a `skills:sync` clone or `/api/skills/sync` may use; empty refuses every clone |
+| `<skillId>_<field>`, or the field's `legacy_key` | a skill's `config_schema` value; PATCH checks it against that field's type, options and range (design doc 11) |
 | `enableObservability`, `observabilityMaxRecords`, `observabilityBatchSize`, `observabilityFlushIntervalMs`, `observabilityMaxJsonSize` | stored (usage always recorded, metadata only) |
 | `outboundProxyEnabled`, `outboundProxyUrl`, `outboundNoProxy` | out (no default, never read; a value in an imported row is kept as stored and skipped by `db:import-config`) |
 | `headroomAutoStart`, `headroomCodeAware`, `headroomKompress`, `hermesServiceAutoStart` (extended), `pxpipe*` | stored |

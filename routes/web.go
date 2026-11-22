@@ -254,6 +254,10 @@ func webDashboard(router route.Route, guard *apphttp.Guard, base Base) {
 
 	if s := base.Skills; s != nil {
 		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/skills", s.List)
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodPost, "/api/skills", s.Create)
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/skills/{id}", s.Get)
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodPut, "/api/skills/{id}", s.Update)
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodDelete, "/api/skills/{id}", s.Delete)
 		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodPost, "/api/skills/sync", s.Sync)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"hash"
 	"io/fs"
 	"os"
 	"path"
@@ -16,6 +17,7 @@ import (
 type entry struct {
 	m      Manifest
 	prompt string
+	rules  []Rule
 }
 
 // Registry is the installed skills: the embedded core set with the operator's
@@ -54,6 +56,18 @@ func (r *Registry) List() []Manifest {
 		out[i] = e.m
 	}
 	return out
+}
+
+// Find returns the installed manifest with this id.
+func (r *Registry) Find(id string) (Manifest, bool) {
+	if r == nil {
+		return Manifest{}, false
+	}
+	r.refresh()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e, ok := r.byID[id]
+	return e.m, ok
 }
 
 // Prompt returns a skill's prompt text, or "" for an id the registry does not
@@ -169,17 +183,21 @@ func (r *Registry) loadBuiltins(byID map[string]entry, problems *[]string) {
 	}
 	for _, manifest := range manifests {
 		dir := path.Dir(manifest)
-		m, prompt, err := loadFS(r.builtins, dir, path.Base(dir))
+		m, prompt, rules, err := loadFS(r.builtins, dir, path.Base(dir))
 		if err != nil {
 			*problems = append(*problems, err.Error())
 			continue
 		}
-		byID[m.ID] = entry{m: m, prompt: prompt}
+		byID[m.ID] = entry{m: m, prompt: prompt, rules: rules}
 	}
 }
 
+// CatalogDir is the folder the catalog sync writes into, under the skills
+// folder. Its children are skills; the folder itself is not.
+const CatalogDir = "ecc-imported"
+
 // loadDisk reads the operator's folder last, so a skill of the same id there
-// replaces the embedded one.
+// replaces the embedded one. The catalog folder holds one level of skills.
 func (r *Registry) loadDisk(byID map[string]entry, problems *[]string) {
 	if r.dir == "" {
 		return
@@ -196,12 +214,39 @@ func (r *Registry) loadDisk(byID map[string]entry, problems *[]string) {
 		if !ent.IsDir() {
 			continue
 		}
-		m, prompt, err := loadFS(fsys, ent.Name(), ent.Name())
+		if ent.Name() == CatalogDir {
+			r.loadCatalog(fsys, byID, problems)
+			continue
+		}
+		m, prompt, rules, err := loadFS(fsys, ent.Name(), ent.Name())
 		if err != nil {
 			*problems = append(*problems, err.Error())
 			continue
 		}
-		byID[m.ID] = entry{m: m, prompt: prompt}
+		byID[m.ID] = entry{m: m, prompt: prompt, rules: rules}
+	}
+}
+
+// loadCatalog reads the imported catalog's children as skills.
+func (r *Registry) loadCatalog(fsys fs.FS, byID map[string]entry, problems *[]string) {
+	ents, err := os.ReadDir(filepath.Join(r.dir, CatalogDir))
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			*problems = append(*problems, "skills: "+err.Error())
+		}
+		return
+	}
+	for _, ent := range ents {
+		if !ent.IsDir() {
+			continue
+		}
+		dir := path.Join(CatalogDir, ent.Name())
+		m, prompt, rules, err := loadFS(fsys, dir, ent.Name())
+		if err != nil {
+			*problems = append(*problems, err.Error())
+			continue
+		}
+		byID[m.ID] = entry{m: m, prompt: prompt, rules: rules}
 	}
 }
 
@@ -215,12 +260,17 @@ func (r *Registry) signatureLocked() string {
 				if !ent.IsDir() {
 					continue
 				}
-				fmt.Fprintf(h, "d:%s;", ent.Name())
-				for _, name := range []string{"manifest.json", "prompt.txt", "prompt.md", "hook.js"} {
-					if st, err := os.Stat(filepath.Join(r.dir, ent.Name(), name)); err == nil {
-						fmt.Fprintf(h, "%s=%d@%d;", name, st.Size(), st.ModTime().UnixNano())
+				if ent.Name() == CatalogDir {
+					if kids, err := os.ReadDir(filepath.Join(r.dir, CatalogDir)); err == nil {
+						for _, kid := range kids {
+							if kid.IsDir() {
+								signatureDir(h, r.dir, path.Join(CatalogDir, kid.Name()))
+							}
+						}
 					}
+					continue
 				}
+				signatureDir(h, r.dir, ent.Name())
 			}
 		}
 	}
@@ -232,4 +282,14 @@ func (r *Registry) signatureLocked() string {
 		}
 	}
 	return hex.EncodeToString(h.Sum(nil))[:16]
+}
+
+// signatureDir adds one skill folder's files to the signature.
+func signatureDir(h hash.Hash, root, dir string) {
+	fmt.Fprintf(h, "d:%s;", dir)
+	for _, name := range []string{"manifest.json", "prompt.txt", "prompt.md", "rules.json", "hook.js"} {
+		if st, err := os.Stat(filepath.Join(root, filepath.FromSlash(dir), name)); err == nil {
+			fmt.Fprintf(h, "%s=%d@%d;", name, st.Size(), st.ModTime().UnixNano())
+		}
+	}
 }

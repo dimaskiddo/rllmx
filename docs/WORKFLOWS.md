@@ -349,7 +349,7 @@ Source row whose JSON does not parse: skipped and counted.
 | Analytics | `DATA_DIR/db/analytics.sqlite`, or PostgreSQL schema `rllmx_analytics`; backups in `db/analytics-backups/` |
 | Lock | `DATA_DIR/rllmx.lock` |
 | Secrets | `DATA_DIR/jwt-secret`, `DATA_DIR/machine-id` (`0600`) |
-| Skills (planned,) | `DATA_DIR/skills/<id>/manifest.json`, `prompt.txt` or `prompt.md`, `rules.json`; ECC catalog in `skills/ecc-imported/` |
+| Skills | `DATA_DIR/skills/<id>/manifest.json`, `prompt.txt` or `prompt.md`, `rules.json`; ECC catalog in `skills/ecc-imported/` |
 | Catalog cache (planned,) | `DATA_DIR/model-catalog.json` |
 | Provider data | `app/llm/upstream/data/<providerId>.json`; capabilities in `data/capabilities/`, prices in `data/pricing/` |
 | Translators (planned) | `app/llm/translate/<format>_*.go`, one file group per format (request, response, stream) |

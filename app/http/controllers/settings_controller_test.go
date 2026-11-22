@@ -5,11 +5,14 @@ import (
 	"context"
 	nethttp "net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"rllmx/app/access/auth"
+	"rllmx/app/gateway/skill"
 	apphttp "rllmx/app/http"
 	"rllmx/app/platform/logbook"
 	"rllmx/app/store/repository"
@@ -182,6 +185,46 @@ func TestASettingsWriteAcceptsAPerSkillSwitch(t *testing.T) {
 	}
 	if got, _ := d.GetRaw("ecc_auto_skill_routerConfidence"); got != "0.5" {
 		t.Fatalf("confidence %s", got)
+	}
+}
+
+func TestASettingsWriteAcceptsASkillConfigField(t *testing.T) {
+	m := newMgmtRig(t)
+	seededSettings(t, m)
+	dir := t.TempDir()
+	for name, body := range map[string]string{
+		"terse/manifest.json": `{"id":"terse","name":"Terse","description":"short","hook":"system-prompt",` +
+			`"config_schema":[{"key":"level","type":"enum","default":"full","options":[{"value":"lite"},{"value":"full"}]}]}`,
+		"terse/prompt.txt": "{level} answers",
+	} {
+		p := filepath.Join(dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reg := skill.NewRegistry(dir, nil)
+	m.settingsRoutes(&SettingsController{DB: func() *repository.Store { return m.st.Store }, Auth: m.auth, Skills: reg})
+	if code, _, raw := m.call(nethttp.MethodPatch, "/api/settings", `{"terse_level":"lite"}`, true); code != 200 {
+		t.Fatalf("%d %s", code, raw)
+	}
+	d, err := m.st.Store.Settings().Effective(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := d.GetString("terse_level"); got != "lite" {
+		t.Fatalf("terse_level %q", got)
+	}
+	for name, body := range map[string]string{
+		"not an option": `{"terse_level":"ultra"}`,
+		"wrong type":    `{"terse_level":3}`,
+		"unknown field": `{"terse_missing":"x"}`,
+	} {
+		if code, _, raw := m.call(nethttp.MethodPatch, "/api/settings", body, true); code != 400 {
+			t.Errorf("%s: %d %s", name, code, raw)
+		}
 	}
 }
 

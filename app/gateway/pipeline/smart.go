@@ -58,7 +58,7 @@ func (r smartRouter) Choose(ctx context.Context, routerModel, state string, mode
 	out = r.call.p.Handle(rctx, Input{
 		Path: r.call.in.Path, Body: body, Caller: r.call.in.Caller,
 		RequestID: r.call.in.RequestID + "-route", UserAgent: r.call.in.UserAgent,
-		Header: r.call.in.Header, AcceptJSON: r.call.in.AcceptJSON,
+		Header: r.call.in.Header, AcceptJSON: r.call.in.AcceptJSON, NoRules: true,
 	}, func() (stream.Client, error) { return nil, errors.New("the router never streams") })
 	if out.Status < 200 || out.Status > 299 {
 		return combo.Choice{}, combo.ErrNoChoice

@@ -205,11 +205,13 @@ func TestManifestModeAndThreshold(t *testing.T) {
 		mode   string
 		thresh float64
 	}{
-		"defaults":            {Manifest{}, "smart", DefaultThreshold},
-		"top-level always":    {Manifest{RoutingMode: "always"}, "always", DefaultThreshold},
-		"schema default":      {Manifest{Config: Config{RoutingMode: Field{Default: "always"}}}, "always", DefaultThreshold},
-		"schema ignores typo": {Manifest{Config: Config{RoutingMode: Field{Default: "sometimes"}}}, "smart", DefaultThreshold},
-		"own threshold":       {Manifest{RoutingThreshold: 0.2}, "smart", 0.2},
+		"defaults":         {Manifest{}, "smart", DefaultThreshold},
+		"top-level always": {Manifest{RoutingMode: "always"}, "always", DefaultThreshold},
+		"schema default": {Manifest{Config: []Field{{Key: routingModeKey, Type: "enum",
+			Default: []byte(`"always"`), Options: []Option{{Value: "smart"}, {Value: "always"}}}}}, "always", DefaultThreshold},
+		"schema ignores typo": {Manifest{Config: []Field{{Key: routingModeKey, Type: "enum",
+			Default: []byte(`"sometimes"`), Options: []Option{{Value: "smart"}, {Value: "always"}}}}}, "smart", DefaultThreshold},
+		"own threshold": {Manifest{RoutingThreshold: 0.2}, "smart", 0.2},
 	} {
 		if got := c.m.Mode(); got != c.mode {
 			t.Errorf("%s: mode %q, want %q", name, got, c.mode)

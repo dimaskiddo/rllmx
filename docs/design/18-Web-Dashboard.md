@@ -36,6 +36,7 @@ All always-protected: a session is needed even when `requireLogin` is off, and c
 | `GET/PUT /api/providers/{id}/overrides` | Header overrides (design doc 8) |
 | `POST /api/providers/{id}/test`, `POST /api/providers/validate`, `GET /api/providers/{id}/models` | Key checks and model lists (design doc 14) |
 | `GET/POST /api/provider-nodes`, `PUT/DELETE /api/provider-nodes/{id}`, `POST /api/provider-nodes/validate` | Custom nodes |
+| `GET/POST /api/skills`, `GET/PUT/DELETE /api/skills/{id}`, `POST /api/skills/sync` | Skills Studio: the list, the catalog sync and a custom skill's create, read, edit and delete (design doc 11) |
 
 | Rule | Detail |
 |---|---|

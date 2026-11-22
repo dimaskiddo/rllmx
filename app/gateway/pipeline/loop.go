@@ -76,6 +76,9 @@ func (c *call) serveFail(ctx context.Context) (Output, *accountFail) {
 		if f == nil {
 			return out, nil
 		}
+		// Another account answered the next attempt, so this conversation's later
+		// turns carry the continuity notice.
+		c.failover()
 		if f.expired {
 			exclude[sel.Conn.ID] = true
 			sawExpired = true

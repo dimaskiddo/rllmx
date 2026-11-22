@@ -43,6 +43,89 @@ func skillsRoutes(m *mgmtRig, c *SkillsController) {
 	m.guard.Handle(m.router, apphttp.ClassAlwaysProtected, nethttp.MethodPost, "/api/skills/sync", c.Sync)
 }
 
+func studioRoutes(m *mgmtRig, c *SkillsController) {
+	m.guard.Handle(m.router, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/skills", c.List)
+	m.guard.Handle(m.router, apphttp.ClassAlwaysProtected, nethttp.MethodPost, "/api/skills", c.Create)
+	m.guard.Handle(m.router, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/skills/{id}", c.Get)
+	m.guard.Handle(m.router, apphttp.ClassAlwaysProtected, nethttp.MethodPut, "/api/skills/{id}", c.Update)
+	m.guard.Handle(m.router, apphttp.ClassAlwaysProtected, nethttp.MethodDelete, "/api/skills/{id}", c.Delete)
+}
+
+func TestTheStudioCreatesReadsUpdatesAndDeletes(t *testing.T) {
+	m := newMgmtRig(t)
+	seededSettings(t, m)
+	dir := t.TempDir()
+	reg := skill.NewRegistry(dir, skill.Builtin())
+	c := &SkillsController{DB: func() *repository.Store { return m.st.Store }, Reg: reg, Dir: dir}
+	studioRoutes(m, c)
+
+	body := `{"id":"mine","name":"Mine","description":"a custom skill","hook":"system-prompt",` +
+		`"routing_mode":"always","prompt_template":"MY PROMPT"}`
+	if code, _, raw := m.call(nethttp.MethodPost, "/api/skills", body, true); code != 201 {
+		t.Fatalf("create: %d %s", code, raw)
+	}
+	code, out, raw := m.call(nethttp.MethodGet, "/api/skills/mine", "", true)
+	if code != 200 || out["promptTemplate"] != "MY PROMPT" || out["editable"] != true {
+		t.Fatalf("get: %d %s", code, raw)
+	}
+	if code, _, raw := m.call(nethttp.MethodPost, "/api/skills", body, true); code != 409 {
+		t.Fatalf("duplicate create: %d %s", code, raw)
+	}
+	update := `{"id":"mine","name":"Mine Again","description":"a custom skill","hook":"system-prompt",` +
+		`"prompt_template":"SECOND PROMPT"}`
+	if code, _, raw := m.call(nethttp.MethodPut, "/api/skills/mine", update, true); code != 200 {
+		t.Fatalf("update: %d %s", code, raw)
+	}
+	if code, out, raw := m.call(nethttp.MethodGet, "/api/skills/mine", "", true); out["promptTemplate"] != "SECOND PROMPT" {
+		t.Fatalf("reads back %d %s", code, raw)
+	}
+	if code, _, raw := m.call(nethttp.MethodDelete, "/api/skills/mine", "", true); code != 200 {
+		t.Fatalf("delete: %d %s", code, raw)
+	}
+	if code, _, raw := m.call(nethttp.MethodGet, "/api/skills/mine", "", true); code != 404 {
+		t.Fatalf("after delete: %d %s", code, raw)
+	}
+}
+
+func TestTheStudioRefusesWhatItMayNotWrite(t *testing.T) {
+	m := newMgmtRig(t)
+	seededSettings(t, m)
+	dir := t.TempDir()
+	writeFiles := func(name, body string) {
+		p := filepath.Join(dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeFiles("hand/manifest.json", `{"id":"hand","name":"Hand","description":"placed by hand","hook":"system-prompt"}`)
+	writeFiles("hand/prompt.txt", "text")
+	reg := skill.NewRegistry(dir, skill.Builtin())
+	c := &SkillsController{DB: func() *repository.Store { return m.st.Store }, Reg: reg, Dir: dir}
+	studioRoutes(m, c)
+
+	base := `"name":"X","description":"d","hook":"system-prompt","prompt_template":"p"`
+	for name, c := range map[string]struct {
+		method, path, body string
+		code               int
+	}{
+		"traversal id":   {nethttp.MethodPost, "/api/skills", `{"id":"../escape",` + base + `}`, 400},
+		"built-in id":    {nethttp.MethodPut, "/api/skills/caveman-style", `{"id":"caveman-style",` + base + `}`, 400},
+		"hook script":    {nethttp.MethodPost, "/api/skills", `{"id":"x",` + base + `,"hook_script":"process.exit(1)"}`, 400},
+		"install":        {nethttp.MethodPost, "/api/skills", `{"id":"x",` + base + `,"install_command":"npm i"}`, 400},
+		"source":         {nethttp.MethodPost, "/api/skills", `{"id":"x",` + base + `,"source":"ecc"}`, 400},
+		"hand-written":   {nethttp.MethodPut, "/api/skills/hand", `{"id":"hand",` + base + `}`, 403},
+		"catalog folder": {nethttp.MethodDelete, "/api/skills/ecc-imported", "", 400},
+		"missing":        {nethttp.MethodGet, "/api/skills/nope", "", 404},
+	} {
+		if got, _, raw := m.call(c.method, c.path, c.body, true); got != c.code {
+			t.Errorf("%s: %d %s", name, got, raw)
+		}
+	}
+}
+
 func TestTheSkillsListCarriesTheEffectiveSwitch(t *testing.T) {
 	m := newMgmtRig(t)
 	seededSettings(t, m)

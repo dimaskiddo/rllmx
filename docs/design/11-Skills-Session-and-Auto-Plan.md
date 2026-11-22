@@ -2,7 +2,7 @@
 
 **Status:** partial
 
-The skills registry, both routers, the catalog sync and the dashboard's read and sync routes are built (step 3.2). Rule hooks and Skills Studio are step 3.3; Auto Plan is 3.4. Session ids are built; the session cache is not.
+The skills registry, both routers, the catalog sync, the dashboard's read and sync routes, the Studio, rule hooks, config fields and the session cache are built (steps 3.2 and 3.3). Auto Plan is 3.4. Session ids are built.
 
 ### Skill Layout
 
@@ -12,7 +12,7 @@ A folder under `DATA_DIR/skills/<id>/`; the six core skills ship embedded in the
 |---|---|
 | `manifest.json` | id, name, description, hook, default enabled, legacy enabled key, routing mode, threshold, triggers, keywords, config schema |
 | `prompt.txt` or `prompt.md` | The prompt. `prompt.txt` wins over `prompt.md`. |
-| `rules.json` | Optional declarative rules (step 3.3) |
+| `rules.json` | Optional declarative rules: `{"rules":[...]}`, at most 16 KiB and 20 rules |
 
 Bounds: manifest 32 KiB, prompt 64 KiB, id `^[a-z0-9][a-z0-9_-]{0,63}$`, name 128 bytes, description 4 KiB, 100 triggers or keywords of 128 bytes each, control characters refused. A folder that fails a check is skipped and listed under `problems`; it is never half-loaded.
 
@@ -22,7 +22,7 @@ The core prompts are the reference's own where it has a skill: caveman, ponytail
 
 ### Packages
 
-`app/gateway/skill` holds the registry (`manifest.go`, `registry.go`), the scorer (`scorer.go`), the two routers (`local.go`, `ecc.go`), the injector and `Apply` (`skill.go`), the settings projection (`setting.go`) and the catalog sync (`sync_ecc.go`). `app/git` is the only package that starts a process (`clone.go`), and it downloads a tarball when git is missing (`github.go`).
+`app/gateway/skill` holds the registry (`manifest.go`, `registry.go`), the scorer (`scorer.go`), the two routers (`local.go`, `ecc.go`), the injector and `Apply` (`skill.go`), the settings projection (`setting.go`), config fields (`config.go`), declarative rules (`rule.go`), the Studio's folder operations (`studio.go`) and the catalog sync (`sync_ecc.go`). `app/git` is the only package that starts a process (`clone.go`), and it downloads a tarball when git is missing (`github.go`).
 
 The scorer is our own copy, not a shared package. `tests/imports_test.go` forbids a sub-package from importing a sibling, and the only shared home would be a parent with one consumer (divergence 400).
 
@@ -49,27 +49,48 @@ The sync reads only `SKILL.md` text: YAML frontmatter with `name` and `descripti
 
 `db:import-config --skills-from <folder|https-url>` copies whole skill folders, manifest and prompt, into `DATA_DIR/skills/`. It skips an invalid folder with a warning and reports the ignored files.
 
+### Config Fields
+
+A manifest may declare `config_schema` fields: `key`, `type` (`enum`, `text`, `number`, `slider`, `toggle`), `label`, `default`, `legacy_key`, `min`, `max` and `options`. The value lives in the settings row under `legacy_key`, else `<id>_<key>`.
+
+The default key carries the id, so two skills naming a field `level` do not share a value. `PATCH /api/settings` validates each value against its field: an enum option, a number within its range, a switch, or up to 256 printable bytes of text.
+
+`{key}` in the prompt takes the stored value, else the field's default; a token with neither stays literal. A field with no placeholder is appended as an `Active Configuration:` list, with a slider's scale. `routing_mode` is never listed. The response-cache key carries every stored value, so a changed level never serves an older answer.
+
 ### Rules
 
-Each rule has a `stage` (`pre-route` or `pre-request`), a `when` and a `then` (step 3.3):
+A skill whose hook is `pre-route` or `pre-request` carries `rules.json`; every rule's stage must equal the hook. Each rule has a `when` and a `then`:
 
 ```json
 {
-  "stage": "pre-request",
-  "when": { "modelRegex": "^claude-", "messageRegex": "(?i)refactor", "header": { "name": "x-client", "regex": "^cli$" } },
-  "then": { "injectPrompt": "Prefer small, reviewable diffs.", "rerouteModel": "my-combo", "setHeader": { "name": "x-team", "value": "platform" } }
+  "rules": [{
+    "stage": "pre-request",
+    "when": { "modelRegex": "^claude-", "messageRegex": "(?i)refactor", "header": { "name": "x-client", "regex": "^cli$" } },
+    "then": { "injectPrompt": "Prefer small, reviewable diffs.", "setHeader": { "name": "x-team", "value": "platform" } }
+  }]
 }
 ```
 
 | Rule | Detail |
 |---|---|
-| Match | Every `when` field present must match. RE2 on bounded input (last user message, 64 KB) |
-| `setHeader` | Upstream request only. `authorization`, `host`, `cookie` and `content-length` are refused |
-| `rerouteModel` | Goes through key access again, so a rule cannot widen a restricted key |
+| Match | Every `when` field present must match. RE2, patterns at most 512 bytes, the last user message cut at 64 KiB |
+| Header match | Only a header the pipeline already copies into a request, so a rule cannot read what the pipeline dropped |
+| Bypass | `x-9router-local-skill-router: off` together with `x-9router-skill-router: off` leaves the rules off as well |
+| `rerouteModel` | `pre-route` only, at most 256 bytes. A restricted key must first be allowed the name it asked for, then the rerouted target, so a rule never widens access |
+| `injectPrompt` | `pre-request` only, at most 4 KiB, injected once per request and once per combo member |
+| `setHeader` | `pre-request` only. `authorization`, `proxy-authorization`, `host`, `cookie` and `content-length` are refused, as is the provider's own auth header. One value per name, at most eight |
+
+Headers are merged over the operator's overrides at send time and filtered again there, because an executor may apply an override without the shared guard. Deepseek ignores overrides, so a rule's header does not reach it. A rules file that fails a check fails the whole folder.
+
+### Skills Studio
+
+`GET /api/skills/{id}`, `POST /api/skills`, `PUT` and `DELETE /api/skills/{id}` create, read, edit and remove a custom skill. Writes are serialised. Only a folder whose manifest says `source: custom` may be rewritten or deleted; the embedded core set and the catalog's imports are read-only. A generated body that names `hook_script`, an install command or `source` is refused with 400.
+
+The id must match the manifest's alphabet, must not be the catalog folder or an embedded id, and the target must be a real directory, never a symlink. An update removes a `prompt.txt` or `rules.json` the new body drops, so no stale file keeps running (divergence 411).
 
 ### Dashboard
 
-`GET /api/skills` lists every installed skill with its effective switch, mode and unsupported files, plus the folders that were skipped. It never returns prompt text. The Studio routes that create, edit and delete skills are step 3.3.
+`GET /api/skills` lists every installed skill with its effective switch, mode and unsupported files, plus the folders that were skipped. It never returns prompt text.
 
 ### Session Id (`app/gateway/conversation/`, built)
 
@@ -91,7 +112,9 @@ A made-up id is a random UUID plus the time in milliseconds, and it expires afte
 - Codex's `session_id` carries `Bound`, the keyed hash, never the client's value.
 - `translate.SessionOf` reads the session out of a user id.
 
-**Session cache** (planned, `app/gateway/conversation/`). In-memory LRU, 2000 entries, 4 hours, keyed by `x-session-id` or `session-id`. On repeat turns a skill already injected becomes a one-line reminder. After an account failover every later turn of that session gets a short continuity notice.
+**Session cache** (`app/gateway/conversation/skills.go`, built). An in-memory LRU of 2000 conversations lasting four hours, keyed by the caller's API key and the `X-Session-Id` or `Session-Id` header. It holds the router-prefixed skill ids already injected and a failover count, never prompt or message text.
+
+On a repeat turn a matched skill becomes the reference's one-line reminder instead of its full prompt. "Always" skills are never reminded. After a turn moves to another account, later turns of that conversation carry the failover notice. A request with no session header keeps no state. Session state is not part of the response-cache key (divergence 410).
 
 ### Auto Plan-Then-Code (`app/plan/`, step 3.4)
 
@@ -143,13 +166,13 @@ An error at any step fails open. Bypass: `x-9router-auto-plan: off`. The outcome
 ---
 
 ## Remaining work
-**Step 3.3 and 3.4.**
+**Step 3.4.**
 
-- [ ] Rule hooks: RE2 on bounded input (last user message, 64 KB); inject, reroute or set a header; deny `authorization`, `host`, `cookie`, `content-length`
-- [ ] Skills Studio routes: create, edit and delete a custom skill under `DATA_DIR/skills/`
-- [ ] Session cache: the LRU and the continuity notice
+- [x] Rule hooks: RE2 on bounded input; inject, reroute or set a header; deny `authorization`, `host`, `cookie`, `content-length`
+- [x] Skills Studio routes: create, edit and delete a custom skill under `DATA_DIR/skills/`
+- [x] Session cache: the LRU and the continuity notice
 - [ ] `app/plan`, driven by the `autoPlan*` settings
-- **Done when:** the session cache evicts and expires per spec; an imported skill's `hook.js` and install commands are ignored and reported.
+- **Done when:** Auto Plan's settings drive the plan-then-code flow.
 
 ---
 
@@ -170,6 +193,13 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 402 | The catalog sync takes an operator-named, allowlisted source; nothing is bundled or hardcoded | The reference pins an outside repository in a script; ours cannot fetch a catalog the operator did not name |
 | 403 | The clone and the tarball are bounded at 64 MiB, checked while the clone runs and cut off | A repository cannot fill the data directory before an admin notices |
 | 404 | The embedded style skills use the ids `caveman-style` and `ponytail-style` | The saver already owns `cavemanEnabled` and `ponytailEnabled`; separate ids keep the two switches from turning each other on |
+| 405 | The Studio writes only a folder whose manifest says `source: custom`; the id is checked server-side and a symlink is refused | The reference passes an unvalidated id into `path.join` and `fs.rm -r`, so `../..` deletes and writes outside the skills folder |
+| 406 | A config value's default settings key is `<id>_<key>`, with `legacy_key` honored | The reference stores a bare `key`, so two skills declaring `level` read and write one value |
+| 407 | A rule may match only a header the pipeline already keeps in a request | The reference's hook context is undocumented; ours cannot read a header the pipeline itself dropped |
+| 408 | A reroute first checks the name the client asked for against a restricted key's list, then the target | A rule could otherwise turn a forbidden model into a permitted one |
+| 409 | Session state is keyed by the caller's id and the session id together | The reference keys by a client-chosen session id, so one client can read or mark another's conversation state |
+| 410 | Session state is not part of the response-cache key | The reminder and the full prompt carry the same instruction and the notice is advisory; adding it would split the cache per turn (trade-off) |
+| 411 | An edit removes a prompt or rules file the new body drops | The reference leaves a stale `prompt.txt` or `hook.js` behind, so the old text keeps applying |
 
 ---
 
@@ -179,6 +209,11 @@ Deliberate differences from the references in this area. Numbers are stable and 
 |---|---|
 | The extended fork stores `routing_mode` but never reads it for caveman and ponytail | Both routers honor it; recorded in design doc 10 as the same reference defect |
 | The settings writer rejected any key it did not list, so an imported skill's switch could not be saved | PATCH accepts `<id>Enabled` and `<id>RoutingMode` for the manifest's id alphabet, and nothing else |
-| The response-cache key hashed the client body before any skill ran | The key now carries the installed-set signature and the skill keys (design doc 20) |
+| The response-cache key hashed the client body before any skill ran | The key now carries the installed-set signature, the stored config values, the matched rule ids and the skill keys (design doc 20) |
 | The reference catalog script trusts a fixed repository and unbounded checkout | The source is allowlisted and the clone is size-bounded (divergences 402, 403) |
 | Six core skills duplicated the savers' style keys | Distinct ids keep both switches independent (divergence 404) |
+| The 3.2 loader read `config_schema` as a single object, so every reference manifest that carries an array (caveman, commit-lint) failed to load | `config_schema` is a list of typed fields, checked field by field (design doc 10's prompt list) |
+| The 3.2 registry scanned one level of the skills folder, so `skills/ecc-imported/<id>/` never loaded and the catalog folder itself was reported as broken | The registry reads the catalog folder's children, and the folder signature covers them |
+| The reference's Studio deletes and writes any path a request names | The router refuses a non-custom folder, an embedded id, the catalog folder and a symlink before any write (divergence 405) |
+| The reference's `dispatchHook` imports `hook.js` with no sandbox and is never called | Rules are data; nothing in a skill folder runs (design doc 22) |
+| The reference's repeat-turn reminder keyed on the client's session id alone | The key includes the caller, so one key never reads another's state (divergence 409) |

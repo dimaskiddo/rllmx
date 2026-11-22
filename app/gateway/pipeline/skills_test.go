@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"rllmx/app/access/identity"
+	"rllmx/app/gateway/conversation"
 	"rllmx/app/gateway/skill"
 	"rllmx/app/llm/translate"
 	"rllmx/app/store/document"
@@ -104,6 +106,99 @@ func TestTheSkillBypassHeadersTurnEachRouterOff(t *testing.T) {
 	on.applySkills(context.Background())
 	if !strings.Contains(hubSystem(on), "CATALOG PROMPT") {
 		t.Fatal("the catalog router is off without the header")
+	}
+}
+
+func TestTheCacheKeyCarriesTheConfigValues(t *testing.T) {
+	files := skillFiles()
+	files["terse/manifest.json"] = `{"id":"terse","name":"Terse","description":"short answers","hook":"system-prompt",` +
+		`"default_enabled":true,"routing_mode":"always","config_schema":[` +
+		`{"key":"level","type":"enum","default":"full","options":[{"value":"lite"},{"value":"full"}]}]}`
+	base := skillCall(t, `{}`, nil, files).skillKey(context.Background())
+	lite := skillCall(t, `{"terse_level":"lite"}`, nil, files).skillKey(context.Background())
+	if base == "" || lite == "" || base == lite {
+		t.Fatalf("base %q lite %q", base, lite)
+	}
+}
+
+func sessionCall(t *testing.T, caller identity.Caller, sid string) *call {
+	t.Helper()
+	h := http.Header{}
+	h.Set("X-Session-Id", sid)
+	c := skillCall(t, `{}`, h, skillFiles())
+	c.in.Caller = caller
+	c.p.d.SkillSessions = conversation.NewSkillSessions(nil)
+	return c
+}
+
+func TestARepeatTurnGetsTheReminder(t *testing.T) {
+	caller := identity.Caller{ID: "key-one"}
+	first := sessionCall(t, caller, "s1")
+	first.applySkills(context.Background())
+	if !strings.Contains(hubSystem(first), "SIMPLE PROMPT") {
+		t.Fatalf("first turn %q", hubSystem(first))
+	}
+	for turn := range 2 {
+		next := sessionCall(t, caller, "s1")
+		next.p.d.SkillSessions = first.p.d.SkillSessions
+		next.applySkills(context.Background())
+		body := hubSystem(next)
+		if strings.Contains(body, "SIMPLE PROMPT") {
+			t.Fatalf("turn %d carries the full prompt again: %q", turn+2, body)
+		}
+		if !strings.Contains(body, "Local Skill: Simplifier (already active this conversation") {
+			t.Fatalf("turn %d reminder %q", turn+2, body)
+		}
+	}
+}
+
+func TestAnotherCallerKeepsItsOwnSession(t *testing.T) {
+	first := sessionCall(t, identity.Caller{ID: "key-one"}, "shared")
+	first.applySkills(context.Background())
+	other := sessionCall(t, identity.Caller{ID: "key-two"}, "shared")
+	other.p.d.SkillSessions = first.p.d.SkillSessions
+	other.applySkills(context.Background())
+	if !strings.Contains(hubSystem(other), "SIMPLE PROMPT") {
+		t.Fatalf("another caller inherited the reminder: %q", hubSystem(other))
+	}
+}
+
+func TestNoSessionHeaderKeepsNoState(t *testing.T) {
+	c := skillCall(t, `{}`, nil, skillFiles())
+	c.p.d.SkillSessions = conversation.NewSkillSessions(nil)
+	c.applySkills(context.Background())
+	again := skillCall(t, `{}`, nil, skillFiles())
+	again.p.d.SkillSessions = c.p.d.SkillSessions
+	again.applySkills(context.Background())
+	if !strings.Contains(hubSystem(again), "SIMPLE PROMPT") {
+		t.Fatalf("a request without a session id was reminded: %q", hubSystem(again))
+	}
+}
+
+func TestAFailoverNoticeReachesTheNextTurn(t *testing.T) {
+	caller := identity.Caller{ID: "key-one"}
+	c := sessionCall(t, caller, "s1")
+	key, _, _ := c.sessionInfo()
+	c.p.d.SkillSessions.Failover(key)
+	next := sessionCall(t, caller, "s1")
+	next.p.d.SkillSessions = c.p.d.SkillSessions
+	next.applySkills(context.Background())
+	if !strings.Contains(hubSystem(next), "Failover Notice") {
+		t.Fatalf("notice %q", hubSystem(next))
+	}
+}
+
+func TestTheSessionKeyRejectsWhatItCannotUse(t *testing.T) {
+	h := http.Header{}
+	h.Set("X-Session-Id", strings.Repeat("s", maxSessionID+1))
+	c := skillCall(t, `{}`, h, skillFiles())
+	if key, _, _ := c.sessionInfo(); key != "" {
+		t.Fatalf("an oversized session id made a key: %q", key)
+	}
+	h.Set("X-Session-Id", "a\nb")
+	c = skillCall(t, `{}`, h, skillFiles())
+	if key, _, _ := c.sessionInfo(); key != "" {
+		t.Fatalf("a controlled session id made a key: %q", key)
 	}
 }
 

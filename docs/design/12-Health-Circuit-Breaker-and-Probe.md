@@ -32,7 +32,7 @@
 | `/api/usage/active-providers` | `app/gateway/health`, `app/http/controllers` | done (the usage routes, `design doc 16`) |
 | `/api/providers/test-batch`, `/api/providers/{id}/test-models`, `/api/models/test` | `app/http/controllers`, `app/gateway/probe` | done (llm models only) |
 | `/api/headroom/{status,proxy}` | `app/http/controllers` | done |
-| `/api/skills`, `/api/skills/sync` | `app/gateway/skill`, `app/http/controllers` | done (3.2: the Studio's write routes are 3.3) |
+| `/api/skills`, `/api/skills/{id}`, `/api/skills/sync` | `app/gateway/skill`, `app/http/controllers` | done (the Studio's write routes are 3.3) |
 | `/api/auto-plan/settings` | `app/plan` | todo |
 
 ---

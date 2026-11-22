@@ -40,7 +40,8 @@ Status words: **built** (implemented and tested), **partial** (some behavior mis
 | Response cache | built |
 | Token savers (tool-output compaction, Headroom sidecar, built-in and custom prompts) | built |
 | Skills registry, local and catalog routers, catalog sync | built |
-| Rule hooks, Skills Studio and auto plan | planned |
+| Skills Studio, declarative rule hooks, config fields and the session cache | built |
+| Auto plan | planned |
 
 ## Accounts
 

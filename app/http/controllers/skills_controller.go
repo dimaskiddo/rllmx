@@ -23,6 +23,9 @@ type SkillsController struct {
 	Dir  string
 	Log  log.Log
 	gate sync.Mutex
+	// studio serialises the write routes, so two writes cannot interleave files
+	// in one folder.
+	studio sync.Mutex
 }
 
 // skillItem is one installed skill with the switch the settings row gives it.

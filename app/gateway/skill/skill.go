@@ -39,19 +39,46 @@ type Options struct {
 	// Setting reads a skill's stored switch and mode. A nil reader leaves every
 	// skill to its manifest.
 	Setting func(id string) Setting
-	ECC     ECCOptions
+	// Value reads one config_schema value by its settings key, as the prompt
+	// should render it. A nil reader leaves every field to its default.
+	Value func(key string) (string, bool)
+	// Prior names the skills an earlier turn of this conversation already
+	// injected in full. A later smart match becomes a one-line reminder.
+	Prior map[string]bool
+	// Notice asks for the failover notice at the top of the system prompt.
+	Notice bool
+	ECC    ECCOptions
 }
 
 // Stats is what one request's skills did, for the redacting log line.
 type Stats struct {
+	// Skills are the ids injected in full.
 	Skills []string
+	// Reminded are the ids an earlier turn already carried.
+	Reminded []string
+	// Session names the skills to record for this conversation, router-prefixed.
+	Session []string
+	// Notice reports that the failover notice was injected.
+	Notice bool
 }
 
-// Changed reports whether anything was injected.
-func (s Stats) Changed() bool { return len(s.Skills) > 0 }
+// Changed reports whether the request was changed.
+func (s Stats) Changed() bool { return len(s.Skills)+len(s.Reminded) > 0 || s.Notice }
 
 // Line renders the log line: skill ids only, never prompt text.
-func (s Stats) Line() string { return "skills=" + strings.Join(s.Skills, "+") }
+func (s Stats) Line() string {
+	var parts []string
+	if len(s.Skills) > 0 {
+		parts = append(parts, "skills="+strings.Join(s.Skills, "+"))
+	}
+	if len(s.Reminded) > 0 {
+		parts = append(parts, "reminded="+strings.Join(s.Reminded, "+"))
+	}
+	if s.Notice {
+		parts = append(parts, "notice")
+	}
+	return strings.Join(parts, " ")
+}
 
 // Apply injects every enabled skill whose hook is a system prompt: an "always"
 // skill on every request, a "smart" skill when its own topic scores. Nothing
@@ -78,37 +105,84 @@ func Apply(reg *Registry, r *translate.Request, o Options) Stats {
 		smart = append(smart, m)
 	}
 	seen := map[string]bool{}
-	inject := func(id string) {
-		if seen[id] {
+	inject := func(m Manifest, router string, routable bool) {
+		if seen[m.ID] {
 			return
 		}
-		body := reg.Prompt(id)
-		if body == "" || !injectPrompt(r, body) {
+		if routable && o.Prior[InjectedKey(router, m.ID)] {
+			if InjectPrompt(r, reminder(m.Name, routerPrefix(router))) {
+				seen[m.ID] = true
+				st.Reminded = append(st.Reminded, m.ID)
+			}
 			return
 		}
-		seen[id] = true
-		st.Skills = append(st.Skills, id)
+		body := Render(m, reg.Prompt(m.ID), o.Value)
+		if body == "" || !InjectPrompt(r, body) {
+			return
+		}
+		seen[m.ID] = true
+		st.Skills = append(st.Skills, m.ID)
+		st.Session = append(st.Session, InjectedKey(router, m.ID))
+	}
+	if o.Notice {
+		st.Notice = InjectPrompt(r, FailoverNotice)
 	}
 	for _, m := range always {
-		inject(m.ID)
+		inject(m, "", false)
 	}
 	if len(smart) > 0 || o.ECC.Enabled {
-		query := latestUser(r)
-		for _, m := range ClassifyLocal(reg, smart, query) {
-			inject(m.ID)
+		query := LatestUser(r)
+		for _, match := range ClassifyLocal(reg, smart, query) {
+			if m, ok := reg.Find(match.ID); ok {
+				inject(m, RouterLocal, true)
+			}
 		}
-		for _, m := range ClassifyECC(reg, query, o.ECC) {
-			inject(m.ID)
+		for _, match := range ClassifyECC(reg, query, o.ECC) {
+			if m, ok := reg.Find(match.ID); ok {
+				inject(m, RouterECC, true)
+			}
 		}
 	}
 	return st
 }
 
-// injectPrompt appends a prompt to the request's first system message, creating
+// The two routers' names in the per-session table and the reminder's prefix.
+const (
+	RouterLocal = "local"
+	RouterECC   = "ecc"
+)
+
+// FailoverNotice is the reference's text, carried verbatim.
+const FailoverNotice = "--- Failover Notice: Upstream model/account switched. Check prior turns for existing tool results before searching again. ---"
+
+// InjectedKey names one skill in the per-session table, split by which router
+// matched it, as the reference does.
+func InjectedKey(router, id string) string {
+	return router + "-" + id
+}
+
+func routerPrefix(router string) string {
+	if router == RouterECC {
+		return "ECC Skill"
+	}
+	return "Local Skill"
+}
+
+// reminder is the reference's one-line form for a skill this conversation
+// already carries in full.
+func reminder(name, prefix string) string {
+	if name == "" {
+		name = prefix
+	}
+	return "--- " + prefix + ": " + name +
+		" (already active this conversation — see earlier turn for full instructions; do not repeat completed steps) ---"
+}
+
+// InjectPrompt appends a prompt to the request's first system message, creating
 // one at the top when there is none. It reports whether the request changed; a
 // prompt already present as its own segment is not added twice, so an account
 // retry never doubles it.
-func injectPrompt(r *translate.Request, prompt string) bool {
+func InjectPrompt(r *translate.Request, prompt string) bool {
 	for i := range r.Messages {
 		if r.Messages[i].Role != translate.RoleSystem {
 			continue
@@ -145,9 +219,9 @@ func hasSegment(body, target string) bool {
 	return false
 }
 
-// latestUser is the query the routers score: the last user message, cut to the
+// LatestUser is the query the routers score: the last user message, cut to the
 // routing bound.
-func latestUser(r *translate.Request) string {
+func LatestUser(r *translate.Request) string {
 	for i := range slices.Backward(r.Messages) {
 		if r.Messages[i].Role != translate.RoleUser {
 			continue

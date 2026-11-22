@@ -12,6 +12,7 @@ import (
 
 	"rllmx/app/access/identity"
 	"rllmx/app/gateway/conversation"
+	"rllmx/app/gateway/skill"
 	"rllmx/app/llm/routing"
 	"rllmx/app/llm/stream"
 	"rllmx/app/llm/translate"
@@ -59,6 +60,9 @@ type Input struct {
 	// probe sets it: the pinned connection is tried once and no other account
 	// answers in its place.
 	Connection string
+	// NoRules skips the skill rule hooks. The smart router sets it on its own
+	// question, so a rule cannot rewrite or decorate that internal call.
+	NoRules bool
 }
 
 // Output is the answer. A streamed answer has already been written through the
@@ -164,12 +168,20 @@ type call struct {
 	// rowStatus replaces the response status in the row when they differ: a
 	// stream that broke after its 200 was sent.
 	rowStatus int
+	// rules is what this request's declarative hooks matched.
+	rules skill.Actions
+	// The conversation's skill state, resolved once per call.
+	sessionLoaded bool
+	sessionKey    string
+	sessionPrior  map[string]bool
+	sessionNotice bool
 }
 
 func (c *call) run(ctx context.Context) Output {
 	if out, ok := c.parse(); !ok {
 		return out
 	}
+	c.evaluateRules(ctx)
 	if out, ok := c.bypass(ctx); ok {
 		return out
 	}

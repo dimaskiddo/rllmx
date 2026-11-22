@@ -58,21 +58,8 @@ type Manifest struct {
 	Triggers         []string `json:"triggers,omitempty"`
 	Keywords         []string `json:"keywords,omitempty"`
 	Version          string   `json:"version,omitempty"`
-	Config           Config   `json:"config_schema,omitzero"`
+	Config           []Field  `json:"config_schema,omitempty"`
 	Unsupported      []string `json:"-"`
-}
-
-// Config is the slice of a skill's settings the router reads. Other controls an
-// imported manifest describes are left for the studio in a later step.
-type Config struct {
-	RoutingMode Field `json:"routing_mode"`
-}
-
-// Field is one settings control as a manifest describes it.
-type Field struct {
-	Type    string   `json:"type,omitempty"`
-	Default string   `json:"default,omitempty"`
-	Options []string `json:"options,omitempty"`
 }
 
 // wire adds the fields that are read only to be reported as unsupported.
@@ -90,8 +77,13 @@ func (m Manifest) Mode() string {
 	if m.RoutingMode == "smart" || m.RoutingMode == "always" {
 		return m.RoutingMode
 	}
-	if d := m.Config.RoutingMode.Default; d == "smart" || d == "always" {
-		return d
+	for _, f := range m.Config {
+		if f.Key != routingModeKey || f.Type != "enum" {
+			continue
+		}
+		if d, msg := CheckValue(f, f.Default); msg == "" && (d == "smart" || d == "always") {
+			return d
+		}
 	}
 	return "smart"
 }
@@ -141,39 +133,62 @@ func Validate(m Manifest) []string {
 			}
 		}
 	}
+	problems = append(problems, checkFields(m.Config)...)
 	return problems
 }
 
 // LoadDir reads one skill folder on disk.
 func LoadDir(dir string) (Manifest, string, error) {
 	clean := filepath.Clean(dir)
-	return loadFS(os.DirFS(clean), ".", filepath.Base(clean))
+	m, prompt, _, err := loadFS(os.DirFS(clean), ".", filepath.Base(clean))
+	return m, prompt, err
 }
 
 // loadFS reads one skill folder through an fs.FS, so the embedded core set and
 // an operator's folder take exactly the same checks.
-func loadFS(fsys fs.FS, dir, defaultID string) (Manifest, string, error) {
+func loadFS(fsys fs.FS, dir, defaultID string) (Manifest, string, []Rule, error) {
 	raw, err := readCapped(fsys, path.Join(dir, "manifest.json"), maxManifest)
 	if err != nil {
-		return Manifest{}, "", err
+		return Manifest{}, "", nil, err
 	}
 	var w wire
 	if err := json.Unmarshal(raw, &w); err != nil {
-		return Manifest{}, "", fmt.Errorf("manifest.json: %w", err)
+		return Manifest{}, "", nil, fmt.Errorf("manifest.json: %w", err)
 	}
 	m := w.Manifest
 	if m.ID == "" {
 		m.ID = defaultID
 	}
 	if problems := Validate(m); len(problems) > 0 {
-		return Manifest{}, "", fmt.Errorf("%s: %s", m.ID, strings.Join(problems, "; "))
+		return Manifest{}, "", nil, fmt.Errorf("%s: %s", m.ID, strings.Join(problems, "; "))
+	}
+	rules, err := readFolderRules(fsys, dir, m)
+	if err != nil {
+		return Manifest{}, "", nil, err
 	}
 	prompt, err := readPrompt(fsys, dir)
-	if err != nil {
-		return Manifest{}, "", err
+	switch {
+	case err == nil:
+	case len(rules) > 0 && (m.Hook == StagePreRoute || m.Hook == StagePreRequest):
+		// A hook that only acts on a rule needs no prompt of its own.
+		prompt = ""
+	default:
+		return Manifest{}, "", nil, err
 	}
 	m.Unsupported = unsupported(fsys, dir, w)
-	return m, prompt, nil
+	return m, prompt, rules, nil
+}
+
+// readFolderRules loads a folder's rules file, or nothing when it has none.
+func readFolderRules(fsys fs.FS, dir string, m Manifest) ([]Rule, error) {
+	raw, err := readCapped(fsys, path.Join(dir, "rules.json"), maxRulesFile)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return rulesFrom(raw, m.ID, m.Hook)
 }
 
 // readPrompt prefers prompt.txt, as the reference registry does, and falls back

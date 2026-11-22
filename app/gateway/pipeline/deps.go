@@ -136,6 +136,9 @@ type Deps struct {
 	SaverURL string
 	// Skills is the installed skill registry; nil leaves every skill off.
 	Skills *skill.Registry
+	// SkillSessions remembers what each conversation already carries. Nil keeps
+	// no state, so a repeat turn gets the full prompt again.
+	SkillSessions *conversation.SkillSessions
 	// Signatures keeps provider thought signatures between turns; nil means a
 	// signature the client drops is not restored.
 	Signatures Loader

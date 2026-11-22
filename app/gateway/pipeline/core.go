@@ -211,9 +211,18 @@ func (c *call) send(ctx context.Context, conn repository.Connection, key string)
 	case upstream.ExecutorGrokCLI:
 		req.Levels = req.Spec.Levels
 	}
+	var overrides map[string]string
 	if c.p.d.Overrides != nil {
-		req.Overrides = c.p.d.Overrides.Headers(ctx, c.dest.provider)
+		overrides = c.p.d.Overrides.Headers(ctx, c.dest.provider)
 	}
+	if len(c.rules.Headers) > 0 {
+		authHeader := ""
+		if p.auth != nil {
+			authHeader = p.auth.Header
+		}
+		overrides = applyRuleHeaders(overrides, c.rules.Headers, authHeader)
+	}
+	req.Overrides = overrides
 	return c.p.d.Executor.Execute(ctx, req)
 }
 

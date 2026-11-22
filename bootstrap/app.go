@@ -75,11 +75,16 @@ func declareRoutes(version, commit string) {
 	base.OAuth = &controllers.OAuthController{Service: h.OAuth, Auth: h.Auth, Server: h.Settings}
 	base.Callback = &controllers.CallbackController{Files: web.Static}
 	base.Health = &controllers.HealthController{DB: db, Tracker: h.Health}
-	base.Settings = &controllers.SettingsController{DB: db, Auth: h.Auth, Secure: h.Trust.SecureRequest}
+	// The dashboard's two skill-aware controllers share one registry, so a
+	// setting the Studio writes is validated by the same manifests a request
+	// routes with.
+	dir := providers.DataOf(facades.App()).Settings.DataDir
+	skills := skill.NewRegistry(filepath.Join(dir, "skills"), skill.Builtin())
+	base.Settings = &controllers.SettingsController{DB: db, Auth: h.Auth, Skills: skills, Secure: h.Trust.SecureRequest}
 	base.Logs = &controllers.LogsController{Book: config.ConsoleLog()}
 	base.Keys = keysController(h, db)
 	clientRoutes(&base, h, db)
-	dashboardRoutes(&base, h, db)
+	dashboardRoutes(&base, h, db, skills, dir)
 	routes.Web(facades.Route(), h.Guard, base)
 }
 
@@ -106,7 +111,7 @@ func clientRoutes(base *routes.Base, h *providers.HTTP, db func() *repository.St
 }
 
 // dashboardRoutes fills the controllers behind the dashboard's own pages.
-func dashboardRoutes(base *routes.Base, h *providers.HTTP, db func() *repository.Store) {
+func dashboardRoutes(base *routes.Base, h *providers.HTTP, db func() *repository.Store, skills *skill.Registry, dir string) {
 	base.Combos = &controllers.CombosController{
 		DB: db, Probe: h.Probes.Prober, Tracker: h.Health, Prices: h.Prices.Get, Log: facades.Log(),
 		Registry: h.Registry, Changed: h.Snapshot.Invalidate, Reset: h.ResetCombo,
@@ -144,12 +149,7 @@ func dashboardRoutes(base *routes.Base, h *providers.HTTP, db func() *repository
 	base.Headroom = &controllers.HeadroomController{
 		DB: db, Client: headroomClient(h), DefaultURL: headroomURL(h),
 	}
-	// The pipeline builds its registry from the same resolved folder, so a
-	// dashboard sync and a request see the same skills.
-	dir := providers.DataOf(facades.App()).Settings.DataDir
-	base.Skills = &controllers.SkillsController{
-		DB: db, Dir: dir, Reg: skill.NewRegistry(filepath.Join(dir, "skills"), skill.Builtin()), Log: facades.Log(),
-	}
+	base.Skills = &controllers.SkillsController{DB: db, Dir: dir, Reg: skills, Log: facades.Log()}
 }
 
 // headroomClient builds the guarded client for one sidecar host; the address is

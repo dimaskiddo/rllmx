@@ -13,6 +13,7 @@ import (
 	"github.com/tidwall/gjson"
 
 	"rllmx/app/access/auth"
+	"rllmx/app/gateway/skill"
 	"rllmx/app/platform/text"
 	"rllmx/app/store/document"
 	"rllmx/app/store/repository"
@@ -27,6 +28,9 @@ const maxSettingsBody = 256 << 10
 type SettingsController struct {
 	DB   func() *repository.Store
 	Auth *auth.Authenticator
+	// Skills answers which config_schema key belongs to which installed field, so
+	// a skill's own value is validated against its manifest. Nil refuses them.
+	Skills *skill.Registry
 	// Secure reports whether this request arrived over TLS, so the locale
 	// cookie carries Secure where it can.
 	Secure func(*nethttp.Request) bool
@@ -130,7 +134,7 @@ func (c *SettingsController) Update(ctx contractshttp.Context) contractshttp.Res
 		case "newPassword", "currentPassword":
 			return flat(ctx, nethttp.StatusBadRequest, "Change the password with POST /api/auth/change-password")
 		}
-		rule, ok := ruleFor(key)
+		rule, ok := c.ruleFor(key)
 		if !ok {
 			return flat(ctx, nethttp.StatusBadRequest, "Unknown setting: "+text.CutRunes(text.StripControl(key), 64))
 		}
@@ -313,8 +317,9 @@ var settingsRules = map[string]settingRule{
 // alphabet. Without this an imported skill's own switch could not be saved.
 var reSkillKey = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}(Enabled|RoutingMode)$`)
 
-// ruleFor answers the rule for a key: the fixed table, then the per-skill shape.
-func ruleFor(key string) (settingRule, bool) {
+// ruleFor answers the rule for a key: the fixed table, then the per-skill shape,
+// then a config_schema field of an installed skill.
+func (c *SettingsController) ruleFor(key string) (settingRule, bool) {
 	if r, ok := settingsRules[key]; ok {
 		return r, true
 	}
@@ -324,7 +329,32 @@ func ruleFor(key string) (settingRule, bool) {
 		}
 		return enumRule("smart", "always"), true
 	}
+	if c.Skills != nil {
+		if f, ok := c.Skills.FieldFor(key); ok {
+			return skillFieldRule(f), true
+		}
+	}
 	return nil, false
+}
+
+// skillFieldRule validates a value against the field's own type and stores it in
+// the shape that type reads back.
+func skillFieldRule(f skill.Field) settingRule {
+	return func(raw json.RawMessage) (string, string) {
+		v, msg := skill.CheckValue(f, raw)
+		if msg != "" {
+			return "", msg
+		}
+		switch f.Type {
+		case "text", "enum":
+			out, err := json.Marshal(v)
+			if err != nil {
+				return "", "must be a string"
+			}
+			return string(out), ""
+		}
+		return v, ""
+	}
 }
 
 func boolRule(raw json.RawMessage) (string, string) {

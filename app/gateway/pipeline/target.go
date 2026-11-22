@@ -28,6 +28,12 @@ type destination struct {
 }
 
 func (c *call) resolve(ctx context.Context) (Output, bool) {
+	if c.rules.Reroute != "" {
+		if out, ok := c.routeRule(ctx); !ok {
+			return out, false
+		}
+		c.req.Model, c.requested = c.rules.Reroute, c.rules.Reroute
+	}
 	t, err := c.p.d.Resolver.Resolve(ctx, c.req.Model)
 	switch {
 	case errors.Is(err, routing.ErrEmpty), errors.Is(err, routing.ErrTooLong), errors.Is(err, routing.ErrBadInput):
@@ -186,6 +192,7 @@ func (c *call) build(ctx context.Context, d destination) (Output, bool) {
 	}
 	c.applySavers(ctx)
 	c.applySkills(ctx)
+	c.applyRulePrompts()
 	body, err := codec.WriteRequest(c.req, c.tctx)
 	switch {
 	case errors.Is(err, translate.ErrImages):

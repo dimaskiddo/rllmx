@@ -84,6 +84,27 @@ func TestSyncLeavesAnEditedSkillAlone(t *testing.T) {
 	}
 }
 
+func TestTheCatalogFolderLoadsUnderTheSkillsFolder(t *testing.T) {
+	root := t.TempDir()
+	if _, err := SyncECC(context.Background(), catalogSource(t), filepath.Join(root, CatalogDir), false); err != nil {
+		t.Fatal(err)
+	}
+	r := NewRegistry(root, nil)
+	if problems := r.Problems(); len(problems) != 0 {
+		t.Fatalf("the catalog folder was reported: %v", problems)
+	}
+	ids := []string{}
+	for _, m := range r.List() {
+		ids = append(ids, m.ID)
+	}
+	if !slices.Equal(ids, []string{"graphify", "lint-commit"}) {
+		t.Fatalf("list %v", ids)
+	}
+	if got := r.ECCIndex().Score("dependency graph of the modules", 0.2); len(got) == 0 || got[0].ID != "graphify" {
+		t.Fatalf("routing %+v", got)
+	}
+}
+
 func TestSyncRejectsAnEmptySource(t *testing.T) {
 	if _, err := SyncECC(context.Background(), "", t.TempDir(), false); err == nil {
 		t.Fatal("an empty source was accepted")

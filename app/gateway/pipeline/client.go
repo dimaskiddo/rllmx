@@ -20,7 +20,7 @@ const (
 // copies these and nothing else into Input.Header, so no client header can
 // reach an upstream, whatever a later change does with the input.
 var readHeaders = []string{
-	"User-Agent", "X-App", "Originator", "Anthropic-Beta", "Openai-Intent", "X-Initiator",
+	"User-Agent", "X-App", "X-Client", "Originator", "Anthropic-Beta", "Openai-Intent", "X-Initiator",
 	"X-Claude-Code-Session-Id", "X-Session-Id", "Session-Id", "Session_id", "X-Amp-Thread-Id", "X-Client-Request-Id",
 	"X-9router-Token-Saver", "X-9router-Local-Skill-Router", "X-9router-Skill-Router",
 }

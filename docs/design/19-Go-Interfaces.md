@@ -30,9 +30,9 @@ A row naming a package that does not exist yet is a target shape for a later ste
 |---|---|
 | Built | `repository`, `analytics`, `http`, `http/controllers`, `failure`, `stream`, `cache`, `identity`, `auth`, `sso`, `oidc`, `saml`, `upstream`, `routing`, `account`, `translate`, `executor`, `conversation`, `pipeline`, `combo`, `health`, `probe`, `network`, `settings`, `sealer`, `dialect`, `document`, `file`, `text`, `lock`, `importer`, `redactor` |
 | Built | `saver.Apply` (rewrite the hub request, fails open; `app/gateway/saver`, with the `rtk`, `headroom`, `caveman` and `ponytail` packages and the `prompt` framework under it) |
-| Built | `skill.Registry`, `skill.Apply`, `skill.ClassifyLocal`, `skill.ClassifyECC`, `skill.SyncECC` (`app/gateway/skill`: manifests, both TF-IDF routers, the injector and the catalog sync, all fail open) |
+| Built | `skill.Registry`, `skill.Apply`, `skill.ClassifyLocal`, `skill.ClassifyECC`, `skill.SyncECC`, `skill.MatchRules`, `skill.Create/Update/Delete`, `conversation.SkillSessions` (`app/gateway/skill`: manifests, both TF-IDF routers, the injector, config fields, declarative rules, the Studio and the catalog sync, all fail open; the session table in `app/gateway/conversation`) |
 | Built | `git.Gate.Clone`, `git.Gate.Download`, `git.Gate.Fetch` (`app/git`: the one process launcher, allowlisted arguments and a minimal environment) |
-| Planned | `skill.Hook` (evaluate a rule, return actions, 3.3), `health.Tracker` (record outcomes, report breaker state; built, `app/gateway/health`) |
+| Planned | `health.Tracker` (record outcomes, report breaker state; built, `app/gateway/health`) |
 
 ---
 
