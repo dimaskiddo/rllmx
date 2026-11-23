@@ -1,6 +1,6 @@
 {
   "id": "grok-web",
-  "alias": "grok-web",
+  "alias": "gw",
   "category": "webCookie",
   "display": { "name": "Grok Web" },
   "media": { "serviceKinds": ["image", "video"], "videoConfig": { "executorDriven": true } },

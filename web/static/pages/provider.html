@@ -1,0 +1,463 @@
+<section x-data="providerPage" x-on:visibilitychange.document="visibilityChanged()">
+  <p class="rl-error" x-show="error" x-text="error"></p>
+
+  <p class="rl-hint" x-show="loading" x-t="common.loading"></p>
+
+  <div class="rl-page-head" x-show="!loading && !notFound">
+    <a class="rl-hint" href="/dashboard/providers" x-t="provider.back"></a>
+    <div class="rl-inline">
+      <h1 class="rl-page-title" x-text="name()"></h1>
+      <span class="badge" x-text="alias()"></span>
+      <span class="badge"><span x-text="connections.length"></span> <span x-t="provider.connections"></span></span>
+    </div>
+  </div>
+
+  <p class="rl-hint rl-empty" x-show="!loading && notFound" x-t="provider.notFound"></p>
+
+  <section class="card" x-show="node">
+    <div class="card-header rl-card-head">
+      <h2 class="rl-card-title" x-t="provider.node"></h2>
+      <div class="rl-inline">
+        <button type="button" class="btn btn-sm" x-on:click="openAddKey()"><span class="rl-icon" x-icon="plus"></span><span x-t="provider.addKey"></span></button>
+        <button type="button" class="btn btn-sm" x-on:click="openNode()"><span class="rl-icon" x-icon="pencil"></span><span x-t="common.edit"></span></button>
+        <button type="button" class="btn btn-sm btn-ghost" x-on:click="deleteNode()"><span class="rl-icon" x-icon="trash"></span><span x-t="common.delete"></span></button>
+      </div>
+    </div>
+    <div class="card-body">
+      <dl class="rl-kv" x-show="node">
+        <dt x-t="providers.type"></dt><dd x-text="node ? nodeLabel({ entry: { node: node } }) : ''"></dd>
+        <dt x-t="providers.prefix"></dt><dd><code class="rl-code" x-text="node ? node.prefix : ''"></code></dd>
+        <dt x-t="providers.baseUrl"></dt><dd><code class="rl-code" x-text="node ? node.baseUrl : ''"></code></dd>
+      </dl>
+    </div>
+  </section>
+
+  <section class="card" x-show="!loading && !notFound">
+    <div class="card-header rl-card-head">
+      <h2 class="rl-card-title" x-t="provider.strategy"></h2>
+    </div>
+    <div class="card-body">
+      <div class="form-check form-switch rl-switch">
+        <input class="form-check-input" type="checkbox" id="round-robin" role="switch" x-bind:checked="strategy.roundRobin" x-on:change="toggleRoundRobin()">
+        <label class="form-check-label" for="round-robin" x-t="provider.roundRobin"></label>
+      </div>
+      <div class="rl-inline" x-show="strategy.roundRobin">
+        <label class="form-label" for="sticky-limit" x-t="provider.sticky"></label>
+        <input class="form-control" id="sticky-limit" type="number" min="1" max="100" x-bind:value="strategy.sticky" x-on:change="setSticky($event)">
+      </div>
+      <p class="rl-hint" x-t="provider.strategyHint"></p>
+    </div>
+  </section>
+
+  <section class="card" x-show="!loading && !notFound">
+    <div class="card-header rl-card-head">
+      <h2 class="rl-card-title" x-t="provider.connections"></h2>
+      <div class="rl-inline">
+        <button type="button" class="btn btn-sm" x-show="connections.length > 0 && !testRun" x-on:click="testSelected()"><span class="rl-icon" x-icon="activity"></span><span x-t="provider.testOneByOne"></span></button>
+        <button type="button" class="btn btn-sm" x-show="testRun && testRun.on" x-on:click="stopTesting()"><span x-t="provider.stop"></span></button>
+        <button type="button" class="btn btn-sm btn-ghost" x-show="selected.length > 0" x-on:click="removeSelected()"><span class="rl-icon" x-icon="trash"></span><span x-t="provider.deleteSelected"></span></button>
+        <button type="button" class="btn btn-sm btn-primary" x-show="canAddKey()" x-on:click="openAddKey()"><span class="rl-icon" x-icon="plus"></span><span x-t="provider.addKey"></span></button>
+        <button type="button" class="btn btn-sm" x-show="loginOffer() && loginOffer().enabled && loginOffer().flow !== 'import'" x-on:click="openLogin('oauth')"><span class="rl-icon" x-icon="log-in"></span><span x-t="provider.addLogin"></span></button>
+        <button type="button" class="btn btn-sm" x-show="loginOffer() && !loginOffer().enabled && loginOffer().flow !== 'import'" x-bind:disabled="true"><span class="rl-icon" x-icon="log-in"></span><span x-t="provider.loginDisabled"></span></button>
+        <button type="button" class="btn btn-sm" x-show="loginOffer() && loginOffer().pat" x-on:click="openLogin('pat')"><span x-t="provider.pat"></span></button>
+        <button type="button" class="btn btn-sm" x-show="loginOffer() && loginOffer().flow === 'import'" x-on:click="openLogin('import')"><span x-t="provider.importTitle"></span></button>
+        <button type="button" class="btn btn-sm" x-show="loginOffer() && loginOffer().bulk" x-on:click="openLogin('bulk')"><span x-t="provider.bulkImport"></span></button>
+        <button type="button" class="btn btn-sm" x-show="canAddKey() && !node" x-on:click="openBulk()"><span x-t="provider.bulkAdd"></span></button>
+      </div>
+    </div>
+    <div class="card-body">
+      <p class="rl-hint" x-show="connections.length === 0" x-t="provider.empty"></p>
+      <p class="rl-hint" x-show="connections.length === 0 && noPath()" x-t="provider.noAccount"></p>
+      <p class="rl-hint" x-show="testRun"><span x-t="provider.testProgress"></span> <span x-text="testRun ? testRun.index + '/' + testRun.total : ''"></span> · <span x-text="testRun ? testRun.name : ''"></span> · <span x-text="testRun ? testRun.passed + ' / ' + testRun.failed : ''"></span></p>
+      <ul class="rl-list" x-show="connections.length > 0">
+        <li class="rl-list-row rl-row-select">
+          <label class="rl-inline"><input class="form-check-input" type="checkbox" x-bind:checked="allSelected()" x-on:change="selectAll()"> <span x-t="provider.selectAll"></span></label>
+        </li>
+        <template x-for="(conn, index) in connections" x-bind:key="conn.id">
+          <li class="rl-list-row" x-bind:data-paused="conn.isActive === false ? 'yes' : 'no'">
+            <input class="form-check-input" type="checkbox" x-bind:checked="isSelected(conn.id)" x-on:change="toggleSelect(conn.id)" x-bind:aria-label="title(conn)">
+            <div class="rl-list-main">
+              <div class="rl-list-title">
+                <span x-text="title(conn)"></span>
+                <span class="badge" x-text="statusName(status(conn))"></span>
+                <span class="badge" x-text="authLabel(conn)"></span>
+                <span class="badge badge-err" x-show="tag(conn)" x-text="tagLabel(tag(conn))"></span>
+              </div>
+              <p class="rl-hint" x-show="subtitle(conn)" x-text="subtitle(conn)"></p>
+              <p class="rl-error" x-show="conn.lastError" x-bind:title="formatDate(conn.lastErrorAt)" x-text="conn.lastError"></p>
+              <p class="rl-hint" x-show="cooldown(conn)"><span class="rl-icon" x-icon="clock"></span><span x-t="provider.cooldown"></span><span x-text="cooldown(conn)"></span></p>
+              <p class="rl-hint" x-bind:title="label('provider.priorityHint')"><span x-t="provider.priorityLabel"></span> <span x-text="conn.priority"></span><span x-show="conn.globalPriority !== undefined && conn.globalPriority !== null"> · <span x-t="provider.auto"></span> <span x-text="conn.globalPriority"></span></span></p>
+            </div>
+            <div class="rl-list-actions">
+              <button type="button" class="btn btn-sm btn-ghost" x-bind:disabled="busy('move')" x-on:click="move(index, -1)" x-tip="provider.moveUp"><span class="rl-icon" x-icon="arrow-up"></span><span class="visually-hidden" x-t="provider.moveUp"></span></button>
+              <button type="button" class="btn btn-sm btn-ghost" x-bind:disabled="busy('move')" x-on:click="move(index, 1)" x-tip="provider.moveDown"><span class="rl-icon" x-icon="arrow-down"></span><span class="visually-hidden" x-t="provider.moveDown"></span></button>
+              <button type="button" class="btn btn-sm btn-ghost" x-bind:disabled="busy('test:' + conn.id)" x-on:click="test(conn)" x-tip="provider.test"><span class="rl-icon" x-icon="activity"></span><span class="visually-hidden" x-t="provider.test"></span></button>
+              <button type="button" class="btn btn-sm btn-ghost" x-on:click="testModels(conn)" x-tip="provider.testModels"><span class="rl-icon" x-icon="layers"></span><span class="visually-hidden" x-t="provider.testModels"></span></button>
+              <button type="button" class="btn btn-sm btn-ghost" x-on:click="openEdit(conn)" x-tip="common.edit"><span class="rl-icon" x-icon="pencil"></span><span class="visually-hidden" x-t="common.edit"></span></button>
+              <button type="button" class="btn btn-sm btn-ghost" x-bind:disabled="busy('toggle:' + conn.id)" x-on:click="toggle(conn)" x-bind:title="conn.isActive === false ? label('keys.resume') : label('keys.pause')"><span class="rl-icon" x-show="conn.isActive !== false" x-icon="pause"></span><span class="rl-icon" x-show="conn.isActive === false" x-icon="check"></span><span class="visually-hidden" x-text="conn.isActive === false ? label('keys.resume') : label('keys.pause')"></span></button>
+              <button type="button" class="btn btn-sm btn-ghost" x-on:click="remove(conn)" x-tip="common.delete"><span class="rl-icon" x-icon="trash"></span><span class="visually-hidden" x-t="common.delete"></span></button>
+            </div>
+          </li>
+        </template>
+      </ul>
+    </div>
+  </section>
+
+  <section class="card" x-show="!loading && !notFound">
+    <div class="card-header rl-card-head">
+      <h2 class="rl-card-title" x-t="models.title"></h2>
+      <div class="rl-inline">
+        <button type="button" class="btn btn-sm" x-show="!node" x-on:click="disableAll()"><span x-t="models.disableAll"></span></button>
+        <button type="button" class="btn btn-sm" x-show="!node && models.disabled.length > 0" x-on:click="enableAll()"><span x-t="models.enableAll"></span></button>
+        <button type="button" class="btn btn-sm" x-show="node" x-on:click="importModels()"><span x-t="models.import"></span></button>
+        <button type="button" class="btn btn-sm btn-primary" x-on:click="openModelAdd()"><span class="rl-icon" x-icon="plus"></span><span x-t="models.add"></span></button>
+      </div>
+    </div>
+    <div class="card-body">
+      <p class="rl-error" x-show="models.error" x-text="models.error"></p>
+      <p class="rl-hint" x-show="models.loading" x-t="common.loading"></p>
+      <p class="rl-hint" x-show="!models.loading && models.items.length === 0" x-t="models.empty"></p>
+      <ul class="rl-list">
+        <template x-for="model in models.items" x-bind:key="model.id">
+          <li class="rl-list-row">
+            <div class="rl-list-main">
+              <div class="rl-list-title">
+                <code class="rl-code" x-text="model.id"></code>
+                <span class="badge" x-show="aliasFor(model.id)" x-text="aliasFor(model.id)"></span>
+                <span class="badge" x-show="model.source === 'custom'" x-t="models.custom"></span>
+                <span class="badge" x-show="model.source !== 'custom'" x-t="models.builtin"></span>
+                <span class="badge badge-ok" x-show="testFor(model.id) && testFor(model.id).ok" x-t="models.reachable"></span>
+              </div>
+              <p class="rl-hint" x-text="subtext(model)"></p>
+              <p class="rl-error" x-show="testFor(model.id) && testFor(model.id).error" x-text="testFor(model.id) ? testFor(model.id).error : ''"></p>
+            </div>
+            <div class="rl-list-actions">
+              <button type="button" class="btn btn-sm btn-ghost" x-bind:disabled="testFor(model.id) && testFor(model.id).busy" x-on:click="testModel(model.id)" x-tip="models.test"><span class="rl-icon" x-icon="activity"></span><span class="visually-hidden" x-t="models.test"></span></button>
+              <button type="button" class="btn btn-sm btn-ghost" x-show="!node" x-on:click="openAlias(model.id)" x-tip="models.alias"><span class="rl-icon" x-icon="pencil"></span><span class="visually-hidden" x-t="models.alias"></span></button>
+              <button type="button" class="btn btn-sm btn-ghost" x-show="!node" x-bind:disabled="!aliasFor(model.id) || busy('alias:' + model.id)" x-on:click="removeAlias(model.id)" x-tip="models.removeAlias"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="models.removeAlias"></span></button>
+              <button type="button" class="btn btn-sm btn-ghost" x-show="!node" x-bind:disabled="busy('disable:' + model.id)" x-on:click="disableModel(model.id)" x-tip="models.disable"><span class="rl-icon" x-icon="pause"></span><span class="visually-hidden" x-t="models.disable"></span></button>
+              <button type="button" class="btn btn-sm btn-ghost" x-bind:disabled="model.source !== 'custom'" x-on:click="removeCustom(model)" x-bind:title="model.source === 'custom' ? label('common.delete') : label('models.builtinNoDelete')"><span class="rl-icon" x-icon="trash"></span><span class="visually-hidden" x-t="common.delete"></span></button>
+            </div>
+          </li>
+        </template>
+      </ul>
+      <div x-show="models.disabled.length > 0">
+        <h3 class="rl-card-title" x-t="models.disabledTitle"></h3>
+        <ul class="rl-chips">
+          <template x-for="id in models.disabled" x-bind:key="id">
+            <li class="rl-chip"><span x-text="id"></span><button type="button" class="btn btn-sm btn-ghost" x-on:click="enableModel(id)" x-tip="models.enable"><span class="rl-icon" x-icon="check"></span><span class="visually-hidden" x-t="models.enable"></span></button></li>
+          </template>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" x-show="!loading && !notFound">
+    <div class="card-header rl-card-head">
+      <h2 class="rl-card-title" x-t="overrides.title"></h2>
+      <button type="button" class="btn btn-sm btn-primary" x-bind:disabled="overrides.busy" x-on:click="saveOverrides()"><span x-t="common.save"></span></button>
+    </div>
+    <div class="card-body">
+      <p class="rl-hint" x-t="overrides.hint"></p>
+      <p class="rl-error" x-show="overrides.error" x-text="overrides.error"></p>
+      <template x-for="(row, index) in overrides.rows" x-bind:key="index">
+        <div class="rl-inline">
+          <input class="form-control" x-bind:value="row.name" x-on:input="setHeader(index, 'name', $event)" x-bind:placeholder="label('overrides.name')">
+          <input class="form-control" x-bind:value="row.value" x-on:input="setHeader(index, 'value', $event)" x-bind:placeholder="label('overrides.value')">
+          <button type="button" class="btn btn-sm btn-ghost" x-on:click="removeHeaderRow(index)" x-tip="common.remove"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.remove"></span></button>
+        </div>
+      </template>
+      <div class="rl-inline">
+        <button type="button" class="btn btn-sm" x-on:click="addHeaderRow()"><span class="rl-icon" x-icon="plus"></span><span x-t="overrides.add"></span></button>
+      </div>
+    </div>
+  </section>
+
+  <dialog class="rl-dialog" x-ref="resultsDlg" aria-labelledby="dlg-resultsDlg-title">
+    <h2 id="dlg-resultsDlg-title" x-t="provider.modelsTitle"></h2>
+    <ul class="rl-list">
+      <template x-for="row in (results ? results.results : [])" x-bind:key="row.modelId || row.model">
+        <li class="rl-list-row">
+          <div class="rl-list-main">
+            <div class="rl-list-title"><span x-text="row.modelId || row.model"></span><span class="badge" x-bind:data-ok="row.ok ? 'yes' : 'no'" x-text="row.ok ? label('providers.ok') : label('providers.failedOne')"></span></div>
+            <p class="rl-hint" x-show="row.error" x-text="row.error"></p>
+          </div>
+          <div class="rl-list-actions"><span class="rl-hint" x-text="row.latencyMs !== undefined ? row.latencyMs + ' ms' : ''"></span></div>
+        </li>
+      </template>
+    </ul>
+    <div class="rl-dialog-actions">
+      <button type="button" class="btn btn-primary" x-on:click="closeResults()" x-t="common.done"></button>
+    </div>
+  </dialog>
+
+  <dialog class="rl-dialog" x-ref="addDlg" x-on:close="forgetAdd()" aria-labelledby="dlg-addDlg-title">
+    <form x-on:submit.prevent="saveAdd()">
+      <h2 id="dlg-addDlg-title" x-t="provider.addKeyTitle"></h2>
+      <p class="rl-hint" x-t="provider.addKeyHint"></p>
+      <label class="form-label" for="add-name" x-t="provider.name"></label>
+      <input class="form-control" id="add-name" x-ref="addName" maxlength="256" required x-bind:value="add.name" x-on:input="setField('add.name', $event)">
+      <label class="form-label" for="add-key" x-t="provider.apiKey"></label>
+      <input class="form-control" id="add-key" type="password" autocomplete="off" x-bind:value="add.key" x-on:input="setAddKey($event)">
+      <label class="form-label" for="add-model" x-t="provider.defaultModel"></label>
+      <input class="form-control" id="add-model" x-bind:value="add.defaultModel" x-on:input="setAddModel($event)">
+      <label class="form-label" for="add-priority" x-t="provider.priority"></label>
+      <input class="form-control" id="add-priority" type="number" min="1" x-bind:value="add.priority" x-on:input="setField('add.priority', $event)">
+      <div x-show="entry && entry.regions && entry.regions.length > 0">
+        <label class="form-label" for="add-region" x-t="provider.region"></label>
+        <select class="form-select" id="add-region" x-bind:value="add.region" x-on:change="setField('add.region', $event)">
+          <option value=""></option>
+          <template x-for="region in (entry && entry.regions ? entry.regions : [])" x-bind:key="region"><option x-bind:value="region" x-text="region"></option></template>
+        </select>
+      </div>
+      <fieldset class="rl-block-start">
+        <legend class="form-label" x-t="provider.extra"></legend>
+        <p class="rl-hint" x-t="provider.extraHint"></p>
+        <template x-for="(row, index) in add.psd" x-bind:key="index">
+          <div class="rl-inline">
+            <input class="form-control" x-bind:value="row.key" x-on:input="setAddPsd(index, 'key', $event)" x-bind:placeholder="label('provider.extraKey')">
+            <input class="form-control" x-bind:value="row.value" x-on:input="setAddPsd(index, 'value', $event)" x-bind:placeholder="label('provider.extraValue')">
+            <button type="button" class="btn btn-sm btn-ghost" x-on:click="removeAddPsd(index)" x-tip="common.remove"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.remove"></span></button>
+          </div>
+        </template>
+        <button type="button" class="btn btn-sm" x-on:click="addPsdRow()"><span class="rl-icon" x-icon="plus"></span><span x-t="provider.addExtra"></span></button>
+      </fieldset>
+      <div class="rl-inline">
+        <button type="button" class="btn btn-sm" x-bind:disabled="add.checking || add.key === ''" x-on:click="checkAdd()"><span x-t="providers.check"></span></button>
+        <span class="badge badge-ok" x-show="add.check && add.check.valid" x-t="providers.valid"></span>
+        <span class="badge badge-err" x-show="add.check && !add.check.valid" x-t="providers.invalid"></span>
+      </div>
+      <p class="rl-error" x-show="add.check && !add.check.valid && add.check.error" x-text="add.check ? add.check.error : ''"></p>
+      <p class="rl-error" x-show="add.error" x-text="add.error"></p>
+      <div class="rl-dialog-actions">
+        <button type="button" class="btn" x-on:click="closeAddKey()" x-t="common.cancel"></button>
+        <button type="submit" class="btn btn-primary" x-bind:disabled="add.busy" x-t="common.save"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="rl-dialog" x-ref="bulkDlg" aria-labelledby="dlg-bulkDlg-title">
+    <form x-on:submit.prevent="runBulk()">
+      <h2 id="dlg-bulkDlg-title" x-t="provider.bulkTitle"></h2>
+      <p class="rl-hint" x-t="provider.bulkHint"></p>
+      <textarea class="form-control" rows="8" x-bind:value="bulk.text" x-on:input="setField('bulk.text', $event)"></textarea>
+      <p class="rl-error" x-show="bulk.error" x-text="bulk.error"></p>
+      <div x-show="bulk.results">
+        <table class="table">
+          <thead><tr><th x-t="provider.name"></th><th x-t="provider.bulkResult"></th></tr></thead>
+          <tbody>
+            <template x-for="(row, index) in (bulk.results ? bulk.results : [])" x-bind:key="index">
+              <tr><td x-text="row.name || row.line"></td><td x-text="row.error ? row.error : label('providers.ok')"></td></tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+      <div class="rl-dialog-actions">
+        <button type="button" class="btn" x-on:click="closeBulk()" x-t="common.close"></button>
+        <button type="submit" class="btn btn-primary" x-bind:disabled="bulk.busy" x-t="provider.bulkRun"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="rl-dialog" x-ref="editDlg" x-on:close="forgetEdit()" aria-labelledby="dlg-editDlg-title">
+    <form x-on:submit.prevent="saveEdit()" x-show="edit">
+      <h2 id="dlg-editDlg-title" x-t="provider.editTitle"></h2>
+      <label class="form-label" for="edit-name" x-t="provider.name"></label>
+      <input class="form-control" id="edit-name" x-ref="editName" maxlength="256" x-bind:value="edit ? edit.name : ''" x-on:input="setField('edit.name', $event)">
+      <label class="form-label" for="edit-priority" x-t="provider.priority"></label>
+      <input class="form-control" id="edit-priority" type="number" min="1" max="1000000" x-bind:value="edit ? edit.priority : ''" x-on:input="setField('edit.priority', $event)">
+      <label class="form-label" for="edit-global" x-t="provider.globalPriority"></label>
+      <input class="form-control" id="edit-global" type="number" min="0" max="1000000" x-bind:value="edit ? edit.globalPriority : ''" x-on:input="setField('edit.globalPriority', $event)">
+      <label class="form-label" for="edit-model" x-t="provider.defaultModel"></label>
+      <input class="form-control" id="edit-model" x-bind:value="edit ? edit.defaultModel : ''" x-on:input="setField('edit.defaultModel', $event)">
+      <label class="form-label" for="edit-key" x-t="provider.apiKey"></label>
+      <input class="form-control" id="edit-key" type="password" autocomplete="off" x-bind:value="edit ? edit.apiKey : ''" x-on:input="setField('edit.apiKey', $event)">
+      <p class="rl-hint" x-t="provider.apiKeyHint"></p>
+      <div class="form-check form-switch rl-switch">
+        <input class="form-check-input" type="checkbox" id="edit-active" role="switch" x-bind:checked="edit ? edit.isActive : false" x-on:change="toggleEditActive()">
+        <label class="form-check-label" for="edit-active" x-t="keys.active"></label>
+      </div>
+      <div x-show="entry && entry.regions && entry.regions.length > 0">
+        <label class="form-label" for="edit-region" x-t="provider.region"></label>
+        <select class="form-select" id="edit-region" x-bind:value="edit ? edit.region : ''" x-on:change="setField('edit.region', $event)">
+          <option value=""></option>
+          <template x-for="region in (entry && entry.regions ? entry.regions : [])" x-bind:key="region"><option x-bind:value="region" x-text="region"></option></template>
+        </select>
+      </div>
+      <fieldset class="rl-block-start">
+        <legend class="form-label" x-t="provider.extra"></legend>
+        <p class="rl-hint" x-t="provider.extraHint"></p>
+        <template x-for="(row, index) in (edit ? edit.psd : [])" x-bind:key="index">
+          <div class="rl-inline">
+            <input class="form-control" x-bind:value="row.key" x-bind:readonly="row.readonly" x-on:input="setEditPsd(index, 'key', $event)" x-bind:placeholder="label('provider.extraKey')">
+            <input class="form-control" x-bind:value="row.readonly ? label('provider.extraReadonly') : row.value" x-bind:readonly="row.readonly" x-on:input="setEditPsd(index, 'value', $event)" x-bind:placeholder="label('provider.extraValue')">
+            <button type="button" class="btn btn-sm btn-ghost" x-bind:disabled="row.readonly" x-on:click="removeEditPsd(index)" x-tip="common.remove"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.remove"></span></button>
+          </div>
+        </template>
+        <button type="button" class="btn btn-sm" x-on:click="editPsdRow()"><span class="rl-icon" x-icon="plus"></span><span x-t="provider.addExtra"></span></button>
+      </fieldset>
+      <p class="rl-error" x-show="edit && edit.error" x-text="edit ? edit.error : ''"></p>
+      <div class="rl-dialog-actions">
+        <button type="button" class="btn" x-on:click="closeEdit()" x-t="common.cancel"></button>
+        <button type="submit" class="btn btn-primary" x-bind:disabled="edit ? edit.busy : false" x-t="common.save"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="rl-dialog" x-ref="nodeDlg" aria-labelledby="dlg-nodeDlg-title">
+    <form x-on:submit.prevent="saveNode()">
+      <h2 id="dlg-nodeDlg-title" x-t="provider.nodeEdit"></h2>
+      <label class="form-label" for="node-edit-name" x-t="providers.name"></label>
+      <input class="form-control" id="node-edit-name" x-bind:value="nodeForm.name" x-on:input="setField('nodeForm.name', $event)" required>
+      <label class="form-label" for="node-edit-prefix" x-t="providers.prefix"></label>
+      <input class="form-control" id="node-edit-prefix" maxlength="32" x-bind:value="nodeForm.prefix" x-on:input="setField('nodeForm.prefix', $event)" required>
+      <div x-show="node && node.type === 'openai-compatible'">
+        <label class="form-label" for="node-edit-api-type" x-t="providers.apiType"></label>
+        <select class="form-select" id="node-edit-api-type" x-bind:value="nodeForm.apiType" x-on:change="setField('nodeForm.apiType', $event)">
+          <option value="chat" x-t="providers.apiChat"></option>
+          <option value="responses" x-t="providers.apiResponses"></option>
+        </select>
+      </div>
+      <label class="form-label" for="node-edit-base" x-t="providers.baseUrl"></label>
+      <input class="form-control" id="node-edit-base" x-bind:value="nodeForm.baseUrl" x-on:input="setField('nodeForm.baseUrl', $event)" required>
+      <p class="rl-error" x-show="nodeForm.error" x-text="nodeForm.error"></p>
+      <div class="rl-dialog-actions">
+        <button type="button" class="btn" x-on:click="closeNode()" x-t="common.cancel"></button>
+        <button type="submit" class="btn btn-primary" x-bind:disabled="nodeForm.busy" x-t="common.save"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="rl-dialog" x-ref="aliasDlg" aria-labelledby="dlg-aliasDlg-title">
+    <form x-on:submit.prevent="saveAlias()">
+      <h2 id="dlg-aliasDlg-title" x-t="models.aliasTitle"></h2>
+      <p class="rl-hint"><code class="rl-code" x-text="aliasForm.open ? modelLabel(aliasForm.model) : ''"></code></p>
+      <label class="form-label" for="alias-value" x-t="models.alias"></label>
+      <input class="form-control" id="alias-value" x-ref="aliasInput" x-bind:value="aliasForm.alias" x-on:input="setField('aliasForm.alias', $event)">
+      <p class="rl-error" x-show="aliasForm.error" x-text="aliasForm.error"></p>
+      <div class="rl-dialog-actions">
+        <button type="button" class="btn" x-on:click="closeAlias()" x-t="common.cancel"></button>
+        <button type="submit" class="btn btn-primary" x-bind:disabled="busy('alias')" x-t="common.save"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="rl-dialog" x-ref="modelDlg" aria-labelledby="dlg-modelDlg-title">
+    <form x-on:submit.prevent="addCustomModel()">
+      <h2 id="dlg-modelDlg-title" x-t="models.addTitle"></h2>
+      <label class="form-label" for="model-id" x-t="models.id"></label>
+      <input class="form-control" id="model-id" x-ref="modelId" x-bind:value="modelAdd.id" x-on:input="setField('modelAdd.id', $event)" required>
+      <label class="form-label" for="model-name" x-t="models.name"></label>
+      <input class="form-control" id="model-name" x-bind:value="modelAdd.name" x-on:input="setField('modelAdd.name', $event)">
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" id="model-vision" x-bind:checked="modelAdd.vision" x-on:change="toggleModelVision()">
+        <label class="form-check-label" for="model-vision" x-t="models.vision"></label>
+      </div>
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" id="model-reasoning" x-bind:checked="modelAdd.reasoning" x-on:change="toggleModelReasoning()">
+        <label class="form-check-label" for="model-reasoning" x-t="models.reasoning"></label>
+      </div>
+      <p class="rl-error" x-show="modelAdd.error" x-text="modelAdd.error"></p>
+      <div class="rl-dialog-actions">
+        <button type="button" class="btn" x-on:click="closeModelAdd()" x-t="common.cancel"></button>
+        <button type="submit" class="btn btn-primary" x-bind:disabled="modelAdd.busy" x-t="common.save"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="rl-dialog" x-ref="loginDlg" x-on:close="loginClosed()" aria-labelledby="dlg-loginDlg-title">
+    <h2 id="dlg-loginDlg-title" x-t="provider.loginTitle"></h2>
+
+    <div x-show="login.kind === 'oauth'">
+      <div x-show="login.mode === ''">
+        <div x-show="loginOffer() && loginOffer().variants && loginOffer().variants.length > 0">
+          <label class="form-label" for="login-variant" x-t="provider.loginVariant"></label>
+          <select class="form-select" id="login-variant" x-bind:value="login.variant" x-on:change="setField('login.variant', $event)">
+            <template x-for="variant in (loginOffer() && loginOffer().variants ? loginOffer().variants : [])" x-bind:key="variant"><option x-bind:value="variant" x-text="variant"></option></template>
+          </select>
+        </div>
+        <div x-show="loginOffer() && loginOffer().appFromAccount">
+          <label class="form-label" for="login-base" x-t="provider.loginBaseUrl"></label>
+          <input class="form-control" id="login-base" x-bind:value="login.app.baseUrl" x-on:input="setLoginApp('baseUrl', $event)">
+          <label class="form-label" for="login-client-id" x-t="provider.loginClientId"></label>
+          <input class="form-control" id="login-client-id" x-bind:value="login.app.clientId" x-on:input="setLoginApp('clientId', $event)">
+          <label class="form-label" for="login-client-secret" x-t="provider.loginClientSecret"></label>
+          <input class="form-control" id="login-client-secret" type="password" autocomplete="off" x-bind:value="login.app.clientSecret" x-on:input="setLoginApp('clientSecret', $event)">
+        </div>
+        <div class="rl-inline">
+          <button type="button" class="btn btn-primary" x-bind:disabled="login.busy" x-on:click="startCode()" x-t="provider.loginOpen"></button>
+        </div>
+      </div>
+
+      <div x-show="login.mode === 'code'">
+        <p class="rl-hint" x-t="provider.loginWaiting"></p>
+        <div class="rl-inline">
+          <code class="rl-code rl-key" x-text="login.authUrl"></code>
+          <button type="button" class="btn btn-sm" x-on:click="openTab(login.authUrl)" x-tip="provider.loginOpen"><span class="rl-icon" x-icon="external-link"></span><span class="visually-hidden" x-t="provider.loginOpen"></span></button>
+          <button type="button" class="btn btn-sm" x-on:click="copyText(login.authUrl)" x-tip="common.copy"><span class="rl-icon" x-icon="copy"></span><span class="visually-hidden" x-t="common.copy"></span></button>
+        </div>
+        <div x-show="login.paste">
+          <label class="form-label" for="login-paste" x-t="provider.loginPaste"></label>
+          <input class="form-control" id="login-paste" x-bind:value="login.input" x-on:input="setField('login.input', $event)">
+          <div class="rl-inline">
+            <button type="button" class="btn" x-bind:disabled="login.busy" x-on:click="pasteLogin()" x-t="provider.loginPasteAction"></button>
+          </div>
+        </div>
+      </div>
+
+      <div x-show="login.mode === 'device'">
+        <p class="rl-hint" x-t="provider.loginDeviceHint"></p>
+        <div class="rl-inline">
+          <code class="rl-code rl-key" x-text="login.userCode"></code>
+          <button type="button" class="btn btn-sm" x-on:click="copyText(login.userCode)" x-tip="common.copy"><span class="rl-icon" x-icon="copy"></span><span class="visually-hidden" x-t="common.copy"></span></button>
+          <button type="button" class="btn btn-sm" x-on:click="openTab(login.verificationUri)"><span class="rl-icon" x-icon="external-link"></span><span x-t="provider.loginOpen"></span></button>
+        </div>
+        <p class="rl-hint" x-t="provider.loginWaiting"></p>
+      </div>
+    </div>
+
+    <div x-show="login.kind === 'pat'">
+      <label class="form-label" for="pat-token" x-t="provider.pat"></label>
+      <input class="form-control" id="pat-token" type="password" autocomplete="off" x-bind:value="login.token" x-on:input="setField('login.token', $event)">
+      <label class="form-label" for="pat-base" x-t="provider.loginBaseUrl"></label>
+      <input class="form-control" id="pat-base" x-bind:value="login.baseUrl" x-on:input="setField('login.baseUrl', $event)">
+      <div class="rl-inline">
+        <button type="button" class="btn btn-primary" x-bind:disabled="login.busy" x-on:click="patLogin()" x-t="provider.loginPasteAction"></button>
+      </div>
+    </div>
+
+    <div x-show="login.kind === 'import'">
+      <label class="form-label" for="import-token" x-t="provider.importToken"></label>
+      <input class="form-control" id="import-token" type="password" autocomplete="off" x-bind:value="login.token" x-on:input="setField('login.token', $event)">
+      <template x-for="field in (loginOffer() && loginOffer().fields ? loginOffer().fields : [])" x-bind:key="field">
+        <div>
+          <label class="form-label" x-bind:for="'import-' + field" x-text="field"></label>
+          <input class="form-control" x-bind:id="'import-' + field" x-bind:value="login.fields[field] || ''" x-on:input="setLoginField(field, $event)">
+        </div>
+      </template>
+      <label class="form-label" for="import-email" x-t="provider.importEmail"></label>
+      <input class="form-control" id="import-email" x-bind:value="login.email" x-on:input="setField('login.email', $event)">
+      <div class="rl-inline">
+        <button type="button" class="btn btn-primary" x-bind:disabled="login.busy" x-on:click="importLogin()" x-t="provider.loginPasteAction"></button>
+      </div>
+    </div>
+
+    <div x-show="login.kind === 'bulk'">
+      <p class="rl-hint" x-t="provider.bulkImportHint"></p>
+      <textarea class="form-control" rows="8" x-bind:value="login.bulk" x-on:input="setField('login.bulk', $event)"></textarea>
+      <div class="rl-inline">
+        <button type="button" class="btn btn-primary" x-bind:disabled="login.busy" x-on:click="bulkImport()" x-t="provider.bulkImport"></button>
+      </div>
+      <ul class="rl-list" x-show="login.results">
+        <template x-for="(row, index) in (login.results ? login.results : [])" x-bind:key="index">
+          <li class="rl-list-row"><span x-text="row.connectionId ? row.connectionId : row.error"></span></li>
+        </template>
+      </ul>
+    </div>
+
+    <p class="rl-error" x-show="login.error" x-text="login.error"></p>
+    <div class="rl-dialog-actions">
+      <button type="button" class="btn" x-on:click="closeLogin()" x-t="common.close"></button>
+    </div>
+  </dialog>
+</section>

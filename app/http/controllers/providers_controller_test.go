@@ -79,6 +79,7 @@ func newMgmtRig(t *testing.T) *mgmtRig {
 	handle(nethttp.MethodPost, "/api/providers/validate", pc.Validate)
 	handle(nethttp.MethodPost, "/api/providers/test-batch", pc.TestBatch)
 	handle(nethttp.MethodPost, "/api/providers/bulk", pc.BulkCreate)
+	handle(nethttp.MethodGet, "/api/providers/catalog", pc.Catalog)
 	handle(nethttp.MethodGet, "/api/providers/{id}", pc.Show)
 	handle(nethttp.MethodPut, "/api/providers/{id}", pc.Update)
 	handle(nethttp.MethodDelete, "/api/providers/{id}", pc.Delete)

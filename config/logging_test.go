@@ -7,7 +7,47 @@ import (
 
 	"rllmx/app/facades"
 	"rllmx/app/platform/redactor"
+	"rllmx/app/platform/settings"
+	"rllmx/tests"
 )
+
+// stubDriver is a file driver a test can tell apart from the console one.
+type stubDriver struct{}
+
+func (stubDriver) Handle(string) (log.Handler, error) { return &tests.Handler{}, nil }
+
+func TestLogSinksFollowTheOutput(t *testing.T) {
+	cases := []struct {
+		output    settings.LogOutput
+		hasFile   bool
+		hasStdout bool
+	}{
+		{settings.LogOutput{File: true}, true, false},
+		{settings.LogOutput{Stdout: true}, false, true},
+		{settings.LogOutput{File: true, Stdout: true}, true, true},
+	}
+	for _, c := range cases {
+		sinks := logSinks(c.output, tests.Config{}, stubDriver{})
+		var file, stdoutSink bool
+		for _, s := range sinks {
+			switch s.(type) {
+			case stubDriver:
+				file = true
+			case stdout:
+				stdoutSink = true
+			}
+		}
+		if file != c.hasFile || stdoutSink != c.hasStdout {
+			t.Errorf("%+v: file %t stdout %t", c.output, file, stdoutSink)
+		}
+	}
+}
+
+func TestLoggingOutputIsASinkName(t *testing.T) {
+	if _, err := settings.ParseLogOutput(facades.Config().GetString("logging.output")); err != nil {
+		t.Fatal(err)
+	}
+}
 
 // Every file channel must go through the redactor. A channel that goes back to
 // the framework's plain "single" or "daily" driver would write secrets as they

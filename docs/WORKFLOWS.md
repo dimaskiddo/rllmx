@@ -84,7 +84,7 @@ sequenceDiagram
 | # | Behavior |
 |---|---|
 | 1 | `.env` from working directory, process environment over it; set-but-empty = unset. Our checks (unknown name, size cap, bad value) fail startup naming the variable. `.env` syntax error or bad `APP_KEY` stops the framework first, in its own words (design doc 17) |
-| 2 | `LOG_CHANNEL` (`single`, `daily`, `stack`) writes `storage/logs/rllmx.log`, text or JSON per its `formatter`, behind redacting `custom` channel |
+| 2 | `LOG_CHANNEL` (`single`, `daily`, `stack`) picks the file `storage/logs/rllmx.log`, text or JSON per its `formatter`, behind the redacting `custom` channel; `LOG_OUTPUT` (`both`) adds the standard output as a second sink or moves the entry there |
 | 3 | `config.Boot` already made `DATA_DIR/db` (`0700`) and empty `data.sqlite` (`0600`) for every process. Data runner checks `DB_ENCRYPTION_SECRET` (64 hex; `version`, `health` work without it), takes `rllmx.lock`, holds until exit. Second server, `db:vacuum`, either import on the directory: refuses |
 | 4 | HTTP runner opens socket first (busy port fails before any database touched), serves only when data runner ready. Port silent until then, so `health` times out during a long migration. All runners start at once; this wait orders them |
 | 5 | Load or create `jwt-secret` and `machine-id` (`0600`) in `DATA_DIR`, through `file.WritePrivate`. A short existing `jwt-secret` is an error, never replaced |
@@ -118,9 +118,11 @@ Rules: ARCHITECTURE.md (Terminal Commands). `keys:*`, `password:*` need a termin
 | Command | Confirmation | Lock |
 |---|---|---|
 | `db:backup`, `db:check` | None | No |
+| `db:migrate` | None | Yes |
 | `db:vacuum` | y/N, or `--yes` | Yes |
 | `db:import-analytics` | None (`--drop-old`: typed `DROP`, terminal required) | Yes |
 | `db:import-config` | Prints the plan, y/N, or `--yes` | Yes |
+| `auth:mode` | None; the OIDC client secret is a hidden prompt when none is stored | No |
 | `db:export-plain` | Dashboard password | No |
 
 ### 3. First Run & Login
@@ -314,12 +316,12 @@ When the reference moves: read its changelog, classify each change, update the p
 
 ### 17. `db:import-config`
 
-Seeds an empty SQLite file or PostgreSQL database for a new deployment: `rllmx artisan db:import-config --from <file or data dir> [--dry-run] [--yes] [--with-sso]`. Code: `app/store/importer`.
+Seeds an empty SQLite file or PostgreSQL database for a new deployment: `rllmx artisan db:import-config --from <file or data dir> [--dry-run] [--yes] [--with-sso]`. Prepare the destination with `rllmx artisan db:migrate` first, or start the server once. Code: `app/store/importer`.
 
 1. `--from` names a 9router `data.sqlite` or its data directory (`db/data.sqlite` tried first). Source copied with any `-wal` and `-shm` into `DATA_DIR/db/import-tmp`, opened read-only (`repository.OpenSnapshot`). Copy and any directory the command created removed whatever the outcome.
 2. Plan: counts, settings keys skipped as login policy, keys this version does not know. Counts and key names only, never a value.
 3. `--dry-run` also checks destination, then stops. Writes nothing to destination, creates no temporary directory beyond the source copy, which is removed. (Every command may leave an empty `data.sqlite` under `DATA_DIR`; design doc 1, Framework Choices.) Like the real run it takes `rllmx.lock`.
-4. Destination must be empty (`HasConfiguration`): no connections, keys, nodes, combos or `kv` rows, no settings other than a password hash. Otherwise exit 1 with "only seeds an empty one".
+4. Destination must be empty (`HasConfiguration`): no connections, keys, nodes, combos or `kv` rows, no settings other than a password hash, and the schema `db:migrate` creates. Otherwise exit 1 with "only seeds an empty one", `ErrNeedsMigration`, or a refusal of a missing or empty database file. The dry run and the apply make the same checks, before anything is copied, skills included.
 5. Without `--yes` ask y/N (only `y` or `yes` is yes); without a terminal and without `--yes`, refuse.
 6. Apply in one transaction with original ids, timestamps, column values:
 

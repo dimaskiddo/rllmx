@@ -2,7 +2,7 @@
 
 **Status:** partial
 
-Built: `app/access/identity` (key format, machine id, key extraction), `app/access/auth` (session, password rules, login limiter, sign-in mode, settings snapshot, key lookup, the authenticator), the five `/api/auth/*` and `/api/settings/require-login` routes, the five commands, and the authenticator the guard now asks.
+Built: `app/access/identity` (key format, machine id, key extraction), `app/access/auth` (session, password rules, login limiter, sign-in mode, settings snapshot, key lookup, the authenticator), the five `/api/auth/*` and `/api/settings/require-login` routes, the six commands, and the authenticator the guard now asks.
 
 Built: `app/access/sso` (public base, guarded IdP client, single-use flow state, allow list, bind cookie, error codes), `app/access/oidc` (settings, discovery, JWKS, PKCE, ID-token verification, identity), the two `/api/auth/oidc/*` routes, `AUTH_SSO_ALLOW`, and the real `Mode`.
 
@@ -84,7 +84,7 @@ Built as `middleware.SameOrigin` (design doc 1), before the guard. A POST, PUT, 
 |---|---|
 | `POST /api/auth/login` | Password login |
 | `POST /api/auth/logout` | `{"everywhere":true}` also ends other sessions, and only with a session |
-| `GET /api/auth/status` | `hasPassword` and `defaultPassword` only for a local or signed-in caller |
+| `GET /api/auth/status` | `hasPassword` and `defaultPassword` only for a local or signed-in caller; `oidc`, `saml` and the two login labels for everyone, because the sign-in page draws its buttons before it has a session |
 | `GET /api/settings/require-login` | The flag only |
 | `POST /api/auth/change-password` | Always protected. Judges the new password, then the current one under the limiter, stores the hash, re-issues the cookie |
 
@@ -117,9 +117,11 @@ Change-password shares this counter. SSO counts differently (below).
 
 `auth.ResolveMode` turns `authMode` and `ssoType` into one decision.
 
-- SSO is usable only when its type is fully configured **and** `AUTH_SSO_ALLOW` names an entry.
+- SSO is usable only when its type is configured and the settings pass their own checks: `oidc.Settings.Usable` and `saml.Settings.Usable`. An issuer discovery would refuse never counts. `AUTH_SSO_ALLOW` decides who may sign in, not whether the button exists.
 - Password login is off only when the mode is SSO-only **and** SSO is usable, so half-configured SSO cannot lock the administrator out.
 - SSO sessions are re-checked on every request against the current mode and allow-list.
+
+From the CLI: `rllmx artisan auth:mode --mode <password|oidc|saml|sso|both> [--issuer URL] [--client-id ID] [--sso-type oidc|saml]` writes the same keys as the settings API, in one transaction. The OIDC client secret is a hidden prompt, stored sealed, and asked again when the issuer or client id changes. Unconfigured SSO keeps the password form, and the command says so.
 
 ### Single Sign-On (`app/access/oidc`, `app/access/saml`, `app/access/sso`)
 
@@ -141,7 +143,7 @@ Routes `GET /api/auth/oidc/start`, `GET /api/auth/oidc/callback`.
 | Item | Behavior |
 |---|---|
 | Discovery | Lazy, cached 1 h per issuer and client id, dropped when settings change; failures are not cached |
-| Settings | Issuer is `https` (or `http` on this machine), no credentials, query or fragment. Scopes are plain tokens, `openid` forced in, at most eight |
+| Settings | Issuer is `https` (or `http` on this machine), no credentials, path, query or fragment; the settings API and `auth:mode` both store what `oidc.ParseIssuer` returns. Scopes are plain tokens, `openid` forced in, at most eight |
 | Flow state | `state` (32 random bytes) keys a pending sign-in holding nonce, PKCE verifier and the settings used |
 | Bind cookie | `oidc_bind`: HMAC of the state under the session secret, `HttpOnly`, `Lax`, path `/api/auth/oidc`, 10 min. It must return with the callback, so an attacker cannot plant their own `code` and `state` in a victim's browser |
 | Verification | RS256 and ES256 only, pinned by the parser's algorithm allow list. `github.com/go-jose/go-jose/v4` parses the JWS and selects the JWKS key by `kid`; every claim rule is ours: issuer equals the discovered issuer, audience contains the client id, `azp` equals it when the audience has several values, `exp`/`nbf` with 60 s skew, the nonce, a non-empty `sub`, `at_hash` when present, and `email_verified` false (boolean or string) refused. `coreos/go-oidc` is not a dependency; `go-jose` is, for the parse and the key selection only |

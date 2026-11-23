@@ -1,6 +1,6 @@
 {
   "id": "fal-ai",
-  "alias": "fal-ai",
+  "alias": "fal",
   "category": "apikey",
   "display": { "name": "fal.ai" },
   "media": {

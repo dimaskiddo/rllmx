@@ -104,12 +104,14 @@ func (c *DBImportConfig) plan(ctx console.Context, fc Facades, src, dataDir stri
 }
 
 // run checks the destination and applies the plan, or stops after the check
-// for a dry run.
+// for a dry run. The check comes first on both paths: the skills copy is not
+// part of the database transaction, so nothing is copied, and no confirmation is
+// asked, for an import that cannot run.
 func (c *DBImportConfig) run(ctx console.Context, fc Facades, plan *importer.Plan, cfg *settings.Store) error {
+	if err := c.checkDestination(ctx, fc, cfg); err != nil {
+		return err
+	}
 	if ctx.OptionBool("dry-run") {
-		if err := c.checkDestination(ctx, fc, cfg); err != nil {
-			return err
-		}
 		if err := c.copySkills(ctx, cfg); err != nil {
 			return err
 		}
@@ -139,12 +141,13 @@ func (c *DBImportConfig) run(ctx console.Context, fc Facades, plan *importer.Pla
 	return nil
 }
 
-// checkDestination refuses a destination that already holds configuration,
-// without creating one: a missing SQLite file is an empty destination.
+// checkDestination refuses a destination that already holds configuration, has
+// no schema yet, or is no database at all. It creates nothing: the server's
+// start-up leaves a 0-byte file, and that is a file db:migrate has yet to fill.
 func (c *DBImportConfig) checkDestination(ctx console.Context, fc Facades, cfg *settings.Store) error {
 	if cfg.Engine == settings.EngineSQLite {
-		if err := requireFile(cfg.File); err != nil {
-			return nil
+		if err := requireFile(cfg.File, false); err != nil {
+			return err
 		}
 	}
 	name := data.Connection(cfg.Engine, data.ModeRead)
@@ -160,5 +163,5 @@ func (c *DBImportConfig) checkDestination(ctx console.Context, fc Facades, cfg *
 	if populated {
 		return importer.ErrDestinationNotEmpty
 	}
-	return nil
+	return importer.RequireSchema(ctx, st)
 }

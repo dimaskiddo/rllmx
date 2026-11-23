@@ -1,0 +1,78 @@
+{
+  "libraries": [
+    {
+      "name": "alpine",
+      "package": "@alpinejs/csp",
+      "version": "3.17.5",
+      "license": "MIT",
+      "source": "dist/module.esm.min.js",
+      "tarballIntegrity": "sha512-7e5lYgzJJL2eZ7esnx+E7wtxws+VDs9em9ztttZ+AQAYEng2bABHFp2SUga0wt84RyfL7hc6B+S/RGglXsPf6w==",
+      "files": {
+        "alpine.csp.js": "db008a8263a316031d4ab7d259f8d5656a9b9ade33a810fa802edf62e0b09670",
+        "licenses/alpine.txt": "08b7502da6e7aa1d0bbdc97d220fbf669b9366c61bd0f072238283c89bc4773a"
+      }
+    },
+    {
+      "name": "tabler",
+      "package": "@tabler/core",
+      "version": "1.7.3",
+      "license": "MIT",
+      "source": "dist/css/tabler.min.css, source map comment removed",
+      "tarballIntegrity": "sha512-9PDS6U69svI987zIpd0AVLF4Gw9Uxfq1aypceVMNxye9Jp4QWYZEtzTL7z60L8qLyVQupHA+ug1AIA8gGAnYRA==",
+      "files": {
+        "tabler.min.css": "4fe0876add7f07cb72abc49ece1cf95aeea077c41e84031949f4a4a94178935f",
+        "licenses/tabler.txt": "4f88a82d13be3c5c63a12c5631eae914aa4381b6dc17641bf1ab85f3f8f6c8a5"
+      }
+    },
+    {
+      "name": "lucide",
+      "package": "lucide",
+      "version": "1.70.0",
+      "license": "ISC",
+      "source": "dist/esm/{createElement,defaultAttributes}.mjs and a subset of dist/esm/icons, source map comments removed",
+      "tarballIntegrity": "sha512-LxPqUjt8e5PT7JuvmnKc8ECAqgkbnLG3hIi/FV2JpqWdPWLbLCoI5P3jje/Lq84uNU2kCpe2webgyFFJJ9zPAA==",
+      "files": {
+        "licenses/lucide.txt": "b495047bd93a9b06913511076f504daba17d5bbeb3e0650f3bb53a4220329c57",
+        "lucide/createElement.mjs": "8d87d1c93e20fc83b10b233ef5296403e94fa4b716f17f57501f07a46b4fc543",
+        "lucide/defaultAttributes.mjs": "cc52b10c12530813ac818859d72b901e603c843637c6f96086602fee62b9defc",
+        "lucide/icons/activity.mjs": "cad9ddc1bdadd94ed8b7734ae96ff892efe9a484efe5095dbf1c6abacdc9b656",
+        "lucide/icons/arrow-down.mjs": "ebaf126d5fcf5e8a103b0e1a98b10845df3533b7b50657960d6680d7db532af0",
+        "lucide/icons/arrow-up.mjs": "993d7ea5e2a310d5e92f1cace7b7adb544f1d14da1ff45e91de40f84fab56ccb",
+        "lucide/icons/check.mjs": "6121c51c2873e065274dddbfa2a5abb984ea3de198a4a15668979f43bb7d490e",
+        "lucide/icons/chevron-down.mjs": "c81cbc49bf492a0988c25947cf30e91c901591c56b17d18a4c9e5ac1b9e42aac",
+        "lucide/icons/chevron-right.mjs": "00ad8c6e91763dbfe5af0753d195435fe8fd639d10ba8039e030d1a396ff32bf",
+        "lucide/icons/circle-check.mjs": "54413f69da7c9244f2f38add4aa897f9c5d6b969e67689199116b85a0743c58d",
+        "lucide/icons/circle-exclamation-point.mjs": "6d16aa969d82824a104b61f0d6bc50ba0d9c5bd87dce80265dbbf2899be18f39",
+        "lucide/icons/clock.mjs": "7b513fd5496248fa99fdf9d63543e77f8d19a4872b002946b19c20e48433ffe1",
+        "lucide/icons/copy.mjs": "12d9e3525d4757b8e35c7508b0d410c851704b0074f1619b68b71e4575554f25",
+        "lucide/icons/external-link.mjs": "73cd4efaca5006550bf998e71b46a42ff439ece9b5b4d814006223d6e98b14ea",
+        "lucide/icons/eye-off.mjs": "d22452a339fe3f57bc7635a2a9d4e7a24a3fe707dadeacac41393e2e164aa198",
+        "lucide/icons/eye.mjs": "57f65f8db8f8bd3add1eaf16117e9642b10189e664d667437076c4278f956562",
+        "lucide/icons/globe.mjs": "3799197bcfe7e56ea841b97c9dc737c95769d1770f69cf50b7c312147ecddd8d",
+        "lucide/icons/info.mjs": "33c8bec256fa2cd5276d036d4e80cf47da1cca2e2df4ba962b39182c810f6cd5",
+        "lucide/icons/key-round.mjs": "286c41c02c39cc6c4a65ac7b29f57a9006a907a9a477a8e1efbeeb0ffe0f56a6",
+        "lucide/icons/layers.mjs": "125bba7be9a53238a80224b85a521c6403e11ad51816797287bda07dc9d2fee5",
+        "lucide/icons/layout-dashboard.mjs": "3fd1652440d752bf2bdaf6b535cfaaa586c4df32b8b248a752be4870408b03f4",
+        "lucide/icons/list.mjs": "3c8de70b7ce3ab1683f04e7bf33bf4aee857e4866a526a77420167233d34ea00",
+        "lucide/icons/log-in.mjs": "a1536ad198dbca9e91d2198dab5ae088151a4c5540877171df81f49ed8d9048c",
+        "lucide/icons/log-out.mjs": "8c8a0dec44c01a1375199fc6e9dc17ae94e80e1739708e3c5cfc522b22530db0",
+        "lucide/icons/menu.mjs": "005667748c660d694295b3bf27c5996eba3ff2c85752581f6c4d8d656d8595be",
+        "lucide/icons/moon.mjs": "e7719338f615b80e2e53d70336e998ef9b8a96001f0d6f8148ed601f48cd7e61",
+        "lucide/icons/pause.mjs": "20d0b9fe72c117c98bf782b67be2f976fe12b30ac9b288d99eab3b092b64ec8e",
+        "lucide/icons/pencil.mjs": "36de4de4234a979c85f187bd693ba3e05dd7b56192af2b41bda4c43d5526256b",
+        "lucide/icons/plus.mjs": "dfef9cc97deac69f198e38af387cc84ddd11b95422ee6e1cf03aad1bf80f1bdd",
+        "lucide/icons/refresh-cw.mjs": "b9fbeada71ed62f87601dd2c8236faffd8d3a54b204c0f8b575eab140739cbe0",
+        "lucide/icons/search.mjs": "6e16b81a05a10450f751580bfa8dd2faf03ee47a93f47d4699949a30f84f0315",
+        "lucide/icons/server.mjs": "337a91b999b4b5a2e6e98f8f4edaf3a1de139c973bd257bd86b595ecb30fa26a",
+        "lucide/icons/settings.mjs": "73ac1f145281b69c3b1137e0143b0ac5a7927ce5f6882ee28895525708c70df6",
+        "lucide/icons/shield-exclamation-point.mjs": "a4ca4f9bab820c0ff49b84d5ee13487ceaa6da925c705d4b933e5d1de360e0c6",
+        "lucide/icons/sun.mjs": "647b668329f6f022dea9dabf4d92a5ba3709a920ca71aab41d71f42ff86d39bb",
+        "lucide/icons/trash.mjs": "4ed4845c461e7f76e0ed55292b66afc70e5e6ed8d8dbfdb2d53ac2013d2025b1",
+        "lucide/icons/triangle-exclamation-point.mjs": "be44a37c465dc16ef5ed09f77ad6d639ca746294d550ddb946bd210501e47c6f",
+        "lucide/icons/user.mjs": "2d42a6096602a87c130742c718c9b4ba55db715e3047fc03ddfa4dede6dc8e99",
+        "lucide/icons/x.mjs": "9e85e7abc2c4703608fc09691f7fd82668e1fdc0bd2848e7c0b11e9e12f32998",
+        "lucide/icons/zap.mjs": "f5f2aa0a50066ccdb5567fcc1b1f8758a3d892738e680510d6cbb022869fdba9"
+      }
+    }
+  ]
+}

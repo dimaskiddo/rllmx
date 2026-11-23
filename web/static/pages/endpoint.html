@@ -1,0 +1,152 @@
+<section x-data="endpointPage">
+  <div class="rl-page-head">
+    <h1 class="rl-page-title" x-t="endpoint.title"></h1>
+  </div>
+  <p class="rl-error" x-show="error" x-text="error"></p>
+  <p class="text-secondary" x-show="loading" x-t="common.loading"></p>
+
+  <section class="card" x-show="!loading">
+    <div class="card-body">
+      <h2 class="rl-card-title" x-t="endpoint.baseUrl"></h2>
+      <p class="text-secondary" x-t="endpoint.baseUrlHint"></p>
+      <div class="rl-inline">
+        <code class="rl-code" x-text="baseUrl"></code>
+        <button type="button" class="btn btn-sm" x-on:click="copyBaseUrl()" x-tip="common.copy"><span class="rl-icon" x-icon="copy"></span><span class="visually-hidden" x-t="common.copy"></span></button>
+      </div>
+      <div class="form-check form-switch rl-switch">
+        <input class="form-check-input" type="checkbox" id="require-key" role="switch" x-bind:checked="settings.requireApiKey" x-on:change="toggleKeyRequired($event)">
+        <label class="form-check-label" for="require-key" x-t="endpoint.requireApiKey"></label>
+      </div>
+      <p class="rl-warning" x-show="!settings.requireApiKey"><span class="rl-icon" x-icon="triangle-exclamation-point"></span><span x-t="endpoint.keyOffWarning"></span></p>
+      <p class="rl-warning" x-show="!settings.requireLogin"><span class="rl-icon" x-icon="triangle-exclamation-point"></span><span x-t="endpoint.loginOffWarning"></span></p>
+    </div>
+  </section>
+
+  <section class="card" x-show="!loading">
+    <div class="card-header rl-card-head">
+      <h2 class="rl-card-title" x-t="keys.title"></h2>
+      <button type="button" class="btn btn-sm btn-primary" x-on:click="openCreate()"><span class="rl-icon" x-icon="plus"></span><span x-t="keys.create"></span></button>
+    </div>
+    <div class="card-body">
+      <p class="text-secondary" x-show="keys.length === 0" x-t="keys.empty"></p>
+      <ul class="rl-list">
+        <template x-for="key in keys" x-bind:key="key.id">
+          <li class="rl-list-row" x-bind:data-paused="key.isActive ? 'no' : 'yes'">
+            <div class="rl-list-main">
+              <div class="rl-list-title">
+                <span x-text="key.name"></span>
+                <span class="badge" x-show="!key.isActive" x-t="keys.paused"></span>
+                <span class="badge" x-show="key.access.restricted" x-t="keys.restricted"></span>
+              </div>
+              <div class="rl-inline">
+                <code class="rl-code rl-key" x-text="keyText(key)"></code>
+                <button type="button" class="btn btn-sm btn-ghost" x-on:click="reveal(key)" x-bind:title="revealed[key.id] ? label('keys.hide') : label('keys.reveal')"><span class="rl-icon" x-show="!revealed[key.id]" x-icon="eye"></span><span class="rl-icon" x-show="revealed[key.id]" x-icon="eye-off"></span><span class="visually-hidden" x-text="revealed[key.id] ? label('keys.hide') : label('keys.reveal')"></span></button>
+                <button type="button" class="btn btn-sm btn-ghost" x-on:click="copyKey(key)" x-tip="common.copy"><span class="rl-icon" x-icon="copy"></span><span class="visually-hidden" x-t="common.copy"></span></button>
+              </div>
+              <p class="rl-hint"><span x-t="keys.created"></span> <span x-text="formatDate(key.createdAt)"></span></p>
+            </div>
+            <div class="rl-list-actions">
+              <button type="button" class="btn btn-sm btn-ghost" x-on:click="openEdit(key)" x-tip="common.edit"><span class="rl-icon" x-icon="pencil"></span><span class="visually-hidden" x-t="common.edit"></span></button>
+              <button type="button" class="btn btn-sm btn-ghost" x-show="key.isActive" x-bind:disabled="busy[key.id] === true" x-on:click="toggleActive(key)" x-tip="keys.pause"><span class="rl-icon" x-icon="pause"></span><span class="visually-hidden" x-t="keys.pause"></span></button>
+              <button type="button" class="btn btn-sm btn-ghost" x-show="!key.isActive" x-bind:disabled="busy[key.id] === true" x-on:click="toggleActive(key)" x-tip="keys.resume"><span class="rl-icon" x-icon="check"></span><span class="visually-hidden" x-t="keys.resume"></span></button>
+              <button type="button" class="btn btn-sm btn-ghost" x-on:click="remove(key)" x-tip="common.delete"><span class="rl-icon" x-icon="trash"></span><span class="visually-hidden" x-t="common.delete"></span></button>
+            </div>
+          </li>
+        </template>
+      </ul>
+    </div>
+  </section>
+
+  <dialog class="rl-dialog" x-ref="createDlg" aria-labelledby="dlg-createDlg-title">
+    <form x-on:submit.prevent="createKey()">
+      <h2 id="dlg-createDlg-title" x-t="keys.createTitle"></h2>
+      <label class="form-label" for="key-name" x-t="keys.name"></label>
+      <input class="form-control" id="key-name" x-ref="createName" maxlength="64" required x-bind:value="create.name" x-on:input="setField('create.name', $event)">
+      <p class="rl-error" x-show="create.error" x-text="create.error"></p>
+      <div class="rl-dialog-actions">
+        <button type="button" class="btn" x-on:click="closeCreate()" x-t="common.cancel"></button>
+        <button type="submit" class="btn btn-primary" x-bind:disabled="create.busy" x-t="keys.create"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="rl-dialog" x-ref="createdDlg" x-on:close="forgetCreated()" aria-labelledby="dlg-createdDlg-title">
+    <h2 id="dlg-createdDlg-title" x-t="keys.createdTitle"></h2>
+    <p x-t="keys.createdBody"></p>
+    <code class="rl-code rl-key" x-text="created ? created.key : ''"></code>
+    <div class="rl-dialog-actions">
+      <button type="button" class="btn" x-on:click="copyCreated()"><span class="rl-icon" x-icon="copy"></span><span x-t="common.copy"></span></button>
+      <button type="button" class="btn btn-primary" x-on:click="closeCreated()" x-t="common.done"></button>
+    </div>
+  </dialog>
+
+  <dialog class="rl-dialog" x-ref="editDlg" aria-labelledby="dlg-editDlg-title">
+    <form x-on:submit.prevent="saveEdit()">
+      <h2 id="dlg-editDlg-title" x-t="keys.editTitle"></h2>
+      <label class="form-label" for="edit-name" x-t="keys.name"></label>
+      <input class="form-control" id="edit-name" maxlength="64" required x-bind:value="edit ? edit.name : ''" x-on:input="setField('edit.name', $event)">
+
+      <div class="form-check form-switch rl-switch">
+        <input class="form-check-input" type="checkbox" id="edit-active" role="switch" x-bind:checked="edit ? edit.isActive : false" x-on:change="toggleEditActive()">
+        <label class="form-check-label" for="edit-active" x-t="keys.active"></label>
+      </div>
+      <div class="form-check form-switch rl-switch">
+        <input class="form-check-input" type="checkbox" id="edit-cache" role="switch" x-bind:checked="edit ? edit.responseCache : false" x-on:change="toggleEditCache()">
+        <label class="form-check-label" for="edit-cache" x-t="keys.responseCache"></label>
+      </div>
+
+      <h3 class="rl-card-title" x-t="keys.access"></h3>
+      <div class="form-check form-switch rl-switch">
+        <input class="form-check-input" type="checkbox" id="edit-restricted" role="switch" x-bind:checked="edit ? edit.restricted : false" x-on:change="toggleRestricted()">
+        <label class="form-check-label" for="edit-restricted" x-t="keys.restrict"></label>
+      </div>
+      <div x-show="edit && edit.restricted">
+        <p class="rl-hint" x-t="keys.restrictHint"></p>
+        <ul class="rl-chips">
+          <template x-for="entry in (edit ? edit.allow : [])" x-bind:key="entry">
+            <li class="rl-chip"><span x-text="entry"></span><button type="button" class="btn btn-sm btn-ghost" x-on:click="removeAllow(entry)" x-tip="common.remove"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.remove"></span></button></li>
+          </template>
+        </ul>
+        <div class="rl-inline">
+          <input class="form-control" list="allow-options" x-bind:value="edit ? edit.add : ''" x-on:input="setField('edit.add', $event)" placeholder="provider/model">
+          <datalist id="allow-options">
+            <template x-for="choice in choices" x-bind:key="choice"><option x-bind:value="choice"></option></template>
+          </datalist>
+          <button type="button" class="btn btn-sm" x-on:click="addAllow()"><span class="rl-icon" x-icon="plus"></span><span x-t="common.add"></span></button>
+        </div>
+      </div>
+
+      <h3 class="rl-card-title" x-t="keys.budget"></h3>
+      <p class="rl-hint" x-t="keys.budgetHint"></p>
+      <div class="table-responsive"><table class="table rl-budget" x-show="edit">
+        <thead><tr><th></th><th x-t="keys.perDay"></th><th x-t="keys.perMonth"></th><th x-t="keys.allTime"></th></tr></thead>
+        <tbody>
+          <tr>
+            <th><span x-t="keys.requests"></span><span class="rl-hint rl-unit" x-t="keys.requestsUnit"></span></th>
+            <td><input class="form-control" x-bind:placeholder="label('keys.noLimit')" inputmode="numeric" x-bind:value="edit ? edit.budget.requests.day : ''" x-on:input="setBudget('requests', 'day', $event)"></td>
+            <td><input class="form-control" x-bind:placeholder="label('keys.noLimit')" inputmode="numeric" x-bind:value="edit ? edit.budget.requests.month : ''" x-on:input="setBudget('requests', 'month', $event)"></td>
+            <td><input class="form-control" x-bind:placeholder="label('keys.noLimit')" inputmode="numeric" x-bind:value="edit ? edit.budget.requests.total : ''" x-on:input="setBudget('requests', 'total', $event)"></td>
+          </tr>
+          <tr>
+            <th><span x-t="keys.tokens"></span><span class="rl-hint rl-unit" x-t="keys.tokensUnit"></span></th>
+            <td><input class="form-control" x-bind:placeholder="label('keys.noLimit')" inputmode="numeric" x-bind:value="edit ? edit.budget.tokens.day : ''" x-on:input="setBudget('tokens', 'day', $event)"></td>
+            <td><input class="form-control" x-bind:placeholder="label('keys.noLimit')" inputmode="numeric" x-bind:value="edit ? edit.budget.tokens.month : ''" x-on:input="setBudget('tokens', 'month', $event)"></td>
+            <td><input class="form-control" x-bind:placeholder="label('keys.noLimit')" inputmode="numeric" x-bind:value="edit ? edit.budget.tokens.total : ''" x-on:input="setBudget('tokens', 'total', $event)"></td>
+          </tr>
+          <tr>
+            <th><span x-t="keys.cost"></span><span class="rl-hint rl-unit" x-t="keys.costUnit"></span></th>
+            <td><div class="input-group"><span class="input-group-text">$</span><input class="form-control" x-bind:placeholder="label('keys.noLimit')" inputmode="decimal" x-bind:value="edit ? edit.budget.cost.day : ''" x-on:input="setBudget('cost', 'day', $event)"></div></td>
+            <td><div class="input-group"><span class="input-group-text">$</span><input class="form-control" x-bind:placeholder="label('keys.noLimit')" inputmode="decimal" x-bind:value="edit ? edit.budget.cost.month : ''" x-on:input="setBudget('cost', 'month', $event)"></div></td>
+            <td><div class="input-group"><span class="input-group-text">$</span><input class="form-control" x-bind:placeholder="label('keys.noLimit')" inputmode="decimal" x-bind:value="edit ? edit.budget.cost.total : ''" x-on:input="setBudget('cost', 'total', $event)"></div></td>
+          </tr>
+        </tbody>
+      </table></div>
+
+      <p class="rl-error" x-show="edit && edit.error" x-text="edit ? edit.error : ''"></p>
+      <div class="rl-dialog-actions">
+        <button type="button" class="btn" x-on:click="closeEdit()" x-t="common.cancel"></button>
+        <button type="submit" class="btn btn-primary" x-bind:disabled="edit ? edit.busy : false" x-t="common.save"></button>
+      </div>
+    </form>
+  </dialog>
+</section>

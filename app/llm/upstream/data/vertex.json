@@ -1,9 +1,6 @@
 {
   "id": "vertex",
-  "alias": "vertex",
-  "aliases": [
-    "vx"
-  ],
+  "alias": "vx",
   "category": "freeTier",
   "authType": "apikey",
   "executor": "vertex",

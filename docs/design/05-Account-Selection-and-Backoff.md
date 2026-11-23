@@ -15,7 +15,7 @@ Serialized per provider by a mutex, so the usage counters it writes cannot race 
 - for Codex, connections whose own `providerSpecificData.enabledModels` is non-empty and lacks the requested model;
 - connections **locked** for the model: `modelLock_<model>` or `modelLock___all` is a time in the future (an unreadable or null lock is no lock; a lock ending exactly now has ended).
 
-**Strategy:** `providerStrategies[provider].fallbackStrategy`, then `settings.fallbackStrategy`, then `fill-first`; an unknown name is `fill-first`. Settings are read through a 5 s snapshot.
+**Strategy:** `providerStrategies[provider].fallbackStrategy`, then `settings.fallbackStrategy`, then `fill-first`; an unknown name is `fill-first`. Settings are read through a 5 s snapshot. The settings write accepts that object shape, or the bare strategy word the selector reads the same way, and keeps any other key inside a provider's entry. Only `fill-first` and `round-robin` are accepted (`account.KnownStrategy`); the combo words are not provider strategies.
 
 | Strategy | Behavior |
 |---|---|

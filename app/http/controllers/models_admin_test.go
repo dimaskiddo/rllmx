@@ -77,6 +77,23 @@ func TestTheModelListCarriesCapsAndTheAliasThatPointsAtIt(t *testing.T) {
 	}
 }
 
+func TestTheModelListNamesACustomModelsKindForTheProviderPage(t *testing.T) {
+	m, _ := newModelAdmin(t)
+	m.ok(t, "POST", "/api/models/custom", `{"providerAlias":"openai","id":"my-embed","type":"embedding","name":"Mine"}`, 200)
+	var found map[string]any
+	for _, raw := range m.ok(t, "GET", "/api/models", "", 200)["models"].([]any) {
+		if e := raw.(map[string]any); e["fullModel"] == "openai/my-embed" {
+			found = e
+		}
+	}
+	if found == nil {
+		t.Fatal("the custom model is not listed")
+	}
+	if found["kind"] != "embedding" || found["model"] != "my-embed" || found["source"] != "custom" {
+		t.Fatalf("%v", found)
+	}
+}
+
 func TestAnAliasCannotTakeANameRoutingAlreadyUsesOrAnotherModels(t *testing.T) {
 	m, _ := newModelAdmin(t)
 	m.ok(t, "PUT", "/api/models/alias", `{"model":"openai/gpt-4o","alias":"fast"}`, 200)

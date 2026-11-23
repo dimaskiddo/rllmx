@@ -15,10 +15,27 @@ import (
 // ErrDestinationNotEmpty means the target already holds configuration.
 var ErrDestinationNotEmpty = errors.New("the destination database is not empty; import-config only seeds an empty one")
 
-// Apply writes the plan into dest in one transaction. The destination must
-// hold no connections, keys, nodes, combos, kv rows or settings (a dashboard
-// password hash is the one thing allowed). It returns the counts written.
+// RequireSchema refuses a destination the server has not opened yet. The
+// command never runs a migration, and writing into a missing table would answer
+// with the driver's error instead of the one that says what to do.
+func RequireSchema(ctx context.Context, dest *repository.Store) error {
+	missing, err := dest.NeedsMigration(ctx)
+	if err != nil {
+		return err
+	}
+	if missing {
+		return repository.ErrNeedsMigration
+	}
+	return nil
+}
+
+// Apply writes the plan into dest in one transaction. The destination needs the
+// schema the server creates and no configuration rows (a dashboard password
+// hash is the one thing allowed). It returns the counts written.
 func Apply(ctx context.Context, dest *repository.Store, p *Plan) (Counts, error) {
+	if err := RequireSchema(ctx, dest); err != nil {
+		return Counts{}, err
+	}
 	var got Counts
 	err := dest.Tx(ctx, func(tx contractsdb.Tx) error {
 		got = Counts{}

@@ -119,7 +119,7 @@ Full wording and reasons for the Go rules: `docs/ARCHITECTURE.md`, Go Convention
 - Anything else needs maintainer approval, an entry in the approved-module list in `docs/ARCHITECTURE.md`, and the reason recorded there before `go.mod` changes. Pin releases whose `go` directive is not newer than `go.mod`. `./artisan package:install` needs approval.
 
 ### Web Dashboard & Artifacts
-- Plain HTML, ES modules, CSS: no framework, bundler, build step or runtime CDN. Escape dynamic text; no `innerHTML` from data (`design doc 18`).
+- Plain HTML, ES modules, CSS, plus the vendored libraries on the approved list in `docs/ARCHITECTURE.md` (Alpine.js CSP build, Tabler CSS, Lucide, Chart.js, Sortable.js), each pinned and hash-checked in `web/static/lib/VERSIONS.json`. No bundler, build step, runtime CDN, `unsafe-inline` or `unsafe-eval`. Escape dynamic text; no `innerHTML` or `x-html` from data (`design doc 18`).
 - Output to `dist/` via the Makefile. `tools/mutant.sh <label> <file> <old> <new>` prints CAUGHT, MISSED, BUILD or NOOP.
 
 ---

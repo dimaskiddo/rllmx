@@ -69,10 +69,10 @@ func declareRoutes(version, commit string) {
 	base.Auth = controllers.NewAuthController(h.Auth, h.Trust)
 	base.OIDC = oidcController(h)
 	base.SAML = samlController(h)
-	base.Providers = &controllers.ProvidersController{Registry: h.Registry, DB: db, Checker: h.Checker, Refresher: h.Refresher, Enqueue: h.Probes.Enqueue, Probe: h.Probes.Prober}
+	base.Providers = &controllers.ProvidersController{Registry: h.Registry, OAuth: h.OAuth, DB: db, Checker: h.Checker, Refresher: h.Refresher, Enqueue: h.Probes.Enqueue, Probe: h.Probes.Prober}
 	base.Nodes = &controllers.NodesController{Registry: h.Registry, DB: db, Checker: h.Checker, Changed: h.Snapshot.Invalidate}
 	base.OAuth = &controllers.OAuthController{Service: h.OAuth, Auth: h.Auth, Server: h.Settings}
-	base.Callback = &controllers.CallbackController{Files: web.Static}
+	base.Pages = &controllers.PagesController{Files: web.Static}
 	base.Health = &controllers.HealthController{DB: db, Tracker: h.Health}
 	// The dashboard's two skill-aware controllers and the request pipeline share
 	// one registry, so a setting the Studio writes is validated by the same

@@ -1,9 +1,6 @@
 {
   "id": "runcrate",
-  "alias": "runcrate",
-  "aliases": [
-    "rc"
-  ],
+  "alias": "rc",
   "category": "apikey",
   "display": {
     "name": "Runcrate"

@@ -1,5 +1,5 @@
 // Package quota decides whether one API key may spend: its stored budgets —
-// requests, tokens or cost over a UTC day, month or all time — against the
+// requests, tokens or cost over a day, month or all time — against the
 // usage the analytics store recorded plus the rows still queued for it.
 package quota
 
@@ -354,30 +354,27 @@ func left(limit Limit, window string, used analytics.Totals) Remaining {
 	return out
 }
 
-// windowStart is the UTC moment a window began; the zero time for all time.
+// windowStart is the moment a window began in the clock's own zone, which is the
+// server's; the zero time for all time.
 func windowStart(window string, now time.Time) time.Time {
-	u := now.UTC()
+	y, m, d := now.Date()
 	switch window {
 	case "day":
-		y, m, d := u.Date()
-		return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+		return time.Date(y, m, d, 0, 0, 0, 0, now.Location())
 	case "month":
-		y, m, _ := u.Date()
-		return time.Date(y, m, 1, 0, 0, 0, 0, time.UTC)
+		return time.Date(y, m, 1, 0, 0, 0, 0, now.Location())
 	}
 	return time.Time{}
 }
 
 // untilWindowEnd is how long until a refused window resets; zero for all time.
 func untilWindowEnd(window string, now time.Time) time.Duration {
-	u := now.UTC()
+	y, m, d := now.Date()
 	switch window {
 	case "day":
-		y, m, d := u.Date()
-		return time.Date(y, m, d+1, 0, 0, 0, 0, time.UTC).Sub(u)
+		return time.Date(y, m, d+1, 0, 0, 0, 0, now.Location()).Sub(now)
 	case "month":
-		y, m, _ := u.Date()
-		return time.Date(y, m+1, 1, 0, 0, 0, 0, time.UTC).Sub(u)
+		return time.Date(y, m+1, 1, 0, 0, 0, 0, now.Location()).Sub(now)
 	}
 	return 0
 }

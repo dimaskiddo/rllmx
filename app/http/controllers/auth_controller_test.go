@@ -255,6 +255,22 @@ func TestStatusHidesThePasswordFactsFromAnAnonymousRemoteCaller(t *testing.T) {
 	}
 }
 
+// The sign-in page draws its buttons before it has a session, so the status
+// answer carries which single sign-on types are usable and their labels.
+func TestStatusNamesTheSignInButtonsForAnAnonymousCaller(t *testing.T) {
+	r := newAuthRig(t)
+	rec := r.callAs(nethttp.MethodGet, "/api/auth/status", "", nil, remotePeer, remoteHost)
+	body := rec.Body.String()
+	for _, want := range []string{
+		`"password":true`, `"oidc":false`, `"saml":false`,
+		`"oidcLoginLabel":"Sign in with OIDC"`, `"samlLoginLabel":"Sign in with SAML SSO"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("%s is missing from %s", want, body)
+		}
+	}
+}
+
 func TestRequireLoginAnswersTheFlagAlone(t *testing.T) {
 	r := newAuthRig(t)
 	rec := r.call(nethttp.MethodGet, "/api/settings/require-login", "", nil)

@@ -88,6 +88,31 @@ func TestValidate(t *testing.T) {
 	}
 }
 
+// Usable is what lets the dashboard hide the password form. A response must
+// name an issuer we pin, so an entry with no IdP entity id can never finish.
+func TestUsableNeedsEveryPieceAResponseIsCheckedAgainst(t *testing.T) {
+	p := newTestIDP(t)
+	pemCert := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: p.cert.Raw}))
+	good := Settings{EntryPoint: "https://idp.example.com/sso", Cert: pemCert, IDPEntityID: "https://idp.example.com/metadata"}
+	for name, tc := range map[string]struct {
+		mutate func(*Settings)
+		want   bool
+	}{
+		"complete":          {func(*Settings) {}, true},
+		"no idp entity id":  {func(s *Settings) { s.IDPEntityID = "" }, false},
+		"no entry point":    {func(s *Settings) { s.EntryPoint = "" }, false},
+		"no certificate":    {func(s *Settings) { s.Cert = "" }, false},
+		"not a certificate": {func(s *Settings) { s.Cert = "not a certificate" }, false},
+		"plain http remote": {func(s *Settings) { s.EntryPoint = "http://idp.example.com/sso" }, false},
+	} {
+		s := good
+		tc.mutate(&s)
+		if got := s.Usable(); got != tc.want {
+			t.Errorf("%s: Usable() = %t, want %t", name, got, tc.want)
+		}
+	}
+}
+
 func TestTheEntityIDOverrideAcceptsBothSpellings(t *testing.T) {
 	p := newTestIDP(t)
 	pemCert := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: p.cert.Raw}))

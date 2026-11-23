@@ -1,9 +1,6 @@
 {
   "id": "byteplus",
-  "alias": "byteplus",
-  "aliases": [
-    "bpm"
-  ],
+  "alias": "bpm",
   "category": "freeTier",
   "display": {
     "name": "BytePlus ModelArk"

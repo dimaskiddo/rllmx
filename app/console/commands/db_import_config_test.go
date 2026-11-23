@@ -10,6 +10,7 @@ import (
 
 	"rllmx/app/gateway/skill"
 	"rllmx/app/store/lock"
+	"rllmx/app/store/repository"
 	"rllmx/tests"
 )
 
@@ -136,6 +137,93 @@ func TestImportConfigRefusesANonEmptyDestination(t *testing.T) {
 	err := (&DBImportConfig{R: r.runtime()}).Handle(c)
 	if err == nil || !strings.Contains(err.Error(), "only seeds an empty one") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestImportConfigNeedsTheDestinationSchema(t *testing.T) {
+	for name, flags := range map[string]map[string]bool{
+		"apply":   {"yes": true},
+		"dry run": {"dry-run": true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := newImportRigWithoutSchema(t)
+			c := &importConsole{dbConsole{opts: map[string]string{"from": legacySource(t)}, flags: flags}}
+			err := (&DBImportConfig{R: r.runtime()}).Handle(c)
+			if !errors.Is(err, repository.ErrNeedsMigration) {
+				t.Fatalf("err = %v", err)
+			}
+		})
+	}
+}
+
+// The skills copy is not part of the database transaction, so nothing may be
+// copied until the destination is known to accept the rest.
+func TestImportConfigCopiesNoSkillsIntoADestinationWithoutTheSchema(t *testing.T) {
+	r := newImportRigWithoutSchema(t)
+	c := &importConsole{dbConsole{
+		opts:  map[string]string{"from": legacySource(t), "skills-from": skillsSource(t)},
+		flags: map[string]bool{"yes": true},
+	}}
+	if err := (&DBImportConfig{R: r.runtime()}).Handle(c); !errors.Is(err, repository.ErrNeedsMigration) {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(r.dir, "skills")); err == nil {
+		t.Fatal("skills were copied although the import could not run")
+	}
+}
+
+// The server's start-up leaves a 0-byte database file behind; it is not a
+// destination, and a dry run must not call it one.
+func TestImportConfigRefusesAnEmptyDatabaseFile(t *testing.T) {
+	for name, flags := range map[string]map[string]bool{
+		"apply":   {"yes": true},
+		"dry run": {"dry-run": true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := newImportRig(t)
+			empty := filepath.Join(r.dir, "empty.sqlite")
+			if err := os.WriteFile(empty, nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			rt := r.runtime()
+			inner := rt.Facades
+			rt.Facades = func() Facades {
+				fc := inner()
+				fc.Config = tests.Config{Values: map[string]any{
+					"database.default":                     "sqlite",
+					"database.connections.sqlite.database": empty,
+					"app.data_dir":                         r.dir,
+					"database.encryption_secret":           tests.DBSecret,
+				}}
+				return fc
+			}
+			c := &importConsole{dbConsole{
+				opts:  map[string]string{"from": legacySource(t), "skills-from": skillsSource(t)},
+				flags: flags,
+			}}
+			err := (&DBImportConfig{R: rt}).Handle(c)
+			if err == nil || !strings.Contains(err.Error(), "db:migrate") {
+				t.Fatalf("err = %v", err)
+			}
+			if _, err := os.Stat(filepath.Join(r.dir, "skills")); err == nil {
+				t.Fatal("skills were copied into an unusable destination")
+			}
+		})
+	}
+}
+
+func TestImportConfigAfterMigrate(t *testing.T) {
+	r := newImportRigWithoutSchema(t)
+	if err := (&DBMigrate{R: r.runtime()}).Handle(&dbConsole{}); err != nil {
+		t.Fatal(err)
+	}
+	c := &importConsole{dbConsole{opts: map[string]string{"from": legacySource(t)}, flags: map[string]bool{"yes": true}}}
+	if err := (&DBImportConfig{R: r.runtime()}).Handle(c); err != nil {
+		t.Fatal(err)
+	}
+	var n []int64
+	if err := r.dest.SQ.DB.Select(&n, `SELECT count(*) FROM "providerConnections"`); err != nil || n[0] != 1 {
+		t.Fatalf("connections = %v, %v", n, err)
 	}
 }
 

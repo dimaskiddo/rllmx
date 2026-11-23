@@ -1,6 +1,7 @@
 {
   "id": "v1m",
   "alias": "v1m",
+  "aliases": ["systemone", "jev"],
   "category": "apikey",
   "display": { "name": "v1m" },
   "media": { "serviceKinds": ["systemone"] },

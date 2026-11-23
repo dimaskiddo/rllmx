@@ -16,6 +16,8 @@ A provider's flow is data (`oauth.flow` in its file), run by one engine per kind
 
 `app/llm/oauth` holds the `code-pkce` flow (claude and codex), the RFC 8628 `device` flow (github), the `code` flow without PKCE (cline, clinepass) and the `code-pkce` logins xai and gitlab. Every other flow below is the design later work implements.
 
+The dashboard reads a login's shape from `oauth.Service.Offer`: the flow, the paste and bulk flags, the import fields, the app flags and the variants a code dialect accepts (`CodeDialect.Variants`). It names no URL, scope or client id, and `Enabled` follows `NewFlow` exactly.
+
 | Flow | Providers (examples) |
 |---|---|
 | `code-pkce`: authorization code with PKCE | claude, codex, gitlab, xai |

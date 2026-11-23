@@ -1,9 +1,6 @@
 {
   "id": "featherless",
-  "alias": "featherless",
-  "aliases": [
-    "fl"
-  ],
+  "alias": "fl",
   "category": "apikey",
   "display": {
     "name": "Featherless"

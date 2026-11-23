@@ -1,6 +1,6 @@
 {
   "id": "stability-ai",
-  "alias": "stability-ai",
+  "alias": "stability",
   "category": "apikey",
   "display": { "name": "Stability AI" },
   "media": {

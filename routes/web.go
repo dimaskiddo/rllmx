@@ -34,8 +34,8 @@ type Base struct {
 	Media *controllers.MediaController
 	// OAuth is the account login handler; nil leaves its routes out.
 	OAuth *controllers.OAuthController
-	// Callback serves the page a provider redirects the browser to.
-	Callback *controllers.CallbackController
+	// Pages serves the callback page and the static files; nil leaves them out.
+	Pages *controllers.PagesController
 	// Keys is the client-key management handler; nil leaves its routes out.
 	Keys *controllers.KeysController
 	// Health carries the health feed; nil leaves the liveness route alone.
@@ -128,6 +128,7 @@ func webProviders(router route.Route, guard *apphttp.Guard, base Base) {
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPost, "/api/providers/test-batch", p.TestBatch)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPost, "/api/providers/bulk", p.BulkCreate)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/providers/client", p.Client)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/providers/catalog", p.Catalog)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/providers/{id}", p.Show)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPut, "/api/providers/{id}", p.Update)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodDelete, "/api/providers/{id}", p.Delete)
@@ -277,8 +278,12 @@ func webLogin(router route.Route, guard *apphttp.Guard, base Base) {
 		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/oauth/status", o.Status)
 	}
 
-	if cb := base.Callback; cb != nil {
-		guard.Handle(router, apphttp.ClassPublic, nethttp.MethodGet, "/callback", cb.Page)
-		guard.Handle(router, apphttp.ClassPublic, nethttp.MethodGet, "/static/js/callback.js", cb.Script)
+	if p := base.Pages; p != nil {
+		guard.Handle(router, apphttp.ClassPublic, nethttp.MethodGet, "/", p.Root)
+		guard.Handle(router, apphttp.ClassPublic, nethttp.MethodGet, "/login", p.Login)
+		guard.Handle(router, apphttp.ClassPublic, nethttp.MethodGet, "/callback", p.Callback)
+		guard.Handle(router, apphttp.ClassPublic, nethttp.MethodGet, "/static/*file", p.Asset)
+		guard.Handle(router, apphttp.ClassPage, nethttp.MethodGet, "/dashboard", p.Dashboard)
+		guard.Handle(router, apphttp.ClassPage, nethttp.MethodGet, "/dashboard/*path", p.Dashboard)
 	}
 }

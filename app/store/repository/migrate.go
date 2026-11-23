@@ -98,6 +98,16 @@ func (s *Store) hasTable(name string) bool {
 	return s.schema.HasTable(name)
 }
 
+// NeedsMigration reports whether the database is missing tables, columns or
+// indexes this program expects. It writes nothing and needs no secret.
+func (s *Store) NeedsMigration(ctx context.Context) (bool, error) {
+	p, err := s.computePlan(ctx)
+	if err != nil {
+		return false, err
+	}
+	return !p.empty(), nil
+}
+
 func (s *Store) computePlan(ctx context.Context) (plan, error) {
 	cat, err := s.readCatalog(ctx)
 	if err != nil {

@@ -1,9 +1,6 @@
 {
   "id": "cloudflare-ai",
-  "alias": "cloudflare-ai",
-  "aliases": [
-    "cf"
-  ],
+  "alias": "cf",
   "category": "freeTier",
   "display": {
     "name": "Cloudflare"

@@ -35,6 +35,9 @@ func TestAliasesResolveToTheCanonicalID(t *testing.T) {
 	for token, want := range map[string]string{
 		"cc": "claude", "cx": "codex", "gh": "github", "ds": "deepseek", "gcli": "grok-cli", "gb": "grok-cli", "grok-build": "grok-cli",
 		"claude": "claude", "el": "elevenlabs", "xmtp": "xiaomi-tokenplan",
+		"ocg": "opencode-go", "opencode-go": "opencode-go", "aai": "assemblyai", "bfl": "black-forest-labs",
+		"fal": "fal-ai", "hf": "huggingface", "nb": "nanobanana", "uc": "uc-web", "veo-free": "veoaifree-web",
+		"stability": "stability-ai", "pa": "perplexity-agent", "cg": "chatgpt-web", "drex": "nace",
 	} {
 		if got, ok := reg.Resolve(token); !ok || got != want {
 			t.Errorf("Resolve(%q) = %q %v, want %q", token, got, ok, want)
@@ -42,6 +45,26 @@ func TestAliasesResolveToTheCanonicalID(t *testing.T) {
 	}
 	if _, ok := reg.Resolve("nothing-like-this"); ok {
 		t.Fatal("an unknown name resolved")
+	}
+}
+
+// A provider's badge token is the one it routes by, so a rename must leave the
+// old spelling resolvable: stored aliases and combos use it.
+func TestAnAliasChangeKeepsTheOldTokenResolvable(t *testing.T) {
+	reg, err := Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for token, want := range map[string]string{
+		"deepseek-web": "deepseek-web", "ds-web": "deepseek-web",
+		"tokenrouter": "tokenrouter", "tr": "tokenrouter",
+		"brave": "brave-search", "brave-search": "brave-search",
+		"uc": "uc-web", "uc-web": "uc-web",
+		"veo-free": "veoaifree-web", "veoaifree-web": "veoaifree-web",
+	} {
+		if got, ok := reg.Resolve(token); !ok || got != want {
+			t.Errorf("Resolve(%q) = %q %v, want %q", token, got, ok, want)
+		}
 	}
 }
 

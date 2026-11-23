@@ -1,6 +1,6 @@
 {
   "id": "fish-audio",
-  "alias": "fish-audio",
+  "alias": "fish",
   "category": "apikey",
   "display": { "name": "Fish Audio" },
   "media": {

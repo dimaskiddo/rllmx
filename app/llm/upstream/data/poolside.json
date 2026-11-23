@@ -1,9 +1,6 @@
 {
   "id": "poolside",
-  "alias": "poolside",
-  "aliases": [
-    "ps"
-  ],
+  "alias": "ps",
   "category": "freeTier",
   "display": {
     "name": "Poolside"

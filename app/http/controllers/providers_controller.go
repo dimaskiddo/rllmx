@@ -7,11 +7,13 @@ import (
 	nethttp "net/http"
 	"strconv"
 	"strings"
+	"sync"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
 	"github.com/tidwall/gjson"
 
 	"rllmx/app/gateway/probe"
+	"rllmx/app/llm/oauth"
 	"rllmx/app/llm/upstream"
 	"rllmx/app/platform/text"
 	"rllmx/app/store/document"
@@ -39,8 +41,10 @@ var blockedHeaders = map[string]bool{
 // ProvidersController answers the provider-connection routes.
 type ProvidersController struct {
 	Registry *upstream.Registry
-	DB       func() *repository.Store
-	Checker  *Checker
+	// OAuth says which logins the dashboard may offer; nil offers none.
+	OAuth   *oauth.Service
+	DB      func() *repository.Store
+	Checker *Checker
 	// Refresher renews and checks the tokens of OAuth accounts; nil leaves
 	// those accounts untestable.
 	Refresher LoginChecker
@@ -50,6 +54,11 @@ type ProvidersController struct {
 	// Probe tests a connection's models through the pipeline; nil leaves the
 	// model-test route unavailable.
 	Probe func() (*probe.Prober, error)
+
+	// catalog is built on the first request and kept: the registry is read once
+	// at start and the client ids never change while the process runs.
+	catalog     []catalogProvider
+	catalogOnce sync.Once
 }
 
 // LoginChecker renews an OAuth account's token when it is due and says whether

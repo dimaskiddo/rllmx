@@ -123,10 +123,12 @@ make build   # binary in dist/rllmx; go run . starts it from source, ./artisan l
 | `rllmx artisan health` | Check `/api/health` of the local server; exit code reflects the result. Used by the container health check. |
 | `rllmx artisan keys:create\|list\|revoke` | Create, list (masked, with the checksum class) or deactivate a client key. Asks for the dashboard password. |
 | `rllmx artisan password:reset` | Replace the dashboard password and end every session. Asks the current one, then the new one twice. |
+| `rllmx artisan auth:mode` | Choose how the dashboard is signed into (`password`, `oidc`, `saml`, `sso` or `both`) and, in the same run, set the OIDC issuer and client id; the client secret is a hidden prompt. The password form stays on until the chosen SSO is configured. |
 | `rllmx artisan db:backup\|check\|vacuum` | Back up SQLite, verify integrity and schema, explicit full vacuum (asks y/N). |
+| `rllmx artisan db:migrate` | Create or update the database schema without starting the server; stop the server first, and run the import once this succeeds. |
 | `rllmx artisan db:import-analytics [--from <file>] [--drop-old]` | Move usage history from a 9router database into the analytics store; source defaults to this data directory's database, rerun adds nothing, totals verified against the source. `--drop-old` then removes `usageHistory`, `usageDaily`, `requestDetails`: needs a terminal and a typed `DROP`, refuses while any row is unreadable, writes `db/backups/before-drop-*` first. |
-| `rllmx artisan db:export-plain` | Database copy with every credential in plain text, for going back to 9router. Asks for the dashboard password. |
 | `rllmx artisan db:import-config --from <path>` | Seed an empty SQLite or PostgreSQL database from a 9router database: providers, keys, nodes, combos, aliases and the settings a new deployment needs, one transaction. `--dry-run` shows the plan, writes nothing; `--yes` skips the prompt; `--with-sso` also copies the login policy. Usage, the dashboard password and the old deployment's proxy, tunnel, observability settings stay behind. |
+| `rllmx artisan db:export-plain` | Database copy with every credential in plain text, for going back to 9router. Asks for the dashboard password. |
 
 Local database only. `keys` and `password`: hidden input, never flags or environment variables. No password for `db` commands except `db:export-plain` (plain-text credentials); data-changing ones confirm. Providers and remote administration: dashboard.
 
@@ -190,7 +192,7 @@ Environment variables or `.env` through `config/`; the process environment wins.
 | `DB_ENCRYPTION_SECRET` | none, **required**     | 64 hex characters sealing every stored credential with AES-256-GCM |
 | `DB_DATABASE_ANALYTICS` / `ANALYTICS_RETENTION_DAYS` | empty / `90` | Usage-row destination (empty: beside the main database); per-request row retention |
 | `REDIS_HOST` / `REDIS_PORT` | empty / `6379` | In-process memory store default; `REDIS_HOST` also uses Redis or Valkey for shared cache groups |
-| `LOG_CHANNEL`, `LOG_LEVEL` | `single`, `info` | Goravel log channel (`single`, `daily`, `stack`), level; file `storage/logs/rllmx.log` |
+| `LOG_CHANNEL`, `LOG_LEVEL`, `LOG_OUTPUT` | `single`, `info`, `both` | Goravel log channel (`single`, `daily`, `stack`), level, and whether an entry goes to the file, the standard output or both (`storage/logs/rllmx.log`) |
 | `OAUTH_CLIENT_ID_<PROVIDER>` / `OAUTH_CLIENT_SECRET_<PROVIDER>` | empty in code; `.env.example` holds the vendors' published installed-app values | OAuth app credentials per provider. Empty: that login off. Replace any value with your own app when you register one |
 | `UPSTREAM_ALLOW_PRIVATE` | empty | Hosts, addresses, CIDRs reachable on a private network or this machine (`localhost` node, LAN host, private IdP). Link-local and cloud metadata always refused. Only this variable widens the list, never a dashboard session |
 | `UPSTREAM_CONNECT_TIMEOUT` | `60s` | Upstream response-header deadline |

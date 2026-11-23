@@ -1,6 +1,7 @@
 {
   "id": "gemini-web",
   "alias": "gemini-web",
+  "aliases": ["gweb"],
   "category": "webCookie",
   "display": { "name": "Gemini Web" },
   "media": { "serviceKinds": ["image"] },

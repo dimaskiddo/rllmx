@@ -1,0 +1,6 @@
+[
+  { "path": "/dashboard", "page": "endpoint" },
+  { "path": "/dashboard/endpoint", "page": "endpoint" },
+  { "path": "/dashboard/providers", "page": "providers" },
+  { "path": "/dashboard/providers/:id", "page": "provider" }
+]

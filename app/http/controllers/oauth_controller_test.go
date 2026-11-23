@@ -77,7 +77,7 @@ func newOAuthRig(t *testing.T, tokenBody string) *oauthRig {
 		Accounts: func() oauth.Accounts { return st.Connections() },
 	}
 	oc := &OAuthController{Service: svc, Auth: a, Server: &settings.Server{Port: 20128}}
-	cb := &CallbackController{Files: web.Static}
+	cb := &PagesController{Files: web.Static}
 
 	r := tests.NewRoute(t)
 	r.SetGlobalMiddleware([]contractshttp.Middleware{guardMW{g}})
@@ -90,8 +90,8 @@ func newOAuthRig(t *testing.T, tokenBody string) *oauthRig {
 	handle(apphttp.ClassAlwaysProtected, nethttp.MethodPost, "/api/oauth/exchange", oc.Exchange)
 	handle(apphttp.ClassAlwaysProtected, nethttp.MethodPost, "/api/oauth/callback", oc.Callback)
 	handle(apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/oauth/status", oc.Status)
-	handle(apphttp.ClassPublic, nethttp.MethodGet, "/callback", cb.Page)
-	handle(apphttp.ClassPublic, nethttp.MethodGet, "/static/js/callback.js", cb.Script)
+	handle(apphttp.ClassPublic, nethttp.MethodGet, "/callback", cb.Callback)
+	handle(apphttp.ClassPublic, nethttp.MethodGet, "/static/*file", cb.Asset)
 
 	cookie, ok := a.Issue(context.Background(), auth.MethodPassword, "", "", false)
 	if !ok {

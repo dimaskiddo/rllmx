@@ -36,10 +36,14 @@ type Settings struct {
 	OIDCClientID     string
 	OIDCClientSecret string
 	OIDCScopes       string
+	// OIDCLoginLabel names the OIDC button on the sign-in page, which is
+	// rendered before any authenticated read is possible.
+	OIDCLoginLabel string
 	// The SAML identity provider, for the same reason.
 	SAMLEntryPoint string
 	SAMLCert       string
 	SAMLIdPEntity  string
+	SAMLLoginLabel string
 	// SSOAllow is AUTH_SSO_ALLOW, read from the environment at wiring time.
 	SSOAllow string
 }
@@ -47,7 +51,10 @@ type Settings struct {
 // DefaultSettings is what a failed read means: login and key required, nothing
 // authenticated, password login.
 func DefaultSettings() Settings {
-	return Settings{RequireLogin: true, RequireAPIKey: true, AuthMode: "password", SSOType: "oidc", Epoch: "0"}
+	return Settings{
+		RequireLogin: true, RequireAPIKey: true, AuthMode: "password", SSOType: "oidc", Epoch: "0",
+		OIDCLoginLabel: "Sign in with OIDC", SAMLLoginLabel: "Sign in with SAML SSO",
+	}
 }
 
 // Store reads the settings row and the session epoch, cached briefly so a
@@ -122,9 +129,11 @@ func (s *Store) read(ctx context.Context) (Settings, bool) {
 	v.OIDCClientID, _ = d.GetString("oidcClientId")
 	v.OIDCClientSecret, _ = d.GetString("oidcClientSecret")
 	v.OIDCScopes, _ = d.GetString("oidcScopes")
+	v.OIDCLoginLabel, _ = d.GetString("oidcLoginLabel")
 	v.SAMLEntryPoint, _ = d.GetString("samlEntryPoint")
 	v.SAMLCert, _ = d.GetString("samlCert")
 	v.SAMLIdPEntity, _ = d.GetString("samlIdpEntityId")
+	v.SAMLLoginLabel, _ = d.GetString("samlLoginLabel")
 
 	epoch, found, err := db.KV().Get(ctx, ScopeSession, EpochKey)
 	if err == nil && found {

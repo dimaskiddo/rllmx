@@ -1,6 +1,6 @@
 {
   "id": "brave-search",
-  "alias": "brave-search",
+  "alias": "brave",
   "category": "apikey",
   "display": { "name": "Brave Search" },
   "media": {

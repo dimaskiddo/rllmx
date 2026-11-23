@@ -1,6 +1,6 @@
 {
   "id": "deepgram",
-  "alias": "deepgram",
+  "alias": "dg",
   "category": "apikey",
   "display": { "name": "Deepgram" },
   "media": {

@@ -21,6 +21,9 @@ type CodeDialect struct {
 	CustomURL func(f Flow, state, challenge string) string
 	// Variant picks which of a provider's several logins this is.
 	Variant func(f Flow, variant string) (Flow, error)
+	// Variants are the values Variant accepts, for a dashboard that has to
+	// offer the choice.
+	Variants []string
 	// Paste finishes a login whose provider answers a scheme no server receives.
 	Paste bool
 	// RenewParams maps a flow parameter a renewal needs to the account field

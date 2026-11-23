@@ -1,6 +1,8 @@
 package config
 
 import (
+	contractsconfig "github.com/goravel/framework/contracts/config"
+	"github.com/goravel/framework/contracts/foundation"
 	"github.com/goravel/framework/contracts/log"
 	"github.com/goravel/framework/foundation/json"
 	"github.com/goravel/framework/log/logger"
@@ -8,6 +10,7 @@ import (
 	"rllmx/app/facades"
 	"rllmx/app/platform/logbook"
 	"rllmx/app/platform/redactor"
+	"rllmx/app/platform/settings"
 )
 
 // logFile is relative to the project root: the single and daily drivers join
@@ -22,17 +25,59 @@ var console = logbook.New(logbook.Size)
 // ConsoleLog returns the ring every clean log entry also lands in.
 func ConsoleLog() *logbook.Book { return console }
 
-// logDriver is the file driver behind the redactor, with the console ring as a
-// second reader. Order matters: redaction runs first, so the ring never holds a
-// secret.
-func logDriver(inner log.Logger) *redactor.Channel {
-	ch := redactor.NewChannel(inner)
+// stdout is a custom driver writing the framework's own text or json line to
+// the standard output, for a terminal or a container's log collector.
+type stdout struct {
+	config contractsconfig.Config
+	json   foundation.Json
+}
+
+func (s stdout) Handle(channel string) (log.Handler, error) {
+	level := logger.GetLevelFromString(s.config.GetString(channel + ".level"))
+	formatter := s.config.GetString(channel+".formatter", logger.FormatterText)
+	return logger.NewConsoleHandler(s.config, s.json, level, formatter), nil
+}
+
+// logOutput reads LOG_OUTPUT. An unknown value keeps both sinks here; Boot
+// refuses it before anything runs.
+func logOutput(cfg contractsconfig.Config) settings.LogOutput {
+	both := settings.LogOutput{File: true, Stdout: true}
+	raw, ok := cfg.Env("LOG_OUTPUT", "both").(string)
+	if !ok {
+		return both
+	}
+	output, err := settings.ParseLogOutput(raw)
+	if err != nil {
+		return both
+	}
+	return output
+}
+
+// logSinks is the drivers one channel writes to: the file driver when the
+// output includes it, and the console driver when it includes the console.
+func logSinks(output settings.LogOutput, cfg contractsconfig.Config, file log.Logger) []log.Logger {
+	sinks := make([]log.Logger, 0, 2)
+	if output.File {
+		sinks = append(sinks, file)
+	}
+	if output.Stdout {
+		sinks = append(sinks, stdout{config: cfg, json: json.New()})
+	}
+	return sinks
+}
+
+// logDriver puts the redactor in front of the drivers, with the console ring as
+// a second reader. Order matters: redaction runs first, so no sink and no ring
+// ever holds a secret.
+func logDriver(inners ...log.Logger) *redactor.Channel {
+	ch := redactor.NewChannel(inners...)
 	ch.Tee(func(e log.Entry) { console.Add(e.Level().String(), e.Time(), e.Message()) })
 	return ch
 }
 
 func init() {
 	config := facades.Config()
+	output := logOutput(config)
 	config.Add("logging", map[string]any{
 		// Default Log Channel
 		//
@@ -40,6 +85,12 @@ func init() {
 		// messages to the logs. The name specified in this option should match
 		// one of the channels defined in the "channels" configuration array.
 		"default": config.Env("LOG_CHANNEL", "single"),
+
+		// Log Output
+		//
+		// Which sinks a channel writes to: the file, the standard output or
+		// both. Boot refuses an unknown value.
+		"output": config.Env("LOG_OUTPUT", "both"),
 
 		// Log Channels
 		//
@@ -50,9 +101,7 @@ func init() {
 		// "single" and "daily" are custom drivers: the framework's own file
 		// handler, behind the redactor, so no secret, key, cookie or password
 		// reaches a file whatever the caller logged. The keys under each channel
-		// (path, level, formatter, days) are the ones the framework reads. The
-		// framework's "print" flag is not available on a custom driver, so
-		// nothing is copied to the console.
+		// (path, level, formatter, days) are the ones the framework reads.
 		"channels": map[string]any{
 			"stack": map[string]any{
 				"driver":   "stack",
@@ -60,14 +109,14 @@ func init() {
 			},
 			"single": map[string]any{
 				"driver":    "custom",
-				"via":       logDriver(logger.NewSingle(config, json.New())),
+				"via":       logDriver(logSinks(output, config, logger.NewSingle(config, json.New()))...),
 				"path":      logFile,
 				"level":     config.Env("LOG_LEVEL", "info"),
 				"formatter": "text",
 			},
 			"daily": map[string]any{
 				"driver":    "custom",
-				"via":       logDriver(logger.NewDaily(config, json.New())),
+				"via":       logDriver(logSinks(output, config, logger.NewDaily(config, json.New()))...),
 				"path":      logFile,
 				"level":     config.Env("LOG_LEVEL", "info"),
 				"days":      7,

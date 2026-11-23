@@ -1,6 +1,7 @@
 {
   "id": "muse-web",
   "alias": "muse-web",
+  "aliases": ["mu"],
   "category": "webCookie",
   "display": { "name": "Muse Web" },
   "media": { "serviceKinds": ["image", "video"], "videoConfig": { "executorDriven": true } },

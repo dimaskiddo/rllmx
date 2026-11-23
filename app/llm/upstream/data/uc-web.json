@@ -1,6 +1,6 @@
 {
   "id": "uc-web",
-  "alias": "uc-web",
+  "alias": "uc",
   "category": "webCookie",
   "display": { "name": "UC Web" },
   "media": {

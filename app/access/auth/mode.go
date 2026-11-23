@@ -10,6 +10,10 @@ type Mode struct {
 	SAML bool
 }
 
+// ModeNames are the authMode values the settings row may hold. The settings API
+// and the auth:mode command both check against this list.
+func ModeNames() []string { return []string{"password", "oidc", "saml", "sso", "both"} }
+
 // SSO reports whether a single sign-on button is shown.
 func (m Mode) SSO() bool { return m.OIDC || m.SAML }
 

@@ -49,7 +49,7 @@ var (
 	ErrWrongEncryptionSecret = errors.New("repository: DB_ENCRYPTION_SECRET does not match this database")
 	// ErrNeedsMigration means the database is missing tables, columns or
 	// indexes, or still holds plain secrets. Only the server migrates.
-	ErrNeedsMigration = errors.New("repository: the database needs a schema change; start the server once to apply it")
+	ErrNeedsMigration = errors.New("repository: the database needs a schema change; run rllmx artisan db:migrate, or start the server once")
 )
 
 // Store is the configuration database.

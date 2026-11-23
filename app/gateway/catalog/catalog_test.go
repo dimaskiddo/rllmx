@@ -217,6 +217,28 @@ func TestCustomDisabledAndAliasModelsAreMerged(t *testing.T) {
 	}
 }
 
+// A custom row the dashboard adds usually repeats the id as its name, because
+// the name is optional there. Replacing a built-in row must not lose the
+// description the registry carries.
+func TestACustomRowWithoutANameKeepsTheBuiltInDescription(t *testing.T) {
+	for _, name := range []string{`{"id":"a1","type":"llm"}`, `{"id":"a1","name":"a1","type":"llm"}`} {
+		r := newRig(t)
+		r.conns.list = []repository.Connection{conn("c1", "alpha", `{"apiKey":"k"}`)}
+		r.custom("alpha|a1|llm", name)
+		list, _ := r.c.List(context.Background(), anyone)
+		if list[0].Model != "a1" || list[0].Name != "A One" {
+			t.Fatalf("%s: %+v, want the built-in name", name, list[0])
+		}
+	}
+	r := newRig(t)
+	r.conns.list = []repository.Connection{conn("c1", "alpha", `{"apiKey":"k"}`)}
+	r.custom("alpha|a1|llm", `{"id":"a1","name":"Own Name","type":"llm"}`)
+	list, _ := r.c.List(context.Background(), anyone)
+	if list[0].Name != "Own Name" {
+		t.Fatalf("a typed name was replaced: %+v", list[0])
+	}
+}
+
 func TestIdsAreBoundedAndFreeOfControlCharacters(t *testing.T) {
 	r := newRig(t)
 	r.conns.list = []repository.Connection{conn("c1", "alpha", `{"apiKey":"k"}`)}

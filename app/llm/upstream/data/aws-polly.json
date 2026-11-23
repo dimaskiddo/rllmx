@@ -1,6 +1,6 @@
 {
   "id": "aws-polly",
-  "alias": "aws-polly",
+  "alias": "polly",
   "category": "apikey",
   "display": { "name": "Amazon Polly" },
   "media": {

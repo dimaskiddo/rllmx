@@ -34,6 +34,7 @@ func Default() oauth.Dialects {
 			"kiro-social": {
 				Exchange: kiro.SocialExchange, Refresh: kiro.SocialRefresh,
 				CustomURL: kiro.SocialAuthorize, Variant: kiro.Variant, Paste: true,
+				Variants:    kiro.Variants(),
 				RenewParams: map[string]string{"idp": "authMethod"},
 			},
 			"zed":    {Exchange: zed.Exchange, Refresh: zed.NoRefresh, Authorize: zed.Authorize},

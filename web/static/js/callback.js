@@ -1,3 +1,7 @@
+// The one-time code in the address is read and removed before anything else
+// runs: the translation file loads after, so the code never waits in the URL.
+import { load, locale, t } from "./ui/i18n.js";
+
 const message = document.getElementById("message");
 
 function show(text) {
@@ -14,8 +18,11 @@ function read() {
 async function finish() {
   const data = read();
   history.replaceState(null, "", location.pathname);
+  await load().catch(() => null);
+  document.documentElement.lang = locale();
+  show(t("callback.finishing"));
   if (!data.state || (!data.code && !data.error)) {
-    show("This page needs the address the provider sent you to. Start the sign-in again from the dashboard.");
+    show(t("callback.needsAddress"));
     return;
   }
   try {
@@ -25,9 +32,9 @@ async function finish() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
-    show(res.ok ? "Signed in. You can close this tab and return to the dashboard." : "The sign-in did not finish. Return to the dashboard and start it again.");
+    show(res.ok ? t("callback.done") : t("callback.failed"));
   } catch {
-    show("The router could not be reached. Return to the dashboard and start the sign-in again.");
+    show(t("callback.unreachable"));
   }
 }
 

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
 	goravelgin "github.com/goravel/gin"
@@ -250,7 +251,7 @@ func oauthRoutes(t *testing.T) (*goravelgin.Route, *apphttp.Guard) {
 	r := tests.NewRoute(t)
 	g := apphttp.NewGuard(nil, true)
 	r.SetGlobalMiddleware([]contractshttp.Middleware{&middleware.RequestID{}, &middleware.Guard{Guard: g}})
-	Web(r, g, Base{OAuth: &controllers.OAuthController{}, Callback: &controllers.CallbackController{}})
+	Web(r, g, Base{OAuth: &controllers.OAuthController{}, Pages: &controllers.PagesController{}})
 	return r, g
 }
 
@@ -265,8 +266,13 @@ func TestTheLoginRoutesNeedASessionAndTheCallbackPageIsPublic(t *testing.T) {
 			t.Errorf("%s %s: class = %d ok=%v", rt[0], rt[1], class, ok)
 		}
 	}
-	for _, p := range []string{"/callback", "/static/js/callback.js"} {
+	for _, p := range []string{"/", "/login", "/callback", "/static/*file"} {
 		if class, ok := g.RouteClass("GET", p); !ok || class != apphttp.ClassPublic {
+			t.Errorf("GET %s: class = %d ok=%v", p, class, ok)
+		}
+	}
+	for _, p := range []string{"/dashboard", "/dashboard/*path"} {
+		if class, ok := g.RouteClass("GET", p); !ok || class != apphttp.ClassPage {
 			t.Errorf("GET %s: class = %d ok=%v", p, class, ok)
 		}
 	}
@@ -288,9 +294,55 @@ func TestTheStaticAndParameterisedLoginRoutesDoNotCollide(t *testing.T) {
 	}
 }
 
+// The pages and the static route share the driver's table: a page path must not
+// swallow /static, and /dashboard must not fall through to the fallback.
+func TestThePagesAreServedBesideTheStaticRoute(t *testing.T) {
+	pages := &controllers.PagesController{Files: fstest.MapFS{
+		"static/shell.html": {Data: []byte("<p>shell</p>")},
+		"static/login.html": {Data: []byte("<p>login</p>")},
+		"static/js/a.js":    {Data: []byte("export {}")},
+	}}
+	for _, signed := range []bool{false, true} {
+		r := tests.NewRoute(t)
+		var auth apphttp.Authenticator
+		if signed {
+			auth = signedIn{}
+		}
+		g := apphttp.NewGuard(auth, true)
+		r.SetGlobalMiddleware([]contractshttp.Middleware{&middleware.RequestID{}, &middleware.Guard{Guard: g}})
+		Web(r, g, Base{Pages: pages})
+
+		if rec := call(r, "GET", "/"); rec.Code != 302 || rec.Header().Get("Location") != "/dashboard" {
+			t.Errorf("signed=%v: / %d %q", signed, rec.Code, rec.Header().Get("Location"))
+		}
+		for _, target := range []string{"/login", "/static/js/a.js"} {
+			if rec := call(r, "GET", target); rec.Code != 200 {
+				t.Errorf("signed=%v: %s %d", signed, target, rec.Code)
+			}
+		}
+		for _, target := range []string{"/dashboard", "/dashboard/", "/dashboard/keys/new"} {
+			rec := call(r, "GET", target)
+			if signed {
+				if rec.Code != 200 || !strings.Contains(rec.Body.String(), "shell") {
+					t.Errorf("%s signed in: %d %q", target, rec.Code, rec.Body.String())
+				}
+				continue
+			}
+			if rec.Code != 302 || rec.Header().Get("Location") != "/login" {
+				t.Errorf("%s without a session: %d %q", target, rec.Code, rec.Header().Get("Location"))
+			}
+		}
+		if signed {
+			if rec := call(r, "HEAD", "/dashboard"); rec.Code != 200 || rec.Header().Get("ETag") == "" {
+				t.Errorf("HEAD /dashboard: %d %v", rec.Code, rec.Header())
+			}
+		}
+	}
+}
+
 func TestTheLoginRoutesAreLeftOutWithoutTheirControllers(t *testing.T) {
 	_, g := build(t)
-	for _, p := range []string{"/callback", "/static/js/callback.js", "/api/oauth/status"} {
+	for _, p := range []string{"/", "/login", "/callback", "/static/*file", "/dashboard", "/dashboard/*path", "/api/oauth/status"} {
 		if _, ok := g.RouteClass("GET", p); ok {
 			t.Errorf("%s is declared without a controller", p)
 		}

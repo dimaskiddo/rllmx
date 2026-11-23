@@ -47,7 +47,13 @@ func (c *settingsCache) drop() { c.v.Drop() }
 // A name this version does not know behaves as fill-first.
 func strategyFor(s document.Doc, provider string) string {
 	if raw, ok := s.GetRaw("providerStrategies"); ok {
-		if v := gjson.Get(raw, escapeKey(provider)+".fallbackStrategy").String(); v != "" {
+		entry := gjson.Get(raw, escapeKey(provider))
+		// The settings write accepts the bare word as well as the object, so a
+		// row saved either way must select the same way.
+		if entry.Type == gjson.String && entry.String() != "" {
+			return known(entry.String())
+		}
+		if v := entry.Get("fallbackStrategy").String(); v != "" {
 			return known(v)
 		}
 	}
@@ -55,6 +61,13 @@ func strategyFor(s document.Doc, provider string) string {
 		return known(v)
 	}
 	return strategyFill
+}
+
+// KnownStrategy reports whether name is one the selector acts on. The settings
+// write refuses any other, because a stored name that only behaves as fill-first
+// looks saved and does nothing.
+func KnownStrategy(name string) bool {
+	return name == strategyFill || name == strategyRound
 }
 
 func known(name string) string {

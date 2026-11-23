@@ -54,6 +54,14 @@ func (s Settings) Configured() bool {
 	return s.Issuer != "" && s.ClientID != "" && s.ClientSecret != ""
 }
 
+// Usable reports whether a sign-in can finish: everything Configured needs, and
+// an issuer and scope list Validate accepts. The dashboard hides the password
+// form only for a usable sign-in, because a configured one that discovery
+// refuses would leave no way in.
+func (s Settings) Usable() bool {
+	return s.Configured() && s.Validate() == nil
+}
+
 // Validate checks the issuer and the scope list. The issuer must be https, or
 // http only when it names this machine, which is what a local test provider
 // needs; it may carry no credentials, query or fragment.

@@ -185,18 +185,19 @@ func TestAFailedReadFailsTheCheck(t *testing.T) {
 	}
 }
 
-func TestTheWindowsAreUTCAndRollOver(t *testing.T) {
-	// A day in a non-UTC zone still starts at UTC midnight.
-	mid := time.Date(2026, 3, 14, 23, 59, 0, 0, time.FixedZone("UTC+9", 9*3600))
-	if got := windowStart("day", mid); !got.Equal(time.Date(2026, 3, 14, 0, 0, 0, 0, time.UTC)) {
+func TestTheWindowsFollowTheClocksZoneAndRollOver(t *testing.T) {
+	jakarta := time.FixedZone("UTC+7", 7*3600)
+	mid := time.Date(2026, 3, 14, 23, 59, 0, 0, jakarta)
+	if got := windowStart("day", mid); !got.Equal(time.Date(2026, 3, 14, 0, 0, 0, 0, jakarta)) {
 		t.Fatalf("day start = %s", got)
 	}
-	// 23:59 at UTC+9 is 14:59 UTC, so 9h1m remain until UTC midnight.
-	if got := untilWindowEnd("day", mid); got != 9*time.Hour+time.Minute {
+	if got := untilWindowEnd("day", mid); got != time.Minute {
 		t.Fatalf("until midnight = %s", got)
 	}
-	// December to January.
-	dec := time.Date(2026, 12, 20, 0, 0, 0, 0, time.UTC)
+	if got := windowStart("month", mid); !got.Equal(time.Date(2026, 3, 1, 0, 0, 0, 0, jakarta)) {
+		t.Fatalf("month start = %s", got)
+	}
+	dec := time.Date(2026, 12, 20, 0, 0, 0, 0, jakarta)
 	if got := untilWindowEnd("month", dec); got != 12*24*time.Hour {
 		t.Fatalf("until the first = %s", got)
 	}

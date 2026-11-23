@@ -2,6 +2,7 @@ package kiro
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -38,6 +39,22 @@ func codeService(t *testing.T, reg *upstream.Registry, hc *http.Client, clients 
 }
 
 func registry(t *testing.T) *upstream.Registry { return login.Registry(t) }
+
+// The dashboard offers Variants and Variant accepts them, from one list: a name
+// can never be shown that the engine then refuses, or the other way round.
+func TestEveryOfferedVariantIsAcceptedAndNothingElseIs(t *testing.T) {
+	flow := oauth.Flow{OAuth: upstream.OAuth{Dialect: kiroSocialDialect}}
+	for _, v := range Variants() {
+		if _, err := Variant(flow, v); err != nil {
+			t.Errorf("%q is offered but refused: %v", v, err)
+		}
+	}
+	for _, v := range []string{"", "Google", "gitlab", "google ", "apple"} {
+		if _, err := Variant(flow, v); !errors.Is(err, oauth.ErrVariant) {
+			t.Errorf("%q is accepted although the dashboard does not offer it: %v", v, err)
+		}
+	}
+}
 
 func TestTheKiroSocialAuthorizeAddressIsTheProvidersOwn(t *testing.T) {
 	svc, _ := codeService(t, registry(t), nil, map[string]string{})

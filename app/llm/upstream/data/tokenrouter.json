@@ -1,7 +1,8 @@
 {
   "passthroughModels": true,
   "id": "tokenrouter",
-  "alias": "tr",
+  "alias": "tokenrouter",
+  "aliases": ["tr"],
   "category": "apikey",
   "display": {
     "name": "TokenRouter"

@@ -3,11 +3,12 @@ package kiro
 import (
 	"context"
 	"net/url"
-	"rllmx/app/llm/oauth"
+	"slices"
 	"strings"
 
 	"github.com/tidwall/gjson"
 
+	"rllmx/app/llm/oauth"
 	"rllmx/app/llm/upstream"
 )
 
@@ -121,20 +122,21 @@ func escapeQuery(s string) string {
 	return strings.ReplaceAll(url.QueryEscape(s), "+", "%20")
 }
 
-// The identity providers a Kiro social login can use.
-const (
-	kiroIDPGoogle = "google"
-	kiroIDPGitHub = "github"
-)
+// Variants are the identity providers a Kiro social login can use. The
+// dashboard offers exactly these, and Variant accepts exactly these, so a name
+// added here is offered and accepted together.
+func Variants() []string {
+	return []string{upstream.VariantGoogle, upstream.VariantGitHub}
+}
 
-// withVariant picks which of a provider's several logins this is. Only a
+// Variant picks which of a provider's several logins this is. Only a
 // provider whose data offers a choice of identity provider takes one, so no
 // other login can be steered by the request.
 func Variant(f oauth.Flow, variant string) (oauth.Flow, error) {
 	if f.Dialect != kiroSocialDialect {
 		return f, nil
 	}
-	if variant != kiroIDPGoogle && variant != kiroIDPGitHub {
+	if !slices.Contains(Variants(), variant) {
 		return oauth.Flow{}, oauth.ErrVariant
 	}
 	f.Params = append(append([]upstream.Param{}, f.Params...), upstream.Param{Name: kiroIdpParam, Value: variant})

@@ -1,6 +1,6 @@
 {
   "id": "runwayml",
-  "alias": "runwayml",
+  "alias": "runway",
   "category": "apikey",
   "display": { "name": "Runway" },
   "media": {

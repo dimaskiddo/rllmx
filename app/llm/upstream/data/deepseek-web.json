@@ -1,6 +1,7 @@
 {
   "id": "deepseek-web",
-  "alias": "ds-web",
+  "alias": "deepseek-web",
+  "aliases": ["ds-web"],
   "category": "webCookie",
   "display": { "name": "DeepSeek Web" },
   "transport": {

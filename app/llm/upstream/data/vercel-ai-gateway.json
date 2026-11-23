@@ -1,10 +1,7 @@
 {
   "passthroughModels": true,
   "id": "vercel-ai-gateway",
-  "alias": "vercel-ai-gateway",
-  "aliases": [
-    "vercel"
-  ],
+  "alias": "vercel",
   "category": "apikey",
   "display": {
     "name": "Vercel AI Gateway"

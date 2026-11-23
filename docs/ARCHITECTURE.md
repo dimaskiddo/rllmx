@@ -72,7 +72,7 @@ Every node in the diagram is built. The table says what each package holds and w
 | `store/*` | The repositories, the analytics store, the importer, the sealer, the document and dialect formats, and the data lock | `llm`, `gateway` |
 | `protocol/*` | `sigv4`, `eventstream`, `cosy`, `keccak`, `websocket`: wire code that imports nothing in `app/` | `llm`, `store` |
 | `platform/*` | `cache`, `network`, `settings`, `file`, `text`, `relevance`, `ttl`, `redactor`, `logbook`, `failure` | every domain |
-| `web/` | The embedded login and callback pages | `http` |
+| `web/` | The embedded dashboard files: the callback page, our CSS and scripts, and the vendored libraries in `static/lib/` | `http` |
 
 | Source | Why it is built lazily |
 |---|---|
@@ -108,7 +108,7 @@ Built: `saver`, `skill`, `combo`, `health`, `probe` and `app/git`. Planned, not 
 10. **Declarative skill logic.** Rules instead of scripts: no code execution, bounded regex, header denylist, access re-checked.
 11. **The socket peer decides, and the dialer proves the address.** Inbound, forwarding headers count only from a trusted proxy peer. `app/http/trust.go` is the one reader of `SERVER_TRUSTED_PROXIES`, and it decides HSTS, the limiter key and the cookie's `Secure` flag. Outbound, the guard resolves a name, classifies the addresses and dials the one it checked, so a check and a dial cannot disagree. Link-local and metadata addresses are always refused.
 12. **Read only what was verified.** The SAML verifier returns the assertion it proved, and every claim is read from that value rather than from the document it arrived in. The same rule guards the signature-wrapping attack that XML-DSig is famous for.
-13. **Plain-web dashboard.** Embedded static files and the reference's API contract.
+13. **Embedded dashboard on vendored libraries.** Static files in the binary, the reference's API contract, and five pinned libraries (`Approved Web Assets`). No bundler, build step or runtime CDN, and a page policy with no inline or evaluated code, so Alpine runs as its CSP build.
 14. **Env-only configuration.** Process environment and `.env`; runtime behavior in the settings row.
 15. **SQLite and PostgreSQL** through the Goravel `DB` and `Schema` facades (`goravel/sqlite` and `goravel/postgres`), one test suite on both. No `database/sql` handle, pool, `sqlx` wrapper or migration runner of ours; `dialect.Rebind` is the only gap filler.
 16. **`os/exec` behind one filter gate.** `app/git` is deny-by-default and the only code that builds an `exec.Cmd`: `git`, only as `clone`, with a fixed flag set, a validated ref, an `https` URL from the admin's list that passes the guard, a directory inside the data area, a minimal environment, a 60 s timeout and size caps. A test fails if any other file imports `os/exec`. Any other spawned process is out.
@@ -137,6 +137,22 @@ Every module here is CGO-free, on the approved-module list above and named at th
 | `google/uuid` | Version 4 ids for connections, nodes and rows (`app/store/dialect.NewID`, the node id in the nodes controller). The framework already requires it, so it adds nothing to the build; the stored id format is the 9router one, a lower-case v4 UUID. |
 
 The session cookie's HS256 is our own `crypto/hmac`, not a JWT module.
+
+---
+
+## Approved Web Assets
+
+Files under `web/static/lib/`, taken unchanged from the registry tarball except that a trailing source-map comment is removed. `VERSIONS.json` records each file's sha256 and the tarball's integrity string, and `tests/web_test.go` fails on any drift. The page policy is `default-src 'self'; img-src 'self' data:`, so a library must run with no inline script, no inline style attribute and no `eval`.
+
+| Library | Version | Licence | Loaded as | Policy finding |
+|---|---|---|---|---|
+| `@alpinejs/csp` | 3.17.5 | MIT | ES module `alpine.csp.js` | The standard build compiles expressions with `Function`, which the policy blocks, so only the CSP build runs. It has no arrow functions, template literals, spread or globals in expressions, and no `x-html`; logic lives in `Alpine.data` |
+| `@tabler/core` | 1.7.3, CSS only | MIT | `tabler.min.css` | 25 inline SVG `data:` images, hence `img-src data:`. No fonts, no external URL. Its JavaScript (Bootstrap, Popper) is not shipped |
+| `lucide` | 1.70.0, `createElement` and a subset of icons | ISC | ES modules in `lucide/` | Builds SVG with `createElementNS`, no `innerHTML`. The 4,000-icon bundle is not shipped; an icon is added by copying its file |
+| `chart.js` | 4.6.1 | MIT | `chart.umd.min.js`, a classic script | Not vendored until step 4.3. Its ES build imports the bare name `@kurkle/color`, which needs an import map that the policy blocks, so the UMD file is the one to use |
+| `sortablejs` | 1.15.7 | MIT | `modular/sortable.core.esm.js` | Not vendored until step 4.3. One export, no imports |
+
+Refresh by hand: download the new tarball into an empty scratch folder, compare its integrity string with the registry's, copy the same files, regenerate `VERSIONS.json`, and read the library's changelog for policy-relevant changes. A pin at least two weeks old is preferred, which is why Tabler is 1.7.3.
 
 ---
 
@@ -201,13 +217,13 @@ Install a facade only for a use listed here.
 
 Artisan commands live in `app/console/commands` and run against the local store.
 
-| Built | `db:backup`, `db:check`, `db:vacuum`, `db:import-config`, `db:import-analytics`, `db:export-plain`, `keys:create`, `keys:list`, `keys:revoke`, `password:reset`, `health`, `version` |
+| Built | `db:backup`, `db:check`, `db:migrate`, `db:vacuum`, `db:import-config`, `db:import-analytics`, `db:export-plain`, `auth:mode`, `keys:create`, `keys:list`, `keys:revoke`, `password:reset`, `health`, `version` |
 |---|---|
 | Tracked in | `design doc 23` |
 
 | Rule | Detail |
 |---|---|
-| Store | The read-only connection (`sqlite_ro`, `mode=ro`; `sqlite_backup` for `db:backup`) for the command, or the writer connection for the two that change data (`db:vacuum`, `db:import-config`). A command never creates a table and never runs a migration. `db:import-analytics` is the one that refuses up front: `Store.Verify` fails with `ErrNeedsMigration` when the plan is not empty or plain secrets are still unsealed, so the import never runs against a database the server has not opened yet. `db:check` reports the same plan problems instead of refusing. `db:backup` and `db:vacuum` look at no schema at all. A command can still leave an empty `data.sqlite` under `DATA_DIR` behind, because Goravel's boot ping opens the default connection read-write (`design doc 1`, Framework Choices) |
+| Store | The read-only connection (`sqlite_ro`, `mode=ro`; `sqlite_backup` for `db:backup`) for the command, or the writer connection for the three that change data (`db:vacuum`, `db:import-config`, `db:migrate`). Only `db:migrate` runs the migrator, the same one the server runs at start; every other command is built without it and refuses a database whose schema is behind or missing. `db:migrate` may open the empty file a start-up leaves behind; a path with no file at all is refused by every command, so a mistyped `DB_DATABASE` makes no database. `db:import-analytics` refuses up front: `Store.Verify` fails with `ErrNeedsMigration` when the plan is not empty or plain secrets are still unsealed, so the import never runs against a database no process has opened yet. `db:import-config` refuses a missing or empty file and a destination whose schema plan is not empty, in the dry run as well and before it copies skills, instead of writing into a missing table. `db:check` reports the same plan problems instead of refusing. `db:backup` and `db:vacuum` look at no schema at all. A command can still leave an empty `data.sqlite` under `DATA_DIR` behind, because Goravel's boot ping opens the default connection read-write (`design doc 1`, Framework Choices) |
 | Terminal | Refuse without one. Passwords come from the console context's `Secret` prompt only, never flags or environment, never echoed or logged |
 | Verification | Dashboard password against the bcrypt hash, or `AUTH_INITIAL_PASSWORD` while no hash exists. Three attempts per run, 2 s pause after a wrong one, an empty answer never passes |
 | `keys:create [--name]` | Prints the key once (name up to 64 characters, no control characters). Needs the `machine-id` file the server wrote |

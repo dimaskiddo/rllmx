@@ -1,6 +1,6 @@
 {
   "id": "assemblyai",
-  "alias": "assemblyai",
+  "alias": "aai",
   "category": "apikey",
   "display": { "name": "AssemblyAI" },
   "media": {

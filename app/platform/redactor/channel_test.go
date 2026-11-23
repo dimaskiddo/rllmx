@@ -54,6 +54,48 @@ func TestChannelImplementsTheFrameworksCustomLogger(t *testing.T) {
 	var _ log.Logger = NewChannel(&fakeInner{})
 }
 
+func TestChannelWritesToEveryOpenHandler(t *testing.T) {
+	file, term := &tests.Handler{}, &tests.Handler{}
+	h, err := NewChannel(&fakeInner{handler: file}, &fakeInner{handler: term}).Handle("logging.channels.single")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.Handle(tests.Entry{LevelV: log.LevelInfo, MessageV: "one line"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(file.Entries) != 1 || len(term.Entries) != 1 {
+		t.Fatalf("file %d entries, stdout %d", len(file.Entries), len(term.Entries))
+	}
+}
+
+func TestEachSinkKeepsItsOwnLevel(t *testing.T) {
+	file := &tests.Handler{}
+	term := &tests.Handler{Min: log.LevelWarning}
+	h, _ := NewChannel(&fakeInner{handler: file}, &fakeInner{handler: term}).Handle("logging.channels.single")
+	if !h.Enabled(log.LevelInfo) {
+		t.Fatal("the channel drops a level one sink accepts")
+	}
+	if err := h.Handle(tests.Entry{LevelV: log.LevelInfo, MessageV: "one line"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(file.Entries) != 1 || len(term.Entries) != 0 {
+		t.Fatalf("file %d entries, stdout %d", len(file.Entries), len(term.Entries))
+	}
+}
+
+func TestOneFailingSinkDoesNotStopTheNext(t *testing.T) {
+	boom := errors.New("disk full")
+	file, term := &tests.Handler{Err: boom}, &tests.Handler{}
+	h, _ := NewChannel(&fakeInner{handler: file}, &fakeInner{handler: term}).Handle("logging.channels.single")
+	err := h.Handle(tests.Entry{LevelV: log.LevelInfo, MessageV: "one line"})
+	if !errors.Is(err, boom) {
+		t.Fatalf("the file error was lost: %v", err)
+	}
+	if len(term.Entries) != 1 {
+		t.Fatalf("stdout saw %d entries", len(term.Entries))
+	}
+}
+
 // The framework's own text handler prints the values a context carries and the
 // whole With map. Behind the redactor, neither may carry a secret to the file.
 func TestNothingSecretReachesTheFrameworksTextHandler(t *testing.T) {

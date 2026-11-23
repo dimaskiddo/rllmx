@@ -1,6 +1,6 @@
 {
   "id": "huggingface",
-  "alias": "huggingface",
+  "alias": "hf",
   "category": "apikey",
   "display": { "name": "HuggingFace" },
   "media": {

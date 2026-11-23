@@ -1,6 +1,7 @@
 {
   "passthroughModels": true,
   "id": "opencode-go",
+  "alias": "ocg",
   "category": "apikey",
   "display": {
     "name": "OpenCode Go"

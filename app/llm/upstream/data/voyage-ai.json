@@ -1,7 +1,6 @@
 {
   "id": "voyage-ai",
-  "alias": "voyage-ai",
-  "aliases": ["voyage"],
+  "alias": "voyage",
   "category": "apikey",
   "display": { "name": "Voyage AI" },
   "auth": { "scheme": "bearer", "header": "Authorization" },

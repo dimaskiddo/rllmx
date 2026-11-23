@@ -30,12 +30,20 @@ type importRig struct {
 	exited int
 }
 
-func newImportRig(t *testing.T) *importRig {
+func newImportRig(t *testing.T) *importRig { return importRigAt(t, true) }
+
+// newImportRigWithoutSchema is the destination a command finds when the server
+// has never opened it: a file with a header and no tables.
+func newImportRigWithoutSchema(t *testing.T) *importRig { return importRigAt(t, false) }
+
+func importRigAt(t *testing.T, migrate bool) *importRig {
 	t.Helper()
 	dir := t.TempDir()
 	dest := store.Over(t, tests.OpenSQLite(t, filepath.Join(dir, "data.sqlite")), tests.DBSecret)
-	if _, err := dest.Migrate(context.Background()); err != nil {
-		t.Fatal(err)
+	if migrate {
+		if _, err := dest.Migrate(context.Background()); err != nil {
+			t.Fatal(err)
+		}
 	}
 	return &importRig{t: t, dest: dest, dir: dir, tty: true}
 }

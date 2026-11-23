@@ -167,7 +167,14 @@ func merge(base []Model, names []string, custom map[string]string, aliases map[s
 			if v := gjson.Get(custom[k], "type").String(); v != "" {
 				kind = v
 			}
-			add(Model{ID: id, Name: gjson.Get(custom[k], "name").String(), Source: "custom", Kind: kind}, true)
+			// The dashboard stores the id as the name when the user types none,
+			// so a custom row that has no description of its own keeps the
+			// built-in one it replaces.
+			name := gjson.Get(custom[k], "name").String()
+			if name == "" || name == id {
+				name = byID[id].Name
+			}
+			add(Model{ID: id, Name: name, Source: "custom", Kind: kind}, true)
 			break
 		}
 	}

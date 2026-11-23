@@ -28,6 +28,9 @@ const (
 	// ModeBackup opens a SQLite file read-only without query_only, because
 	// SQLite refuses VACUUM INTO under it.
 	ModeBackup
+	// ModeInit is the writer that may open the empty file a start-up leaves
+	// behind, for the command that creates the schema before a server has run.
+	ModeInit
 )
 
 // Connection names the Goravel connection (config/database.go) for an engine
@@ -80,7 +83,7 @@ type Deps struct {
 	DB     contractsdb.DB
 	Schema contractsschema.Schema
 	Log    log.Log
-	// Migrate runs the framework migrator; only the server needs it.
+	// Migrate runs the framework migrator; only the server and db:migrate set it.
 	Migrate func() error
 	// Open opens another SQLite file; only ExportPlain needs it.
 	Open repository.Opener

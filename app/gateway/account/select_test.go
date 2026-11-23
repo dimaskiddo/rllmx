@@ -285,9 +285,29 @@ func TestStrategyReading(t *testing.T) {
 		`{"fallbackStrategy":"round-robin","providerStrategies":{"p":{"fallbackStrategy":"fill-first"}}}`: "fill-first",
 		`{"providerStrategies":{"p":{"fallbackStrategy":"round-robin"}}}`:                                 "round-robin",
 		`{"providerStrategies":{"p":{"fallbackStrategy":"nonsense"}},"fallbackStrategy":"round-robin"}`:   "fill-first",
+		// The settings write accepts the bare word too, so the selector must read it.
+		`{"providerStrategies":{"p":"round-robin"}}`:                                 "round-robin",
+		`{"fallbackStrategy":"round-robin","providerStrategies":{"p":"fill-first"}}`: "fill-first",
+		`{"providerStrategies":{"p":"nonsense"},"fallbackStrategy":"round-robin"}`:   "fill-first",
 	} {
 		if got := strategyFor(document.From(settings), "p"); got != want {
 			t.Errorf("%s: %s, want %s", settings, got, want)
+		}
+	}
+}
+
+// The settings write refuses a name the selector does not act on, so a saved
+// strategy is never a silent fill-first.
+func TestKnownStrategyIsExactlyWhatTheSelectorActsOn(t *testing.T) {
+	for name, want := range map[string]bool{
+		"fill-first": true, "round-robin": true,
+		"fallback": false, "smart": false, "fusion": false, "": false, "Round-Robin": false,
+	} {
+		if got := KnownStrategy(name); got != want {
+			t.Errorf("KnownStrategy(%q) = %t, want %t", name, got, want)
+		}
+		if want && strategyFor(document.From(`{"fallbackStrategy":"`+name+`"}`), "p") != name {
+			t.Errorf("%q is accepted but the selector does not act on it", name)
 		}
 	}
 }

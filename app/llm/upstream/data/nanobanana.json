@@ -1,6 +1,6 @@
 {
   "id": "nanobanana",
-  "alias": "nanobanana",
+  "alias": "nb",
   "category": "apikey",
   "display": { "name": "NanoBanana" },
   "media": {

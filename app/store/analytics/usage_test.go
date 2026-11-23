@@ -42,6 +42,22 @@ func TestKeyTotalsHonoursTheWindowStart(t *testing.T) {
 	}
 }
 
+func TestAWindowThatStartsMidDayCountsFromThatHour(t *testing.T) {
+	s := newStore(t)
+	// Three days of hourly rows from t0 (14 March 10:30 UTC); k0 owns every third.
+	seed(t, s, 72, t0, time.Hour)
+	// A local midnight is not a UTC midnight, so the daily rollups alone would
+	// count the whole UTC day from 00:00 (11 rows). From 05:00 it is 9.
+	since := time.Date(2026, 3, 16, 5, 0, 0, 0, time.UTC)
+	got, err := s.KeyTotals(context.Background(), "k0", since)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Requests != 9 {
+		t.Fatalf("requests = %d, want 9", got.Requests)
+	}
+}
+
 func TestARequestTheProviderNeverServedDoesNotSpend(t *testing.T) {
 	s := newStore(t)
 	w := s.NewWriter(WriterOptions{})

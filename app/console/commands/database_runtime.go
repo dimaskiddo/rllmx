@@ -10,6 +10,7 @@ import (
 	contractsdb "github.com/goravel/framework/contracts/database/db"
 	contractsschema "github.com/goravel/framework/contracts/database/schema"
 	"github.com/goravel/framework/contracts/log"
+	"github.com/goravel/framework/database/migration"
 	"golang.org/x/term"
 
 	"rllmx/app/platform/settings"
@@ -25,15 +26,19 @@ type Facades struct {
 	// Connect returns the DB and Schema facades bound to a named connection from
 	// config/database.go.
 	Connect func(name string) (contractsdb.DB, contractsschema.Schema)
+	// Schema returns the unbound Schema facade. The migrator needs the shape the
+	// server hands it: Orm() and Create() must share one query, which the bound
+	// schema Connect returns does not.
+	Schema func() contractsschema.Schema
 	// Opener opens one SQLite file under its own connection name, for a legacy
 	// source copy. The provider supplies it; a test may leave it nil.
 	Opener repository.Opener
 }
 
 // NewDatabaseRuntime is the runtime the registered db commands use. Open reads
-// the settings, picks the connection for the mode, and builds a store that has
-// no migrator: a command never changes the schema, so a database that needs a
-// change is reported as it is.
+// the settings, picks the connection for the mode, and builds a store with no
+// migrator except for ModeInit: only the schema command changes the schema, so
+// for every other command a database that needs a change is reported as it is.
 func NewDatabaseRuntime(f func() Facades, version string) *DatabaseRuntime {
 	return &DatabaseRuntime{
 		Open: func(ctx context.Context, m data.Mode) (*Handle, error) {
@@ -44,12 +49,20 @@ func NewDatabaseRuntime(f func() Facades, version string) *DatabaseRuntime {
 			}
 			name := data.Connection(cfg.Engine, m)
 			if cfg.Engine == settings.EngineSQLite {
-				if err := requireFile(cfg.File); err != nil {
+				if err := requireFile(cfg.File, m == data.ModeInit); err != nil {
 					return nil, err
 				}
 			}
 			db, schema := fc.Connect(name)
-			store, err := data.NewStore(data.Deps{DB: db, Schema: schema, Log: fc.Log, Version: version, Open: fc.Opener}, cfg)
+			deps := data.Deps{DB: db, Schema: schema, Log: fc.Log, Version: version, Open: fc.Opener}
+			if m == data.ModeInit && fc.Schema != nil {
+				// The schema command is the one that may migrate; every other
+				// command is built without a migrator, so it refuses instead.
+				deps.Migrate = func() error {
+					return migration.NewMigrator(nil, fc.Schema(), fc.Config.GetString("database.migrations.table")).Run()
+				}
+			}
+			store, err := data.NewStore(deps, cfg)
 			if err != nil {
 				return nil, err
 			}
@@ -63,7 +76,7 @@ func NewDatabaseRuntime(f func() Facades, version string) *DatabaseRuntime {
 			}
 			h := &AnalyticsHandle{DataDir: cfg.DataDir, Source: cfg.File, Log: fc.Log, Opener: fc.Opener}
 			if cfg.Engine == settings.EngineSQLite {
-				if err := requireFile(cfg.File); err != nil {
+				if err := requireFile(cfg.File, false); err != nil {
 					return nil, err
 				}
 				// A plain source needs no key opener, and a wrong secret must be
@@ -120,18 +133,20 @@ func takeWorkDir(dataDir string) func() {
 	}
 }
 
-// requireFile refuses a missing database file. The read-only connections never
-// create one, and the writer would: a command must not make a database.
-func requireFile(path string) error {
+// requireFile refuses a missing database file, and an empty one unless
+// mayBeEmpty. No command makes a database: the server's start-up leaves the
+// empty file inside DATA_DIR, so a path with nothing there is a typo, and only
+// the schema command may fill the empty file.
+func requireFile(path string, mayBeEmpty bool) error {
 	if path == "" {
 		return errors.New("db: no database file is configured")
 	}
 	info, err := os.Stat(path)
 	if err != nil || info.IsDir() {
-		return errors.New("db: there is no database at the configured path; start the server once to create it")
+		return errors.New("db: there is no database at the configured path; run rllmx artisan db:migrate, or start the server once")
 	}
-	if info.Size() == 0 {
-		return errors.New("db: the database file is empty; start the server once to create its tables")
+	if info.Size() == 0 && !mayBeEmpty {
+		return errors.New("db: the database file is empty; run rllmx artisan db:migrate, or start the server once")
 	}
 	return nil
 }

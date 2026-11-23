@@ -1,9 +1,6 @@
 {
   "id": "perplexity",
-  "alias": "perplexity",
-  "aliases": [
-    "pplx"
-  ],
+  "alias": "pplx",
   "category": "apikey",
   "display": {
     "name": "Perplexity"

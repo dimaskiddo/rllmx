@@ -1,9 +1,6 @@
 {
   "id": "blackbox",
-  "alias": "blackbox",
-  "aliases": [
-    "bb"
-  ],
+  "alias": "bb",
   "category": "apikey",
   "display": {
     "name": "Blackbox AI"

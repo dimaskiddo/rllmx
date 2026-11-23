@@ -1,9 +1,6 @@
 {
   "id": "vertex-partner",
-  "alias": "vertex-partner",
-  "aliases": [
-    "vxp"
-  ],
+  "alias": "vxp",
   "category": "apikey",
   "executor": "vertex-partner",
   "display": {

@@ -3,6 +3,7 @@ package controllers
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	nethttp "net/http"
 	"net/http/httptest"
 	"os"
@@ -10,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/tidwall/gjson"
 
 	"rllmx/app/access/auth"
 	"rllmx/app/gateway/skill"
@@ -84,15 +87,21 @@ func TestASettingsWriteRefusesWhatItCannotValidateAndWritesNothing(t *testing.T)
 		"unknown cache":  `{"responseCache":{"enabled":true,"extra":1}}`,
 		"bad combo knob": `{"comboStrategies":{"fast":{"fallbackStrategy":"random"}}}`,
 		"plain http sso": `{"oidcIssuerUrl":"http://idp.example"}`,
-		"bad headroom":   `{"headroomUrl":"ftp://sidecar:8787"}`,
-		"headroom user":  `{"headroomUrl":"http://u:p@sidecar:8787"}`,
-		"headroom wait":  `{"headroomTimeoutMs":5}`,
-		"bad caveman":    `{"cavemanLevel":"extreme"}`,
-		"bad mode":       `{"ponytailRoutingMode":"sometimes"}`,
-		"long prompt":    `{"customPrompt":"` + strings.Repeat("a", 4001) + `"}`,
-		"password":       `{"newPassword":"a-good-long-password"}`,
-		"not an object":  `[]`,
-		"empty":          `{}`,
+		// Discovery refuses these, so storing one would hide the password form
+		// for a login that can never finish.
+		"issuer path":     `{"oidcIssuerUrl":"https://idp.example.com/tenant/v2"}`,
+		"issuer query":    `{"oidcIssuerUrl":"https://idp.example.com?tenant=1"}`,
+		"issuer userinfo": `{"oidcIssuerUrl":"https://u:p@idp.example.com"}`,
+		"issuer scheme":   `{"oidcIssuerUrl":"ftp://idp.example.com"}`,
+		"bad headroom":    `{"headroomUrl":"ftp://sidecar:8787"}`,
+		"headroom user":   `{"headroomUrl":"http://u:p@sidecar:8787"}`,
+		"headroom wait":   `{"headroomTimeoutMs":5}`,
+		"bad caveman":     `{"cavemanLevel":"extreme"}`,
+		"bad mode":        `{"ponytailRoutingMode":"sometimes"}`,
+		"long prompt":     `{"customPrompt":"` + strings.Repeat("a", 4001) + `"}`,
+		"password":        `{"newPassword":"a-good-long-password"}`,
+		"not an object":   `[]`,
+		"empty":           `{}`,
 	} {
 		if code, _, raw := m.call(nethttp.MethodPatch, "/api/settings", body, true); code != 400 {
 			t.Errorf("%s: %d %s", name, code, raw)
@@ -104,6 +113,85 @@ func TestASettingsWriteRefusesWhatItCannotValidateAndWritesNothing(t *testing.T)
 	}
 	if v, _ := d.GetString("authMode"); v == "none" {
 		t.Fatal("a refused value was stored")
+	}
+}
+
+// The CLI and discovery canonicalize the issuer; the API must store the same
+// string, and accept the loopback http address the design allows.
+func TestTheIssuerIsStoredAsDiscoveryWillReadIt(t *testing.T) {
+	m := newMgmtRig(t)
+	seededSettings(t, m)
+	m.settingsRoutes(&SettingsController{DB: func() *repository.Store { return m.st.Store }, Auth: m.auth})
+	for in, want := range map[string]string{
+		"https://IDP.Example.com":  "https://idp.example.com",
+		"https://idp.example.com/": "https://idp.example.com",
+		"http://localhost:8080":    "http://localhost:8080",
+		"":                         "",
+	} {
+		body, _ := json.Marshal(map[string]string{"oidcIssuerUrl": in})
+		if code, _, raw := m.call(nethttp.MethodPatch, "/api/settings", string(body), true); code != 200 {
+			t.Fatalf("%q: %d %s", in, code, raw)
+		}
+		d, err := m.st.Store.Settings().Effective(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, _ := d.GetString("oidcIssuerUrl"); got != want {
+			t.Errorf("%q stored as %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestProviderStrategiesTakeTheSelectorShape(t *testing.T) {
+	m := newMgmtRig(t)
+	seededSettings(t, m)
+	m.settingsRoutes(&SettingsController{DB: func() *repository.Store { return m.st.Store }, Auth: m.auth})
+
+	for name, body := range map[string]string{
+		"unknown strategy":  `{"providerStrategies":{"openai":{"fallbackStrategy":"random"}}}`,
+		"sticky zero":       `{"providerStrategies":{"openai":{"stickyRoundRobinLimit":0}}}`,
+		"sticky too large":  `{"providerStrategies":{"openai":{"stickyRoundRobinLimit":101}}}`,
+		"sticky as text":    `{"providerStrategies":{"openai":{"stickyRoundRobinLimit":"3"}}}`,
+		"sticky a fraction": `{"providerStrategies":{"openai":{"stickyRoundRobinLimit":3.5}}}`,
+		"strategy as bool":  `{"providerStrategies":{"openai":{"fallbackStrategy":true}}}`,
+		"bare number":       `{"providerStrategies":{"openai":3}}`,
+		"bare array":        `{"providerStrategies":{"openai":[]}}`,
+		"bad provider name": `{"providerStrategies":{"open/ai":{"fallbackStrategy":"fill-first"}}}`,
+		// Combo words the selector does not act on: accepting them stores a
+		// strategy that behaves as fill-first.
+		"combo word in object": `{"providerStrategies":{"openai":{"fallbackStrategy":"smart"}}}`,
+		"combo word bare":      `{"providerStrategies":{"openai":"fallback"}}`,
+	} {
+		if code, _, raw := m.call(nethttp.MethodPatch, "/api/settings", body, true); code != 400 {
+			t.Errorf("%s: %d %s", name, code, raw)
+		}
+	}
+
+	code, _, raw := m.call(nethttp.MethodPatch, "/api/settings",
+		`{"providerStrategies":{"openai":{"fallbackStrategy":"round-robin","stickyRoundRobinLimit":4,"proxyPoolId":"p1"},"gh":"fill-first"}}`, true)
+	if code != 200 {
+		t.Fatalf("%d %s", code, raw)
+	}
+	d, err := m.st.Store.Settings().Effective(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, ok := d.GetRaw("providerStrategies")
+	if !ok {
+		t.Fatal("providerStrategies was not stored")
+	}
+	checks := map[string]string{
+		"openai.fallbackStrategy": "round-robin",
+		"openai.proxyPoolId":      "p1",
+		"gh":                      "fill-first",
+	}
+	for path, want := range checks {
+		if got := gjson.Get(raw, path).String(); got != want {
+			t.Errorf("%s = %q, want %q (%s)", path, got, want, raw)
+		}
+	}
+	if n := gjson.Get(raw, "openai.stickyRoundRobinLimit").Int(); n != 4 {
+		t.Errorf("sticky limit = %d (%s)", n, raw)
 	}
 }
 

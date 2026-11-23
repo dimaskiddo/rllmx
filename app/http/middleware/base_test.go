@@ -106,9 +106,18 @@ func TestSecurityHeadersHardenPagesAndTheDashboardAPIButNotTheClientAPI(t *testi
 
 func TestThePagePolicyForbidsBaseObjectAndForeignFormTargets(t *testing.T) {
 	csp := getOnly(t, "/", &SecurityHeaders{}, nil).Header().Get("Content-Security-Policy")
-	for _, want := range []string{"default-src 'self'", "base-uri 'none'", "form-action 'self'", "object-src 'none'", "frame-ancestors 'none'"} {
+	for _, want := range []string{"default-src 'self'", "img-src 'self' data:", "base-uri 'none'", "form-action 'self'", "object-src 'none'", "frame-ancestors 'none'"} {
 		if !strings.Contains(csp, want) {
 			t.Errorf("the page policy lacks %q: %s", want, csp)
+		}
+	}
+}
+
+func TestThePagePolicyAllowsNoInlineOrEvaluatedCode(t *testing.T) {
+	csp := getOnly(t, "/", &SecurityHeaders{}, nil).Header().Get("Content-Security-Policy")
+	for _, bad := range []string{"unsafe-inline", "unsafe-eval", "script-src", "style-src", "*", "http:", "https:"} {
+		if strings.Contains(csp, bad) {
+			t.Errorf("the page policy holds %q, which loosens what default-src 'self' forbids: %s", bad, csp)
 		}
 	}
 }

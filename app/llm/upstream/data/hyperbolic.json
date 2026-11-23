@@ -1,9 +1,6 @@
 {
   "id": "hyperbolic",
-  "alias": "hyperbolic",
-  "aliases": [
-    "hyp"
-  ],
+  "alias": "hyp",
   "category": "apikey",
   "display": {
     "name": "Hyperbolic"

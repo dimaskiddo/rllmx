@@ -1,0 +1,226 @@
+<section x-data="providersPage">
+  <div class="rl-page-head">
+    <h1 class="rl-page-title" x-t="providers.title"></h1>
+  </div>
+  <div class="rl-toolbar">
+    <input class="form-control" type="search" x-bind:value="search" x-on:input="setView('search', $event)" x-bind:placeholder="label('providers.search')" x-bind:aria-label="label('providers.search')">
+    <select class="form-select" x-bind:value="filter" x-on:change="setView('filter', $event)" x-bind:aria-label="label('providers.status')">
+      <option value="all" x-t="providers.all"></option>
+      <option value="active" x-t="providers.activeOnly"></option>
+      <option value="inactive" x-t="providers.inactiveOnly"></option>
+      <option value="none" x-t="providers.none"></option>
+    </select>
+  </div>
+  <p class="rl-error" x-show="error" x-text="error"></p>
+  <p class="text-secondary" x-show="loading" x-t="common.loading"></p>
+
+  <section class="rl-section" x-show="!loading">
+    <div class="rl-section-head">
+      <div>
+        <h2 class="rl-card-title" x-t="providers.custom"></h2>
+        <p class="rl-hint" x-t="providers.customHint"></p>
+      </div>
+      <div class="rl-inline">
+        <button type="button" class="btn btn-sm" x-on:click="openAdd('openai-compatible')"><span class="rl-icon" x-icon="plus"></span><span x-t="providers.addOpenAI"></span></button>
+        <button type="button" class="btn btn-sm" x-on:click="openAdd('anthropic-compatible')"><span class="rl-icon" x-icon="plus"></span><span x-t="providers.addAnthropic"></span></button>
+      </div>
+    </div>
+    <p class="rl-hint" x-show="view.nodes.length === 0" x-t="providers.customEmpty"></p>
+    <div class="rl-provider-grid">
+      <template x-for="card in view.nodes" x-bind:key="card.entry.id">
+        <div class="rl-provider-card" x-bind:data-disabled="card.allDisabled ? 'yes' : 'no'">
+          <div class="rl-provider-head">
+            <span class="rl-provider-icon">
+              <img class="rl-provider-logo" x-show="iconSrc(card) && iconsFailed[card.entry.id] !== true" x-bind:src="iconSrc(card)" x-on:error="failIcon(card)" alt="" loading="lazy">
+              <span x-show="!iconSrc(card) || iconsFailed[card.entry.id] === true" x-text="initials(card)"></span>
+            </span>
+            <a class="rl-provider-name stretched-link" x-bind:href="detailHref(card.entry.id)" x-text="card.entry.name"></a>
+          </div>
+          <p class="rl-hint"><span x-text="card.entry.alias"></span> · <span x-text="nodeLabel(card)"></span></p>
+          <div class="rl-provider-stats">
+            <span class="badge" x-show="card.total === 0" x-text="statusText(card)"></span>
+            <span class="badge badge-ok" x-show="card.connected > 0"><span x-text="card.connected"></span> <span x-t="providers.connected"></span></span>
+            <span class="badge badge-err" x-show="card.failed > 0" x-bind:title="formatDate(card.errorAt)"><span x-text="card.failed"></span> <span x-t="providers.error"></span> <span x-text="tagLabel(card.tag)"></span></span>
+            <span class="badge" x-show="card.allDisabled" x-t="providers.disabled"></span>
+          </div>
+          <div class="rl-provider-actions">
+            <button type="button" class="btn btn-sm btn-ghost" x-show="card.total > 0" x-on:click="toggleProvider(card)" x-bind:title="card.allDisabled ? label('keys.resume') : label('keys.pause')">
+              <span class="rl-icon" x-show="!card.allDisabled" x-icon="pause"></span>
+              <span class="rl-icon" x-show="card.allDisabled" x-icon="check"></span>
+              <span class="visually-hidden" x-text="card.allDisabled ? label('keys.resume') : label('keys.pause')"></span>
+            </button>
+          </div>
+        </div>
+      </template>
+    </div>
+  </section>
+
+  <section class="rl-section" x-show="!loading && view.oauth.length > 0">
+    <div class="rl-section-head">
+      <h2 class="rl-card-title" x-t="providers.oauth"></h2>
+      <button type="button" class="btn btn-sm" x-bind:disabled="testing !== ''" x-on:click="testGroup('oauth')"><span class="rl-icon" x-icon="activity"></span><span x-text="testing === 'oauth' ? label('providers.testing') : label('providers.testAll')"></span></button>
+    </div>
+    <div class="rl-provider-grid">
+      <template x-for="card in view.oauth" x-bind:key="card.entry.id">
+        <div class="rl-provider-card" x-bind:data-disabled="card.allDisabled ? 'yes' : 'no'">
+          <div class="rl-provider-head">
+            <span class="rl-provider-icon">
+              <img class="rl-provider-logo" x-show="iconSrc(card) && iconsFailed[card.entry.id] !== true" x-bind:src="iconSrc(card)" x-on:error="failIcon(card)" alt="" loading="lazy">
+              <span x-show="!iconSrc(card) || iconsFailed[card.entry.id] === true" x-text="initials(card)"></span>
+            </span>
+            <a class="rl-provider-name stretched-link" x-bind:href="detailHref(card.entry.id)" x-text="card.entry.name"></a>
+          </div>
+          <p class="rl-hint" x-text="card.entry.alias || card.entry.id"></p>
+          <div class="rl-provider-stats">
+            <span class="badge" x-show="card.total === 0" x-text="statusText(card)"></span>
+            <span class="badge badge-ok" x-show="card.connected > 0"><span x-text="card.connected"></span> <span x-t="providers.connected"></span></span>
+            <span class="badge badge-err" x-show="card.failed > 0" x-bind:title="formatDate(card.errorAt)"><span x-text="card.failed"></span> <span x-t="providers.error"></span> <span x-text="tagLabel(card.tag)"></span></span>
+            <span class="badge" x-show="card.allDisabled" x-t="providers.disabled"></span>
+          </div>
+          <div class="rl-provider-actions">
+            <button type="button" class="btn btn-sm btn-ghost" x-show="card.total > 0" x-on:click="toggleProvider(card)" x-bind:title="card.allDisabled ? label('keys.resume') : label('keys.pause')">
+              <span class="rl-icon" x-show="!card.allDisabled" x-icon="pause"></span>
+              <span class="rl-icon" x-show="card.allDisabled" x-icon="check"></span>
+              <span class="visually-hidden" x-text="card.allDisabled ? label('keys.resume') : label('keys.pause')"></span>
+            </button>
+          </div>
+        </div>
+      </template>
+    </div>
+  </section>
+
+  <section class="rl-section" x-show="!loading && view.free.length > 0">
+    <div class="rl-section-head">
+      <h2 class="rl-card-title" x-t="providers.free"></h2>
+      <button type="button" class="btn btn-sm" x-bind:disabled="testing !== ''" x-on:click="testGroup('free')"><span class="rl-icon" x-icon="activity"></span><span x-text="testing === 'free' ? label('providers.testing') : label('providers.testAll')"></span></button>
+    </div>
+    <div class="rl-provider-grid">
+      <template x-for="card in view.free" x-bind:key="card.entry.id">
+        <div class="rl-provider-card" x-bind:data-disabled="card.allDisabled ? 'yes' : 'no'">
+          <div class="rl-provider-head">
+            <span class="rl-provider-icon">
+              <img class="rl-provider-logo" x-show="iconSrc(card) && iconsFailed[card.entry.id] !== true" x-bind:src="iconSrc(card)" x-on:error="failIcon(card)" alt="" loading="lazy">
+              <span x-show="!iconSrc(card) || iconsFailed[card.entry.id] === true" x-text="initials(card)"></span>
+            </span>
+            <a class="rl-provider-name stretched-link" x-bind:href="detailHref(card.entry.id)" x-text="card.entry.name"></a>
+          </div>
+          <p class="rl-hint" x-text="card.entry.alias || card.entry.id"></p>
+          <div class="rl-provider-stats">
+            <span class="badge" x-show="card.total === 0" x-text="statusText(card)"></span>
+            <span class="badge badge-ok" x-show="card.connected > 0"><span x-text="card.connected"></span> <span x-t="providers.connected"></span></span>
+            <span class="badge badge-err" x-show="card.failed > 0" x-bind:title="formatDate(card.errorAt)"><span x-text="card.failed"></span> <span x-t="providers.error"></span> <span x-text="tagLabel(card.tag)"></span></span>
+            <span class="badge" x-show="card.allDisabled" x-t="providers.disabled"></span>
+          </div>
+          <div class="rl-provider-actions">
+            <button type="button" class="btn btn-sm btn-ghost" x-show="card.total > 0" x-on:click="toggleProvider(card)" x-bind:title="card.allDisabled ? label('keys.resume') : label('keys.pause')">
+              <span class="rl-icon" x-show="!card.allDisabled" x-icon="pause"></span>
+              <span class="rl-icon" x-show="card.allDisabled" x-icon="check"></span>
+              <span class="visually-hidden" x-text="card.allDisabled ? label('keys.resume') : label('keys.pause')"></span>
+            </button>
+          </div>
+        </div>
+      </template>
+    </div>
+  </section>
+
+  <section class="rl-section" x-show="!loading && view.key.length > 0">
+    <div class="rl-section-head">
+      <h2 class="rl-card-title" x-t="providers.apiKey"></h2>
+      <button type="button" class="btn btn-sm" x-bind:disabled="testing !== ''" x-on:click="testGroup('apikey')"><span class="rl-icon" x-icon="activity"></span><span x-text="testing === 'apikey' ? label('providers.testing') : label('providers.testAll')"></span></button>
+    </div>
+    <div class="rl-provider-grid">
+      <template x-for="card in view.key" x-bind:key="card.entry.id">
+        <div class="rl-provider-card" x-bind:data-disabled="card.allDisabled ? 'yes' : 'no'">
+          <div class="rl-provider-head">
+            <span class="rl-provider-icon">
+              <img class="rl-provider-logo" x-show="iconSrc(card) && iconsFailed[card.entry.id] !== true" x-bind:src="iconSrc(card)" x-on:error="failIcon(card)" alt="" loading="lazy">
+              <span x-show="!iconSrc(card) || iconsFailed[card.entry.id] === true" x-text="initials(card)"></span>
+            </span>
+            <a class="rl-provider-name stretched-link" x-bind:href="detailHref(card.entry.id)" x-text="card.entry.name"></a>
+          </div>
+          <p class="rl-hint" x-text="card.entry.alias || card.entry.id"></p>
+          <div class="rl-provider-stats">
+            <span class="badge" x-show="card.total === 0" x-text="statusText(card)"></span>
+            <span class="badge badge-ok" x-show="card.connected > 0"><span x-text="card.connected"></span> <span x-t="providers.connected"></span></span>
+            <span class="badge badge-err" x-show="card.failed > 0" x-bind:title="formatDate(card.errorAt)"><span x-text="card.failed"></span> <span x-t="providers.error"></span> <span x-text="tagLabel(card.tag)"></span></span>
+            <span class="badge" x-show="card.allDisabled" x-t="providers.disabled"></span>
+          </div>
+          <div class="rl-provider-actions">
+            <button type="button" class="btn btn-sm btn-ghost" x-show="card.total > 0" x-on:click="toggleProvider(card)" x-bind:title="card.allDisabled ? label('keys.resume') : label('keys.pause')">
+              <span class="rl-icon" x-show="!card.allDisabled" x-icon="pause"></span>
+              <span class="rl-icon" x-show="card.allDisabled" x-icon="check"></span>
+              <span class="visually-hidden" x-text="card.allDisabled ? label('keys.resume') : label('keys.pause')"></span>
+            </button>
+          </div>
+        </div>
+      </template>
+    </div>
+    <button type="button" class="btn btn-sm btn-ghost" x-show="view.hiddenKey > 0" x-on:click="toggleShowAll('showAllKey')"><span x-t="providers.showAll"></span><span x-text="' (' + view.hiddenKey + ')'"></span></button>
+    <button type="button" class="btn btn-sm btn-ghost" x-show="showAllKey" x-on:click="toggleShowAll('showAllKey')" x-t="providers.showFewer"></button>
+  </section>
+
+  <p class="rl-hint rl-empty" x-show="!loading && !view.any" x-t="providers.noMatch"></p>
+
+  <dialog class="rl-dialog" x-ref="resultsDlg" aria-labelledby="dlg-resultsDlg-title">
+    <h2 id="dlg-resultsDlg-title" x-t="providers.testTitle"></h2>
+    <div x-show="results">
+      <div class="rl-inline">
+        <span class="badge badge-ok"><span x-text="results ? results.summary.passed : 0"></span> <span x-t="providers.passed"></span></span>
+        <span class="badge badge-err"><span x-text="results ? results.summary.failed : 0"></span> <span x-t="providers.failed"></span></span>
+      </div>
+      <p class="rl-hint" x-show="results && results.results.length === 0" x-t="providers.noActive"></p>
+      <ul class="rl-list">
+        <template x-for="row in (results ? results.results : [])" x-bind:key="row.connectionId">
+          <li class="rl-list-row">
+            <div class="rl-list-main">
+              <div class="rl-list-title"><span x-text="row.connectionName"></span><span class="rl-hint" x-text="row.provider"></span></div>
+              <p class="rl-hint" x-show="row.error" x-text="row.error"></p>
+            </div>
+            <div class="rl-list-actions">
+              <span class="badge" x-bind:data-ok="row.valid ? 'yes' : 'no'" x-text="row.valid ? label('providers.ok') : label('providers.failedOne')"></span>
+              <span class="rl-hint" x-text="row.latencyMs !== undefined ? row.latencyMs + ' ms' : ''"></span>
+            </div>
+          </li>
+        </template>
+      </ul>
+    </div>
+    <div class="rl-dialog-actions">
+      <button type="button" class="btn btn-primary" x-on:click="closeResults()" x-t="common.done"></button>
+    </div>
+  </dialog>
+
+  <dialog class="rl-dialog" x-ref="addDlg" x-on:close="forgetAdd()" aria-labelledby="dlg-addDlg-title">
+    <form x-on:submit.prevent="saveNode()">
+      <h2 id="dlg-addDlg-title" x-t="providers.addTitle"></h2>
+      <p class="rl-hint" x-text="label(add.type === 'anthropic-compatible' ? 'providers.nodeTypes.anthropic' : 'providers.nodeTypes.openai')"></p>
+      <label class="form-label" for="node-name" x-t="providers.name"></label>
+      <input class="form-control" id="node-name" x-ref="addName" maxlength="64" required x-bind:value="add.name" x-on:input="setField('add.name', $event)">
+      <label class="form-label" for="node-prefix" x-t="providers.prefix"></label>
+      <input class="form-control" id="node-prefix" maxlength="32" required x-bind:value="add.prefix" x-on:input="setField('add.prefix', $event)">
+      <div x-show="add.type === 'openai-compatible'">
+        <label class="form-label" for="node-api-type" x-t="providers.apiType"></label>
+        <select class="form-select" id="node-api-type" x-bind:value="add.apiType" x-on:change="setField('add.apiType', $event)">
+          <option value="chat" x-t="providers.apiChat"></option>
+          <option value="responses" x-t="providers.apiResponses"></option>
+        </select>
+      </div>
+      <label class="form-label" for="node-base-url" x-t="providers.baseUrl"></label>
+      <input class="form-control" id="node-base-url" x-bind:value="add.baseUrl" x-on:input="setField('add.baseUrl', $event)" x-bind:placeholder="label('providers.baseUrlHint')">
+      <label class="form-label" for="node-key" x-t="providers.checkKey"></label>
+      <input class="form-control" id="node-key" type="password" autocomplete="off" x-bind:value="add.apiKey" x-on:input="setCheckedField('add.apiKey', $event)">
+      <label class="form-label" for="node-model" x-t="providers.modelId"></label>
+      <input class="form-control" id="node-model" x-bind:value="add.modelId" x-on:input="setCheckedField('add.modelId', $event)">
+      <div class="rl-inline">
+        <button type="button" class="btn btn-sm" x-bind:disabled="add.checking || add.apiKey === '' || add.baseUrl === ''" x-on:click="checkNode()"><span x-t="providers.check"></span></button>
+        <span class="badge badge-ok" x-show="add.check && add.check.valid" x-t="providers.valid"></span>
+        <span class="badge badge-err" x-show="add.check && !add.check.valid" x-t="providers.invalid"></span>
+      </div>
+      <p class="rl-error" x-show="add.check && !add.check.valid && add.check.error" x-text="add.check ? add.check.error : ''"></p>
+      <p class="rl-error" x-show="add.error" x-text="add.error"></p>
+      <div class="rl-dialog-actions">
+        <button type="button" class="btn" x-on:click="closeAdd()" x-t="common.cancel"></button>
+        <button type="submit" class="btn btn-primary" x-bind:disabled="add.busy" x-t="providers.create"></button>
+      </div>
+    </form>
+  </dialog>
+</section>

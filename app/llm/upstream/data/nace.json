@@ -1,6 +1,7 @@
 {
   "id": "nace",
   "alias": "nace",
+  "aliases": ["drex"],
   "category": "apikey",
   "display": { "name": "Nace" },
   "media": { "serviceKinds": ["systemone"] },

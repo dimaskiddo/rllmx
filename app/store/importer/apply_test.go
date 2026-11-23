@@ -54,6 +54,14 @@ func TestApplyCopiesEverythingIntoAnEmptyDatabase(t *testing.T) {
 	}
 }
 
+func TestApplyRefusesADestinationWithoutTheSchema(t *testing.T) {
+	dest := store.New(t)
+	_, err := Apply(context.Background(), dest.Store, read(t, Options{}))
+	if !errors.Is(err, repository.ErrNeedsMigration) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestApplyKeepsEveryRowByteForByte(t *testing.T) {
 	dest := emptyDest(t)
 	apply(t, dest, Options{})

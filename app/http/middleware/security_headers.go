@@ -19,8 +19,10 @@ type SecurityHeaders struct {
 const (
 	// pagePolicy lets a page load only from its own origin and forbids what a
 	// dashboard never needs: a base address, a plug-in object, a form that posts
-	// elsewhere and being framed.
-	pagePolicy = "default-src 'self'; base-uri 'none'; form-action 'self'; object-src 'none'; frame-ancestors 'none'"
+	// elsewhere and being framed. Scripts and styles stay on the origin with no
+	// inline code. Images may also be data: URIs, because the stylesheet draws
+	// its checkboxes, selects and chevrons from inline SVG.
+	pagePolicy = "default-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'self'; object-src 'none'; frame-ancestors 'none'"
 	// permissions turns off every browser capability the dashboard has no use for.
 	permissions = "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
 )

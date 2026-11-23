@@ -1,9 +1,6 @@
 {
   "id": "deepseek",
-  "alias": "deepseek",
-  "aliases": [
-    "ds"
-  ],
+  "alias": "ds",
   "category": "apikey",
   "display": {
     "name": "DeepSeek"

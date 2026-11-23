@@ -195,9 +195,10 @@ A failing job never blocks start. The main file never switches `auto_vacuum`.
 |---|---|
 | `db:vacuum` | Full `VACUUM`; asks y/N or takes `--yes`; refuses while `rllmx.lock` is held (`gofrs/flock`) |
 | `db:check` | Full `integrity_check` plus a schema comparison naming tables, columns and indexes, never a row value. Changes nothing; exit 1 on any problem |
+| `db:migrate` | Creates or updates the schema the server expects, using the same migrator and the same backup-before-change rule; seals what is still plain. Takes `rllmx.lock`, so it refuses while a server runs. The one command that may open the empty file a start-up leaves behind; a path with no file is refused, so a mistyped `DB_DATABASE` never makes a database |
 | `db:backup [--out dir]` | `0600` copy. PostgreSQL: the command prints a `pg_dump` hint and calls `os.Exit(2)` itself, because Artisan only ever exits 0 or 1 |
 | `db:import-analytics [--from file] [--drop-old]` | Copies the source with `VACUUM INTO`, imports in batches of 5,000 into the usage store, verifies the row count, the five token sums and the cost, and seeds the lifetime counter once. Takes `rllmx.lock`. `--drop-old` needs a terminal and a typed `DROP`, refuses when a row was unreadable, writes `db/backups/before-drop-*` and then drops `usageHistory`, `usageDaily` and `requestDetails` |
-| `db:import-config --from <file or dir> [--dry-run] [--yes] [--with-sso]` | Seeds an **empty** destination from a legacy source read through a private copy: connections (locks and error state removed), API keys, nodes, combos, four `kv` scopes and the allow-listed settings, in one transaction with the original ids and timestamps. Secrets are re-sealed for the destination; a sealed source is refused. Prints counts and key names only. Takes `rllmx.lock`, a dry run included |
+| `db:import-config --from <file or dir> [--dry-run] [--yes] [--with-sso]` | Seeds an **empty** destination from a legacy source read through a private copy: connections (locks and error state removed), API keys, nodes, combos, four `kv` scopes and the allow-listed settings, in one transaction with the original ids and timestamps. Secrets are re-sealed for the destination; a sealed source is refused. The destination needs the schema `db:migrate` creates; a missing or empty file is refused, and the dry run and the apply check it before anything is copied, skills included. Prints counts and key names only. Takes `rllmx.lock`, a dry run included |
 
 The framework's `migrate:*`, `db:wipe` and `db:seed` would drop or rewrite the 9router tables, and `WithCommandsFilter` does not reach them: the database provider registers without consulting the list.
 
@@ -239,6 +240,7 @@ No reference counterpart.
 | Sealed secrets: `enc:v1:` values in `apiKeys.key`, connection `data`, `settings.oidcClientSecret`; check row in kv scope `rllmCrypto` | done (converted after a full backup; no plain secret left in the file or its WAL) |
 | Pre-encryption backup (never pruned), `rllmx artisan db:export-plain` | done (SQLite only) |
 | `rllmx artisan db:backup`, `check`, `vacuum` | done |
+| `rllmx artisan db:migrate` (rides the schema without a server start) | done |
 | `rllmx artisan db:import-config` (seed from a 9router database) | done |
 | `rllmx artisan db:import-analytics` (usage history import) | done |
 | Skill folder import in `import-config` | new |

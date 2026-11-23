@@ -114,12 +114,18 @@ func (c *AuthController) Status(ctx contractshttp.Context) contractshttp.Respons
 	mode := c.Auth.Mode(r.Context())
 	st := c.Auth.Store.Get(r.Context())
 	session := c.Auth.Session(r)
+	// The sign-in page renders its buttons from this answer, so which single
+	// sign-on type is offered and how it is labelled cannot wait for a session.
 	out := contractshttp.Json{
-		"authenticated": session,
-		"authMode":      st.AuthMode,
-		"ssoType":       st.SSOType,
-		"sso":           mode.SSO(),
-		"password":      mode.Password,
+		"authenticated":  session,
+		"authMode":       st.AuthMode,
+		"ssoType":        st.SSOType,
+		"sso":            mode.SSO(),
+		"password":       mode.Password,
+		"oidc":           mode.OIDC,
+		"saml":           mode.SAML,
+		"oidcLoginLabel": st.OIDCLoginLabel,
+		"samlLoginLabel": st.SAMLLoginLabel,
 	}
 	if session || apphttp.IsLocalRequest(r, c.Auth.TrustLoopback) {
 		out["hasPassword"] = st.Password != ""

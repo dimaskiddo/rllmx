@@ -44,6 +44,9 @@ func check(envFile string, cfg contractsconfig.Config) error {
 	if _, err := settings.LoadCache(cfg); err != nil {
 		return err
 	}
+	if err := settings.CheckLogging(cfg); err != nil {
+		return err
+	}
 	if err := settings.CheckSecretFormat(cfg); err != nil {
 		return err
 	}

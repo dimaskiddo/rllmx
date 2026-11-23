@@ -40,6 +40,7 @@ type modelAdminView struct {
 	Alias       string         `json:"alias"`
 	Caps        modelAdminCaps `json:"caps"`
 	Source      string         `json:"source"`
+	Kind        string         `json:"kind,omitempty"`
 }
 
 func (m *ModelsController) store() *repository.Store { return storeOf(m.DB) }
@@ -78,7 +79,7 @@ func (m *ModelsController) AdminList(ctx contractshttp.Context) contractshttp.Re
 			full := owner + "/" + mm.ID
 			v := modelAdminView{
 				Provider: owner, Model: mm.ID, Name: mm.Name, FullModel: full,
-				RoutedModel: full, Alias: mm.ID, Source: mm.Source,
+				RoutedModel: full, Alias: mm.ID, Source: mm.Source, Kind: mm.Kind,
 			}
 			if a, ok := byTarget[e.ID+"/"+mm.ID]; ok {
 				v.Alias = a

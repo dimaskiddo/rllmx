@@ -1,7 +1,7 @@
 {
   "passthroughModels": true,
   "id": "perplexity-agent",
-  "alias": "perplexity-agent",
+  "alias": "pa",
   "aliases": [
     "pplx-agent",
     "pplx-responses"

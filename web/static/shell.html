@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Router-LLM</title>
+<script src="/static/js/theme.js"></script>
+<link rel="stylesheet" href="/static/lib/tabler.min.css">
+<link rel="stylesheet" href="/static/css/theme.css">
+<link rel="stylesheet" href="/static/css/components.css">
+<script type="module" src="/static/js/app.js"></script>
+</head>
+<body x-data="shell" x-cloak>
+<div class="rl-shell">
+  <aside class="rl-sidebar">
+    <a class="rl-brand" href="/dashboard">Router-LLM</a>
+    <nav x-bind:aria-label="label('nav.dashboard')">
+      <ul class="rl-nav">
+        <li><a href="/dashboard/endpoint" x-bind:aria-current="isCurrent('/dashboard/endpoint') ? 'page' : false"><span class="rl-icon" x-icon="key-round"></span><span x-t="nav.endpoint"></span></a></li>
+        <li><a href="/dashboard/providers" x-bind:aria-current="isCurrent('/dashboard/providers') ? 'page' : false"><span class="rl-icon" x-icon="server"></span><span x-t="nav.providers"></span></a></li>
+      </ul>
+    </nav>
+  </aside>
+  <div class="rl-content">
+    <header class="rl-header">
+      <div class="rl-header-actions">
+        <button type="button" class="btn btn-sm btn-ghost" x-on:click="toggleTheme()" x-tip="theme.toggle">
+          <span class="rl-icon" x-show="theme === 'light'" x-icon="moon"></span>
+          <span class="rl-icon" x-show="theme === 'dark'" x-icon="sun"></span>
+          <span class="visually-hidden" x-t="theme.toggle"></span>
+        </button>
+        <button type="button" class="btn btn-sm btn-ghost" x-on:click="switchLocale()" x-bind:title="label('locale.switch')" x-bind:aria-label="label('locale.switch')">
+          <span class="rl-icon" x-icon="globe"></span>
+          <span aria-hidden="true" x-text="locale === 'en' ? 'EN' : 'ID'"></span>
+        </button>
+        <div class="rl-menu-wrap">
+          <button type="button" class="btn btn-sm btn-ghost" x-on:click="toggleMenu()" x-bind:aria-expanded="menu ? 'true' : 'false'" x-tip="menu.open">
+            <span class="rl-icon" x-icon="user"></span>
+            <span class="visually-hidden" x-t="menu.open"></span>
+          </button>
+          <div class="rl-menu" x-show="menu" x-on:click.outside="toggleMenu()" x-on:keydown.escape.window="closeMenu()">
+            <button type="button" class="rl-menu-item" x-on:click="openPassword()"><span class="rl-icon" x-icon="key-round"></span><span x-t="menu.password"></span></button>
+            <button type="button" class="rl-menu-item" x-on:click="signOut()"><span class="rl-icon" x-icon="log-out"></span><span x-t="menu.logout"></span></button>
+          </div>
+        </div>
+      </div>
+    </header>
+    <main id="view" class="rl-main"></main>
+  </div>
+</div>
+
+<div class="rl-toasts" id="rl-toasts" popover="manual" role="status" aria-live="polite">
+  <template x-for="item in $store.toasts.items" x-bind:key="item.id">
+    <div class="rl-toast" x-bind:data-kind="item.kind" x-bind:role="item.kind === 'error' ? 'alert' : false" x-text="item.text"></div>
+  </template>
+</div>
+
+<dialog class="rl-dialog" id="rl-confirm" aria-labelledby="dlg-rl-confirm-title">
+  <h2 id="dlg-rl-confirm-title" data-confirm="title"></h2>
+  <p data-confirm="message"></p>
+  <div class="rl-dialog-actions">
+    <button type="button" class="btn" data-confirm="no"></button>
+    <button type="button" class="btn btn-danger" data-confirm="yes"></button>
+  </div>
+</dialog>
+
+<dialog class="rl-dialog" x-ref="password" x-on:close="forgetPassword()" aria-labelledby="dlg-password-title">
+  <form x-on:submit.prevent="savePassword()">
+    <h2 id="dlg-password-title" x-t="password.title"></h2>
+    <label class="form-label" for="pw-current" x-t="password.current"></label>
+    <input class="form-control" id="pw-current" type="password" autocomplete="current-password" x-ref="passwordCurrent" x-bind:value="pw.current" x-on:input="setPw('current', $event)" required>
+    <label class="form-label" for="pw-next" x-t="password.next"></label>
+    <input class="form-control" id="pw-next" type="password" autocomplete="new-password" x-bind:value="pw.next" x-on:input="setPw('next', $event)" required>
+    <label class="form-label" for="pw-again" x-t="password.again"></label>
+    <input class="form-control" id="pw-again" type="password" autocomplete="new-password" x-bind:value="pw.again" x-on:input="setPw('again', $event)" required>
+    <p class="rl-error" x-show="pw.error" x-text="pw.error"></p>
+    <div class="rl-dialog-actions">
+      <button type="button" class="btn" x-on:click="closePassword()" x-t="common.cancel"></button>
+      <button type="submit" class="btn btn-primary" x-bind:disabled="pw.busy" x-t="password.save"></button>
+    </div>
+  </form>
+</dialog>
+</body>
+</html>

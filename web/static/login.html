@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Router-LLM</title>
+<script src="/static/js/theme.js"></script>
+<link rel="stylesheet" href="/static/lib/tabler.min.css">
+<link rel="stylesheet" href="/static/css/theme.css">
+<link rel="stylesheet" href="/static/css/components.css">
+<script type="module" src="/static/js/login.js"></script>
+</head>
+<body class="rl-body-center" x-data="loginPage" x-cloak>
+<main class="rl-login">
+  <a class="rl-brand" href="/">Router-LLM</a>
+  <div class="card">
+    <div class="card-body">
+      <h1 class="rl-page-title" x-t="login.title"></h1>
+      <p class="text-secondary" x-show="!ready" x-t="login.checking"></p>
+      <form x-show="ready && form" x-on:submit.prevent="submit()">
+        <label class="form-label" for="password" x-t="login.password"></label>
+        <input class="form-control" id="password" type="password" autocomplete="current-password" autofocus required x-bind:value="password" x-on:input="setPassword($event)">
+        <p class="rl-error" x-show="error" x-text="error"></p>
+        <p class="rl-hint" x-show="locked > 0"><span x-t="login.locked"></span> <span x-text="locked"></span></p>
+        <button type="submit" class="btn btn-primary rl-block" x-bind:disabled="busy || locked > 0">
+          <span x-show="locked === 0" x-t="login.submit"></span>
+          <span x-show="locked > 0" x-text="locked"></span>
+        </button>
+      </form>
+      <div class="rl-sso" x-show="ready && (sso.oidc || sso.saml)">
+        <a class="btn rl-block" href="/api/auth/oidc/start" x-show="sso.oidc"><span class="rl-icon" x-icon="log-in"></span><span x-text="sso.oidcLabel"></span></a>
+        <a class="btn rl-block" href="/api/auth/saml/start" x-show="sso.saml"><span class="rl-icon" x-icon="log-in"></span><span x-text="sso.samlLabel"></span></a>
+      </div>
+      <p class="rl-warning" x-show="ready && hint.defaultPassword">
+        <span class="rl-icon" x-icon="triangle-exclamation-point"></span>
+        <span x-t="login.defaultPassword"></span>
+      </p>
+      <p class="rl-hint" x-show="ready && !form" x-t="login.ssoOnly"></p>
+    </div>
+  </div>
+</main>
+</body>
+</html>

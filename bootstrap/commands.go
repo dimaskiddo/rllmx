@@ -21,6 +21,7 @@ func Commands(version, commit string) []console.Command {
 			Connect: func(name string) (contractsdb.DB, contractsschema.Schema) {
 				return facades.DB().Connection(name), facades.Schema().Connection(name)
 			},
+			Schema: func() contractsschema.Schema { return facades.Schema() },
 			Opener: providers.SQLiteOpener(facades.Config(), facades.Log()),
 		}
 	}, version)
@@ -30,8 +31,10 @@ func Commands(version, commit string) []console.Command {
 		&commands.Version{Version: version, Commit: commit},
 		&commands.DBBackup{R: db},
 		&commands.DBCheck{R: db},
+		&commands.DBMigrate{R: db},
 		&commands.DBVacuum{R: db},
 		&commands.DBImportAnalytics{R: db},
+		&commands.AuthMode{R: db},
 		&commands.DBImportConfig{R: db},
 		&commands.SkillsSync{R: db},
 		&commands.KeysCreate{R: ar},

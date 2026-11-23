@@ -1,9 +1,6 @@
 {
   "id": "chutes",
-  "alias": "chutes",
-  "aliases": [
-    "ch"
-  ],
+  "alias": "ch",
   "category": "apikey",
   "display": {
     "name": "Chutes AI"

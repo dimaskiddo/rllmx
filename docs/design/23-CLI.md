@@ -8,9 +8,10 @@ The Artisan command surface. `rllmx artisan <name>` from the binary, `./artisan 
 |---|---|---|
 | `version` | done | Version and commit, printed from the build |
 | `health` | unverified | Exits non-zero when the local `/api/health` is not 200. A live listener is what confirms it |
-| `db:backup`, `db:check`, `db:vacuum` | done | See design doc 15 |
+| `db:backup`, `db:check`, `db:vacuum`, `db:migrate` | done | See design doc 15 |
 | `db:import-config`, `db:import-analytics` | done | See design doc 15 |
 | `keys:create\|list\|revoke`, `password:reset` | done | Hidden prompt through `ctx.Secret`; three tries, 2 s after a wrong one; the key printed once |
+| `auth:mode` | done | Sets the sign-in policy and may configure the OIDC client; the client secret is a hidden prompt. See design doc 2 |
 | `db:export-plain` | done | Asks the dashboard password, confirms, then writes the copy |
 
 **Rules**

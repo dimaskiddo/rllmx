@@ -286,15 +286,10 @@ func newAuthenticator(app foundation.Application, cfg config.Config, db func() *
 		cfg.GetBool("auth.cookie_secure"),
 	)
 	a.OIDCUsable = func(issuer, clientID, secret string) bool {
-		return oidc.Settings{Issuer: issuer, ClientID: clientID, ClientSecret: secret}.Configured()
+		return oidc.Settings{Issuer: issuer, ClientID: clientID, ClientSecret: secret}.Usable()
 	}
 	a.SAMLUsable = func(entryPoint, cert, idpEntity string) bool {
-		s := saml.Settings{EntryPoint: entryPoint, Cert: cert, IDPEntityID: idpEntity}
-		if !s.Configured() || idpEntity == "" {
-			return false
-		}
-		_, err := s.Validate()
-		return err == nil
+		return saml.Settings{EntryPoint: entryPoint, Cert: cert, IDPEntityID: idpEntity}.Usable()
 	}
 	a.SSOAllow = sso.ParseAllow(cfg.GetString("auth.sso_allow")).Allows
 	a.ClientAddr = trust.ClientAddr

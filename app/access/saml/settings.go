@@ -71,6 +71,17 @@ func (s Settings) Configured() bool {
 	return s.EntryPoint != "" && s.Cert != ""
 }
 
+// Usable reports whether a sign-in can finish: configured, an IdP entity id to
+// pin the response to, and an entry point and certificate Validate accepts. The
+// dashboard hides the password form only for a usable sign-in.
+func (s Settings) Usable() bool {
+	if !s.Configured() || s.IDPEntityID == "" {
+		return false
+	}
+	_, err := s.Validate()
+	return err == nil
+}
+
 // EntityIDFor returns our service-provider entity id: the stored override, else
 // the metadata URL derived from APP_URL, which is what an IdP is pointed at.
 func (s Settings) EntityIDFor(base string) string {

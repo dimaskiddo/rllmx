@@ -1,6 +1,7 @@
 {
   "id": "chatgpt-web",
   "alias": "chatgpt-web",
+  "aliases": ["cg"],
   "category": "webCookie",
   "display": { "name": "ChatGPT Web" },
   "media": {

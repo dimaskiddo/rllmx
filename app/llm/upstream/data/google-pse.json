@@ -1,6 +1,6 @@
 {
   "id": "google-pse",
-  "alias": "google-pse",
+  "alias": "gpse",
   "category": "apikey",
   "display": { "name": "Google Programmable Search" },
   "media": {

@@ -1,6 +1,6 @@
 {
   "id": "black-forest-labs",
-  "alias": "black-forest-labs",
+  "alias": "bfl",
   "category": "apikey",
   "display": { "name": "Black Forest Labs" },
   "media": {

@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"encoding/json"
+	"math"
 	nethttp "net/http"
 	"net/url"
 	"regexp"
@@ -13,6 +14,8 @@ import (
 	"github.com/tidwall/gjson"
 
 	"rllmx/app/access/auth"
+	"rllmx/app/access/oidc"
+	"rllmx/app/gateway/account"
 	"rllmx/app/gateway/combo"
 	"rllmx/app/gateway/plan"
 	"rllmx/app/gateway/saver/headroom"
@@ -267,9 +270,9 @@ var settingsRules = map[string]settingRule{
 	"requireApiKey":                   boolRule,
 	"claudeAutoPing":                  autoPingRule,
 	"codexAutoPing":                   autoPingRule,
-	"authMode":                        enumRule("password", "oidc", "saml", "sso", "both"),
+	"authMode":                        enumRule(auth.ModeNames()...),
 	"ssoType":                         enumRule("oidc", "saml"),
-	"oidcIssuerUrl":                   urlRule("https", 2048),
+	"oidcIssuerUrl":                   issuerRule,
 	"oidcClientId":                    textRule(512),
 	"oidcClientSecret":                textRule(512),
 	"oidcScopes":                      textRule(512),
@@ -554,6 +557,28 @@ func textRule(max int) settingRule {
 // urlRule takes an absolute address with a host and no credentials. The scheme
 // is the strictest the caller allows: https, or either for a local identity
 // provider.
+// issuerRule stores the issuer the way discovery reads it. The CLI canonicalizes
+// through the same call, so the two writers can never disagree about a value that
+// decides whether the password form is hidden.
+func issuerRule(raw json.RawMessage) (string, string) {
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return "", "must be a string"
+	}
+	if s == "" {
+		return `""`, ""
+	}
+	if len(s) > 2048 || text.HasControl(s) {
+		return "", "is not a valid address"
+	}
+	issuer, err := oidc.ParseIssuer(s)
+	if err != nil {
+		return "", "must be an https address with no path, query or credentials; http only for this machine"
+	}
+	out, _ := json.Marshal(issuer)
+	return string(out), ""
+}
+
 func urlRule(scheme string, max int) settingRule {
 	return func(raw json.RawMessage) (string, string) {
 		var s string
@@ -669,6 +694,9 @@ func comboStrategiesRule(raw json.RawMessage) (string, string) {
 	return string(raw), ""
 }
 
+// providerStrategiesRule accepts each provider's strategy either as the bare
+// word older rows hold or as the object the selector and a 9router database
+// write. Keys the selector does not read are kept: they came with an import.
 func providerStrategiesRule(raw json.RawMessage) (string, string) {
 	if len(raw) > 32<<10 || !gjson.ValidBytes(raw) || !gjson.ParseBytes(raw).IsObject() {
 		return "", "must be an object"
@@ -677,13 +705,30 @@ func providerStrategiesRule(raw json.RawMessage) (string, string) {
 		if !validNameKey(name) {
 			return "", "has an invalid provider name"
 		}
-		switch v.String() {
-		case "fallback", "round-robin", "smart":
-		default:
+		if v.Type == gjson.String && account.KnownStrategy(v.String()) {
+			continue
+		}
+		if !v.IsObject() || !knownStrategyObject(v) {
 			return "", "has an unknown strategy"
 		}
 	}
 	return string(raw), ""
+}
+
+// knownStrategyObject checks the two keys the selector reads; any other key in
+// the entry is left as it is.
+func knownStrategyObject(v gjson.Result) bool {
+	ok := true
+	v.ForEach(func(k, e gjson.Result) bool {
+		switch k.String() {
+		case "fallbackStrategy":
+			ok = e.Type == gjson.String && account.KnownStrategy(e.String())
+		case "stickyRoundRobinLimit":
+			ok = e.Type == gjson.Number && e.Num == math.Trunc(e.Num) && e.Int() >= 1 && e.Int() <= 100
+		}
+		return ok
+	})
+	return ok
 }
 
 func capacityAdapterRule(raw json.RawMessage) (string, string) {
