@@ -96,6 +96,7 @@ func (c *call) applySavers(ctx context.Context) {
 		return
 	}
 	st := saver.Apply(ctx, c.p.d.Saver, c.req, opts)
+	c.saverStats = st
 	if st.Changed() && c.p.d.Log != nil {
 		c.p.d.Log.Debugf("saver: %s", st.Line())
 	}

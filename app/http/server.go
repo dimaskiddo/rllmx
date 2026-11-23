@@ -166,7 +166,7 @@ func (s *Server) Run() error {
 	s.srv = srv
 	s.mu.Unlock()
 
-	s.log.Infof("listening on %s", ln.Addr())
+	s.log.Infof("startup listen=%s", ln.Addr())
 	if s.ready != nil && !s.awaitData(ln) {
 		return nil
 	}

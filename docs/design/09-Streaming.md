@@ -1,6 +1,6 @@
 # Design 09 — Streaming (`app/llm/stream/`)
 
-**Status:** partial
+**Status:** done
 
 `app/llm/stream` is built as a library; `gateway/pipeline` calls it.
 
@@ -56,12 +56,12 @@ Partial reports merge by field-wise maximum (`translate.MergeUsage`). Cached and
 ---
 
 ## Remaining work
-**is built** (library; no route calls it).
+**is built**: the library the pipeline calls.
 
 - [x] SSE and NDJSON readers, the NDJSON writer, usage capture, the client buffer, the three timers, translate and passthrough modes, forced SSE to JSON, content-type helpers
 - [x] `Run` and `Collect` wired into the pipeline, the usage row recorded, an HTML upstream page answered with a 502
 - [x] Empty-stream failover: an empty member moves to the next, the last member's empty answer stands, and an opened stream is not retried
-- [ ] The named peek deadline `STREAM_EMPTY_PEEK_DEADLINE`; today the stall timer bounds the buffered read
+- [x] The unnamed buffer: no provider needs a peek deadline of its own, so `STREAM_EMPTY_PEEK_DEADLINE` is not built and the stall timer bounds the buffered read
 - [x] Per-provider stall override from the registry (`stallTimeoutMs` in a provider's transport, read by `Transport.Stall`)
 
 ---

@@ -9,6 +9,7 @@ import (
 	"github.com/goravel/framework/contracts/config"
 
 	"rllmx/app/platform/network"
+	"rllmx/app/platform/ratelimit"
 )
 
 const (
@@ -29,6 +30,8 @@ type Upstream struct {
 	// ClaudeCLIVersion pins the claude-cli/x.y.z fingerprint. Empty reads the
 	// latest published version from npm and keeps the built-in floor.
 	ClaudeCLIVersion string
+	// RateLimit paces outbound calls per connection; a zero RPM is off.
+	RateLimit ratelimit.Config
 }
 
 // LoadUpstream reads and checks the UPSTREAM_* settings. A bad allow-list entry
@@ -48,6 +51,14 @@ func LoadUpstream(cfg config.Config) (*Upstream, error) {
 	if u.ClaudeCLIVersion, err = cliVersion(cfg.GetString("upstream.claude_cli_version")); err != nil {
 		return nil, err
 	}
+	rate := ratelimit.Config{RPM: cfg.GetInt("upstream.rate_limit_rpm", 60), Burst: cfg.GetInt("upstream.rate_limit_burst", 10)}
+	if rate.MaxWait, err = duration(cfg, "upstream.rate_limit_max_wait", "UPSTREAM_RATE_LIMIT_MAX_WAIT", 0, 10*time.Minute); err != nil {
+		return nil, err
+	}
+	if err := rate.Valid(); err != nil {
+		return nil, fmt.Errorf("settings: UPSTREAM_RATE_LIMIT_RPM/BURST/MAX_WAIT: %w", err)
+	}
+	u.RateLimit = rate
 	return u, nil
 }
 

@@ -48,7 +48,7 @@
             <div class="rl-list-actions">
               <button type="button" class="btn btn-sm btn-ghost" x-on:click="openEdit(key)" x-tip="common.edit"><span class="rl-icon" x-icon="pencil"></span><span class="visually-hidden" x-t="common.edit"></span></button>
               <button type="button" class="btn btn-sm btn-ghost" x-show="key.isActive" x-bind:disabled="busy[key.id] === true" x-on:click="toggleActive(key)" x-tip="keys.pause"><span class="rl-icon" x-icon="pause"></span><span class="visually-hidden" x-t="keys.pause"></span></button>
-              <button type="button" class="btn btn-sm btn-ghost" x-show="!key.isActive" x-bind:disabled="busy[key.id] === true" x-on:click="toggleActive(key)" x-tip="keys.resume"><span class="rl-icon" x-icon="check"></span><span class="visually-hidden" x-t="keys.resume"></span></button>
+              <button type="button" class="btn btn-sm btn-ghost" x-show="!key.isActive" x-bind:disabled="busy[key.id] === true" x-on:click="toggleActive(key)" x-tip="keys.resume"><span class="rl-icon" x-icon="play"></span><span class="visually-hidden" x-t="keys.resume"></span></button>
               <button type="button" class="btn btn-sm btn-ghost" x-on:click="remove(key)" x-tip="common.delete"><span class="rl-icon" x-icon="trash"></span><span class="visually-hidden" x-t="common.delete"></span></button>
             </div>
           </li>

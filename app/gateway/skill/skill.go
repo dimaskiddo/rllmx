@@ -77,6 +77,20 @@ func (s Stats) Line() string {
 	return strings.Join(parts, " ")
 }
 
+// Names is the compact list the usage row keeps: the skills this turn carried,
+// then the ones an earlier turn already carried.
+func (s Stats) Names() string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(s.Skills)+len(s.Reminded))
+	for _, id := range append(append([]string{}, s.Skills...), s.Reminded...) {
+		if id != "" && !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	return strings.Join(out, ",")
+}
+
 // Apply injects every enabled skill whose hook is a system prompt: an "always"
 // skill on every request, a "smart" skill when its own topic scores. Nothing
 // here returns an error; a nil registry or an unknown skill leaves the request

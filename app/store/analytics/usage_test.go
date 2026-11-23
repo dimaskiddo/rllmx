@@ -172,3 +172,23 @@ func TestARowIsPendingBeforeTheFlusherCanSeeIt(t *testing.T) {
 		t.Fatalf("a flushed queue still counts against the key: %+v", got)
 	}
 }
+
+func TestTheFeaturesTravelWithTheRow(t *testing.T) {
+	s := newStore(t)
+	w := s.NewWriter(WriterOptions{})
+	r := sameKey(rec(0, t0))
+	r.Savers, r.Skills = "html,headroom", "ponytail"
+	if !w.Enqueue(r) {
+		t.Fatal("enqueue refused")
+	}
+	if err := w.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := s.Recent(context.Background(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Savers != "html,headroom" || rows[0].Skills != "ponytail" {
+		t.Fatalf("%+v", rows)
+	}
+}

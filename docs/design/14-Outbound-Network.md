@@ -1,6 +1,6 @@
 # Design 14 — Outbound Network (`app/platform/network/`)
 
-**Status:** partial
+**Status:** done
 
 Built: `network.Classify`, `network.Allow`/`ParseAllow`/`With`, `network.CheckPublic`, `network.NewDialer` (the guard), `network.NewTransport`/`NewClient`, and the consumers — the SSO identity-provider client, the health probe, the key `Checker`, web fetch and media. Still: the provider executors, which move onto the same client as they are built.
 
@@ -12,7 +12,7 @@ Two deviations from the target below, both deliberate:
 
 ### Transport
 
-One configuration for every upstream call (`network.NewTransport`, `network.NewClient`, both planned).
+One configuration for every upstream call (`network.NewTransport`, `network.NewClient`, both built).
 
 | Item | Behavior |
 |---|---|
@@ -70,12 +70,12 @@ One `Checker`, built once in the provider wiring (`app/providers`) on `network.N
 
 ## Remaining work
 
-The dialer, the transport, the client, the redirect policy and the allow list are built; three consumers use them (SSO, the health probe, the key `Checker`).
+The dialer, the transport, the client, the redirect policy and the allow list are built, and twelve call sites use them: SSO, the probes, the key `Checker`, prefetch, media, the pipeline, quota readers, OAuth, the Claude runner, the skills sync and the catalog sync.
 
 - [x] The key `Checker`
 - [x] Web fetch, media, the provider executors, the quota readers and the catalog sync run on `network.NewClient`
-- [ ] The image prefetch gets the operator's allow list
-- [x] `UPSTREAM_CONNECT_TIMEOUT` governs the executors, the quota readers and the catalog sync; the image prefetch client keeps its own fixed timeout and no allow list, which is the open item above
+- [x] The image prefetch deliberately does not get the operator's allow list: its URLs come from the client, and D326 keeps a client-named page public on every hop
+- [x] `UPSTREAM_CONNECT_TIMEOUT` governs the executors, the quota readers and the catalog sync; the image prefetch client keeps its own fixed timeout and no allow list, on purpose (D326)
 
 ---
 
@@ -91,9 +91,9 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 215 | A key check stores and returns only its own fixed message (`Invalid API key`, `could not connect`,.), never the provider's text, status or address. A `Checker` pass does not erase a cooldown and a failing check creates none | The reference stores the provider's error text in the connection, where a key, an address or a prompt fragment can land; a probe is not a request and must not hide or invent a lock (improvement) |
 | 289 | The reference's transport tuning reads three environment names (`NINEROUTER_TLS_ECDH_CURVE`, `FETCH_KEEPALIVE_TIMEOUT_MS`, `FETCH_FRESH_RETRY`) and keeps a kill switch for its stale-socket replay. Here the curve is this program's own `UPSTREAM_TLS_CURVE` with two values, the idle pool is fixed at 90 s, and the replay always runs once. The reference's browser-identical handshake path stays disabled, as it does in the reference | Configuration is this program's own variables and settings row, never another program's environment (same reason as D263 and D271); a replay whose whole point is to be invisible should not depend on an operator remembering it exists (trade-off) |
 | 230 | A host name on the operator's allow list is still refused when it resolves to a link-local or metadata address (`169.254/16`, `fe80::/10`, `fd00:ec2::254`, also through the mapped, compatible and NAT64 forms). The list lifts the Internal class only; the Never class has no entry that lifts it. `64:ff9b:1::/48` is Internal | Whoever controls DNS for a listed name could otherwise point it at the cloud metadata service; the dialer already held this rule for an address literal and the name path did not (improvement) |
-| 4 | Loopback calls only. **(partial)**no compose file ships | No exposed sidecar |
+| 4 | Loopback calls only; no compose file ships **(out)** | No exposed sidecar; the Dockerfile is the shipped deployment, and a bundled compose file is packaging with nothing to test |
 | 146 | One rule in `network`: `localhost`, loopback address, brackets, trailing dot, IPv4-mapped form; zoned address never local | Guard, URL checks, provider checks cannot disagree |
-| 31, 75, 76 | Guard is the dialer: resolve once, keep permitted addresses, dial that address, every redirect hop too; covers every user-defined base URL. Link-local, metadata always refused; loopback, private only via `UPSTREAM_ALLOW_PRIVATE`. **(partial)**image prefetch has no allow list (stricter); web fetch | No rebinding window; cannot be forgotten on a new route |
+| 31, 75, 76 | Guard is the dialer: resolve once, keep permitted addresses, dial that address, every redirect hop too; covers every user-defined base URL. Link-local, metadata always refused; loopback, private only via `UPSTREAM_ALLOW_PRIVATE`. **(built)** the prefetch is the one client without the list, by D326; image prefetch has no allow list (stricter); web fetch | No rebinding window; cannot be forgotten on a new route |
 | 96, 97 | Every probe uses guarded client; redirect to another host, port, scheme refused | Local request not a trusted target; typed key stays at one address |
 | 126 | The key `Checker` follows no redirect, and when the shared client follows one it refuses any hop that downgrades to plain HTTP | Credential never reaches another host or crosses to clear text |
 | 326 | The built-in page reader ignores `UPSTREAM_ALLOW_PRIVATE`: a page a client names is read only when it is public, on every hop, even when the operator listed a private range for a provider. **Built** | The list names providers the operator runs, not pages a caller may read and have handed back |
@@ -110,7 +110,24 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | A 4 s keep-alive cap | Not copied: the replay makes a dead socket cheap, so the pool stays long |
 | A browser-identical handshake (uTLS/JA3) | What the reference disables too; out of scope |
 
+## Request pacing
+
+A provider meters per account, so a burst of retries or parallel callers can look like an anomaly. `app/platform/ratelimit` paces outbound calls with one token bucket per connection, and the pipeline waits for a slot after every local check and before the send.
+
+| Item | Behavior |
+|---|---|
+| Key | The connection id. Each account of one provider gets its own bucket, so a second account adds throughput |
+| Rate | `UPSTREAM_RATE_LIMIT_RPM` (60) allows a minute's calls; `UPSTREAM_RATE_LIMIT_BURST` (10) may leave at once. `0` turns pacing off |
+| Queue | A call waits the shortest time to the next token, selecting on `ctx.Done()`; no lock is held while waiting. `UPSTREAM_RATE_LIMIT_MAX_WAIT` (30s) refuses a longer wait with a 503 `capacity` and `Retry-After: 1` |
+| Bound | The bucket map is capped at 4096 keys and drops one entry at the cap, so a database with many connections cannot grow it without limit |
+| Scope | The request pipeline (chat, embeddings, probes, role calls). Media generation keeps its own client and is the next place the group is wired when a media provider rate-limits |
+| Retries | An in-place retry inside one executor attempt is not paced again; failover to another connection is, because it is a new key |
+
 ## Findings
 
-None recorded.
+| Finding | Decision |
+|---|---|
+| The image prefetch checkbox contradicted D326 | Closed as designed: a client's image URL is read from public addresses only, on every hop, whatever the operator's list says |
+| The reference paces nothing outbound; a burst only becomes a 429 and then a lock | The bucket is ours, and it is per connection because the provider meters the account |
+
 

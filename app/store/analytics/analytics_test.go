@@ -83,7 +83,7 @@ func TestReopenKeepsDataAndAutoVacuum(t *testing.T) {
 var allowedStrings = map[string]bool{
 	"RequestID": true, "APIKeyID": true, "APIKeyName": true, "ConnectionID": true,
 	"Provider": true, "Model": true, "Endpoint": true, "SourceFormat": true,
-	"ErrorClass": true, "ComboName": true,
+	"ErrorClass": true, "ComboName": true, "Savers": true, "Skills": true,
 }
 
 func TestRecordHasNoFreeTextFields(t *testing.T) {

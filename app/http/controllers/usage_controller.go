@@ -634,10 +634,19 @@ func usageLogLine(r analytics.Request, account string, loc *time.Location) strin
 	if r.Status >= 400 {
 		status = strconv.FormatInt(r.Status, 10)
 	}
-	return fmt.Sprintf("%s | %s | %s | %s | %d | %d | %s",
+	line := fmt.Sprintf("%s | %s | %s | %s | %d | %d | %s",
 		r.Time.In(loc).Format("02-01-2006 15:04:05"),
 		usageField(r.Model), usageField(strings.ToUpper(r.Provider)), usageField(account),
 		r.Prompt, r.Completion, status)
+	// Two trailing fields, each present only when something acted, in the
+	// reference's order: the skills, then the token savers.
+	if r.Skills != "" {
+		line += " | " + usageField(r.Skills)
+	}
+	if r.Savers != "" {
+		line += " | " + usageField(r.Savers)
+	}
+	return line
 }
 
 func usageField(v string) string {

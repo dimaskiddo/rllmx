@@ -81,7 +81,7 @@ func (r *Reporter) Fail(ctx context.Context, in FailInput) (Outcome, error) {
 		return Outcome{}, err
 	}
 	if r.log != nil {
-		r.log.Infof("account: connection locked: provider=%s model=%s status=%d cooldown=%s", in.Provider, in.Model, in.Status, d.Cooldown)
+		r.log.Infof("account lock provider=%s model=%s conn=%s status=%d cooldown=%s", in.Provider, in.Model, in.ConnID, in.Status, d.Cooldown)
 	}
 	return Outcome{Fallback: true}, nil
 }

@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"fmt"
+	"net/http"
 	"time"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
@@ -24,6 +26,17 @@ func (m *AccessLog) Signature() string {
 	return "AccessLog"
 }
 
+// quiet reports whether a method's line belongs at DEBUG. A read, such as a
+// dashboard poll or a page load, is routine; a call that changes state is the
+// kind of event the log is kept for.
+func quiet(method string) bool {
+	switch method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return true
+	}
+	return false
+}
+
 // Handle logs the path, status, size and request id once the next handler returns.
 func (m *AccessLog) Handle(ctx contractshttp.Context) {
 	start := time.Now()
@@ -34,6 +47,12 @@ func (m *AccessLog) Handle(ctx contractshttp.Context) {
 	if o := ctx.Response().Origin(); o != nil {
 		status, size = o.Status(), max(o.Size(), 0)
 	}
-	m.Log.Infof("%s %s %d %dB %s %s", r.Method, text.CutRunes(text.StripControl(r.URL.Path), maxLoggedPath),
-		status, size, time.Since(start).Round(time.Microsecond), RequestIDFrom(ctx))
+	line := fmt.Sprintf("request id=%s method=%s path=%s status=%d bytes=%d dur=%s",
+		RequestIDFrom(ctx), r.Method, text.CutRunes(text.StripControl(r.URL.Path), maxLoggedPath),
+		status, size, time.Since(start).Round(time.Microsecond))
+	if quiet(r.Method) {
+		m.Log.Debugf("%s", line)
+		return
+	}
+	m.Log.Infof("%s", line)
 }

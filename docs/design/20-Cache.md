@@ -2,6 +2,8 @@
 
 **Status:** partial
 
+Still open: a breaker that skips a store that is down, and a measurement of how long a stopped Redis delays a call. Every other item is built and tested.
+
 `Cache` is the cache. `app/platform/cache` adds only what it lacks and defines no store or client: grouped, generational keys (`<group>:<generation>:<key>`, since the facade cannot purge a group), credential groups pinned to memory, a read-through `Load` that runs the loader once per key, and fail-open. It takes the facade as an argument, so a test passes a fake.
 
 | Store | Selected by | Notes |

@@ -173,7 +173,7 @@ func ddl(d dialect.Dialect) []string {
 		`"status" ` + big + ` NOT NULL DEFAULT 0`, text("errorClass"),
 		num("stream"), num("cached"), num("estimated"), num("promptTokens"), num("completionTokens"), num("cachedTokens"),
 		num("cacheWriteTokens"), num("reasoningTokens"), flt("cost"), num("latencyMs"), num("ttfbMs"),
-		text("comboName"), num("attempt"), `"importId" TEXT UNIQUE`,
+		text("comboName"), num("attempt"), text("savers"), text("skills"), `"importId" TEXT UNIQUE`,
 	}, ", ")
 	return []string{
 		`CREATE TABLE IF NOT EXISTS "requests" (` + requests + `)`,
@@ -191,6 +191,8 @@ func ddl(d dialect.Dialect) []string {
 // database gets them from the DDL.
 var addedColumns = []struct{ table, column string }{
 	{"requests", "estimated"},
+	{"requests", "savers"},
+	{"requests", "skills"},
 }
 
 // addMissingColumns plans first: when nothing is missing it writes nothing. A

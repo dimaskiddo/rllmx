@@ -626,9 +626,16 @@ dialog.rl-dialog h2 {
   min-width: 0;
 }
 
+/* Tabler gives every p a bottom margin, and inside a flex item it cannot
+   collapse out, so a row would be taller below than above. One rule for every
+   row keeps the gaps equal. */
+.rl-list-row > .rl-list-main > p {
+  margin-block: 0.5rem 0;
+}
+
 .rl-row-select {
   align-items: center;
-  padding-block: 0.5rem;
+  padding-block: 0.75rem;
 }
 
 .rl-list-row .form-check-input {

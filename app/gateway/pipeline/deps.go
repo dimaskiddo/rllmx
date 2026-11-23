@@ -107,6 +107,11 @@ type Catalog interface {
 	Known(ctx context.Context, provider string, conn repository.Connection, model string) catalog.Verdict
 }
 
+// Pacer waits for one connection's outbound allowance before a call leaves.
+type Pacer interface {
+	Wait(ctx context.Context, connID string) error
+}
+
 // Deps is everything a Pipeline needs. Overrides, Settings, Prefetch, Log and Now are optional.
 type Deps struct {
 	Resolver Resolver
@@ -128,6 +133,8 @@ type Deps struct {
 	Overrides Overrides
 	Settings  Settings
 	Prefetch  Prefetch
+	// Pacer queues a call until its connection may send; nil sends at once.
+	Pacer Pacer
 	// ResponseCache is the opt-in answer cache; nil is off.
 	ResponseCache *ResponseCache
 	// Saver is the Headroom client; nil leaves the sidecar saver off.

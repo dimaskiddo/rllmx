@@ -111,6 +111,7 @@ func (c *call) applySkills(ctx context.Context) {
 		return
 	}
 	st := skill.Apply(c.p.d.Skills, c.req, c.skillOptions(ctx))
+	c.skillStats = st
 	// Kept until the turn is answered: a turn that failed carried a prompt no
 	// model read, so a retry must carry it again in full.
 	c.sessionPending = append(c.sessionPending, st.Session...)

@@ -245,3 +245,13 @@ func TestTheECCRouterScoresItsOwnCatalog(t *testing.T) {
 		t.Fatal("the catalog router fired while off")
 	}
 }
+
+func TestNamesListsCarriedSkillsOnce(t *testing.T) {
+	st := Stats{Skills: []string{"ponytail"}, Reminded: []string{"ponytail", "caveman"}}
+	if got := st.Names(); got != "ponytail,caveman" {
+		t.Fatalf("Names = %q", got)
+	}
+	if got := (Stats{}).Names(); got != "" {
+		t.Fatalf("an idle skill set named %q", got)
+	}
+}

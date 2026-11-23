@@ -1,6 +1,6 @@
 # Design 12 — Health, Circuit Breaker & Probe (`app/gateway/health`, `app/gateway/probe`)
 
-**Status:** partial
+**Status:** done
 
 **Built:** the health table and the breaker (`app/gateway/health`), routing on the breaker (combo order), the model probe with its cache and its background runner (`app/gateway/probe`, `probeRunner`), the test and suggest routes, and the latency feed. `active-providers` stays in `design doc 16` with the usage routes.
 
@@ -38,7 +38,7 @@
 ---
 
 ## Remaining work
-**Health, the breaker, the probe and the live usage route are built. The later areas wait for their steps.**
+**Health, the breaker, the probe and the live usage route are built. Every area below is built; the auto plan's switch and its requests go through the same breaker and probe.**
 
 - [x] `app/gateway/health`: the health table, the breaker, latency and success rate
 - [x] Routing on the breaker: combo order

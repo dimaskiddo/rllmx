@@ -2,7 +2,7 @@
 
 **Status:** partial
 
-Built: `app/llm/routing` (the resolver, the 5 s snapshot and the suffix grammar below) and `app/gateway/combo` (policy, order, rotation, sticky choice), called by `app/gateway/pipeline`. Built: the connection, node and override routes in the Parity table below. `app/gateway` also holds the pipeline, the catalog, the conversation store, prefetch and account selection; the capacity adapter and the combo management routes are planned.
+Built: `app/llm/routing` (the resolver, the 5 s snapshot and the suffix grammar below) and `app/gateway/combo` (policy, order, rotation, sticky choice), called by `app/gateway/pipeline`. Built: the connection, node and override routes in the Parity table below. `app/gateway` also holds the pipeline, the catalog, the conversation store, prefetch and account selection; the per-capacity pool is out (D337); four provider routes remain open, named in the Parity table.
 
 ### Resolution (`Resolver.Resolve`, built)
 
@@ -83,8 +83,8 @@ sequenceDiagram
 | `/api/providers/{id}/overrides` | `app/http/controllers` | done (; D147; `builtinHeaders` empty until) |
 | `GET /v1/models`, `/v1/models/info`, `/v1/models/{id}`, `GET /v1beta/models` | `app/gateway/catalog`, `app/http/controllers` | done (`/v1/models` also carries `thinking_levels` for a reasoning model) |
 | `GET /api/tags` (Ollama's model list) | `app/gateway/catalog`, `app/http/controllers` | done (the caller's own catalog, so a restricted key sees its allow list) |
-| `/api/providers/{id}/test`, `/api/providers/validate` | `app/http/controllers` | partial (API-key, node and registry probes built; an OAuth account of a provider with a login is checked without a call to the provider (renew when due, then look for a held token); AWS, cookie, special probes and pasted tokens answer "test not supported yet" (D95-99, D215)) |
-| `/api/providers/{id}/models` | `app/http/controllers` | partial (nodes: the node's own `/models`; registry: embedded list plus `customModels`, minus `disabledModels`, no request; both Built; live catalog per OAuth provider) |
+| `/api/providers/{id}/test`, `/api/providers/validate` | `app/http/controllers` | partial, open: cookie-media probes (API-key, node and registry probes built; an OAuth account of a provider with a login is checked without a call to the provider (renew when due, then look for a held token); AWS, cookie, special probes and pasted tokens answer "test not supported yet" (D95-99, D215)) |
+| `/api/providers/{id}/models` | `app/http/controllers` | partial, open: the live catalog of an OAuth provider (nodes read the node's own `/models`; a registry answers its embedded list plus `customModels`, minus `disabledModels`, with no request) |
 | `/api/provider-nodes` (list, create), `/{id}` (update, delete) | `app/http/controllers` | done |
 | `/api/provider-nodes/validate` | `app/http/controllers` | done |
 | `/api/providers/client` (usage list, filters, totals) | `app/http/controllers` | done (only the connections a quota reading answers) |
@@ -93,7 +93,7 @@ sequenceDiagram
 | `/api/models/*` (alias, custom, disabled, availability, catalog-sync) | `app/http/controllers` | done (D352, D353, D357, D387); `PUT /api/models` is a scope cut (D359); the sync itself is `design doc 7` |
 | `/api/combos/*` (+ presets) | `app/http/controllers` | done (D356, D358) |
 | `/api/pricing` | `app/http/controllers` | done (D354, D355) |
-| `/api/translator/*` | `app/http/controllers` | partial (the console log read, clear and stream routes; the playground is planned) |
+| `/api/translator/*` | `app/http/controllers` | partial, open: the playground (the console log read, clear and stream routes are built) |
 | `/api/media-providers/tts/*/voices` | `app/http/controllers`, `app/gateway` | done |
 | Media model resolution (bare id, slash id, `provider/model`, per-kind) | `app/llm/upstream` media index | done |
 | A search or fetch provider named in the body (`provider`, else `model`), and a connection borrowed from another provider (`credentialFallback`) | `app/gateway/media`, the provider's media block | done |
@@ -103,7 +103,7 @@ sequenceDiagram
 ---
 
 ## Remaining work
-**Routing, the combos and their management routes are built, the capability overlay included; the capacity adapter is planned.**
+**Routing, the combos and their management routes are built, the capability overlay included. The per-capability capacity pool is out (D337).**
 
 - [x] `app/llm/routing`: model string to combo, alias, node or provider; `Resolver`, `Snapshot`, `Reserved` for node prefixes
 - [x] Registry loader and seed data for nine providers; the other ids arrive with their executor (`design doc 8`)
@@ -111,7 +111,7 @@ sequenceDiagram
 - [x] `passthroughModels` on the 23 providers the reference marks (CommandCode, the opencode family, kimchi, bedrock, zed, openrouter and the rest): the flag raises a provider's model listing; an id its list does not name already reached the executor, so chat behaviour is unchanged
 - [x] Combo expansion, sticky round-robin, per-combo strategies
 - [x] Empty-stream failover and the request-scoped 4xx combo advance
-- [ ] Capacity adapter pool
+- [x] Capacity adapter: the per-capability pool is out (D337)
 - [x] Provider-connection, provider-node and override routes
 - [x] The `Checker` and its four routes (`/test`, `/validate`, node `/validate`, `/models`)
 - [x] `/api/combos*` — CRUD, presets and the suggestion routes (`design doc 4`, D356, D358)

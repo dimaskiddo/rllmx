@@ -47,3 +47,16 @@ func TestCheckLoggingReadsTheStoredValue(t *testing.T) {
 		t.Fatal("terminal names no sink")
 	}
 }
+
+func TestALogLevelTypoStopsTheStart(t *testing.T) {
+	for _, ok := range []string{"debug", "info", "warning", "error", " INFO ", ""} {
+		if _, err := ParseLogLevel(ok); err != nil {
+			t.Errorf("%q was refused: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"warn", "trace", "verbose", "silent"} {
+		if _, err := ParseLogLevel(bad); err == nil {
+			t.Errorf("%q was accepted; the framework would read it as debug", bad)
+		}
+	}
+}

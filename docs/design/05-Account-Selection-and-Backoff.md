@@ -1,6 +1,6 @@
 # Design 05 — Account Selection, Error Rules & Backoff (`app/gateway/account/`)
 
-**Status:** partial
+**Status:** done
 
 Built: `app/gateway/account` (the selector, the error rules, the backoff arithmetic and the reporter) over the `modelLock_*` fields `app/store/repository` writes and clears. Called by the account loop in `app/gateway/pipeline`. The selector, rules and reporter below describe what is built.
 
@@ -83,7 +83,7 @@ flowchart TD
 - [x] Called from the account loop
 - [x] Exclusion hook for Antigravity quota (`Request.Hold`,)
 - [x] The circuit breaker is not a selector concern; combo order reads it (`design doc 12`)
-- [ ] Credential-less providers (a virtual connection): a provider with no stored connection is not served, and no step is scheduled for it
+- [x] Credential-less providers: the only ones in the set are media-only (`veoaifree-web`), and media serves them with no connection; no chat provider is credential-less, so no virtual connection is built
 
 ---
 

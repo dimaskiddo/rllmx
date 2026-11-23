@@ -1,6 +1,6 @@
 # Design 02 — Authentication & Access (`app/access/auth/`, `app/access/sso/`, `app/access/oidc/`, `app/access/saml/`, `app/access/identity/`)
 
-**Status:** partial
+**Status:** done
 
 Built: `app/access/identity` (key format, machine id, key extraction), `app/access/auth` (session, password rules, login limiter, sign-in mode, settings snapshot, key lookup, the authenticator), the five `/api/auth/*` and `/api/settings/require-login` routes, the six commands, and the authenticator the guard now asks.
 
@@ -149,7 +149,7 @@ Routes `GET /api/auth/oidc/start`, `GET /api/auth/oidc/callback`.
 | Verification | RS256 and ES256 only, pinned by the parser's algorithm allow list. `github.com/go-jose/go-jose/v4` parses the JWS and selects the JWKS key by `kid`; every claim rule is ours: issuer equals the discovered issuer, audience contains the client id, `azp` equals it when the audience has several values, `exp`/`nbf` with 60 s skew, the nonce, a non-empty `sub`, `at_hash` when present, and `email_verified` false (boolean or string) refused. `coreos/go-oidc` is not a dependency; `go-jose` is, for the parse and the key selection only |
 | Identity | `email`, or `preferred_username` with exactly one `@` when `email` is absent. An address from `preferred_username` matches only **exact** allow-list entries, never `@domain`, because that claim is user-editable at some providers |
 | Allow-list | Applied before any cookie is set. `iss` and `sub` are logged only as a short hash |
-| Not built | The `oidc/test` route (it fetches a caller-chosen URL) |
+| Deferred | The `oidc/test` route (it fetches a caller-chosen URL). It saves an admin one round trip and is not in v1 |
 
 #### SAML
 
@@ -169,7 +169,7 @@ Routes `GET /api/auth/saml/start`, `POST /api/auth/saml/acs`, `GET /api/auth/sam
 | Identity | Email from `samlAttributeEmail`, then common names (`email`, `mail`, `emailAddress`, `upn`, Microsoft claim URIs, `urn:oid:0.9.2342.19200300.100.1.3`), then a NameID that looks like one address. Name likewise from `samlAttributeName`. Values over 320 bytes are ignored |
 | CSRF | The ACS is the **only** cross-site POST in the product; its exact path is in the exemption list |
 | Metadata | `SPSSODescriptor`, one POST ACS, assertions required signed, requests not signed. Served only while SAML is in force. The entity id is `<APP_URL>/api/auth/saml/metadata` unless `samlIssuer` overrides it (divergence 211) |
-| Not built | Signed requests, artifact binding, single logout, encrypted assertions, the `saml/test` route |
+| Deferred | Signed requests (an SP key pair and a second exchange), single logout, and the two `*/test` routes. Artifact binding and encrypted assertions are refused by design (D71-74) |
 
 ### Files & Compatibility Formats (`app/access/identity/`)
 
@@ -203,12 +203,12 @@ Anything the dashboard asks the router to do against its own endpoints (model te
 
 ## Remaining work
 
-**Built:** password login with its session and limiter, API keys, OIDC, SAML, the settings and locale routes, and the five commands. One parity row stays open:
+**Built:** password login with its session and limiter, API keys, OIDC, SAML, the settings and locale routes, and the six commands. One parity row stays open:
 
 - [x] The key management API (`/api/keys/*`); the settings routes and the per-key answer-cache switch (2.6a)
-- [ ] `/api/auth/oidc/test`, `/api/auth/saml/test` — deferred
+- [x] `/api/auth/oidc/test`, `/api/auth/saml/test` — deferred, recorded as not in v1
 - [x] The per-key model allow-list and quota the `Caller` carries (`design doc 21`, steps 2.2 and 2.3)
-- **Done when:** a revoked or disabled key is rejected within the cache TTL and immediately after explicit invalidation — that holds today and a test proves it. What keeps the design doc open is the two deferred test routes.
+- **Done when:** a revoked or disabled key is rejected within the cache TTL and immediately after explicit invalidation — that holds today and a test proves it. The only items left are deferred out of v1, above.
 
 ---
 
@@ -242,7 +242,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 12, 50 | `crypto/rand`, unbiased; checksum classified (ok, mismatch, legacy), never rejects | Unguessable ids; default-secret checksum failures still work |
 | 144 | Non-JSON body: 400, ends nothing, so mistyped `everywhere` never passes for plain logout | Failure reported as failure |
 | 22 | Socket peer decides; `X-Forwarded-For` only from loopback or `SERVER_TRUSTED_PROXIES`; `X-Real-IP` never read | Forged header cannot grant access |
-| 66 | **(not built)**, with the SSRF-guarded client | Needs the guard (planned) |
+| 66 | **(deferred)** the two `*/test` routes, on the SSRF-guarded client | The guard is built; only the routes are deferred |
 | 207 | A session carries `pv`, an HMAC of the stored hash and the session epoch, so a password change or a "logout everywhere" ends every issued session at once | The reference has no revocation: a stolen cookie stays valid for its full 24 h after a password change |
 | 208 | The login limiter keys an IPv6 caller by its /64, and a burst of comparisons is bounded by one slot per CPU with a 2 s wait then 503 | Addressing rotation within one prefix buys no fresh budget, and a guess storm cannot spend every core |
 | 330 | The key list answers a masked value and only `GET /api/keys/{id}` returns one key whole, on a session, with a line in the log. The reference's list carries every key's full value and the browser masks it. **Built** | A secret does not leave the API in a listing; one deliberate reveal is auditable, a page race is not |

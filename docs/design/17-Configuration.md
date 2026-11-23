@@ -50,7 +50,7 @@ No code reads rows marked *planned* yet, so setting one in `.env` fails startup 
 | Response cache | `CACHE_RESPONSE_MAX_ENTRIES` (1000, 1 to 100000), `CACHE_RESPONSE_MAX_MB` (64, 1 to 4096): the in-process bound; ignored when `REDIS_HOST` is set |
 | Logging | `LOG_CHANNEL` (`single`; `daily` or `stack` also), `LOG_OUTPUT` (`both`; also `file` or `stdout`), `LOG_LEVEL` (info). The file, the formatter (`text` or `json`) and the retention days are keys of the channel in `config/logging.go` (`storage/logs/rllmx.log`), not variables. `stdout` writes the same line the file would carry to the standard output, behind the same redactor; an unknown value fails the start |
 | Streams | `STREAM_STALL_TIMEOUT` (360s, 5s to 1h), `STREAM_FIRST_CHUNK_TIMEOUT` (200s, 5s to 1h), `STREAM_USAGE_WAIT` (3s, 100ms to 30s; how long a finished turn waits for a late usage report), all read; `STREAM_EMPTY_PEEK_DEADLINE` (45s, 1s to 10m) (planned,) |
-| Upstream | `UPSTREAM_CONNECT_TIMEOUT` (60s, 1s to 10m), `UPSTREAM_ALLOW_PRIVATE` (empty: public targets only; host names, addresses or CIDRs; link-local and the cloud metadata addresses are refused even when listed), `UPSTREAM_TLS_CURVE` (`x25519` offers only that group, `default` offers the standard list; anything else fails the start), `UPSTREAM_CLAUDE_CLI_VERSION` (empty: the latest published Claude Code, read from npm every six hours, never below the build's floor; a value is `x.y.z` and turns the lookup off), built |
+| Upstream | `UPSTREAM_CONNECT_TIMEOUT` (60s, 1s to 10m), `UPSTREAM_ALLOW_PRIVATE` (empty: public targets only; host names, addresses or CIDRs; link-local and the cloud metadata addresses are refused even when listed), `UPSTREAM_TLS_CURVE` (`x25519` offers only that group, `default` offers the standard list; anything else fails the start), `UPSTREAM_CLAUDE_CLI_VERSION` (empty: the latest published Claude Code, read from npm every six hours, never below the build's floor; a value is `x.y.z` and turns the lookup off), and the outbound pace `UPSTREAM_RATE_LIMIT_RPM` (60; `0` off), `UPSTREAM_RATE_LIMIT_BURST` (10, at least 1) and `UPSTREAM_RATE_LIMIT_MAX_WAIT` (30s, `0` unbounded), built |
 | OAuth login | `OAUTH_CALLBACK_HOST` (127.0.0.1): an IP address, the bind address of the fixed-port login listener |
 | OAuth refresh | `OAUTH_BACKGROUND_REFRESH` (true) and `OAUTH_REFRESH_DELAY` (1500ms, 0s to 1m, pause between accounts), built. `OAUTH_REFRESH_GOOGLE_DELAY` (12s, 0s to 1m, the pause after an account of a provider that sets `slowRefresh`, plus 0 to 4 s of jitter), built |
 | Media | `MEDIA_VIDEO_TIMEOUT` (120s, 5s to 10m; one video create or poll), built. `MEDIA_SEARXNG_URL` (empty; an http or https address with a host), built |
@@ -118,10 +118,10 @@ The status column is the v1 target, not the build state: behavior lands later. U
 | `AUTH_COOKIE_SECURE` | `AUTH_COOKIE_SECURE` | as is |
 | `STRICT_PRODUCTION_GUARD` (extended) | `AUTH_REFUSE_DEFAULT_PASSWORD` | name says what `true` does |
 | `LOG_LEVEL` | `LOG_LEVEL` | as is |
-| `ENABLE_TRANSLATOR` | `TRANSLATOR_ENABLED` | planned, step |
+| `ENABLE_TRANSLATOR` | `TRANSLATOR_ENABLED` | planned with the translator playground (design doc 4) |
 | `STREAM_STALL_TIMEOUT_MS` | `STREAM_STALL_TIMEOUT` | Go duration (`360s`), not milliseconds |
 | `STREAM_FIRST_CHUNK_TIMEOUT_MS` | `STREAM_FIRST_CHUNK_TIMEOUT` | duration |
-| `EMPTY_PEEK_DEADLINE_MS` | `STREAM_EMPTY_PEEK_DEADLINE` | duration |
+| `EMPTY_PEEK_DEADLINE_MS` | `STREAM_EMPTY_PEEK_DEADLINE` | not built: no provider needs its own peek deadline (design doc 9) |
 | `FETCH_CONNECT_TIMEOUT_MS` | `UPSTREAM_CONNECT_TIMEOUT` | duration |
 | `NINEROUTER_TLS_ECDH_CURVE` | `UPSTREAM_TLS_CURVE` | same intent; this program's own name and only two values |
 | `CLAUDE_CLI_VERSION` | `UPSTREAM_CLAUDE_CLI_VERSION` | same intent; the group names the outbound identity it changes |
@@ -138,7 +138,7 @@ The status column is the v1 target, not the build state: behavior lands later. U
 | `AZURE_ENDPOINT`, `AZURE_DEPLOYMENT`, `AZURE_API_VERSION`, `AZURE_ORGANIZATION` | `PROVIDER_AZURE_*` | planned, |
 | `KIMI_OAUTH_CLIENT_ID`, `KIMI_CODING_OAUTH_CLIENT_ID` | `OAUTH_CLIENT_ID_KIMI`, `OAUTH_CLIENT_ID_KIMI_CODING` | |
 | `MIMO_PLATFORM_URL`, `COMMAND_CODE_API_BASE_URL` | `PROVIDER_MIMO_PLATFORM_URL`, `PROVIDER_COMMANDCODE_BASE_URL` | planned, |
-| OAuth client ids and secrets hardcoded in `open-sse/providers/registry/*.js`, `shared.js`, `services/nous.js` | `OAUTH_CLIENT_ID_<PROVIDER>` and `OAUTH_CLIENT_SECRET_<PROVIDER>` (18 variables, listed in `.env.example`) | diverged: configuration, not code |
+| OAuth client ids and secrets hardcoded in `open-sse/providers/registry/*.js`, `shared.js`, `services/nous.js` | `OAUTH_CLIENT_ID_<PROVIDER>` and `OAUTH_CLIENT_SECRET_<PROVIDER>` (16 variables read, listed in `.env.example`) | diverged: configuration, not code |
 
 ---
 ### 2. Not Read

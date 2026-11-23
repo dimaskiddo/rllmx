@@ -1,6 +1,6 @@
 # Design 19 — Go Interfaces
 
-**Status:** partial
+**Status:** done
 
 | Type | Responsibility |
 |---|---|
@@ -24,7 +24,7 @@
 | `network.Allow`, `network.NewGuard` (`NewDialer`), `network.NewClient` | Operator allow list, the SSRF dialer guard and the guarded client every outbound call uses |
 | `Checker` (`app/http/controllers`) | Key and model-list probes with fixed outcomes. The package exists (`health`, `version`, `init`, `auth` controllers); built; it holds the guarded client and returns one fixed outcome per check |
 
-A row naming a package that does not exist yet is a target shape for a later step.
+Every package named here exists; a new one is added with its interface.
 
 | Group | Packages |
 |---|---|
@@ -34,17 +34,17 @@ A row naming a package that does not exist yet is a target shape for a later ste
 | Built | `skill.Registry`, `skill.Apply`, `skill.ClassifyLocal`, `skill.ClassifyECC`, `skill.SyncECC`, `skill.MatchRules`, `skill.Create/Update/Delete`, `conversation.SkillSessions` (`app/gateway/skill`: manifests, both TF-IDF routers, the injector, config fields, declarative rules, the Studio and the catalog sync, all fail open; the session table in `app/gateway/conversation`) |
 | Built | `plan.Read`, `plan.Decide`, `plan.Inject`, `plan.Combos` (`app/gateway/plan`: the auto plan classifier, the architect prompt, the plan turn and the combo choice, no I/O; `pipeline.Input.Internal` marks the router's own calls, and `routing.Resolver.ComboList` is the ordered list the picker reads) |
 | Built | `git.Gate.Clone`, `git.Gate.Download`, `git.Gate.Fetch` (`app/git`: the one process launcher, allowlisted arguments and a minimal environment) |
-| Planned | `health.Tracker` (record outcomes, report breaker state; built, `app/gateway/health`) |
+| Built | `health.Tracker` (record outcomes, report breaker state; `app/gateway/health`) |
 
 ---
 
 ## Remaining work
 
-A row naming a package that does not exist is a target shape, delivered by that package's design doc. Nothing is built here directly: the interfaces land with the code that implements them.
+Nothing is built here directly: an interface lands with the code that implements it. None is outstanding.
 
 ---
 
 ## Findings
 
-Only the interfaces for built packages exist. The rest are target shapes, marked per row.
+Every row is built: an interface exists only where its package does, so there are no target shapes left.
 

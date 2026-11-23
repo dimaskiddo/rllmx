@@ -37,7 +37,7 @@ Scoring is TF-IDF over lower-cased, stemmed words. A score is `min(1, dot x 1.8 
 
 The enabled switch is `<id>Enabled`, then the manifest's `legacy_enabled_key`, then `default_enabled`. The mode is `<id>RoutingMode`, then the manifest's `routing_mode`, then `smart`. Both live in the settings row, so a toggle never rewrites an imported file (divergence 401).
 
-Matched skills are not stored with the usage row (metadata only).
+The matched skills are stored on the usage row as ids only (`skills`), never their prompt text, so a served request says which skills were active (design doc 16).
 
 ### Catalog Sync (`skills:sync`, `/api/skills/sync`)
 

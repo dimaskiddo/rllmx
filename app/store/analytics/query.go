@@ -46,6 +46,8 @@ type Request struct {
 	Cached       int64
 	Status       int64
 	ErrorClass   string
+	Savers       string
+	Skills       string
 }
 
 const (
@@ -276,9 +278,11 @@ func (s *Store) recent(ctx context.Context, limit int, where string) ([]Request,
 		Cached       int64  `db:"cachedTokens"`
 		Status       int64  `db:"status"`
 		ErrorClass   string `db:"errorClass"`
+		Savers       string `db:"savers"`
+		Skills       string `db:"skills"`
 	}
 	err := s.db.WithContext(ctx).Select(&rows, s.q(`SELECT "ts","provider","model","connectionId","promptTokens",`+
-		`"completionTokens","cachedTokens","status","errorClass" FROM "requests"`+where+` ORDER BY "id" DESC LIMIT ?`), limit)
+		`"completionTokens","cachedTokens","status","errorClass","savers","skills" FROM "requests"`+where+` ORDER BY "id" DESC LIMIT ?`), limit)
 	if err != nil {
 		return nil, err
 	}
@@ -287,6 +291,7 @@ func (s *Store) recent(ctx context.Context, limit int, where string) ([]Request,
 		out = append(out, Request{
 			Time: time.UnixMilli(r.TS).UTC(), Provider: r.Provider, Model: r.Model, ConnectionID: r.ConnectionID,
 			Prompt: r.Prompt, Completion: r.Completion, Cached: r.Cached, Status: r.Status, ErrorClass: r.ErrorClass,
+			Savers: r.Savers, Skills: r.Skills,
 		})
 	}
 	return out, nil

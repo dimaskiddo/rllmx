@@ -214,7 +214,7 @@ func (w *Writer) flush(batch []row) {
 	w.flushed.Add(1)
 }
 
-const insertSQL = `INSERT INTO "requests"("ts","requestId","apiKeyId","apiKeyName","connectionId","provider","model","endpoint","sourceFormat","status","errorClass","stream","cached","estimated","promptTokens","completionTokens","cachedTokens","cacheWriteTokens","reasoningTokens","cost","latencyMs","ttfbMs","comboName","attempt","importId") VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+const insertSQL = `INSERT INTO "requests"("ts","requestId","apiKeyId","apiKeyName","connectionId","provider","model","endpoint","sourceFormat","status","errorClass","stream","cached","estimated","promptTokens","completionTokens","cachedTokens","cacheWriteTokens","reasoningTokens","cost","latencyMs","ttfbMs","comboName","attempt","savers","skills","importId") VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
 
 func rowArgs(r row) []any {
 	var imp any
@@ -225,7 +225,7 @@ func rowArgs(r row) []any {
 		r.Provider, r.Model, r.Endpoint, r.SourceFormat, int64(r.Status), r.ErrorClass,
 		dialect.BoolInt(r.Stream), dialect.BoolInt(r.Cached), dialect.BoolInt(r.Estimated),
 		r.PromptTokens, r.CompletionTokens, r.CachedTokens, r.CacheWriteTokens, r.ReasoningTokens, r.Cost,
-		r.LatencyMs, r.TTFBMs, r.ComboName, int64(r.Attempt), imp}
+		r.LatencyMs, r.TTFBMs, r.ComboName, int64(r.Attempt), r.Savers, r.Skills, imp}
 }
 
 // insert writes the rows, their rollups and the lifetime counter in one

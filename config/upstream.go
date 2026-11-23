@@ -18,6 +18,12 @@ func init() {
 		// default for the standard list. One group changes the ClientHello enough
 		// for a network that resets the standard offer.
 		"tls_curve": config.Env("UPSTREAM_TLS_CURVE", "x25519"),
+		// Outbound pacing per connection: how many calls a minute one connection
+		// may make, how many may leave at once, and how long a call may queue
+		// before it is refused instead. Zero turns pacing off.
+		"rate_limit_rpm":      config.Env("UPSTREAM_RATE_LIMIT_RPM", 60),
+		"rate_limit_burst":    config.Env("UPSTREAM_RATE_LIMIT_BURST", 10),
+		"rate_limit_max_wait": config.Env("UPSTREAM_RATE_LIMIT_MAX_WAIT", "30s"),
 		// The claude-cli/x.y.z the Claude fingerprint advertises. Empty reads the
 		// latest published @anthropic-ai/claude-code from npm every six hours; a
 		// value pins it and turns the lookup off.

@@ -77,6 +77,7 @@ Status words: **built** (implemented and tested), **partial** (some behavior mis
 | Quota API (per-connection readings, `providers/client`, the two refill routes) | built; quota auto-ping planned |
 | Usage and quota pages | planned |
 | Provider pages (list, detail, every login flow, custom endpoints, models, header overrides) | built |
+| Outbound pacing per connection, so a burst is queued instead of reaching a provider as an anomaly | built |
 | Dashboard review so far: sign-in and reorder fixes, polling and secret handling, contrast and accessibility, provider aliases and icons | built |
 
 ---

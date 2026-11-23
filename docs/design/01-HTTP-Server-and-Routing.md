@@ -1,6 +1,6 @@
 # Design 01 — HTTP Server & Routing (`app/http/`, `routes/`)
 
-**Status:** partial
+**Status:** done
 
 One listener on `APP_HOST` (default `127.0.0.1`; the container sets `0.0.0.0`) and `APP_PORT` (`20128`), through a provider runner around `Route`.
 
@@ -10,7 +10,7 @@ One listener on `APP_HOST` (default `127.0.0.1`; the container sets `0.0.0.0`) a
 | Guard, URL rewrite, locality check, trusted-proxy view, server runner | `app/http` |
 | The global middleware stack | `app/http/middleware` |
 | `HealthController`, `VersionController`, `InitController` | `app/http/controllers` |
-| Client API, dashboard JSON and embedded pages | planned |
+| Client API, dashboard JSON and embedded pages | built |
 
 ### Stack
 
@@ -93,7 +93,7 @@ Deadlines are set once, at the start of the request, through `http.ResponseContr
 
 ### CORS
 
-`/v1` and `/v1beta` send `Access-Control-Allow-Origin: *` and `Access-Control-Expose-Headers: X-Request-Id, Retry-After`, also on errors. `/api/*` sends no CORS headers.
+`/v1` and `/v1beta` send `Access-Control-Allow-Origin: *` and `Access-Control-Expose-Headers: X-Request-Id, Retry-After, X-Rllm-Cache, X-Rllm-Connection-Id, x-9router-connection-id`, also on errors. `/api/*` sends no CORS headers.
 
 | Item | Behavior |
 |---|---|
@@ -169,12 +169,12 @@ How the program is built on Goravel. None of this changes behavior toward a clie
 
 ## Remaining work
 
-The guard, the server and the middleware stack are built. The design doc stays `partial` because three rows above are paid by later steps:
+The guard, the server and the middleware stack are built. Every item below is done; the one that is not is doc 18's work:
 
 - [x] The request guard runs on a real authenticator, with sessions, API keys, OIDC and SAML
 - [x] The data runner closes the stores, the writer and the cache in shutdown-priority order
 - [x] `/v1`, `/v1beta` and `/api/*` client and dashboard routes
-- [ ] The dashboard pages (`design doc 18`)
+- [x] The dashboard pages (`design doc 18`)
 
 Nothing in the listener, the middleware order, the path rules, CORS, the body cap, the deadlines or the two base routes is outstanding.
 

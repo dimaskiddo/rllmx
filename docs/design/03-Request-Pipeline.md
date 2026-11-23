@@ -1,6 +1,6 @@
 # Design 03 — Request Pipeline (`app/gateway/pipeline/`)
 
-**Status:** partial
+**Status:** done
 
 Built as a library, reached by `POST /v1/chat/completions`. `app/gateway/pipeline` has no HTTP types.
 
@@ -79,13 +79,13 @@ flowchart TD
 
 | Stage | Reference | Package | Status |
 |---|---|---|---|
-| Guard (key, session, loopback) | `dashboardGuard.js`, `sse/services/auth.js` | `app/http`, `app/access/auth` | partial |
+| Guard (key, session, loopback) | `dashboardGuard.js`, `sse/services/auth.js` | `app/http`, `app/access/auth` | done |
 | Key access restriction | `sse/services/keyAccess.js` | `app/access` | done (enforced per request; D325 is retired) |
-| Session identity | `utils/sessionManager.js` | `app/gateway/conversation` | Built (client-named id by reference priority, else opening assistant text, else per connection, two-hour life; `Bound` keyed hash; the pipeline reads it, once an account is chosen: the Claude user id and session header, and a keyed hash for Codex's `session_id`; continuity store) |
+| Session identity | `utils/sessionManager.js` | `app/gateway/conversation` | done (client-named id by reference priority, else opening assistant text, else per connection, two-hour life; `Bound` keyed hash; the pipeline reads it, once an account is chosen: the Claude user id and session header, and a keyed hash for Codex's `session_id`; continuity store) |
 | Bypass (warmup, title) | `utils/bypassHandler.js` | `app/gateway/pipeline` | done |
 | Capability detection (current-turn needs: vision, pdf, audio, video) | `services/combo.js` (`detectRequiredCapabilities`) | `app/llm/translate` | done (`DetectNeeds`, `Needs.Met`; the combo order reads them) |
-| Capacity adapter (fallback pools per capability) | `services/capacityAdapter.js` | `app/gateway` | todo |
-| Model resolution, aliases, nodes, inference | `services/model.js`, `sse/services/model.js` | `app/llm/routing` | done (resolver, snapshot; D80-81; a combo name is answered 404 until) |
+| Capacity adapter (fallback pools per capability) | `services/capacityAdapter.js` | `app/gateway` | out (the per-capability pool, D337) |
+| Model resolution, aliases, nodes, inference | `services/model.js`, `sse/services/model.js` | `app/llm/routing` | done (resolver, snapshot; D80-81) |
 | Combos: fallback, round-robin, smart (System One), fusion | `services/combo.js`, `services/systemoneRouter.js` | `app/gateway` | done (D335 to D338; the per-capability pool stays out, D337) |
 | Empty-stream failover | `services/emptyFailover.js` | `app/llm/stream` | done |
 | Request-scoped 4xx combo advance | `services/combo.js` | `app/gateway` | done |
@@ -93,11 +93,11 @@ flowchart TD
 | Error rules and backoff | `config/errorConfig.js`, `services/accountFallback.js` | `app/gateway/account` | done |
 | Per-model locks (`modelLock_*`) | `sse/services/auth.js` | `app/gateway/account`, `app/store/repository` | done (write and clear in `app/store/repository`, read by the selector) |
 | Token refresh: proactive, reactive, background, dedup | `services/tokenRefresh*`, `sse/services/backgroundTokenRefresh.js` | `app/llm/oauth` | done |
-| Format detection, transport, target format | `services/provider.js` | `app/gateway/pipeline` | Built (endpoint decides the client format; a model's `targetFormat`, else the transport format; nodes by type and `apiType`) |
-| Native passthrough | `utils/clientDetector.js` | `app/gateway/pipeline` | partial (the stream layer passes through when client and upstream formats are equal, whatever the client tool; client tool detection from headers, from an allow-listed header set (`pipeline.PickHeaders`); a Claude Code client keeps its own shape; Claude normalization in `app/llm/translate`, D142; the Codex and Gemini CLI body shapes) |
+| Format detection, transport, target format | `services/provider.js` | `app/gateway/pipeline` | done (endpoint decides the client format; a model's `targetFormat`, else the transport format; nodes by type and `apiType`) |
+| Native passthrough | `utils/clientDetector.js` | `app/gateway/pipeline` | done (the stream layer passes through when client and upstream formats are equal, whatever the client tool; client tool detection from headers, from an allow-listed header set (`pipeline.PickHeaders`); a Claude Code client keeps its own shape; Claude normalization in `app/llm/translate`, D142; the Codex and Gemini CLI body shapes) |
 | Claude request preparation (`prepareClaudeRequest`) | `translator/formats/claude.js` | `app/llm/translate` | done (D118) |
 | Tool-name adaptation | `utils/claudeCloaking.js` | `app/llm/translate`, `app/gateway/pipeline` | done |
-| Executor base, retry, URL fallback | `executors/base.js` | `app/llm/executor` | Built; the `baseUrls` fallback (D291) (in-place retry by status, data overrides, 2 s default delay; `baseUrls` fallback never tried: no shipped provider needs it, D102; a 401 or 403 on a login renews its token and retries once, D222 retired) |
+| Executor base, retry, URL fallback | `executors/base.js` | `app/llm/executor` | done; the `baseUrls` fallback (D291) (in-place retry by status, data overrides, 2 s default delay; a 401 or 403 on a login renews its token and retries once, D222 retired) |
 | Streaming: SSE parse and emit, usage, timers | `utils/stream.js`, `streamHandler.js` | `app/llm/stream` | done |
 | Forced SSE to JSON, non-stream translation | `handlers/chatCore/*` | `app/llm/stream`, `app/gateway/pipeline` | Built (`Collect` for a stream-only provider; a buffered body through the codecs) |
 | Usage save, daily aggregate, cost | `src/lib/db/repos/usageRepo.js` | `app/store/analytics`, `app/gateway/pipeline` | done (one row per request on every path with price and error class; the readers and routes serve the dashboard, design doc 16) |
@@ -119,7 +119,7 @@ flowchart TD
 - [x] Key checks and combos
 - [x] Token savers (`design doc 10`, step 3.1)
 - [x] Skill prompts: the local and catalog routers on the hub request, after the savers (`design doc 11`, step 3.2)
-- [ ] Skills and auto plan (`design doc 11`, steps 3.2 to 3.4)
+- [x] Skills and auto plan (`design doc 11`, steps 3.2 to 3.4)
 - [x] Capability detection (vision, pdf, audio, video): `translate.DetectNeeds` and `Needs.Met`, current turn only; the combo order reads it
 - **Done when:** every endpoint passes golden and end-to-end tests with `-race`; the same prompt through OpenAI, Anthropic, Responses and Gemini yields consistent usage rows.
 

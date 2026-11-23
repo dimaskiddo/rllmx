@@ -982,3 +982,15 @@ func TestEveryBudgetUnitStartsWithACapital(t *testing.T) {
 		}
 	}
 }
+
+// A paragraph's default bottom margin cannot collapse out of a flex row, so
+// every row would be taller below than above without this rule.
+func TestListRowsShareOneVerticalRhythm(t *testing.T) {
+	css := readWeb(t, "static/css/components.css")
+	if !regexp.MustCompile(`(?s)\.rl-list-row > \.rl-list-main > p \{[^}]*margin-block: 0\.5rem 0;`).MatchString(css) {
+		t.Error("a row's paragraphs keep Tabler's bottom margin, so the rows are unevenly spaced")
+	}
+	if !regexp.MustCompile(`\.rl-row-select \{[^}]*padding-block: 0\.75rem`).MatchString(css) {
+		t.Error("the select-all row has a different padding from the rows under it")
+	}
+}

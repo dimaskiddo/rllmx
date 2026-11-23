@@ -12,6 +12,7 @@ import (
 
 	"rllmx/app/access/identity"
 	"rllmx/app/gateway/conversation"
+	"rllmx/app/gateway/saver"
 	"rllmx/app/gateway/skill"
 	"rllmx/app/llm/routing"
 	"rllmx/app/llm/stream"
@@ -168,6 +169,9 @@ type call struct {
 	attempt      int
 	attemptStart time.Time
 	errClass     string
+	saverStats   saver.Stats
+	skillStats   skill.Stats
+
 	// rowStatus replaces the response status in the row when they differ: a
 	// stream that broke after its 200 was sent.
 	rowStatus int

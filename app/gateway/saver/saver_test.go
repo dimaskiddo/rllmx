@@ -173,3 +173,13 @@ func TestTheSmartTopicsDecideAsTheyAlwaysDid(t *testing.T) {
 		}
 	}
 }
+
+func TestNamesListsTheSaversThatActed(t *testing.T) {
+	st := Stats{Saved: 12, Filters: []string{"html"}, Prompts: []string{"caveman"}, Headroom: true}
+	if got := st.Names(); got != "html,headroom,caveman" {
+		t.Fatalf("Names = %q", got)
+	}
+	if got := (Stats{}).Names(); got != "" {
+		t.Fatalf("an idle saver named %q", got)
+	}
+}

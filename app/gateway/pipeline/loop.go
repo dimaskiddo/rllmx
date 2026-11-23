@@ -84,6 +84,21 @@ func (c *call) serveFail(ctx context.Context) (Output, *accountFail) {
 		if c.p.d.Catalog != nil && c.p.d.Catalog.Known(ctx, c.dest.provider, sel.Conn, c.dest.model) == catalog.Unknown {
 			return c.fail(http.StatusBadRequest, "invalid_request", "Model not found"), &accountFail{status: http.StatusBadRequest, class: "invalid_request"}
 		}
+		// Pacing comes after every local check and before the send, so a request
+		// that will not go out never takes a slot in the queue.
+		if c.p.d.Pacer != nil {
+			if err := c.p.d.Pacer.Wait(ctx, sel.Conn.ID); err != nil {
+				if ctx.Err() != nil {
+					return c.closed(), nil
+				}
+				if c.p.d.Log != nil {
+					c.p.d.Log.Warningf("pipeline: %v", err)
+				}
+				out := c.fail(http.StatusServiceUnavailable, "capacity", "["+c.dest.provider+"/"+c.dest.model+"] No capacity right now")
+				out.Header.Set("Retry-After", "1")
+				return out, nil
+			}
+		}
 		out, f := c.attempted(ctx, sel.Conn)
 		if f == nil {
 			return out, nil

@@ -23,6 +23,7 @@ import (
 	"rllmx/app/llm/zed"
 	"rllmx/app/platform/cache"
 	"rllmx/app/platform/network"
+	"rllmx/app/platform/ratelimit"
 	"rllmx/app/platform/settings"
 	"rllmx/app/protocol/cosy"
 	"rllmx/app/store/repository"
@@ -100,6 +101,7 @@ func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.P
 		Overrides:     headerOverrides{settings: settingsRead},
 		Settings:      settingsRead,
 		Prefetch:      prefetch.New(),
+		Pacer:         ratelimit.NewGroup(h.Upstream.RateLimit),
 		ResponseCache: responseCache(app, store),
 		Saver:         saverClient(h),
 		SaverURL:      saverURL(h),

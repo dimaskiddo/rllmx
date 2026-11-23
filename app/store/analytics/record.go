@@ -37,7 +37,10 @@ type Record struct {
 	LatencyMs        int64
 	TTFBMs           int64
 	ComboName        string
-	Attempt          int
+	// Savers and Skills name what changed the request, never its text.
+	Savers  string
+	Skills  string
+	Attempt int
 }
 
 // row is a Record on its way into the database; importID is set only by the
@@ -52,6 +55,7 @@ const (
 	maxModel    = 128
 	maxEndpoint = 256
 	maxID       = 128
+	maxFeatures = 256
 )
 
 var errorClasses = map[string]bool{
@@ -93,6 +97,8 @@ func sanitize(r Record) Record {
 	r.Provider = clean(r.Provider, maxID)
 	r.SourceFormat = clean(r.SourceFormat, maxID)
 	r.ComboName = clean(r.ComboName, maxID)
+	r.Savers = clean(r.Savers, maxFeatures)
+	r.Skills = clean(r.Skills, maxFeatures)
 	switch {
 	case r.ErrorClass == "" && r.Status >= 400:
 		r.ErrorClass = "unknown"

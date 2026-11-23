@@ -62,6 +62,7 @@ DDL follows the reference (`src/lib/db/schema.js`, pinned in `PARITY.md`). Every
 | Table | What we do |
 |---|---|
 | `usageHistory`, `usageDaily`, `requestDetails` | Never created, never written; `db:import-analytics` reads them, `--drop-old` removes them |
+| `requests` feature columns | `savers` and `skills`, `TEXT`, added to the analytics store with the trace work. Additive: an older analytics file gains both on open, and the rows written before the change read back empty |
 | `proxyPools`, `proxyPoolFitness` | Never created; an existing table keeps its rows untouched |
 | Migration 5 | Belonged to `proxyPools` and stays retired, so later tables keep the names a database already recorded |
 
@@ -120,7 +121,7 @@ flowchart TD
 - A failed backup aborts. Rows with damaged JSON are left alone with a warning.
 - `pre-encryption-*` is never pruned; `schema-change-*` is pruned to 3.
 - PostgreSQL converts too, with a `pg_dump` warning. The read-only open used by commands never converts.
-- **Way back:** `rllmx artisan db:export-plain` (asks the dashboard password, SQLite only; the command planned, the `ExportPlain` store function is built) writes a `VACUUM INTO` copy with every secret opened and the `rllmCrypto` rows removed.
+- **Way back:** `rllmx artisan db:export-plain` (asks the dashboard password, SQLite only; the command is `rllmx artisan db:export-plain`, built on the `ExportPlain` store function) writes a `VACUUM INTO` copy with every secret opened and the `rllmCrypto` rows removed.
 - Old usage tables keep the plain keys they always had; `import-analytics --drop-old` removes them.
 
 ### Schema Handling
@@ -198,7 +199,7 @@ A failing job never blocks start. The main file never switches `auto_vacuum`.
 | `db:migrate` | Creates or updates the schema the server expects, using the same migrator and the same backup-before-change rule; seals what is still plain. Takes `rllmx.lock`, so it refuses while a server runs. The one command that may open the empty file a start-up leaves behind; a path with no file is refused, so a mistyped `DB_DATABASE` never makes a database |
 | `db:backup [--out dir]` | `0600` copy. PostgreSQL: the command prints a `pg_dump` hint and calls `os.Exit(2)` itself, because Artisan only ever exits 0 or 1 |
 | `db:import-analytics [--from file] [--drop-old]` | Copies the source with `VACUUM INTO`, imports in batches of 5,000 into the usage store, verifies the row count, the five token sums and the cost, and seeds the lifetime counter once. Takes `rllmx.lock`. `--drop-old` needs a terminal and a typed `DROP`, refuses when a row was unreadable, writes `db/backups/before-drop-*` and then drops `usageHistory`, `usageDaily` and `requestDetails` |
-| `db:import-config --from <file or dir> [--dry-run] [--yes] [--with-sso]` | Seeds an **empty** destination from a legacy source read through a private copy: connections (locks and error state removed), API keys, nodes, combos, four `kv` scopes and the allow-listed settings, in one transaction with the original ids and timestamps. Secrets are re-sealed for the destination; a sealed source is refused. The destination needs the schema `db:migrate` creates; a missing or empty file is refused, and the dry run and the apply check it before anything is copied, skills included. Prints counts and key names only. Takes `rllmx.lock`, a dry run included |
+| `db:import-config --from <file or dir> [--dry-run] [--yes] [--with-sso] [--skills-from <dir>]` | Seeds an **empty** destination from a legacy source read through a private copy: connections (locks and error state removed), API keys, nodes, combos, four `kv` scopes and the allow-listed settings, in one transaction with the original ids and timestamps. Secrets are re-sealed for the destination; a sealed source is refused. The destination needs the schema `db:migrate` creates; a missing or empty file is refused, and the dry run and the apply check it before anything is copied, skills included. Prints counts and key names only. Takes `rllmx.lock`, a dry run included |
 
 The framework's `migrate:*`, `db:wipe` and `db:seed` would drop or rewrite the 9router tables, and `WithCommandsFilter` does not reach them: the database provider registers without consulting the list.
 

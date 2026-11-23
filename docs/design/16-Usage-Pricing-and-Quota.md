@@ -85,9 +85,9 @@ Deferred until their handshake is designed: MiniMax Code (a signed account API),
 ---
 
 ## Remaining work
-**The usage rows, the readers, every usage route and the per-connection quota readers are built. What stays open is the quota auto-ping scheduler, three providers whose reading needs a handshake of its own, and a paged history.**
+**The usage rows, the readers, every usage route and the per-connection quota readers are built. Each row carries the savers and skills that acted, as names only.** What stays open is the quota auto-ping scheduler, three providers whose reading needs a handshake of its own, and a paged history.**
 
-- [x] `/api/usage/*` over `requests` and the rollups, with the live feed; `history` answers the all-time totals (D363), and a keyset-paged history is not built
+- [x] `/api/usage/*` over `requests` and the rollups, with the live feed; `history` answers the all-time totals (D363), and a keyset-paged history is not built (open)
 - [x] Pricing lookup over the embedded baseline and the `pricing` overrides; the pipeline's usage hook calls it
 - [x] Per-key request, token and cost budgets with the day, month and total windows, checked before dispatch (step 2.3, `design doc 21`)
 - [x] `/api/usage/{connectionId}` and the two refill routes, 22 providers; MiniMax Code, Xiaomi MiMo and Qoder await a handshake design (D379)
@@ -101,7 +101,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 
 | # | What we do differently | Why it is better |
 |---|---|---|
-| 17, 19 | Separate analytics store, structured columns, hourly and daily rollups, async writes; counter there. **(partial)**readers return with usage dashboard (planned) | Small compatibility file, queryable usage, latency independent of the write |
+| 17, 19 | Separate analytics store, structured columns, hourly and daily rollups, async writes; counter there. **(built)** readers and routes exist; the dashboard pages are doc 18's work | Small compatibility file, queryable usage, latency independent of the write |
 | 117 | Runes of system, tool, message text over four; no usage row. Built as `translate.CountTokens` (images, audio and files add nothing) | Bytes overstate non-ASCII |
 | 187 | Report of zeros does not block estimate; cached plus cache-creation tokens never exceed prompt; estimate counts characters of body | Placeholder `usage` cannot hide real output; row cannot charge more than prompt |
 | 188 | One hour lifetime writes (always requested for system prompt, last tool) counted from `usage.cache_creation.ephemeral_1h_input_tokens`, priced at `cache_creation_1h`, else twice input rate (PARITY.md §4); first turn of conversation caches its last message; Grok CLI cache key always derived session, as Codex's is | Long write not billed at short rate; client cannot steer another account's cache |
@@ -117,7 +117,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 363 | The stream sends only `pending`, `activeRequests`, `recentRequests` and `errorProvider`, on connect and on a change of the tracker generation or the flushed-batch counter | The reference recomputes all-time totals after every request and sends the whole object to a page that reads four fields |
 | 364 | A request holds its in-flight slot until its answer, a stream included, is finished; the release is idempotent; a provider with no connection is counted too | The reference zeroes a counter after 60 s while the stream still runs and a double end can drive another request's count down |
 | 365 | `providers` comes from the day rollups | The reference reads a `requestDetails` table this build does not have, and its filter forgets a provider once that table is pruned |
-| 366 | No `last10Minutes`, no de-duplication of the recent list, no skills suffix in a log line **(scope cut)** | No page reads the first, one row per request already rules out the second, and skills are not built (step 3.2) |
+| 366 | No `last10Minutes`, no de-duplication of the recent list **(scope cut; the skills suffix was added later)** | No page reads the first, and one row per request already rules out the second. The requests table now carries `savers` and `skills` as names only, and the log line appends them when set |
 | 355 | Every pricing route answers the merged table: the embedded provider rows with the overrides laid over them, and a write applies to the next request through the reloaded source **(built)** | The reference's PATCH answers only the overrides while GET answers a merged map of two providers, and its edit form sends the whole map back, turning every default into a stored override |
 | 367 | A refused credential is retried once when the fetcher saw a 401 or 403, and the refusal is typed, not read out of a message **(built)** | The reference retries when the answer's message contains `expired`, `authentication`, `unauthorized`, `401` or `re-authorize`, so a provider's wording decides whether a token is renewed |
 | 368 | One unit per field: a window counts in the provider's own numbers, a balance is `isCreditBalance` with a `unit`, and the share left is always `remainingPercentage` **(built)** | The reference's `remaining` is a count for GitHub, Kiro and Qoder, a percentage for Claude and Codex, and unclamped for Vercel, so the page cannot render one bar rule |

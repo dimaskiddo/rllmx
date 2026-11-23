@@ -1,6 +1,6 @@
 # Design 08 — Executors (`app/llm/executor/`)
 
-**Status:** partial
+**Status:** done
 
 `app/llm/executor` is built: the `Executor` interface (`Execute(ctx, Request) (Response, error)`), the default executor, the URL builders, the retry table and the upstream error parser.
 
@@ -20,7 +20,7 @@ The base behavior covers per-status retry (a rule without a delay waits 2 s), he
 |---|---|
 | A claude-format transport with no `auth` block | Sends the key raw in `x-api-key` with `anthropic-version` |
 | The URL | Chosen by the pipeline and handed over in `Request.URL` |
-| `baseUrls` fallback | Loaded and validated; no executor tries the next address yet (divergence 102) |
+| `baseUrls` fallback | Loaded, validated and tried by the default executor when the first address fails (D102, D291) |
 | Credential refresh | Lives in `app/llm/oauth` |
 | Shared helpers | `cloneHeaders`, `jsonResult`, and `responses_body.go` for Responses backends |
 | A failed 2xx body | Counts as a failed attempt, so the account rotates |
@@ -41,9 +41,9 @@ The base behavior covers per-status retry (a rule without a delay waits 2 s), he
 | `headers` | Static headers; never a credential or framing header |
 | `badKey` | The statuses that mean a wrong key (default 401, 403) |
 
-`upstream.Load` refuses anything else. One generic prober reads the block; a file with no block, and every OAuth, cookie and AWS provider, answers `test not supported yet`.
+`upstream.Load` refuses anything else. One generic prober reads the block, and the providers with one carry it (vertex, ollama-local, opencode-go, qoder); a provider with no probe answers `test not supported`.
 
-**Default executor.** Used by any provider without a dedicated one. Everything comes from the registry entry: base URL(s), format, URL suffix, auth descriptor (bearer, raw `x-api-key`, or split apiKey/oauth), static headers, quirks, retry table, forced streaming, refresh grant. It also applies the JSON-schema to `json_object` fallback for compatible nodes, strips parameters a provider rejects, and injects reasoning content where required.
+**Default executor.** Used by any provider without a dedicated one. Everything comes from the registry entry: base URL(s), format, URL suffix, auth descriptor (bearer, raw `x-api-key`, or split apiKey/oauth), static headers, quirks, retry table, forced streaming, refresh grant. It strips parameters a provider rejects, and injects reasoning content where required.
 
 ### Specialized Executors
 
@@ -68,8 +68,6 @@ Registered by provider id; aliases in parentheses.
 | qoder, qoder-cn | `app/protocol/cosy`: the encoded body, the wrapped key and the digest; the account's live model list (one hour), the payload built from its own block, the `{statusCodeValue, body}` envelope read from its first frame, and the queue wait (ten minutes, clamped to the interval the queue clears in) |
 | windsurf | gRPC-web protobuf |
 | trae | Two-step session and event stream |
-| zed | Short-lived LLM token exchange, NDJSON events |
-| grok-cli (`gcli`) | Responses-API proxy with a field allowlist |
 | opencode, opencode-go, opencode-zen | The free lane's fingerprint (its own two tool definitions, the environment marker, the session id's shape, a TLS offer of its own); the keyed lanes' Responses fit; Zen's stub tools and the free identity for a `-free` id. A free-lane 429 whose body says `overloaded` is retried in place up to eight times, waiting 0.8 s, 1.6 s, … capped at 4 s with up to 250 ms of jitter, and stops with the caller; any other 429 or a 403 retires the conversation's session id for the next turn. 0.5.116: Go's addresses are `https://opencode.ai/inference/go/…`, its Claude lane asks for adaptive thinking, and a tool named for a terminal goes out as `run_command` with the caller's name restored |
 | xiaomi-tokenplan | The cluster picks the host (`sgp`, `cn`, `ams`); the model's own target format picks `/anthropic/v1/messages` or `/v1/chat/completions`. Built |
 | xiaomi-mimo | Two routes: the cloud API with the account's key, and the account service for `mimo-v2.6-*` when the account holds a pass token, authorized by a session cookie (`app/llm/oauth/xiaomi`) and with the effort moved to `output_config`. Built |
@@ -167,8 +165,8 @@ sequenceDiagram
 
 Every provider the references ship, with executor kind, status and the work that delivers it.
 
-- **Built:** the loader, nine seed files, the executor framework and 45 more data files (44 providers and `azure`).
-- Every other row stays `todo` until its step lands.
+- **Built:** the loader, the executor framework and every data file the registry ships (146 files, one per id).
+- No row is `todo`: each is `done`, `out` or `deferred`.
 - A test in `app/llm/upstream` reads this table: a `done` or `partial` id needs a data file, and no id appears twice.
 
 | Marker | Meaning |
@@ -277,7 +275,7 @@ The executor base and the per-provider executors are built.
 
 - [x] Executor base: URL, auth block, header order with the overrides last, per-status retry, error parsing. The `baseUrls` fallback is the default executor's (D291)
 - [x]: `executor.Mux` (an unregistered name fails the call, a node uses `Default`), per-provider `transport` fields (`headers`, `urlSuffix`, `retry`, `quirks`, `reasoningInject`), `{accountId}` in the address (checked against `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`, a bad one sends nothing), a model's `upstreamId` on the wire, `azure`, and 45 data files. Param rules for cerebras, mistral, groq, cloudflare-ai and the volcengine kimi cap are in `params.json`; the MiniMax pair drop `output_config`
-- [x]: the `codex` and `grok-cli` executors on `Default`, shared Responses shaping (`responses_body.go`: field allowlist rebuilt not edited, flat tools, `\p{` patterns stripped), the SSE peek with an idle bound, `/compact`, `Model.lite` and `levels`, the `inlineImages` quirk. Not built: the `web_search` auto-injection, the live-catalog guard
+- [x]: the `codex` and `grok-cli` executors on `Default`, shared Responses shaping (`responses_body.go`: field allowlist rebuilt not edited, flat tools, `\p{` patterns stripped), the SSE peek with an idle bound, `/compact`, `Model.lite` and `levels`, the `inlineImages` quirk. The live-catalog guard is built; the `web_search` auto-injection is the one item still in the backlog
 - [x]: the `github` executor on `Default`, the Copilot token mint, `responsesUrl` and `messagesUrl` beside `baseUrl` (a model's `targetFormat` now picks the address as well as the codec), the GitHub device login, the `github` param rules
 - [x]: five data files (kimi, muse, nous, kilocode and an `oauth` block in `grok-cli.json`), all on the default executor; the Nous and Kimi thinking writers and capability rows; four client-id variables (`OAUTH_KIMI_`, `_MUSE_`, `_NOUS_`, `_XAI_CLIENT_ID`; Grok CLI uses the xAI one). Models are the reference's today
 - [x]: four data files (xai, gitlab, cline, clinepass) on the default executor; the `workos` auth scheme, the `{baseUrl}` address placeholder, the `clineEnvelope` quirk, the Cline identity headers (divergences 165, 166, 247, 248)

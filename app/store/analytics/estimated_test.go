@@ -9,11 +9,13 @@ import (
 	"time"
 )
 
-func hasEstimatedColumn(t testing.TB, s *testStore) bool {
+func hasEstimatedColumn(t testing.TB, s *testStore) bool { return hasColumn(t, s, "estimated") }
+
+func hasColumn(t testing.TB, s *testStore, name string) bool {
 	t.Helper()
-	query := `SELECT count(*) FROM pragma_table_info('requests') WHERE name = 'estimated'`
+	query := `SELECT count(*) FROM pragma_table_info('requests') WHERE name = '` + name + `'`
 	if s.Dialect() == dialect.Postgres {
-		query = `SELECT count(*) FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'requests' AND column_name = 'estimated'`
+		query = `SELECT count(*) FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'requests' AND column_name = '` + name + `'`
 	}
 	var n []int64
 	err := s.db.Select(&n, query)
@@ -167,5 +169,34 @@ func TestFailedBackupStopsTheMigration(t *testing.T) {
 	s3 := openAt(t, path)
 	if !hasEstimatedColumn(t, s3) {
 		t.Fatal("the migration must succeed once the backup can be written")
+	}
+}
+
+// The two feature columns are additive: an older database gains them on open,
+// and its rows stay.
+func TestAnOlderDatabaseGainsTheFeatureColumns(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "db", "analytics.sqlite")
+	s := openAt(t, path)
+	w := s.NewWriter(WriterOptions{})
+	w.Enqueue(rec(0, t0))
+	if err := w.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"savers", "skills"} {
+		if err := s.db.Statement(`ALTER TABLE "requests" DROP COLUMN "` + name + `"`); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	s2 := openAt(t, path)
+	for _, name := range []string{"savers", "skills"} {
+		if !hasColumn(t, s2, name) {
+			t.Fatalf("%s was not added", name)
+		}
+	}
+	if got := count(t, s2, "requests"); got != 1 {
+		t.Fatalf("rows after migration: %d", got)
 	}
 }

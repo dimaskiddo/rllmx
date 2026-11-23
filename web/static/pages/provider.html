@@ -94,7 +94,7 @@
               <button type="button" class="btn btn-sm btn-ghost" x-bind:disabled="busy('test:' + conn.id)" x-on:click="test(conn)" x-tip="provider.test"><span class="rl-icon" x-icon="activity"></span><span class="visually-hidden" x-t="provider.test"></span></button>
               <button type="button" class="btn btn-sm btn-ghost" x-on:click="testModels(conn)" x-tip="provider.testModels"><span class="rl-icon" x-icon="layers"></span><span class="visually-hidden" x-t="provider.testModels"></span></button>
               <button type="button" class="btn btn-sm btn-ghost" x-on:click="openEdit(conn)" x-tip="common.edit"><span class="rl-icon" x-icon="pencil"></span><span class="visually-hidden" x-t="common.edit"></span></button>
-              <button type="button" class="btn btn-sm btn-ghost" x-bind:disabled="busy('toggle:' + conn.id)" x-on:click="toggle(conn)" x-bind:title="conn.isActive === false ? label('keys.resume') : label('keys.pause')"><span class="rl-icon" x-show="conn.isActive !== false" x-icon="pause"></span><span class="rl-icon" x-show="conn.isActive === false" x-icon="check"></span><span class="visually-hidden" x-text="conn.isActive === false ? label('keys.resume') : label('keys.pause')"></span></button>
+              <button type="button" class="btn btn-sm btn-ghost" x-bind:disabled="busy('toggle:' + conn.id)" x-on:click="toggle(conn)" x-bind:title="conn.isActive === false ? label('keys.resume') : label('keys.pause')"><span class="rl-icon" x-show="conn.isActive !== false" x-icon="pause"></span><span class="rl-icon" x-show="conn.isActive === false" x-icon="play"></span><span class="visually-hidden" x-text="conn.isActive === false ? label('keys.resume') : label('keys.pause')"></span></button>
               <button type="button" class="btn btn-sm btn-ghost" x-on:click="remove(conn)" x-tip="common.delete"><span class="rl-icon" x-icon="trash"></span><span class="visually-hidden" x-t="common.delete"></span></button>
             </div>
           </li>
@@ -145,7 +145,7 @@
         <h3 class="rl-card-title" x-t="models.disabledTitle"></h3>
         <ul class="rl-chips">
           <template x-for="id in models.disabled" x-bind:key="id">
-            <li class="rl-chip"><span x-text="id"></span><button type="button" class="btn btn-sm btn-ghost" x-on:click="enableModel(id)" x-tip="models.enable"><span class="rl-icon" x-icon="check"></span><span class="visually-hidden" x-t="models.enable"></span></button></li>
+            <li class="rl-chip"><span x-text="id"></span><button type="button" class="btn btn-sm btn-ghost" x-on:click="enableModel(id)" x-tip="models.enable"><span class="rl-icon" x-icon="play"></span><span class="visually-hidden" x-t="models.enable"></span></button></li>
           </template>
         </ul>
       </div>

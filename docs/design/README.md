@@ -6,25 +6,25 @@ One file per area. Each carries its status, the design, its parity table against
 
 | # | Area | Status |
 |---|---|---|
-| 01 | [HTTP Server & Routing](01-HTTP-Server-and-Routing.md) | partial |
-| 02 | [Authentication & Access](02-Authentication-and-Access.md) | partial |
-| 03 | [Request Pipeline](03-Request-Pipeline.md) | partial |
+| 01 | [HTTP Server & Routing](01-HTTP-Server-and-Routing.md) | done |
+| 02 | [Authentication & Access](02-Authentication-and-Access.md) | done |
+| 03 | [Request Pipeline](03-Request-Pipeline.md) | done |
 | 04 | [Model Resolution & Combos](04-Model-Resolution-and-Combos.md) | partial |
-| 05 | [Account Selection, Error Rules & Backoff](05-Account-Selection-and-Backoff.md) | partial |
-| 06 | [OAuth & Token Refresh](06-OAuth-and-Token-Refresh.md) | partial |
-| 07 | [Format Translation](07-Format-Translation.md) | partial |
-| 08 | [Executors](08-Executors.md) | partial |
-| 09 | [Streaming](09-Streaming.md) | partial |
-| 10 | [Token Savers](10-Token-Savers.md) | todo |
+| 05 | [Account Selection, Error Rules & Backoff](05-Account-Selection-and-Backoff.md) | done |
+| 06 | [OAuth & Token Refresh](06-OAuth-and-Token-Refresh.md) | done |
+| 07 | [Format Translation](07-Format-Translation.md) | done |
+| 08 | [Executors](08-Executors.md) | done |
+| 09 | [Streaming](09-Streaming.md) | done |
+| 10 | [Token Savers](10-Token-Savers.md) | done |
 | 11 | [Skills, Session & Auto Plan](11-Skills-Session-and-Auto-Plan.md) | done |
-| 12 | [Health, Circuit Breaker & Probe](12-Health-Circuit-Breaker-and-Probe.md) | partial |
+| 12 | [Health, Circuit Breaker & Probe](12-Health-Circuit-Breaker-and-Probe.md) | done |
 | 13 | [Media Endpoints](13-Media-Endpoints.md) | done |
-| 14 | [Outbound Network](14-Outbound-Network.md) | partial |
+| 14 | [Outbound Network](14-Outbound-Network.md) | done |
 | 15 | [Storage](15-Storage.md) | partial |
 | 16 | [Usage, Pricing & Quota](16-Usage-Pricing-and-Quota.md) | partial |
 | 17 | [Configuration](17-Configuration.md) | partial |
 | 18 | [Web Dashboard](18-Web-Dashboard.md) | partial |
-| 19 | [Go Interfaces](19-Go-Interfaces.md) | partial |
+| 19 | [Go Interfaces](19-Go-Interfaces.md) | done |
 | 20 | [Cache](20-Cache.md) | partial |
 | 21 | [API Key Limits](21-API-Key-Limits.md) | done |
 | 22 | [Deferred & Out of Scope](22-Deferred-and-Out-of-Scope.md) | n/a |

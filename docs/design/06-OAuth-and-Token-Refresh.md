@@ -1,6 +1,6 @@
 # Design 06 — OAuth & Token Refresh (`app/llm/oauth/`)
 
-**Status:** partial
+**Status:** done
 
 The OAuth engine brings the framework and two seed providers (`claude`, `codex`); the rest add a data file and post-login hooks. Three parts, all built:
 
@@ -14,7 +14,7 @@ The OAuth engine brings the framework and two seed providers (`claude`, `codex`)
 
 A provider's flow is data (`oauth.flow` in its file), run by one engine per kind.
 
-`app/llm/oauth` holds the `code-pkce` flow (claude and codex), the RFC 8628 `device` flow (github), the `code` flow without PKCE (cline, clinepass) and the `code-pkce` logins xai and gitlab. Every other flow below is the design later work implements.
+`app/llm/oauth` holds the `code-pkce` flow (claude and codex), the RFC 8628 `device` flow (github), the `code` flow without PKCE (cline, clinepass) and the `code-pkce` logins xai and gitlab. The remaining flows below are built as well.
 
 The dashboard reads a login's shape from `oauth.Service.Offer`: the flow, the paste and bulk flags, the import fields, the app flags and the variants a code dialect accepts (`CodeDialect.Variants`). It names no URL, scope or client id, and `Enabled` follows `NewFlow` exactly.
 
@@ -32,7 +32,7 @@ The dashboard reads a login's shape from `oauth.Service.Offer`: the flow, the pa
 | `paste`: token or cookie paste | cursor, kimchi, web-cookie providers (one shared parser in `app/llm/upstream`, token or cookie, one credential per row, rotating through PUT), API keys |
 | Bulk import | codex, grok-cli |
 
-There is no browser launch, so the dashboard shows the URL to open. The only process the router ever starts is `git clone`, through the filter gate in `app/git` (`design doc 11`), for the skill update (Skills Studio); the gate does not exist yet.
+There is no browser launch, so the dashboard shows the URL to open. The only process the router ever starts is `git clone`, through the filter gate in `app/git` (`design doc 11`), for the skill update (Skills Studio); the gate is `app/git.Gate`.
 
 ### Device Login
 
@@ -120,7 +120,7 @@ When a remote dashboard's browser cannot reach `localhost`, the start answer say
 | Routes | All `ClassAlwaysProtected`, behind the CSRF guard. `GET /api/oauth/{provider}/authorize`, `POST /api/oauth/{provider}/authorize` (an application with the request), `POST /api/oauth/{provider}/pat`, `POST /api/oauth/{provider}/import`, `POST /api/oauth/{provider}/bulk-import` (an array, one object or `{accounts:[...]}` of tokens, one result per account, for a data file that sets `oauth.bulk`); the reference's `POST /api/oauth/codex/import-token` is the same single-token operation and is served here by `bulk-import` with one object, `POST /api/oauth/exchange` (`{state, input}`, `input` being a full URL with the code in the query or fragment, a bare code or `code#state`), `POST /api/oauth/callback` (what the `/callback` page posts), `GET /api/oauth/status?state=`, `GET /api/oauth/{provider}/device-code`, `POST /api/oauth/poll`. No route returns a token, a secret or a verifier |
 | `/callback` page | `GET /callback`, public, static (`web/static/callback.html` and `web/static/js/callback.js`, following the dashboard layout in `WORKFLOWS.md`). It reads `code`, `state` and `error` from the query or fragment, removes them from the address, and posts them to the server. No `postMessage`, `BroadcastChannel` or storage |
 | Listeners | One per fixed port, shared by every login waiting on it, bound to `OAUTH_CALLBACK_HOST` (`127.0.0.1`; `0.0.0.0` in a container). They serve only the callback path, only for a loopback `Host`, only for a state a pending login holds on that port, and finish that login server side. They stop when the last login ends (checked on every release and every 15 s, never within 5 s of the last use) and with the server (`rllmx.oauth` runner). A busy port gives `paste: true` |
-| Token calls | `oauth.TokenClient`: JSON or form per the data, answers bounded to 1 MiB, no redirect followed (a moved endpoint would carry the refresh token elsewhere), 15 s per call, on the guarded dialer. Built for the code exchange; the refresh call planned. Failures are reduced to a class (built: `invalid_grant`, `transport`, `rejected`, `malformed`; `refresh_token_reused` is folded into `invalid_grant` and the device classes arrive; the login adds the fixed codes `access_denied`, `invalid_input` and `storage`); provider text is never kept, logged or returned. The PKCE verifier (32 bytes from `crypto/rand`), the S256 challenge (`sha256` then base64url, both stdlib) and the authorize URL are our own code; `golang.org/x/oauth2` is not a dependency. Token calls are ours too, because Claude's endpoint takes JSON and a refresh needs the raw error body for classification |
+| Token calls | `oauth.TokenClient`: JSON or form per the data, answers bounded to 1 MiB, no redirect followed (a moved endpoint would carry the refresh token elsewhere), 15 s per call, on the guarded dialer. Built for the code exchange and the refresh call. Failures are reduced to a class (built: `invalid_grant`, `transport`, `rejected`, `malformed`; `refresh_token_reused` is folded into `invalid_grant` and the device classes arrive; the login adds the fixed codes `access_denied`, `invalid_input` and `storage`); provider text is never kept, logged or returned. The PKCE verifier (32 bytes from `crypto/rand`), the S256 challenge (`sha256` then base64url, both stdlib) and the authorize URL are our own code; `golang.org/x/oauth2` is not a dependency. Token calls are ours too, because Claude's endpoint takes JSON and a refresh needs the raw error body for classification |
 | Client credentials | Configuration (`OAUTH_CLIENT_ID_<PROVIDER>`, `OAUTH_CLIENT_SECRET_<PROVIDER>`), never literals in Go code or provider data (`tests/oauth_clients_test.go` scans `app`, `bootstrap`, `config`, `routes`, `pkg` and `web` for the two public ids by hash, whole words only; `.env.example` carries them). An empty id disables that provider's login and refresh with a clear error before anything is sent. Secrets are redacted in logs by name and never returned by the API |
 | Account | Codex reads the email, the ChatGPT account id and the plan from the id token (no signature check: the claims name the account and decide duplicates). A login that repeats an account updates its row by the repository's duplicate rules |
 
@@ -132,7 +132,7 @@ All four triggers use `oauth.Refresher.Refresh`. Per provider, the registry's `o
 |---|---|
 | Proactive | Before each request, when the access token is within the provider's lead time (default 5 minutes; Claude 4 h, Codex 10 min, which also refreshes when the last refresh is older than 8 days). A failure other than a dead token lets the request go on with the old one |
 | Reactive | On a 401 or 403 from the upstream: up to three tries (1 s and 2 s apart), the credentials are stored, the same account is called once more. If that fails too, the normal failure path runs on the new answer |
-| Background | A loop in the `rllmx.oauth` runner (not a cron job: the schedule facade has no seconds-level first run), started once the data gate opens: first pass after 10 s, then every 5 minutes, one account at a time, for active accounts with a refresh token and a known expiry within the lead time or 30 minutes, whichever is longer. The pause between accounts is `OAUTH_REFRESH_DELAY` (default 1500 ms; `OAUTH_REFRESH_GOOGLE_DELAY` planned with the first provider that sets `slowRefresh`). `OAUTH_BACKGROUND_REFRESH=false` turns it off. A failure logs the provider and the class only |
+| Background | A loop in the `rllmx.oauth` runner (not a cron job: the schedule facade has no seconds-level first run), started once the data gate opens: first pass after 10 s, then every 5 minutes, one account at a time, for active accounts with a refresh token and a known expiry within the lead time or 30 minutes, whichever is longer. The pause between accounts is `OAUTH_REFRESH_DELAY` (default 1500 ms; `OAUTH_REFRESH_GOOGLE_DELAY` read for the providers that set `slowRefresh`). `OAUTH_BACKGROUND_REFRESH=false` turns it off. A failure logs the provider and the class only |
 | Test | `POST /api/providers/{id}/test` for a registry entry with an `oauth` block: refresh when due, then check the token exists and has not expired. A provider without one still answers `test not supported` and writes nothing |
 
 **Safety.**
@@ -156,7 +156,7 @@ All four triggers use `oauth.Refresher.Refresh`. Per provider, the registry's `o
 The framework, claude and codex are built. The reference builds the redirect as `http://localhost:<window.location.port or 443>/callback` in the browser, so behind HTTPS it becomes `http://localhost:443/callback`.
 
 - [x] OAuth token check and renewal on the connection test route (registry entries with an `oauth` block; the rest answer "test not supported")
-- [x] The server decides the redirect: `fixed` and `local` are `localhost`; forwarded headers never used, the browser never sends `redirect_uri` (D151). `public` (`APP_URL` + `/callback`) is, as no seed provider uses it
+- [x] The server decides the redirect: `fixed` and `local` are `localhost`; forwarded headers never used, the browser never sends `redirect_uri` (D151). `public` (`APP_URL` + `/callback`) is, used by gitlab, cline and clinepass
 - [x] Client credentials only from `OAUTH_*`; no literal in Go code, provider data or web files; empty id disables login with a clear error; no route returns a secret or verifier. The refresh half is 
 - [x] Server-side session (`oauth.Sessions`): state, provider, redirect, verifier, dashboard binding, 10-minute TTL, single use; state verified on every completion path (D150). Device code is 
 - [x] Paste endpoint (`POST /api/oauth/exchange`) accepting a redirected URL (query or fragment), a bare code, and `code#state`
@@ -171,7 +171,7 @@ The framework, claude and codex are built. The reference builds the redirect as 
 - [x]: the logins codebuddy-cn, codebuddy-intl, minimax-code, minimax-code-global and glm (ZCode); the device dialects `codebuddy`, `minimax`, `zcode`, a dialect renewal, `refresh.fields`, device state (`Verifier`, `DeviceExtra`) kept in the session, the client id `OAUTH_CLIENT_ID_MINIMAX_CODE` (both MiniMax sites), `clampLife` and `clampInterval` no longer wrap on a huge value (divergences 249, 250)
 - [x]: the Google logins gemini-cli and antigravity (`noPkce`, a client secret from `OAUTH_CLIENT_SECRET_*`, the hooks `google` and `antigravity`, `projectId` at login and on first use, Antigravity onboarding in the login), `slowRefresh` and `OAUTH_REFRESH_GOOGLE_DELAY`, Vertex tokens from a service account, user credentials or a raw key (divergences 252 to 258)
 - [x] Kiro's Google/GitHub social login: `kiro-social`, a `code-pkce` login whose redirect is the provider's own `kiro://` scheme, finished by pasting the address back. `ParseInput` reads a custom scheme as well as http(s), the login is always paste, and the identity provider rides the start request as `variant` and is stored as `authMethod` for the renewal
-- [ ] Zed, Windsurf, Trae and Mimo token shapes (later steps). Kiro's pasted refresh-token import is still a scope cut (divergence 266). CommandCode's `~/.commandcode/auth.json` auto-import (0.5.116) is not built either: it reads another program's file (divergence 267)
+- [x] Zed and Mimo token shapes (built: `app/llm/oauth/zed`, `app/llm/oauth/xiaomi`). Windsurf and Trae stay out (D158). Kiro's pasted refresh-token import stays a scope cut (D266), and CommandCode's `~/.commandcode/auth.json` auto-import stays out: it reads another program's file (D267)
 - [x] Token refresh detail: one call per provider and refresh token through `app/platform/cache.Load` with a 10s result cache; `invalid_grant` and reuse mark the connection (`testStatus: expired`) and stop retrying
 
 ---
@@ -182,7 +182,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 
 | # | What we do differently | Why it is better |
 |---|---|---|
-| 20, 21, 34 | Redirect per provider from `APP_URL`; one single-use server session per login; ids and secrets as `OAUTH_*`. **(partial)**variables, cache policy exist; flows | Public HTTPS logins cannot redirect to localhost; state always checked; credentials rotate without rebuild |
+| 20, 21, 34 | Redirect per provider from `APP_URL`; one single-use server session per login; ids and secrets as `OAUTH_*`. **(built)** variables, cache policy and flows | Public HTTPS logins cannot redirect to localhost; state always checked; credentials rotate without rebuild |
 | 150 | Server holds one session per login (state, provider, redirect, verifier, device code), memory, 10 min; browser sends provider, then state + code; state checked on every completion path; single use, bound to starting dashboard session; unknown, expired, replayed, foreign state: one generic answer | Forged or replayed callback cannot finish a login or attach an attacker's account; verifier never in URL or response |
 | 151 | Per provider: fixed loopback (Codex 1455), loopback on router's own port (Claude), or `APP_URL` + `/callback`; remote browser on loopback-only provider pastes landing address; forwarded headers, request origin never build redirect | HTTPS-host login never produces wrong `localhost` redirect; dashboard says up front when paste needed |
 | 153 | One listener per fixed port, shared by every waiting login; callback path only, loopback `Host` only, known state only; stops when last login ends; busy port falls back to paste; bind address `OAUTH_CALLBACK_HOST` | Concurrent Codex logins no longer collide; rebinding page cannot reach listener |

@@ -75,6 +75,17 @@ func (s Stats) Line() string {
 	return strings.Join(parts, " ")
 }
 
+// Names is the compact list the usage row keeps: which savers acted, never how
+// much text they held.
+func (s Stats) Names() string {
+	parts := make([]string, 0, len(s.Filters)+len(s.Prompts)+1)
+	parts = append(parts, s.Filters...)
+	if s.Headroom || s.Note != "" {
+		parts = append(parts, "headroom")
+	}
+	return strings.Join(append(parts, s.Prompts...), ",")
+}
+
 // The two prompt topics, each package's data paired with the shared scorer. They
 // are scored together, because the reference weighs a term by how many topics
 // use it.
