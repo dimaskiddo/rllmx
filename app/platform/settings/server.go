@@ -52,6 +52,8 @@ type Server struct {
 	// H2C lets the plain listener speak HTTP/2 without TLS, for a reverse proxy
 	// that multiplexes streams to the router.
 	H2C bool
+	// MaxUsers caps the standard-user list, however a row was created.
+	MaxUsers int
 }
 
 // LoadServer reads and checks the server settings. Errors name the variable and
@@ -74,6 +76,10 @@ func LoadServer(cfg config.Config) (*Server, error) {
 	}
 	if s.MaxBodyMB < 1 || s.MaxBodyMB > 1<<20 {
 		return nil, fmt.Errorf("settings: SERVER_MAX_BODY_MB: must be between 1 and %d", 1<<20)
+	}
+	s.MaxUsers = cfg.GetInt("auth.max_users", 200)
+	if s.MaxUsers < 1 || s.MaxUsers > 100000 {
+		return nil, errors.New("settings: AUTH_MAX_USERS: must be between 1 and 100000")
 	}
 
 	var err error

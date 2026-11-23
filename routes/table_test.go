@@ -28,7 +28,7 @@ func fullBase() Base {
 		Providers: &controllers.ProvidersController{}, Nodes: &controllers.NodesController{},
 		Chat: &controllers.ChatController{}, Models: &controllers.ModelsController{}, Media: &controllers.MediaController{},
 		OAuth: &controllers.OAuthController{}, Pages: &controllers.PagesController{},
-		Keys: &controllers.KeysController{}, Health: controllers.NewHealthController(),
+		Keys: &controllers.KeysController{}, Users: &controllers.UsersController{}, Health: controllers.NewHealthController(),
 		Combos: &controllers.CombosController{}, Settings: &controllers.SettingsController{},
 		Pricing: &controllers.PricingController{}, Logs: &controllers.LogsController{}, Usage: &controllers.UsageController{},
 		Headroom: &controllers.HeadroomController{}, Skills: &controllers.SkillsController{},

@@ -26,9 +26,19 @@ import (
 
 // signedSession is an authenticator that accepts any dashboard session, so a
 // route behind ClassAlwaysProtected answers as a signed-in operator.
-type signedSession struct{}
+type signedSession struct {
+	role string
+	uid  string
+}
 
-func (signedSession) Session(*nethttp.Request) bool              { return true }
+func (signedSession) Session(*nethttp.Request) bool { return true }
+func (s signedSession) SessionInfo(*nethttp.Request) (auth.Session, bool) {
+	role := s.role
+	if role == "" {
+		role = auth.RoleAdmin
+	}
+	return auth.Session{Role: role, UserID: s.uid}, true
+}
 func (signedSession) APIKey(*nethttp.Request) identity.KeyResult { return identity.KeyResult{} }
 func (signedSession) RequireLogin(context.Context) bool          { return true }
 func (signedSession) RequireAPIKey(context.Context) bool         { return true }
@@ -39,6 +49,7 @@ type keysRig struct {
 	sq       *store.Store
 	resolver *auth.Keys
 	changed  int
+	users    *auth.Users
 }
 
 func newKeysRig(t *testing.T, guardAuth apphttp.Authenticator) *keysRig {
@@ -51,14 +62,17 @@ func newKeysRig(t *testing.T, guardAuth apphttp.Authenticator) *keysRig {
 	rig := &keysRig{sq: sq}
 	rig.resolver = auth.NewKeys(func() *repository.Store { return sq.Store },
 		cache.New(tests.NewCache(), cache.WithoutShared()), identity.NewKeys(""))
+	rig.users = auth.NewUsers(auth.NewUserRepo(func() *repository.Store { return sq.Store }, 0))
 	c := &KeysController{
 		DB:      func() *repository.Store { return sq.Store },
 		Quota:   quota.NewLimits(func() *repository.Store { return sq.Store }, nil),
 		Codec:   identity.NewKeys(""),
 		Machine: identity.NewMachine(""),
 		Dir:     dir,
+		Users:   rig.users,
 		Changed: func() { rig.changed++; rig.resolver.Changed() },
 	}
+	uc := &UsersController{Users: rig.users, Pass: auth.NewPasswords(bcryptOnly{}, "")}
 	r := tests.NewRoute(t)
 	g := apphttp.NewGuard(guardAuth, true)
 	r.SetGlobalMiddleware([]contractshttp.Middleware{
@@ -70,6 +84,10 @@ func newKeysRig(t *testing.T, guardAuth apphttp.Authenticator) *keysRig {
 	g.Handle(r, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/keys/{id}", c.Show)
 	g.Handle(r, apphttp.ClassAlwaysProtected, nethttp.MethodPut, "/api/keys/{id}", c.Update)
 	g.Handle(r, apphttp.ClassAlwaysProtected, nethttp.MethodDelete, "/api/keys/{id}", c.Delete)
+	g.Handle(r, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/users", uc.List)
+	g.Handle(r, apphttp.ClassAlwaysProtected, nethttp.MethodPost, "/api/users", uc.Create)
+	g.Handle(r, apphttp.ClassAlwaysProtected, nethttp.MethodPut, "/api/users/{id}", uc.Update)
+	g.Handle(r, apphttp.ClassAlwaysProtected, nethttp.MethodDelete, "/api/users/{id}", uc.Delete)
 	rig.route = r
 	return rig
 }
@@ -416,5 +434,116 @@ func TestTheListShowsEachKeysCacheSwitch(t *testing.T) {
 	}
 	if !seen[on] || seen[off] || len(seen) != 2 {
 		t.Fatalf("%v", seen)
+	}
+}
+
+func seedUser(t *testing.T, rig *keysRig, id, name string) {
+	t.Helper()
+	if err := rig.users.Put(t.Context(), auth.User{ID: id, Username: name, Hash: "hash-" + id}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAnAdminAssignsAKeyToAUser(t *testing.T) {
+	rig := newKeysRig(t, signedSession{})
+	seedUser(t, rig, "u1", "Dimas")
+	id, _ := rig.create(t, "laptop")
+
+	rec := rig.call(t, nethttp.MethodPut, "/api/keys/"+id, `{"owner":"u1"}`, keysLocalPeer)
+	if rec.Code != nethttp.StatusOK || !strings.Contains(rec.Body.String(), `"owner":"u1"`) {
+		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+	list := rig.call(t, nethttp.MethodGet, "/api/keys", "", keysLocalPeer)
+	if !strings.Contains(list.Body.String(), `"owner":"u1"`) {
+		t.Fatalf("the list hides the owner: %s", list.Body.String())
+	}
+	if rec := rig.call(t, nethttp.MethodPut, "/api/keys/"+id, `{"owner":"nobody"}`, keysLocalPeer); rec.Code != nethttp.StatusBadRequest {
+		t.Fatalf("an unknown owner answered %d", rec.Code)
+	}
+
+	// Deleting the user clears the assignment; the key stays.
+	if rec := rig.call(t, nethttp.MethodDelete, "/api/users/u1", "", keysLocalPeer); rec.Code != nethttp.StatusOK {
+		t.Fatalf("delete user: %d %s", rec.Code, rec.Body.String())
+	}
+	if _, found, _ := rig.sq.APIKeys().GetByID(t.Context(), id); !found {
+		t.Fatal("deleting a user deleted their key")
+	}
+	if list := rig.call(t, nethttp.MethodGet, "/api/keys", "", keysLocalPeer); strings.Contains(list.Body.String(), `"owner"`) {
+		t.Fatalf("the assignment survived its user: %s", list.Body.String())
+	}
+}
+
+func TestAStandardUserSeesAndPausesOnlyTheirOwnKeys(t *testing.T) {
+	rig := newKeysRig(t, signedSession{role: auth.RoleUser, uid: "u1"})
+	seedUser(t, rig, "u1", "Dimas")
+	mine, err := rig.sq.APIKeys().Create(t.Context(), "mine", "", "sk-live-aaaaaaaaaaaaaaaa")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := rig.sq.APIKeys().Create(t.Context(), "other", "", "sk-live-bbbbbbbbbbbbbbbb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rig.users.SetOwner(t.Context(), mine.ID, "u1"); err != nil {
+		t.Fatal(err)
+	}
+
+	list := rig.call(t, nethttp.MethodGet, "/api/keys", "", keysLocalPeer)
+	if list.Code != nethttp.StatusOK {
+		t.Fatalf("%d %s", list.Code, list.Body.String())
+	}
+	if strings.Contains(list.Body.String(), other.ID) || !strings.Contains(list.Body.String(), mine.ID) {
+		t.Fatalf("the list is not scoped to the user's keys: %s", list.Body.String())
+	}
+	if rec := rig.call(t, nethttp.MethodGet, "/api/keys/"+other.ID, "", keysLocalPeer); rec.Code != nethttp.StatusNotFound {
+		t.Fatalf("another user's key answered %d", rec.Code)
+	}
+	if rec := rig.call(t, nethttp.MethodPut, "/api/keys/"+other.ID, `{"isActive":false}`, keysLocalPeer); rec.Code != nethttp.StatusNotFound {
+		t.Fatalf("pausing another user's key answered %d", rec.Code)
+	}
+	if rec := rig.call(t, nethttp.MethodPut, "/api/keys/"+mine.ID, `{"isActive":false}`, keysLocalPeer); rec.Code != nethttp.StatusOK {
+		t.Fatalf("pausing their own key answered %d: %s", rec.Code, rec.Body.String())
+	}
+	if row, _, _ := rig.sq.APIKeys().GetByID(t.Context(), mine.ID); row.IsActive {
+		t.Fatal("the key did not pause")
+	}
+	if rec := rig.call(t, nethttp.MethodPut, "/api/keys/"+mine.ID, `{"name":"renamed"}`, keysLocalPeer); rec.Code != nethttp.StatusForbidden {
+		t.Fatalf("a rename by a user answered %d", rec.Code)
+	}
+	if rec := rig.call(t, nethttp.MethodPost, "/api/keys", `{"name":"new"}`, keysLocalPeer); rec.Code != nethttp.StatusForbidden {
+		t.Fatalf("a user created a key: %d", rec.Code)
+	}
+	if rec := rig.call(t, nethttp.MethodGet, "/api/users", "", keysLocalPeer); rec.Code != nethttp.StatusForbidden {
+		t.Fatalf("a user listed the accounts: %d", rec.Code)
+	}
+}
+
+func TestAUserWithNoKeysReadsAnEmptyList(t *testing.T) {
+	rig := newKeysRig(t, signedSession{role: auth.RoleUser, uid: "u9"})
+	seedUser(t, rig, "u9", "Nobody")
+	if _, err := rig.sq.APIKeys().Create(t.Context(), "admin key", "", "sk-live-cccccccccccccccc"); err != nil {
+		t.Fatal(err)
+	}
+	list := rig.call(t, nethttp.MethodGet, "/api/keys", "", keysLocalPeer)
+	if list.Code != nethttp.StatusOK || strings.Contains(list.Body.String(), "admin key") {
+		t.Fatalf("%d %s", list.Code, list.Body.String())
+	}
+}
+
+func TestCreatingAUserChecksTheNameAndPassword(t *testing.T) {
+	rig := newKeysRig(t, signedSession{})
+	rec := rig.call(t, nethttp.MethodPost, "/api/users", `{"name":"Dimas","password":"user-pass-1"}`, keysLocalPeer)
+	if rec.Code != nethttp.StatusCreated {
+		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+	if rec := rig.call(t, nethttp.MethodPost, "/api/users", `{"name":"dimas","password":"user-pass-1"}`, keysLocalPeer); rec.Code != nethttp.StatusConflict {
+		t.Fatalf("a duplicate name answered %d", rec.Code)
+	}
+	if rec := rig.call(t, nethttp.MethodPost, "/api/users", `{"name":"Other"}`, keysLocalPeer); rec.Code != nethttp.StatusBadRequest {
+		t.Fatalf("a user without a password answered %d", rec.Code)
+	}
+	list := rig.call(t, nethttp.MethodGet, "/api/users", "", keysLocalPeer)
+	if strings.Contains(list.Body.String(), "hash") {
+		t.Fatalf("the user list carries a hash: %s", list.Body.String())
 	}
 }

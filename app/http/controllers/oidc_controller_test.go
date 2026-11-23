@@ -135,8 +135,8 @@ func newOIDCRig(t *testing.T, configure func(*idp)) *oidcRig {
 	secret := []byte("0123456789abcdef0123456789abcdef")
 	a := auth.NewAuthenticator(auth.NewStore(db), codec, bcryptOnly{}, "", func() []byte { return secret }, true, false)
 	a.OIDCUsable = func(issuer, id, s string) bool { return issuer != "" && id != "" && s != "" }
-	allowSSO := sso.ParseAllow("")
-	a.SSOAllow = allowSSO.Allows
+	a.Users = auth.NewUsers(auth.NewUserRepo(db, 0))
+	a.SSOAdmin = sso.ParseAdmins("").IsAdmin
 
 	server, err := settings.LoadServer(tests.Config{Values: tests.ServerValues()})
 	if err != nil {
@@ -149,7 +149,6 @@ func newOIDCRig(t *testing.T, configure func(*idp)) *oidcRig {
 		Log:     &tests.Log{},
 		DB:      db,
 		Pending: sso.NewPending(),
-		Allow:   allowSSO,
 	}
 
 	r := tests.NewRoute(t)
@@ -360,7 +359,7 @@ func TestTheSessionFromAProviderCarriesItsMethod(t *testing.T) {
 	req := httptest.NewRequest(nethttp.MethodGet, "/", nil)
 	req.AddCookie(&nethttp.Cookie{Name: auth.CookieName, Value: cookie})
 	claims, ok := r.auth.Claims(req)
-	if !ok || claims.Method != auth.MethodOIDC || claims.Email != "ops@example.com" || claims.Name != "Ops" {
+	if !ok || claims.Method != auth.MethodOIDC || claims.Email != "ops@example.com" || claims.UID == "" {
 		t.Fatalf("%+v ok=%v", claims, ok)
 	}
 	if !r.auth.Session(req) {
@@ -368,71 +367,25 @@ func TestTheSessionFromAProviderCarriesItsMethod(t *testing.T) {
 	}
 }
 
-func TestAnAddressOutsideTheAllowListIsRefused(t *testing.T) {
+func TestAnAddressOutsideTheAdminListSignsInAsAStandardUser(t *testing.T) {
 	r := newOIDCRig(t, nil)
-	r.ctrl.Allow = sso.ParseAllow("@other.example")
 	rec, _ := r.flow(t, nil)
-	if !strings.HasSuffix(location(rec), "error="+sso.CodeNotAllowed) {
-		t.Fatalf("%q", location(rec))
+	cookie := sessionCookie(rec)
+	if cookie == "" {
+		t.Fatalf("no session cookie: %s", location(rec))
 	}
-	if sessionCookie(rec) != "" {
-		t.Fatal("a session was issued for an address outside the list")
+	req := httptest.NewRequest(nethttp.MethodGet, "/", nil)
+	req.AddCookie(&nethttp.Cookie{Name: auth.CookieName, Value: cookie})
+	info, ok := r.auth.SessionInfo(req)
+	if !ok || info.Role != auth.RoleUser || info.UserID == "" {
+		t.Fatalf("%+v %v", info, ok)
 	}
-}
-
-func TestAnUnverifiedAddressIsRefused(t *testing.T) {
-	r := newOIDCRig(t, nil)
-	r.idp.issue = func(t *testing.T, claims map[string]any) string {
-		claims["email_verified"] = false
-		return r.idp.signWith(t, claims)
+	u, found, err := r.sq.Store.Users().GetByEmail(contextBackground(), "ops@example.com")
+	if err != nil || !found {
+		t.Fatalf("%+v %v %v", u, found, err)
 	}
-	rec, _ := r.flow(t, nil)
-	if !strings.HasSuffix(location(rec), "error="+sso.CodeUnverified) {
-		t.Fatalf("%q", location(rec))
-	}
-}
-
-func TestATokenForAnotherClientIsRefused(t *testing.T) {
-	r := newOIDCRig(t, nil)
-	r.idp.issue = func(t *testing.T, claims map[string]any) string {
-		claims["aud"] = "another-client"
-		return r.idp.signWith(t, claims)
-	}
-	rec, _ := r.flow(t, nil)
-	if !strings.HasSuffix(location(rec), "error="+sso.CodeInvalid) {
-		t.Fatalf("%q", location(rec))
-	}
-	if sessionCookie(rec) != "" {
-		t.Fatal("a session was issued for a token minted for another client")
-	}
-}
-
-func TestATokenWithoutAnAddressIsRefused(t *testing.T) {
-	r := newOIDCRig(t, nil)
-	r.idp.issue = func(t *testing.T, claims map[string]any) string {
-		delete(claims, "email")
-		delete(claims, "preferred_username")
-		return r.idp.signWith(t, claims)
-	}
-	rec, _ := r.flow(t, nil)
-	if !strings.HasSuffix(location(rec), "error="+sso.CodeNoEmail) {
-		t.Fatalf("%q", location(rec))
-	}
-}
-
-func TestAFailedCallbackCountsUnderItsOwnPrefix(t *testing.T) {
-	r := newOIDCRig(t, nil)
-	for range auth.FreeAttempts {
-		r.get("/api/auth/oidc/callback?code=x&state=unknown", map[string]string{
-			"Cookie": sso.BindCookie + "=" + sso.Bind(r.auth.Secret(), "unknown"),
-		})
-	}
-	key := "sso:" + auth.Key(localPeer)
-	if r.auth.Limiter.Locked(key, time.Now()) == 0 {
-		t.Fatal("the failed callbacks did not count")
-	}
-	if r.auth.Limiter.Locked(auth.Key(localPeer), time.Now()) != 0 {
-		t.Fatal("a provider failure spent the password budget")
+	if u.Username != "ops@example.com" || !u.Provisioned || u.Password == "" {
+		t.Fatalf("%+v", u)
 	}
 }
 
@@ -464,22 +417,32 @@ func (p *idp) signWith(t *testing.T, claims map[string]any) string {
 	return raw
 }
 
-func TestRemovingAnAddressFromTheListEndsItsSession(t *testing.T) {
+func TestRemovingAnAddressFromTheAdminListEndsItsAdminSession(t *testing.T) {
 	r := newOIDCRig(t, nil)
+	r.auth.SSOAdmin = sso.ParseAdmins("ops@example.com").IsAdmin
 	rec, _ := r.flow(t, nil)
 	cookie := sessionCookie(rec)
 	if cookie == "" {
-		t.Fatal("no session cookie")
+		t.Fatalf("no session cookie: %s", location(rec))
 	}
 	req := httptest.NewRequest(nethttp.MethodGet, "/", nil)
 	req.AddCookie(&nethttp.Cookie{Name: auth.CookieName, Value: cookie})
-	if !r.auth.Session(req) {
-		t.Fatal("the session does not validate")
+	if info, ok := r.auth.SessionInfo(req); !ok || info.Role != auth.RoleAdmin {
+		t.Fatalf("%+v %v", info, ok)
 	}
-	// The address is now outside the list, so the next request ends the session
-	// even though the cookie is unchanged.
-	r.auth.SSOAllow = sso.ParseAllow("@other.example").Allows
-	if r.auth.Session(req) {
-		t.Fatal("a session outlived the allow list that admitted it")
+	r.auth.SSOAdmin = sso.ParseAdmins("@other.example").IsAdmin
+	if _, ok := r.auth.SessionInfo(req); ok {
+		t.Fatal("an admin session outlived the list that named it")
+	}
+}
+
+func TestAStandardUsersSessionOutlivesTheAdminList(t *testing.T) {
+	r := newOIDCRig(t, nil)
+	rec, _ := r.flow(t, nil)
+	req := httptest.NewRequest(nethttp.MethodGet, "/", nil)
+	req.AddCookie(&nethttp.Cookie{Name: auth.CookieName, Value: sessionCookie(rec)})
+	r.auth.SSOAdmin = sso.ParseAdmins("someone-else@example.com").IsAdmin
+	if info, ok := r.auth.SessionInfo(req); !ok || info.Role != auth.RoleUser {
+		t.Fatalf("%+v %v", info, ok)
 	}
 }

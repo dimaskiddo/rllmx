@@ -18,6 +18,7 @@ const (
 	CodeExpired       = "sso_expired"
 	CodeInvalid       = "sso_invalid"
 	CodeNotAllowed    = "sso_not_allowed"
+	CodeNoAccount     = "sso_no_account"
 	CodeNoEmail       = "sso_no_email"
 	CodeUnverified    = "sso_unverified"
 	CodeIDPError      = "sso_idp_error"

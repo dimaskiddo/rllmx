@@ -11,19 +11,32 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 	goravelgin "github.com/goravel/gin"
 
+	"rllmx/app/access/auth"
 	"rllmx/app/access/identity"
 	"rllmx/tests"
 )
 
 type fakeAuth struct {
 	session    bool
+	role       string
+	uid        string
 	key        bool
 	invalid    bool
 	required   bool
 	requireKey bool
 }
 
-func (f fakeAuth) Session(*nethttp.Request) bool      { return f.session }
+func (f fakeAuth) Session(*nethttp.Request) bool { return f.session }
+func (f fakeAuth) SessionInfo(*nethttp.Request) (auth.Session, bool) {
+	if !f.session {
+		return auth.Session{}, false
+	}
+	role := f.role
+	if role == "" {
+		role = auth.RoleAdmin
+	}
+	return auth.Session{Role: role, UserID: f.uid}, true
+}
 func (f fakeAuth) RequireLogin(context.Context) bool  { return f.required }
 func (f fakeAuth) RequireAPIKey(context.Context) bool { return f.requireKey }
 func (f fakeAuth) APIKey(*nethttp.Request) identity.KeyResult {

@@ -424,6 +424,19 @@ func (s *Store) repair(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// The plan covers the compatibility set, because a real 9router database
+	// must satisfy it as it is. Our own tables are created unconditionally;
+	// CREATE TABLE IF NOT EXISTS makes that a no-op on a database that has them.
+	for _, tb := range ownTables {
+		if err := s.schema.Sql(createTableSQL(tb, s.dialect)); err != nil {
+			return fmt.Errorf("repository: create table %s: %w", tb.Name, err)
+		}
+		for _, ix := range tb.Indexes {
+			if err := s.schema.Sql(createIndexSQL(tb, ix)); err != nil {
+				return fmt.Errorf("repository: create index %s: %w", ix.Name, err)
+			}
+		}
+	}
 	for _, tb := range p.tables {
 		if err := s.schema.Sql(createTableSQL(tb, s.dialect)); err != nil {
 			return fmt.Errorf("repository: create table %s: %w", tb.Name, err)

@@ -5,6 +5,7 @@ import (
 	nethttp "net/http"
 	"time"
 
+	"rllmx/app/access/auth"
 	"rllmx/app/access/identity"
 )
 
@@ -12,6 +13,8 @@ import (
 // it and nothing else about logins and keys.
 type Authenticator interface {
 	Session(r *nethttp.Request) bool
+	// SessionInfo names the signed-in caller and their role.
+	SessionInfo(r *nethttp.Request) (auth.Session, bool)
 	// APIKey judges the key the request presents.
 	APIKey(r *nethttp.Request) identity.KeyResult
 	// RequireLogin reports whether the dashboard demands a login.
@@ -32,7 +35,10 @@ type keyLimiter interface {
 // in, no key is valid, and both requirements are on.
 type denyAll struct{}
 
-func (denyAll) Session(*nethttp.Request) bool              { return false }
+func (denyAll) Session(*nethttp.Request) bool { return false }
+func (denyAll) SessionInfo(*nethttp.Request) (auth.Session, bool) {
+	return auth.Session{}, false
+}
 func (denyAll) APIKey(*nethttp.Request) identity.KeyResult { return identity.KeyResult{} }
 func (denyAll) RequireLogin(context.Context) bool          { return true }
 func (denyAll) RequireAPIKey(context.Context) bool         { return true }

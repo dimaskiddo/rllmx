@@ -44,8 +44,6 @@ type Settings struct {
 	SAMLCert       string
 	SAMLIdPEntity  string
 	SAMLLoginLabel string
-	// SSOAllow is AUTH_SSO_ALLOW, read from the environment at wiring time.
-	SSOAllow string
 }
 
 // DefaultSettings is what a failed read means: login and key required, nothing

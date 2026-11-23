@@ -177,6 +177,17 @@ window.Alpine.data("providersPage", () => Object.assign({
     return nodeTypeLabel(card.entry.node);
   },
 
+  // errorBadge is one badge, "2 Error (429)", rather than the count, the word
+  // and the tag written side by side. A last error with no status code adds no
+  // parenthetical.
+  errorBadge(card) {
+    if (!card.failed) {
+      return "";
+    }
+    const tag = card.tag && card.tag !== "ERR" ? " (" + card.tag + ")" : "";
+    return card.failed + " " + t("providers.error") + tag;
+  },
+
   matches(card) {
     if (this.search) {
       const word = this.search.toLowerCase();

@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"context"
 	nethttp "net/http"
 	"net/http/httptest"
 	"strings"
@@ -24,6 +25,7 @@ type authRig struct {
 	route *goravelgin.Route
 	guard *apphttp.Guard
 	sq    *store.Store
+	auth  *auth.Authenticator
 }
 
 var rigSecret = []byte("0123456789abcdef0123456789abcdef")
@@ -34,6 +36,7 @@ func newAuthRig(t *testing.T) *authRig {
 	db := func() *repository.Store { return sq.Store }
 	codec := auth.NewKeys(db, nil, identity.NewKeys(""))
 	a := auth.NewAuthenticator(auth.NewStore(db), codec, bcryptOnly{}, "", func() []byte { return rigSecret }, true, false)
+	a.Users = auth.NewUsers(auth.NewUserRepo(db, 0))
 	trust := apphttp.NewTrust(nil)
 
 	r := tests.NewRoute(t)
@@ -48,7 +51,7 @@ func newAuthRig(t *testing.T) *authRig {
 	g.Handle(r, apphttp.ClassPublic, nethttp.MethodGet, "/api/auth/status", c.Status)
 	g.Handle(r, apphttp.ClassPublic, nethttp.MethodGet, "/api/settings/require-login", c.RequireLogin)
 	g.Handle(r, apphttp.ClassAlwaysProtected, nethttp.MethodPost, "/api/auth/change-password", c.ChangePassword)
-	return &authRig{route: r, guard: g, sq: sq}
+	return &authRig{route: r, guard: g, sq: sq, auth: a}
 }
 
 // bcryptOnly is the framework hasher shape without an application, so the route
@@ -294,5 +297,136 @@ func TestTheLoginRouteNeedsNoKeyAndLeaksNoPassword(t *testing.T) {
 	rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"password":"wrong"}`, nil)
 	if strings.Contains(rec.Body.String(), "wrong") || strings.Contains(rec.Body.String(), "123456") {
 		t.Fatalf("the answer repeats a password: %q", rec.Body.String())
+	}
+}
+
+func addRigUser(t *testing.T, r *authRig, id, name string) {
+	t.Helper()
+	hash, err := r.auth.Pass.Hash("user-pass-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.auth.Users.Put(context.Background(), auth.User{ID: id, Username: name, Hash: hash}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAStandardUserSignsInWithTheirOwnPassword(t *testing.T) {
+	r := newAuthRig(t)
+	addRigUser(t, r, "u1", "Dimas")
+
+	rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"dimas","password":"user-pass-1"}`, nil)
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("%d %s", rec.Code, rec.Body)
+	}
+	hdr := cookieHeader(rec)
+	if hdr == nil {
+		t.Fatal("no session cookie")
+	}
+	status := r.call(nethttp.MethodGet, "/api/auth/status", "", hdr)
+	for _, want := range []string{`"authenticated":true`, `"role":"user"`, `"user":"Dimas"`} {
+		if !strings.Contains(status.Body.String(), want) {
+			t.Errorf("status %q lacks %s", status.Body.String(), want)
+		}
+	}
+
+	if rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"dimas","password":"wrong"}`, nil); rec.Code != nethttp.StatusUnauthorized {
+		t.Fatalf("a wrong user password answered %d", rec.Code)
+	}
+	if rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"nobody","password":"user-pass-1"}`, nil); rec.Code != nethttp.StatusUnauthorized {
+		t.Fatalf("an unknown name answered %d", rec.Code)
+	}
+}
+
+func TestAUserChangesTheirOwnPasswordAndOnlyTheirSessionsEnd(t *testing.T) {
+	r := newAuthRig(t)
+	addRigUser(t, r, "u1", "Dimas")
+	old := cookieHeader(r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"dimas","password":"user-pass-1"}`, nil))
+	if old == nil {
+		t.Fatal("no session cookie")
+	}
+
+	rec := r.call(nethttp.MethodPost, "/api/auth/change-password",
+		`{"currentPassword":"user-pass-1","newPassword":"user-pass-2"}`, old)
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("%d %s", rec.Code, rec.Body)
+	}
+	fresh := cookieHeader(rec)
+	if fresh == nil {
+		t.Fatal("no replacement cookie")
+	}
+	if status := r.call(nethttp.MethodGet, "/api/auth/status", "", old); strings.Contains(status.Body.String(), `"authenticated":true`) {
+		t.Fatal("the old session survived the password change")
+	}
+	if status := r.call(nethttp.MethodGet, "/api/auth/status", "", fresh); !strings.Contains(status.Body.String(), `"authenticated":true`) {
+		t.Fatalf("the new session does not work: %s", status.Body.String())
+	}
+	// The admin password is untouched.
+	if rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"password":"123456"}`, nil); rec.Code != nethttp.StatusOK {
+		t.Fatalf("the admin login broke: %d", rec.Code)
+	}
+	if rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"dimas","password":"user-pass-1"}`, nil); rec.Code != nethttp.StatusUnauthorized {
+		t.Fatalf("the old user password still works: %d", rec.Code)
+	}
+}
+
+func TestTheAdminStatusNamesTheAdminRole(t *testing.T) {
+	r := newAuthRig(t)
+	hdr := cookieHeader(r.call(nethttp.MethodPost, "/api/auth/login", `{"password":"123456"}`, nil))
+	status := r.call(nethttp.MethodGet, "/api/auth/status", "", hdr)
+	if !strings.Contains(status.Body.String(), `"role":"admin"`) {
+		t.Fatalf("status %q", status.Body.String())
+	}
+}
+
+func addProvisionedUser(t *testing.T, r *authRig) auth.User {
+	t.Helper()
+	hash, err := r.auth.Pass.Hash("a-random-secret-nobody-knows")
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := auth.User{ID: "u1", Username: "ops@example.com", Email: "ops@example.com", Hash: hash, Provisioned: true}
+	if err := r.auth.Users.Put(context.Background(), u); err != nil {
+		t.Fatal(err)
+	}
+	return u
+}
+
+func TestAProvisionedUserSetsTheFirstPasswordWithoutTheCurrentOne(t *testing.T) {
+	r := newAuthRig(t)
+	u := addProvisionedUser(t, r)
+	cookie, ok := r.auth.IssueUser(context.Background(), u, auth.MethodPassword, false)
+	if !ok {
+		t.Fatal("no session")
+	}
+	hdr := map[string]string{"Cookie": auth.CookieName + "=" + cookie.Value}
+
+	status := r.call(nethttp.MethodGet, "/api/auth/status", "", hdr)
+	if !strings.Contains(status.Body.String(), `"needsPassword":true`) {
+		t.Fatalf("status %q", status.Body.String())
+	}
+
+	rec := r.call(nethttp.MethodPost, "/api/auth/change-password", `{"newPassword":"a-new-password"}`, hdr)
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("%d %s", rec.Code, rec.Body)
+	}
+	fresh := cookieHeader(rec)
+	if fresh == nil {
+		t.Fatal("no replacement cookie")
+	}
+	if status := r.call(nethttp.MethodGet, "/api/auth/status", "", fresh); strings.Contains(status.Body.String(), "needsPassword") {
+		t.Fatalf("the flag survived the first password: %s", status.Body.String())
+	}
+
+	// A second change needs the password that was just set.
+	if rec := r.call(nethttp.MethodPost, "/api/auth/change-password", `{"newPassword":"another-password"}`, fresh); rec.Code != nethttp.StatusUnauthorized {
+		t.Fatalf("a change without the current password answered %d", rec.Code)
+	}
+	if rec := r.call(nethttp.MethodPost, "/api/auth/change-password",
+		`{"currentPassword":"a-new-password","newPassword":"another-password"}`, fresh); rec.Code != nethttp.StatusOK {
+		t.Fatalf("%d %s", rec.Code, rec.Body)
+	}
+	if rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"ops@example.com","password":"another-password"}`, nil); rec.Code != nethttp.StatusOK {
+		t.Fatalf("the user cannot sign in with the password they set: %d", rec.Code)
 	}
 }

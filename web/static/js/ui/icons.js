@@ -6,6 +6,7 @@ import createElement from "/static/lib/lucide/createElement.mjs";
 const icons = {
   "activity": () => import("/static/lib/lucide/icons/activity.mjs"),
   "arrow-down": () => import("/static/lib/lucide/icons/arrow-down.mjs"),
+  "arrow-left": () => import("/static/lib/lucide/icons/arrow-left.mjs"),
   "arrow-up": () => import("/static/lib/lucide/icons/arrow-up.mjs"),
   "clock": () => import("/static/lib/lucide/icons/clock.mjs"),
   "copy": () => import("/static/lib/lucide/icons/copy.mjs"),

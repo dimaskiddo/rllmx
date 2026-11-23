@@ -14,6 +14,7 @@ import (
 
 	"rllmx/app/access/auth"
 	"rllmx/app/gateway/health"
+	apphttp "rllmx/app/http"
 	"rllmx/app/llm/upstream"
 	"rllmx/app/platform/text"
 	"rllmx/app/store/analytics"
@@ -33,14 +34,15 @@ var (
 	errUsageStore = errors.New("usage: the analytics store is not open")
 )
 
-// UsageReader is the part of the analytics store the usage pages read.
+// UsageReader is the part of the analytics store the usage pages read. keys
+// narrows an answer to a standard user's keys; nil means every key.
 type UsageReader interface {
-	Sums(ctx context.Context, from time.Time, hourly bool) ([]analytics.Sum, error)
-	Buckets(ctx context.Context, from time.Time, hourly bool) ([]analytics.Bucket, error)
-	LastSeen(ctx context.Context, since time.Time) (map[analytics.Dims]time.Time, error)
-	Recent(ctx context.Context, limit int) ([]analytics.Request, error)
-	RecentServed(ctx context.Context, limit int) ([]analytics.Request, error)
-	Providers(ctx context.Context) ([]string, error)
+	Sums(ctx context.Context, from time.Time, hourly bool, keys []string) ([]analytics.Sum, error)
+	Buckets(ctx context.Context, from time.Time, hourly bool, keys []string) ([]analytics.Bucket, error)
+	LastSeen(ctx context.Context, since time.Time, keys []string) (map[analytics.Dims]time.Time, error)
+	Recent(ctx context.Context, limit int, keys []string) ([]analytics.Request, error)
+	RecentServed(ctx context.Context, limit int, keys []string) ([]analytics.Request, error)
+	Providers(ctx context.Context, keys []string) ([]string, error)
 }
 
 // UsageController serves the dashboard's usage pages over the analytics store
@@ -57,6 +59,9 @@ type UsageController struct {
 	// reader is wired.
 	Quota func() QuotaReader
 	Log   log.Log
+	// Users holds the standard-user accounts, so a user's read is narrowed to
+	// the keys assigned to them. Nil leaves every read unscoped.
+	Users *auth.Users
 	// Loc and Now pin the clock in a test; nil reads time.Local and time.Now.
 	Loc         *time.Location
 	Now         func() time.Time
@@ -201,6 +206,23 @@ func (c *UsageController) reader() UsageReader {
 	return c.Analytics()
 }
 
+// scope is the key ids a standard user may read, or nil for the admin. A user
+// with no keys reads zero, never everything.
+func (c *UsageController) scope(ctx contractshttp.Context) ([]string, contractshttp.Response, bool) {
+	who, ok := apphttp.SessionFrom(ctx)
+	if !ok || who.Role != auth.RoleUser {
+		return nil, nil, true
+	}
+	if c.Users == nil {
+		return []string{}, nil, true
+	}
+	keys, err := c.Users.KeysOf(ctx.Request().Origin().Context(), who.UserID)
+	if err != nil {
+		return nil, storageDown(ctx), false
+	}
+	return keys, nil, true
+}
+
 // requestedPeriod reads the period, defaulting to fallback.
 func requestedPeriod(ctx contractshttp.Context, fallback string) string {
 	if p := strings.TrimSpace(ctx.Request().Query("period")); p != "" {
@@ -227,11 +249,15 @@ func (c *UsageController) History(ctx contractshttp.Context) contractshttp.Respo
 }
 
 func (c *UsageController) stats(ctx contractshttp.Context, period, msg string) contractshttp.Response {
+	keys, out3, ok := c.scope(ctx)
+	if !ok {
+		return out3
+	}
 	w, ok := c.window(period)
 	if !ok {
 		return flat(ctx, nethttp.StatusBadRequest, "Invalid period")
 	}
-	out, err := c.build(ctx.Request().Origin().Context(), w)
+	out, err := c.build(ctx.Request().Origin().Context(), w, keys)
 	if err != nil {
 		return c.failed(ctx, "stats", msg, err)
 	}
@@ -240,11 +266,15 @@ func (c *UsageController) stats(ctx contractshttp.Context, period, msg string) c
 
 // Chart answers GET /api/usage/chart with one point per hour or day.
 func (c *UsageController) Chart(ctx contractshttp.Context) contractshttp.Response {
+	keys, out3, ok := c.scope(ctx)
+	if !ok {
+		return out3
+	}
 	w, ok := c.window(requestedPeriod(ctx, "7d"))
 	if !ok {
 		return flat(ctx, nethttp.StatusBadRequest, "Invalid period")
 	}
-	out, err := c.chart(ctx.Request().Origin().Context(), w)
+	out, err := c.chart(ctx.Request().Origin().Context(), w, keys)
 	if err != nil {
 		return c.failed(ctx, "chart", "Failed to fetch chart data", err)
 	}
@@ -257,8 +287,12 @@ func (c *UsageController) Logs(ctx contractshttp.Context) contractshttp.Response
 	if st == nil {
 		return c.failed(ctx, "logs", "Failed to fetch logs", errUsageStore)
 	}
+	keys, out3, ok := c.scope(ctx)
+	if !ok {
+		return out3
+	}
 	rc := ctx.Request().Origin().Context()
-	rows, err := st.Recent(rc, usageLogRows)
+	rows, err := st.Recent(rc, usageLogRows, keys)
 	if err != nil {
 		return c.failed(ctx, "logs", "Failed to fetch logs", err)
 	}
@@ -278,7 +312,11 @@ func (c *UsageController) Providers(ctx contractshttp.Context) contractshttp.Res
 		return c.failed(ctx, "providers", "Failed to fetch providers", errUsageStore)
 	}
 	rc := ctx.Request().Origin().Context()
-	ids, err := st.Providers(rc)
+	keys, out3, ok := c.scope(ctx)
+	if !ok {
+		return out3
+	}
+	ids, err := st.Providers(rc, keys)
 	if err != nil {
 		return c.failed(ctx, "providers", "Failed to fetch providers", err)
 	}
@@ -304,16 +342,16 @@ func (c *UsageController) ActiveProviders(ctx contractshttp.Context) contractsht
 	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"period": period, "activeProviders": len(seen)})
 }
 
-func (c *UsageController) build(ctx context.Context, w usageWindow) (usageStats, error) {
+func (c *UsageController) build(ctx context.Context, w usageWindow, keys []string) (usageStats, error) {
 	st := c.reader()
 	if st == nil {
 		return usageStats{}, errUsageStore
 	}
-	sums, err := st.Sums(ctx, w.from, w.hours)
+	sums, err := st.Sums(ctx, w.from, w.hours, keys)
 	if err != nil {
 		return usageStats{}, err
 	}
-	seen, err := st.LastSeen(ctx, c.now().Add(-usageLastSeen))
+	seen, err := st.LastSeen(ctx, c.now().Add(-usageLastSeen), keys)
 	if err != nil {
 		return usageStats{}, err
 	}
@@ -339,10 +377,14 @@ func (c *UsageController) build(ctx context.Context, w usageWindow) (usageStats,
 		out.add(s, names, last.UTC().Format("2006-01-02T15:04:05.000Z"))
 	}
 
-	out.Pending, out.ActiveRequests = c.live(accounts)
-	out.ErrorProvider = c.Inflight.ErrorProvider()
+	// The in-flight table holds no key id, so a standard user's page omits it
+	// rather than showing every account's live requests.
+	if keys == nil {
+		out.Pending, out.ActiveRequests = c.live(accounts)
+		out.ErrorProvider = c.Inflight.ErrorProvider()
+	}
 
-	recent, err := c.recent(ctx)
+	recent, err := c.recent(ctx, keys)
 	if err != nil {
 		return usageStats{}, err
 	}
@@ -414,12 +456,12 @@ func (u *usageStats) add(s analytics.Sum, n usageNames, stamp string) {
 }
 
 // recent is the newest finished rows the page shows, newest first.
-func (c *UsageController) recent(ctx context.Context) ([]usageRecent, error) {
+func (c *UsageController) recent(ctx context.Context, keys []string) ([]usageRecent, error) {
 	st := c.reader()
 	if st == nil {
 		return []usageRecent{}, errUsageStore
 	}
-	rows, err := st.RecentServed(ctx, usageRecentShow)
+	rows, err := st.RecentServed(ctx, usageRecentShow, keys)
 	if err != nil {
 		return nil, err
 	}
@@ -453,12 +495,12 @@ func (c *UsageController) live(accounts map[string]string) (usagePending, []usag
 	return pending, active
 }
 
-func (c *UsageController) chart(ctx context.Context, w usageWindow) ([]usageChartPoint, error) {
+func (c *UsageController) chart(ctx context.Context, w usageWindow, keys []string) ([]usageChartPoint, error) {
 	st := c.reader()
 	if st == nil {
 		return nil, errUsageStore
 	}
-	buckets, err := st.Buckets(ctx, w.from, w.hours)
+	buckets, err := st.Buckets(ctx, w.from, w.hours, keys)
 	if err != nil {
 		return nil, err
 	}
@@ -496,11 +538,11 @@ func (c *UsageController) chart(ctx context.Context, w usageWindow) ([]usageChar
 		p.Requests += b.Requests
 	}
 
-	var keys []string
+	var labels []string
 	if n, ok := usageDays[w.key]; ok {
 		mid := c.midnight()
 		for i := n - 1; i >= 0; i-- {
-			keys = append(keys, mid.AddDate(0, 0, -i).Format(usageDayLayout))
+			labels = append(labels, mid.AddDate(0, 0, -i).Format(usageDayLayout))
 		}
 	} else {
 		if len(days) == 0 {
@@ -518,12 +560,12 @@ func (c *UsageController) chart(ctx context.Context, w usageWindow) ([]usageChar
 		}
 		today := c.midnight()
 		for !d.After(today) {
-			keys = append(keys, d.Format(usageDayLayout))
+			labels = append(labels, d.Format(usageDayLayout))
 			d = d.AddDate(0, 0, 1)
 		}
 	}
-	out := make([]usageChartPoint, 0, len(keys))
-	for _, k := range keys {
+	out := make([]usageChartPoint, 0, len(labels))
+	for _, k := range labels {
 		if p := days[k]; p != nil {
 			out = append(out, *p)
 		} else {

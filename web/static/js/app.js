@@ -12,7 +12,24 @@ Alpine.data("shell", () => ({
   theme: document.documentElement.getAttribute("data-bs-theme") || "light",
   locale: locale(),
   menu: false,
+  role: "admin",
+  userName: "",
+  needsPassword: false,
   pw: { current: "", next: "", again: "", error: "", busy: false },
+  async init() {
+    try {
+      const status = await api("/api/auth/status");
+      this.role = status.role === "user" ? "user" : "admin";
+      this.userName = status.user || "";
+      this.needsPassword = status.needsPassword === true;
+    } catch (err) {
+      // The guard already let the page through; a failed status leaves the
+      // admin view, which the API narrows again on every call.
+    }
+  },
+  isAdmin() {
+    return this.role !== "user";
+  },
   isCurrent(href) {
     return this.$store.route.nav === href;
   },
@@ -75,7 +92,7 @@ Alpine.data("shell", () => ({
     try {
       await api("/api/auth/change-password", {
         method: "POST",
-        body: { currentPassword: this.pw.current, newPassword: this.pw.next },
+        body: { currentPassword: this.needsPassword ? "" : this.pw.current, newPassword: this.pw.next },
       });
       this.closePassword();
       window.Alpine.store("toasts").success(t("password.changed"));

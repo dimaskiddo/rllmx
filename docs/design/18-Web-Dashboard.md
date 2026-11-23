@@ -42,6 +42,7 @@ There is no bundler, build step or runtime CDN. Pages call the same `/api/*` pat
 | Libraries | A new library is an entry in `docs/ARCHITECTURE.md` first. Its files are copied unchanged into `static/lib/` and listed with their sha256 in `VERSIONS.json`. Chart.js uses its UMD file, because the ES build needs an import map |
 | Console Log | `GET /api/translator/console-logs` returns the ring and `GET …/stream` follows it: `init` with the ring, `lines` in batches, `clear` when the ring is emptied, a comment every 25 s. The lines are already redacted, so the page renders them as text and never re-fetches the log file |
 | Secrets | The API masks them and the dashboard never receives raw tokens. The one exception is a deliberate reveal: a signed-in operator asks for one key by id and the answer is logged (D330) |
+| Roles | The shell reads `/api/auth/status` and hides the Providers entry from a standard user; the Endpoint page hides the create, edit and delete key controls, the settings switches and the users card, and keeps only pause/resume. The server narrows the same routes (`design doc 2`), so a hidden control is also a refused one |
 
 ### Provider Routes (`app/http/controllers`)
 
@@ -134,6 +135,16 @@ Plain HTML, ES modules, CSS; same flows and `/api/*` contract (design doc 18).
 | `/api/auth/status` did not say which single sign-on type is configured, and its labels sit behind an authenticated settings read | The status answer gains `oidc`, `saml` and both labels. Both are public by nature and no secret |
 | The shell loads before its own data, and the page policy forbids an inline theme snippet | `static/js/theme.js` is a classic script in the head, so the theme is set before the first paint |
 | A `<dialog>` cannot be opened from an Alpine store | One confirm dialog in the shell, filled and shown by `ui/dialog.js`, and each page's own `<dialog>` opened through `$refs` |
+| A pause tooltip that says "Pause" names the verb, not the state the click leaves the key in | Play says "Active" and Pause says "Inactive", as the cards do |
+| Tabler's paragraph margin cannot collapse out of a list row, so the first row had 0.75rem above and 1.75rem below | A row's paragraphs lose their bottom margin, and the first row adds no top padding of its own |
+| Tabler gives a checkbox a bottom margin only, so one under a text input touched it | A dialog's `.form-check` gets a top margin |
+| A per-row alias-removal button sat disabled in almost every row | The alias dialog clears the alias itself, behind a confirmation |
+| The failure badge printed the count, the lowercase word and a tag that said "Error" again ("2 error Error") | One helper builds "2 Error (429)", the reference's shape |
+| Copying a key revealed it on screen as a side effect | Copy fetches the value and leaves the row masked; only the eye button reveals |
+| The custom-provider hint wrote "OpenAI- or Anthropic-compatible", and the suspended hyphen read as a stray dash | The hint says "compatible with OpenAI or Anthropic" |
+| A stretched-link provider name underlined on hover because of a page rule | The hover rule removes the underline; the pointer still says it is a link |
+| An account provisioned by single sign-on has no password its user knows, so asking for the current one is a dead end | `/api/auth/status` answers `needsPassword`, the shell hides the current field, and the request sends it empty; the server skips the check for a provisioned row only |
+| A provisioned row and a hand-made one look the same in the users card | The card marks a provisioned row "SSO" and hides an email that repeats the username |
 | `PATCH /api/settings` refused the per-provider strategy object the selector reads | The rule takes the bare word or the object, keeps an entry's other keys, and bounds the sticky limit from 1 to 100 |
 | The registry describes no per-provider form fields | One key/value editor for `providerSpecificData` on create and edit, plus a region select from the catalog. A masked value is shown read-only and never sent back |
 | The catalog lists only chat providers, so a media-only provider has no card yet | The pages filter on `kinds` containing `llm`; media pages in 4.3 read the same catalog |

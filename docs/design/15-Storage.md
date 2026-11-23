@@ -57,6 +57,13 @@ DDL follows the reference (`src/lib/db/schema.js`, pinned in `PARITY.md`). Every
 
 `accessRestricted` and `accessAllow` are the only columns an older file may lack; the migration adds them. The framework's migration table is `migrations` (`config/database.go`), a plain identifier 9router ignores.
 
+**Go-only tables.** Created beside the compatibility set by their own migrations (numbers 100 and 101). A 9router database gains them on open and every row it already had is untouched; they are outside the contract the fixture plan measures.
+
+| Table | Columns | Indexes |
+|---|---|---|
+| `users` | `id PK`, `username NOT NULL UNIQUE`, `email UNIQUE` (NULL when empty), `password NOT NULL` (the bcrypt hash), `provisioned INTEGER DEFAULT 0`, `createdAt NOT NULL` | the two unique constraints |
+| `userKeys` | `keyId PK`, `userId NOT NULL` | `idx_userkeys_user (userId)` |
+
 **Legacy usage tables.** 9router also has `usageHistory`, `usageDaily` and `requestDetails`, and a `proxyPools` table.
 
 | Table | What we do |

@@ -1,0 +1,152 @@
+package repository
+
+import (
+	"context"
+	"errors"
+	"testing"
+)
+
+func addUserRow(t *testing.T, r *UsersRepo, id, username, email string) UserRow {
+	t.Helper()
+	u := UserRow{ID: id, Username: username, Email: email, Password: "hash-" + id, CreatedAt: "2026-11-23T00:00:00Z"}
+	if err := r.Create(context.Background(), u); err != nil {
+		t.Fatal(err)
+	}
+	return u
+}
+
+func TestAUserRoundTripsThroughItsTable(t *testing.T) {
+	s := newMigrated(t)
+	r := s.Users()
+	ctx := context.Background()
+
+	addUserRow(t, r, "u1", "Dimas", "dimas@example.com")
+	addUserRow(t, r, "u2", "Other", "")
+
+	u, ok, err := r.Get(ctx, "u1")
+	if err != nil || !ok {
+		t.Fatalf("%+v %v %v", u, ok, err)
+	}
+	if u.Username != "Dimas" || u.Email != "dimas@example.com" || u.Password != "hash-u1" || u.Provisioned {
+		t.Fatalf("%+v", u)
+	}
+	// An address with no case and an empty one.
+	if _, ok, _ := r.GetByUsername(ctx, "DIMAS"); !ok {
+		t.Fatal("a username lookup ignored case")
+	}
+	if _, ok, _ := r.GetByEmail(ctx, "Dimas@Example.com"); !ok {
+		t.Fatal("an email lookup ignored case")
+	}
+	if _, ok, _ := r.GetByEmail(ctx, ""); ok {
+		t.Fatal("an empty address matched a user")
+	}
+	if got, ok, _ := r.Get(ctx, "u2"); !ok || got.Email != "" {
+		t.Fatalf("%+v %v: an empty email is not empty", got, ok)
+	}
+	list, err := r.List(ctx)
+	if err != nil || len(list) != 2 || list[0].ID != "u1" {
+		t.Fatalf("%+v %v", list, err)
+	}
+	if n, err := r.Count(ctx); err != nil || n != 2 {
+		t.Fatalf("count %d %v", n, err)
+	}
+}
+
+func TestUsernameAndEmailAreUnique(t *testing.T) {
+	s := newMigrated(t)
+	r := s.Users()
+	addUserRow(t, r, "u1", "Dimas", "dimas@example.com")
+	// Two users without an address are fine; the column is NULL, not "".
+	addUserRow(t, r, "u2", "Other", "")
+	addUserRow(t, r, "u3", "Third", "")
+
+	for _, u := range []UserRow{
+		{ID: "x1", Username: "Dimas", Password: "h", CreatedAt: "t"},
+		{ID: "x2", Username: "Another", Email: "DIMAS@example.com", Password: "h", CreatedAt: "t"},
+	} {
+		if err := r.Create(context.Background(), u); err == nil {
+			t.Fatalf("%s: a duplicate was stored", u.Username)
+		}
+	}
+}
+
+func TestAUserUpdateLeavesTheRestAlone(t *testing.T) {
+	s := newMigrated(t)
+	r := s.Users()
+	addUserRow(t, r, "u1", "Dimas", "dimas@example.com")
+	ctx := context.Background()
+
+	name, hash := "Dimas R", "hash-new"
+	provisioned := false
+	got, err := r.Update(ctx, "u1", UserPatch{Username: &name, Password: &hash, Provisioned: &provisioned})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Username != name || got.Password != hash || got.Email != "dimas@example.com" || got.Provisioned {
+		t.Fatalf("%+v", got)
+	}
+	empty := ""
+	if got, err := r.Update(ctx, "u1", UserPatch{Email: &empty}); err != nil || got.Email != "" {
+		t.Fatalf("%+v %v", got, err)
+	}
+	if _, err := r.Update(ctx, "nope", UserPatch{Username: &name}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("%v, want ErrNotFound", err)
+	}
+}
+
+func TestDeletingAUserKeepsTheKeys(t *testing.T) {
+	s := newMigrated(t)
+	r := s.Users()
+	ctx := context.Background()
+	addUserRow(t, r, "u1", "Dimas", "")
+	if err := r.SetOwner(ctx, "k1", "u1"); err != nil {
+		t.Fatal(err)
+	}
+	ok, err := r.Delete(ctx, "u1")
+	if err != nil || !ok {
+		t.Fatalf("%v %v", ok, err)
+	}
+	if _, found, _ := r.Get(ctx, "u1"); found {
+		t.Fatal("the user survived the delete")
+	}
+	if owner, _ := r.OwnerOf(ctx, "k1"); owner != "" {
+		t.Fatalf("the assignment survived: %q", owner)
+	}
+	if ok, _ := r.Delete(ctx, "u1"); ok {
+		t.Fatal("deleting a missing user reported one")
+	}
+}
+
+func TestKeyAssignmentsAreUpsertedAndCleared(t *testing.T) {
+	s := newMigrated(t)
+	r := s.Users()
+	ctx := context.Background()
+	addUserRow(t, r, "u1", "Dimas", "")
+	addUserRow(t, r, "u2", "Other", "")
+
+	for _, key := range []string{"k2", "k1"} {
+		if err := r.SetOwner(ctx, key, "u1"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := r.SetOwner(ctx, "k3", "u2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.SetOwner(ctx, "k1", "u2"); err != nil {
+		t.Fatal(err)
+	}
+	owners, err := r.Owners(ctx)
+	if err != nil || len(owners) != 3 || owners["k1"] != "u2" {
+		t.Fatalf("%v %v", owners, err)
+	}
+	keys, err := r.KeysOf(ctx, "u1")
+	if err != nil || len(keys) != 1 || keys[0] != "k2" {
+		t.Fatalf("%v %v", keys, err)
+	}
+	if err := r.ClearOwner(ctx, "k3"); err != nil {
+		t.Fatal(err)
+	}
+	if owner, _ := r.OwnerOf(ctx, "k3"); owner != "" {
+		t.Fatalf("a cleared assignment still names %q", owner)
+	}
+}

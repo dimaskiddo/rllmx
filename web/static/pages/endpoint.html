@@ -13,19 +13,19 @@
         <code class="rl-code" x-text="baseUrl"></code>
         <button type="button" class="btn btn-sm" x-on:click="copyBaseUrl()" x-tip="common.copy"><span class="rl-icon" x-icon="copy"></span><span class="visually-hidden" x-t="common.copy"></span></button>
       </div>
-      <div class="form-check form-switch rl-switch">
+      <div class="form-check form-switch rl-switch" x-show="isAdmin()">
         <input class="form-check-input" type="checkbox" id="require-key" role="switch" x-bind:checked="settings.requireApiKey" x-on:change="toggleKeyRequired($event)">
         <label class="form-check-label" for="require-key" x-t="endpoint.requireApiKey"></label>
       </div>
-      <p class="rl-warning" x-show="!settings.requireApiKey"><span class="rl-icon" x-icon="triangle-exclamation-point"></span><span x-t="endpoint.keyOffWarning"></span></p>
-      <p class="rl-warning" x-show="!settings.requireLogin"><span class="rl-icon" x-icon="triangle-exclamation-point"></span><span x-t="endpoint.loginOffWarning"></span></p>
+      <p class="rl-warning" x-show="isAdmin() && !settings.requireApiKey"><span class="rl-icon" x-icon="triangle-exclamation-point"></span><span x-t="endpoint.keyOffWarning"></span></p>
+      <p class="rl-warning" x-show="isAdmin() && !settings.requireLogin"><span class="rl-icon" x-icon="triangle-exclamation-point"></span><span x-t="endpoint.loginOffWarning"></span></p>
     </div>
   </section>
 
   <section class="card" x-show="!loading">
     <div class="card-header rl-card-head">
       <h2 class="rl-card-title" x-t="keys.title"></h2>
-      <button type="button" class="btn btn-sm btn-primary" x-on:click="openCreate()"><span class="rl-icon" x-icon="plus"></span><span x-t="keys.create"></span></button>
+      <button type="button" class="btn btn-sm btn-primary" x-show="isAdmin()" x-on:click="openCreate()"><span class="rl-icon" x-icon="plus"></span><span x-t="keys.create"></span></button>
     </div>
     <div class="card-body">
       <p class="text-secondary" x-show="keys.length === 0" x-t="keys.empty"></p>
@@ -37,6 +37,7 @@
                 <span x-text="key.name"></span>
                 <span class="badge" x-show="!key.isActive" x-t="keys.paused"></span>
                 <span class="badge" x-show="key.access.restricted" x-t="keys.restricted"></span>
+                <span class="badge" x-show="isAdmin() && key.owner" x-text="userName(key.owner)"></span>
               </div>
               <div class="rl-inline">
                 <code class="rl-code rl-key" x-text="keyText(key)"></code>
@@ -46,10 +47,10 @@
               <p class="rl-hint"><span x-t="keys.created"></span> <span x-text="formatDate(key.createdAt)"></span></p>
             </div>
             <div class="rl-list-actions">
-              <button type="button" class="btn btn-sm btn-ghost" x-on:click="openEdit(key)" x-tip="common.edit"><span class="rl-icon" x-icon="pencil"></span><span class="visually-hidden" x-t="common.edit"></span></button>
-              <button type="button" class="btn btn-sm btn-ghost" x-show="key.isActive" x-bind:disabled="busy[key.id] === true" x-on:click="toggleActive(key)" x-tip="keys.pause"><span class="rl-icon" x-icon="pause"></span><span class="visually-hidden" x-t="keys.pause"></span></button>
-              <button type="button" class="btn btn-sm btn-ghost" x-show="!key.isActive" x-bind:disabled="busy[key.id] === true" x-on:click="toggleActive(key)" x-tip="keys.resume"><span class="rl-icon" x-icon="play"></span><span class="visually-hidden" x-t="keys.resume"></span></button>
-              <button type="button" class="btn btn-sm btn-ghost" x-on:click="remove(key)" x-tip="common.delete"><span class="rl-icon" x-icon="trash"></span><span class="visually-hidden" x-t="common.delete"></span></button>
+              <button type="button" class="btn btn-sm btn-ghost" x-show="isAdmin()" x-on:click="openEdit(key)" x-tip="common.edit"><span class="rl-icon" x-icon="pencil"></span><span class="visually-hidden" x-t="common.edit"></span></button>
+              <button type="button" class="btn btn-sm btn-ghost" x-show="key.isActive" x-bind:disabled="busy[key.id] === true" x-on:click="toggleActive(key)" x-tip="keys.inactive"><span class="rl-icon" x-icon="pause"></span><span class="visually-hidden" x-t="keys.inactive"></span></button>
+              <button type="button" class="btn btn-sm btn-ghost" x-show="!key.isActive" x-bind:disabled="busy[key.id] === true" x-on:click="toggleActive(key)" x-tip="keys.active"><span class="rl-icon" x-icon="play"></span><span class="visually-hidden" x-t="keys.active"></span></button>
+              <button type="button" class="btn btn-sm btn-ghost-danger" x-show="isAdmin()" x-on:click="remove(key)" x-tip="common.delete"><span class="rl-icon" x-icon="trash"></span><span class="visually-hidden" x-t="common.delete"></span></button>
             </div>
           </li>
         </template>
@@ -57,11 +58,65 @@
     </div>
   </section>
 
+  <section class="card" x-show="!loading && isAdmin()">
+    <div class="card-header rl-card-head">
+      <div>
+        <h2 class="rl-card-title" x-t="users.title"></h2>
+        <p class="rl-hint" x-t="users.hint"></p>
+      </div>
+      <button type="button" class="btn btn-sm btn-primary" x-on:click="openUser()"><span class="rl-icon" x-icon="plus"></span><span x-t="users.add"></span></button>
+    </div>
+    <div class="card-body">
+      <p class="rl-hint" x-show="users.length === 0" x-t="users.empty"></p>
+      <ul class="rl-list">
+        <template x-for="user in users" x-bind:key="user.id">
+          <li class="rl-list-row">
+            <div class="rl-list-main">
+              <div class="rl-list-title">
+                <span x-text="user.username"></span>
+                <span class="badge" x-show="user.provisioned" x-t="users.sso"></span>
+                <span class="badge" x-show="user.keys.length > 0" x-text="user.keys.length"></span>
+              </div>
+              <p class="rl-hint" x-show="user.email && user.email !== user.username" x-text="user.email"></p>
+            </div>
+            <div class="rl-list-actions">
+              <button type="button" class="btn btn-sm btn-ghost" x-on:click="openUser(user)" x-tip="common.edit"><span class="rl-icon" x-icon="pencil"></span><span class="visually-hidden" x-t="common.edit"></span></button>
+              <button type="button" class="btn btn-sm btn-ghost-danger" x-on:click="removeUser(user)" x-tip="common.delete"><span class="rl-icon" x-icon="trash"></span><span class="visually-hidden" x-t="common.delete"></span></button>
+            </div>
+          </li>
+        </template>
+      </ul>
+    </div>
+  </section>
+
+  <dialog class="rl-dialog" x-ref="userDlg" aria-labelledby="dlg-userDlg-title">
+    <form x-on:submit.prevent="saveUser()">
+      <h2 id="dlg-userDlg-title" x-text="userForm && userForm.id ? label('users.editTitle') : label('users.addTitle')"></h2>
+      <label class="form-label" for="user-name" x-t="users.name"></label>
+      <input class="form-control" id="user-name" x-ref="userName" maxlength="64" required x-bind:value="userForm ? userForm.name : ''" x-on:input="setUser('name', $event)">
+      <label class="form-label" for="user-email" x-t="users.email"></label>
+      <input class="form-control" id="user-email" type="email" maxlength="320" x-bind:value="userForm ? userForm.email : ''" x-on:input="setUser('email', $event)">
+      <label class="form-label" for="user-password" x-t="users.password"></label>
+      <input class="form-control" id="user-password" type="password" autocomplete="new-password" x-bind:value="userForm ? userForm.password : ''" x-on:input="setUser('password', $event)" x-bind:required="userForm ? userForm.id === '' : true">
+      <p class="rl-hint" x-show="userForm && userForm.id" x-t="users.passwordKeep"></p>
+      <p class="rl-error" x-show="userForm && userForm.error" x-text="userForm ? userForm.error : ''"></p>
+      <div class="rl-dialog-actions">
+        <button type="button" class="btn" x-on:click="closeUser()" x-t="common.cancel"></button>
+        <button type="submit" class="btn btn-primary" x-bind:disabled="userForm && userForm.busy" x-t="common.save"></button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog class="rl-dialog" x-ref="createDlg" aria-labelledby="dlg-createDlg-title">
     <form x-on:submit.prevent="createKey()">
       <h2 id="dlg-createDlg-title" x-t="keys.createTitle"></h2>
       <label class="form-label" for="key-name" x-t="keys.name"></label>
       <input class="form-control" id="key-name" x-ref="createName" maxlength="64" required x-bind:value="create.name" x-on:input="setField('create.name', $event)">
+      <label class="form-label" for="create-owner" x-t="users.owner"></label>
+      <select class="form-select" id="create-owner" x-bind:value="create.owner" x-on:change="setField('create.owner', $event)">
+        <option value="" x-t="users.ownerNone"></option>
+        <template x-for="user in users" x-bind:key="user.id"><option x-bind:value="user.id" x-text="user.username"></option></template>
+      </select>
       <p class="rl-error" x-show="create.error" x-text="create.error"></p>
       <div class="rl-dialog-actions">
         <button type="button" class="btn" x-on:click="closeCreate()" x-t="common.cancel"></button>
@@ -85,6 +140,11 @@
       <h2 id="dlg-editDlg-title" x-t="keys.editTitle"></h2>
       <label class="form-label" for="edit-name" x-t="keys.name"></label>
       <input class="form-control" id="edit-name" maxlength="64" required x-bind:value="edit ? edit.name : ''" x-on:input="setField('edit.name', $event)">
+      <label class="form-label" for="edit-owner" x-t="users.owner"></label>
+      <select class="form-select" id="edit-owner" x-bind:value="edit ? edit.owner : ''" x-on:change="setField('edit.owner', $event)">
+        <option value="" x-t="users.ownerNone"></option>
+        <template x-for="user in users" x-bind:key="user.id"><option x-bind:value="user.id" x-text="user.username"></option></template>
+      </select>
 
       <div class="form-check form-switch rl-switch">
         <input class="form-check-input" type="checkbox" id="edit-active" role="switch" x-bind:checked="edit ? edit.isActive : false" x-on:change="toggleEditActive()">

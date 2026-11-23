@@ -118,6 +118,10 @@ dialog.rl-dialog .form-label {
   margin-block-start: 0.75rem;
 }
 
+dialog.rl-dialog .form-check {
+  margin-block-start: 0.75rem;
+}
+
 dialog.rl-dialog h2 + .form-label,
 dialog.rl-dialog form > .form-label:first-child {
   margin-block-start: 0;
@@ -340,6 +344,7 @@ dialog.rl-dialog h2 {
 
 .rl-list-row:first-of-type {
   border-block-start: 0;
+  padding-block-start: 0;
 }
 
 .rl-list-row[data-paused="yes"] .rl-list-main {
@@ -570,7 +575,7 @@ dialog.rl-dialog h2 {
 }
 
 .rl-provider-name:hover {
-  text-decoration: underline;
+  text-decoration: none;
 }
 
 .rl-provider-stats {

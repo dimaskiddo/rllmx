@@ -180,6 +180,19 @@ export const modelMethods = {
     });
   },
 
+  async dropAlias() {
+    const model = this.aliasForm.model;
+    if (!this.aliasFor(model)) {
+      return;
+    }
+    const yes = await ask({ title: t("models.removeAliasTitle"), message: t("models.removeAliasBody"), confirm: t("models.removeAlias") });
+    if (!yes) {
+      return;
+    }
+    await this.removeAlias(model);
+    this.closeAlias();
+  },
+
   removeAlias(id) {
     const alias = this.aliasFor(id);
     if (!alias) {

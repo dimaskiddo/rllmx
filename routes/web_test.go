@@ -12,6 +12,7 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 	goravelgin "github.com/goravel/gin"
 
+	"rllmx/app/access/auth"
 	"rllmx/app/access/identity"
 	apphttp "rllmx/app/http"
 	"rllmx/app/http/controllers"
@@ -23,7 +24,10 @@ import (
 // the guard and reaches whatever answers an unmatched path.
 type signedIn struct{}
 
-func (signedIn) Session(*nethttp.Request) bool              { return true }
+func (signedIn) Session(*nethttp.Request) bool { return true }
+func (signedIn) SessionInfo(*nethttp.Request) (auth.Session, bool) {
+	return auth.Session{Role: auth.RoleAdmin}, true
+}
 func (signedIn) APIKey(*nethttp.Request) identity.KeyResult { return identity.KeyResult{} }
 func (signedIn) RequireLogin(context.Context) bool          { return true }
 func (signedIn) RequireAPIKey(context.Context) bool         { return true }

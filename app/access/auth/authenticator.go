@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	nethttp "net/http"
+	"strings"
 	"time"
 
 	frameworkhash "github.com/goravel/framework/contracts/hash"
@@ -24,10 +25,25 @@ func RequestCookie(r *nethttp.Request, name string) string {
 	return c.Value
 }
 
+// Session is who a dashboard request acts as.
+type Session struct {
+	Role   string
+	UserID string
+	Name   string
+	Email  string
+	Method string
+}
+
+// Admin reports whether the session may configure the router.
+func (s Session) Admin() bool { return s.Role != RoleUser }
+
 // Authenticator is what the guard asks who is calling. Every dependency is a
 // value, so a test builds one without the application.
 type Authenticator struct {
-	Store   *Store
+	Store *Store
+	// Users holds the standard-user accounts. Nil leaves the dashboard with the
+	// one admin it had before users existed.
+	Users   *Users
 	Keys    *Keys
 	Pass    Passwords
 	Limiter *Limiter
@@ -45,9 +61,10 @@ type Authenticator struct {
 	// identity-provider code.
 	OIDCUsable func(issuer, clientID, clientSecret string) bool
 	SAMLUsable func(entryPoint, cert, idpEntity string) bool
-	// SSOAllow reports whether an address may sign in through a provider, and
-	// whether only an exact match counts.
-	SSOAllow func(email string, exactOnly bool) bool
+	// SSOAdmin reports whether an address signs in through a provider as the
+	// administrator. A listed address is the admin; every other address the
+	// provider authenticated is a standard user.
+	SSOAdmin func(email string, exactOnly bool) bool
 	// ClientAddr names the caller for the key limiter. Nil means the socket peer.
 	ClientAddr func(r *nethttp.Request) string
 	Now        func() time.Time
@@ -62,31 +79,80 @@ func NewAuthenticator(store *Store, keys *Keys, hasher frameworkhash.Hash, initi
 	}
 }
 
-// Session reports whether a request carries a valid session cookie. The `pv`
-// claim must still match, so a password change ends every session at once.
+// Session reports whether a request carries a valid session cookie.
 func (a *Authenticator) Session(r *nethttp.Request) bool {
+	_, ok := a.SessionInfo(r)
+	return ok
+}
+
+// SessionInfo names the signed-in caller and their role. The `pv` claim must
+// still match, so a password change ends the sessions it applied to; a standard
+// user is read from the user list on every request, so deleting or demoting
+// them ends their session at once.
+func (a *Authenticator) SessionInfo(r *nethttp.Request) (Session, bool) {
 	token := RequestCookie(r, CookieName)
 	if token == "" {
-		return false
+		return Session{}, false
 	}
 	claims, ok := Verify(a.Secret(), token, a.Now())
 	if !ok {
-		return false
+		return Session{}, false
 	}
 	st := a.Store.Get(r.Context())
-	if !SamePV(claims.PV, PV(a.Secret(), st.Password, st.Epoch)) {
-		return false
+	if claims.UID != "" {
+		return a.userSession(r, claims, st.Epoch)
 	}
-	// A provider session lives only while its method is still in force and its
-	// address is still allowed, so switching the mode off ends it at the next
-	// request rather than at the next expiry.
+	if !SamePV(claims.PV, PV(a.Secret(), st.Password, st.Epoch)) {
+		return Session{}, false
+	}
+	// A provider admin session lives only while its method is in force and its
+	// address is still on the admin list, so switching the mode off or removing
+	// the address ends it at the next request rather than at the next expiry.
+	if !a.adminSessionAllowed(r, claims) {
+		return Session{}, false
+	}
+	return Session{Role: RoleAdmin, Name: claims.Name, Email: claims.Email, Method: claims.Method}, true
+}
+
+// userSession verifies a standard user's token against that user's own password
+// hash and the epoch, so a reset ends only their sessions.
+func (a *Authenticator) userSession(r *nethttp.Request, claims Claims, epoch string) (Session, bool) {
+	if a.Users == nil {
+		return Session{}, false
+	}
+	u, ok := a.Users.Get(r.Context(), claims.UID)
+	if !ok {
+		return Session{}, false
+	}
+	if !SamePV(claims.PV, PV(a.Secret(), u.Hash, epoch)) {
+		return Session{}, false
+	}
+	// A standard user's session rests on the stored account, not on the admin
+	// list, which decides the role, not admission.
+	if !a.modeAllows(r, claims) {
+		return Session{}, false
+	}
+	return Session{Role: RoleUser, UserID: u.ID, Name: u.Username, Email: u.Email, Method: claims.Method}, true
+}
+
+// adminSessionAllowed re-checks a provider session against the admin list; a
+// password session has no address and is already proof on its own.
+func (a *Authenticator) adminSessionAllowed(r *nethttp.Request, claims Claims) bool {
 	switch claims.Method {
 	case MethodOIDC, MethodSAML:
-		mode := a.Mode(r.Context())
-		if (claims.Method == MethodOIDC && !mode.OIDC) || (claims.Method == MethodSAML && !mode.SAML) {
-			return false
-		}
-		return a.AllowSSO(claims.Email, false)
+		return a.modeAllows(r, claims) && a.IsSSOAdmin(claims.Email, false)
+	}
+	return true
+}
+
+// modeAllows reports whether a provider session's method is still in force.
+func (a *Authenticator) modeAllows(r *nethttp.Request, claims Claims) bool {
+	mode := a.Mode(r.Context())
+	switch claims.Method {
+	case MethodOIDC:
+		return mode.OIDC
+	case MethodSAML:
+		return mode.SAML
 	}
 	return true
 }
@@ -155,36 +221,92 @@ func (a *Authenticator) Mode(ctx context.Context) Mode {
 	return ResolveMode(st.AuthMode, st.SSOType, oidcUsable, samlUsable)
 }
 
-// AllowSSO reports whether an address may sign in through a provider. exactOnly
-// is set when the address came from a claim the user can edit.
-func (a *Authenticator) AllowSSO(email string, exactOnly bool) bool {
-	if a.SSOAllow == nil {
+// IsSSOAdmin reports whether an address signs in as the administrator through a
+// provider. exactOnly is set when the address came from a claim the user can
+// edit, so only an exact entry counts.
+func (a *Authenticator) IsSSOAdmin(email string, exactOnly bool) bool {
+	if a.SSOAdmin == nil {
 		return false
 	}
-	return a.SSOAllow(email, exactOnly)
+	return a.SSOAdmin(email, exactOnly)
 }
 
-// IssueSSO signs a session started through a provider, and refuses when that
-// method is no longer in force or the address is no longer allowed.
+// IssueSSO signs a session started through a provider. An address on the admin
+// list is the admin; every other address is a standard user, provisioned on its
+// first sign-in with a password nobody knows.
 func (a *Authenticator) IssueSSO(ctx context.Context, method, email, name string, exactOnly, secure bool) (contractshttp.Cookie, bool) {
 	mode := a.Mode(ctx)
 	if (method == MethodOIDC && !mode.OIDC) || (method == MethodSAML && !mode.SAML) || method == MethodPassword {
 		return contractshttp.Cookie{}, false
 	}
-	if !a.AllowSSO(email, exactOnly) {
+	if a.IsSSOAdmin(email, exactOnly) {
+		return a.Issue(ctx, method, email, name, secure)
+	}
+	u, ok := a.ssoUser(ctx, email, exactOnly)
+	if !ok {
 		return contractshttp.Cookie{}, false
 	}
-	return a.Issue(ctx, method, email, name, secure)
+	return a.IssueUser(ctx, u, method, secure)
 }
 
-// Issue signs a session for a caller who just proved who they are. secure comes
-// from the request: TLS here, or a trusted proxy that said the caller used it.
+// ssoUser is the standard user an address signs in as. An address from a
+// user-editable claim must already belong to an account, because that claim is
+// not proof of the address.
+func (a *Authenticator) ssoUser(ctx context.Context, email string, exactOnly bool) (User, bool) {
+	if a.Users == nil || strings.TrimSpace(email) == "" {
+		return User{}, false
+	}
+	if u, ok := a.Users.ByEmail(ctx, email); ok {
+		return u, true
+	}
+	if exactOnly {
+		return User{}, false
+	}
+	id, err := NewUserID()
+	if err != nil {
+		return User{}, false
+	}
+	secret, err := NewUserPassword()
+	if err != nil {
+		return User{}, false
+	}
+	hash, err := a.Pass.Hash(secret)
+	if err != nil {
+		return User{}, false
+	}
+	username := strings.ToLower(strings.TrimSpace(email))
+	if err := a.Users.Put(ctx, User{ID: id, Username: username, Email: email, Hash: hash, Provisioned: true}); err != nil {
+		return User{}, false
+	}
+	if stored, ok := a.Users.ByEmail(ctx, email); ok {
+		return stored, true
+	}
+	return User{}, false
+}
+
+// Issue signs a session for the admin, who just proved the operator's password.
+// secure comes from the request: TLS here, or a trusted proxy that said so.
 func (a *Authenticator) Issue(ctx context.Context, method, email, name string, secure bool) (contractshttp.Cookie, bool) {
 	st := a.Store.Get(ctx)
 	claims := Claims{
 		Authenticated: true, Method: method, Email: email, Name: name,
 		PV: PV(a.Secret(), st.Password, st.Epoch),
 	}
+	return a.issue(claims, secure)
+}
+
+// IssueUser signs a session for a standard user, tied to that user's own
+// password hash so a reset ends their sessions and nobody else's.
+func (a *Authenticator) IssueUser(ctx context.Context, u User, method string, secure bool) (contractshttp.Cookie, bool) {
+	st := a.Store.Get(ctx)
+	claims := Claims{
+		Authenticated: true, Method: method, UID: u.ID, Email: u.Email, Name: u.Username,
+		PV: PV(a.Secret(), u.Hash, st.Epoch),
+	}
+	return a.issue(claims, secure)
+}
+
+func (a *Authenticator) issue(claims Claims, secure bool) (contractshttp.Cookie, bool) {
 	token, err := Sign(a.Secret(), claims)
 	if err != nil {
 		return contractshttp.Cookie{}, false

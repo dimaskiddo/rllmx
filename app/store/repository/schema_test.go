@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -141,6 +142,7 @@ func TestMigrationNamesKeepTheirNumbersWhenATableIsRemoved(t *testing.T) {
 		"_meta": "20260101_000001_create__meta_table", "settings": "20260101_000002_create_settings_table",
 		"providerConnections": "20260101_000003_create_providerConnections_table", "providerNodes": "20260101_000004_create_providerNodes_table",
 		"apiKeys": "20260101_000006_create_apiKeys_table", "combos": "20260101_000007_create_combos_table", "kv": "20260101_000008_create_kv_table",
+		"users": "20260101_000100_create_users_table", "userKeys": "20260101_000101_create_userKeys_table",
 	}
 	got := map[string]string{}
 	for _, m := range Migrations(nil, tests.Engine()) {
@@ -155,5 +157,32 @@ func TestMigrationNamesKeepTheirNumbersWhenATableIsRemoved(t *testing.T) {
 	}
 	if len(got) != len(want) {
 		t.Errorf("%d create migrations, want %d", len(got), len(want))
+	}
+	if len(want) != len(allTables()) {
+		t.Errorf("%d tables, want one migration each", len(allTables()))
+	}
+}
+
+func TestOwnTablesAreCreatedBesideTheCompatibilitySet(t *testing.T) {
+	if err := validateTables(ownTables); err != nil {
+		t.Fatal(err)
+	}
+	for _, own := range ownTables {
+		for _, compat := range tables {
+			if compat.Name == own.Name {
+				t.Errorf("%s is both a compatibility table and one of ours", own.Name)
+			}
+		}
+	}
+	s := newMigrated(t)
+	for _, tb := range ownTables {
+		if !s.hasTable(tb.Name) {
+			t.Errorf("%s is missing after migration", tb.Name)
+		}
+	}
+	// The compatibility plan stays the measure of an imported database.
+	p, err := s.computePlan(context.Background())
+	if err != nil || !p.empty() {
+		t.Fatalf("%v %+v", err, p)
 	}
 }

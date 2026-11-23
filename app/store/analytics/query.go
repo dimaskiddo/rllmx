@@ -3,6 +3,7 @@ package analytics
 import (
 	"context"
 	"math"
+	"strings"
 	"time"
 )
 
@@ -139,26 +140,46 @@ type sumRow struct {
 	Last       int64   `db:"last"`
 }
 
+// keyClause narrows a query to the given API keys. A nil list means every key;
+// an empty one means none, so a user with no keys reads zero rather than all.
+func keyClause(keys []string) (string, []any, bool) {
+	if keys == nil {
+		return "", nil, true
+	}
+	if len(keys) == 0 {
+		return "", nil, false
+	}
+	args := make([]any, len(keys))
+	for i, k := range keys {
+		args[i] = k
+	}
+	return ` AND "apiKeyId" IN (` + strings.TrimSuffix(strings.Repeat("?,", len(keys)), ",") + `)`, args, true
+}
+
 // Sums totals the usage per dimension from a moment on. hourly reads only the
 // hour buckets, for a window inside the request retention; otherwise the daily
 // rollups answer the days before the first kept hour and the hourly ones the
-// days from it.
-func (s *Store) Sums(ctx context.Context, from time.Time, hourly bool) ([]Sum, error) {
+// days from it. keys narrows the answer, nil meaning every key.
+func (s *Store) Sums(ctx context.Context, from time.Time, hourly bool, keys []string) ([]Sum, error) {
 	sp, err := s.spanOf(ctx, from, hourly)
 	if err != nil {
 		return nil, err
 	}
+	clause, args, usable := keyClause(keys)
+	if !usable {
+		return []Sum{}, nil
+	}
 	var rows []sumRow
 	query := `SELECT ` + groupCols + `,` + sumAgg + `,MAX("bucket") AS "last" FROM ` + table(true) +
-		` WHERE "bucket" >= ? GROUP BY ` + groupCols
-	if err := s.db.WithContext(ctx).Select(&rows, s.q(query), sp.hourFrom); err != nil {
+		` WHERE "bucket" >= ?` + clause + ` GROUP BY ` + groupCols
+	if err := s.db.WithContext(ctx).Select(&rows, s.q(query), append([]any{sp.hourFrom}, args...)...); err != nil {
 		return nil, err
 	}
 	if !hourly {
 		var days []sumRow
 		query := `SELECT ` + groupCols + `,` + sumAgg + `,MAX("bucket") AS "last" FROM ` + table(false) +
-			` WHERE "bucket" >= ? AND "bucket" < ? GROUP BY ` + groupCols
-		if err := s.db.WithContext(ctx).Select(&days, s.q(query), sp.dayFrom, sp.split); err != nil {
+			` WHERE "bucket" >= ? AND "bucket" < ?` + clause + ` GROUP BY ` + groupCols
+		if err := s.db.WithContext(ctx).Select(&days, s.q(query), append([]any{sp.dayFrom, sp.split}, args...)...); err != nil {
 			return nil, err
 		}
 		rows = append(rows, days...)
@@ -194,13 +215,17 @@ func (s *Store) Sums(ctx context.Context, from time.Time, hourly bool) ([]Sum, e
 // rollups Sums reads. A daily answer holds day buckets (Daily set) and hour
 // buckets, which the caller folds into its own days. The caller lays out the
 // empty buckets.
-func (s *Store) Buckets(ctx context.Context, from time.Time, hourly bool) ([]Bucket, error) {
+func (s *Store) Buckets(ctx context.Context, from time.Time, hourly bool, keys []string) ([]Bucket, error) {
 	const cols = `"bucket",COALESCE(SUM("requests"),0) AS "requests",` +
 		`COALESCE(SUM("promptTokens"),0)+COALESCE(SUM("completionTokens"),0) AS "tokens",` +
 		`COALESCE(SUM("cost"),0) AS "cost"`
 	sp, err := s.spanOf(ctx, from, hourly)
 	if err != nil {
 		return nil, err
+	}
+	clause, args, usable := keyClause(keys)
+	if !usable {
+		return []Bucket{}, nil
 	}
 	read := func(table string, daily bool, from, to int64) ([]Bucket, error) {
 		var rows []struct {
@@ -209,8 +234,8 @@ func (s *Store) Buckets(ctx context.Context, from time.Time, hourly bool) ([]Buc
 			Tokens   int64   `db:"tokens"`
 			Cost     float64 `db:"cost"`
 		}
-		query := `SELECT ` + cols + ` FROM "` + table + `" WHERE "bucket" >= ? AND "bucket" < ? GROUP BY "bucket" ORDER BY "bucket"`
-		if err := s.db.WithContext(ctx).Select(&rows, s.q(query), from, to); err != nil {
+		query := `SELECT ` + cols + ` FROM "` + table + `" WHERE "bucket" >= ? AND "bucket" < ?` + clause + ` GROUP BY "bucket" ORDER BY "bucket"`
+		if err := s.db.WithContext(ctx).Select(&rows, s.q(query), append([]any{from, to}, args...)...); err != nil {
 			return nil, err
 		}
 		out := make([]Bucket, 0, len(rows))
@@ -235,13 +260,17 @@ func (s *Store) Buckets(ctx context.Context, from time.Time, hourly bool) ([]Buc
 
 // LastSeen is the newest request time per dimension since a moment, read from
 // the request rows so a bucket start can be replaced by the real time.
-func (s *Store) LastSeen(ctx context.Context, since time.Time) (map[Dims]time.Time, error) {
+func (s *Store) LastSeen(ctx context.Context, since time.Time, keys []string) (map[Dims]time.Time, error) {
+	clause, args, usable := keyClause(keys)
+	if !usable {
+		return map[Dims]time.Time{}, nil
+	}
 	var rows []struct {
 		dimsRow
 		Last int64 `db:"last"`
 	}
 	err := s.db.WithContext(ctx).Select(&rows, s.q(`SELECT `+groupCols+`,MAX("ts") AS "last" FROM "requests"`+
-		` WHERE "ts" >= ? GROUP BY `+groupCols), since.UnixMilli())
+		` WHERE "ts" >= ?`+clause+` GROUP BY `+groupCols), append([]any{since.UnixMilli()}, args...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -253,20 +282,33 @@ func (s *Store) LastSeen(ctx context.Context, since time.Time) (map[Dims]time.Ti
 }
 
 // Recent returns the newest request rows, at most maxRecent.
-func (s *Store) Recent(ctx context.Context, limit int) ([]Request, error) {
-	return s.recent(ctx, limit, "")
+func (s *Store) Recent(ctx context.Context, limit int, keys []string) ([]Request, error) {
+	return s.recent(ctx, limit, "", keys)
 }
 
 // RecentServed returns the newest rows that used tokens, at most limit, for a
 // list that would otherwise read many rows to keep a few.
-func (s *Store) RecentServed(ctx context.Context, limit int) ([]Request, error) {
-	return s.recent(ctx, limit, ` WHERE "promptTokens" + "completionTokens" > 0`)
+func (s *Store) RecentServed(ctx context.Context, limit int, keys []string) ([]Request, error) {
+	return s.recent(ctx, limit, `"promptTokens" + "completionTokens" > 0`, keys)
 }
 
-// recent runs the one query both readers share; where is a constant clause.
-func (s *Store) recent(ctx context.Context, limit int, where string) ([]Request, error) {
+// recent runs the one query both readers share; cond is a constant condition.
+func (s *Store) recent(ctx context.Context, limit int, cond string, keys []string) ([]Request, error) {
 	if limit <= 0 || limit > maxRecent {
 		limit = maxRecent
+	}
+	clause, args, usable := keyClause(keys)
+	if !usable {
+		return []Request{}, nil
+	}
+	where := ""
+	switch {
+	case cond != "" && clause != "":
+		where = ` WHERE ` + cond + clause
+	case cond != "":
+		where = ` WHERE ` + cond
+	case clause != "":
+		where = ` WHERE ` + strings.TrimPrefix(clause, " AND ")
 	}
 	var rows []struct {
 		TS           int64  `db:"ts"`
@@ -282,7 +324,8 @@ func (s *Store) recent(ctx context.Context, limit int, where string) ([]Request,
 		Skills       string `db:"skills"`
 	}
 	err := s.db.WithContext(ctx).Select(&rows, s.q(`SELECT "ts","provider","model","connectionId","promptTokens",`+
-		`"completionTokens","cachedTokens","status","errorClass","savers","skills" FROM "requests"`+where+` ORDER BY "id" DESC LIMIT ?`), limit)
+		`"completionTokens","cachedTokens","status","errorClass","savers","skills" FROM "requests"`+where+` ORDER BY "id" DESC LIMIT ?`),
+		append(args, limit)...)
 	if err != nil {
 		return nil, err
 	}
@@ -299,8 +342,12 @@ func (s *Store) recent(ctx context.Context, limit int, where string) ([]Request,
 
 // Providers lists every provider the usage store has served, including days
 // whose request rows are pruned, so a filter keeps working.
-func (s *Store) Providers(ctx context.Context) ([]string, error) {
+func (s *Store) Providers(ctx context.Context, keys []string) ([]string, error) {
+	clause, args, usable := keyClause(keys)
+	if !usable {
+		return []string{}, nil
+	}
 	var out []string
-	err := s.db.WithContext(ctx).Select(&out, s.q(`SELECT DISTINCT "provider" FROM "rollupDaily" WHERE "provider" <> '' ORDER BY "provider"`))
+	err := s.db.WithContext(ctx).Select(&out, s.q(`SELECT DISTINCT "provider" FROM "rollupDaily" WHERE "provider" <> ''`+clause+` ORDER BY "provider"`), args...)
 	return out, err
 }

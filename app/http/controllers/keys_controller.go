@@ -14,6 +14,7 @@ import (
 	"rllmx/app/access/auth"
 	"rllmx/app/access/identity"
 	"rllmx/app/access/quota"
+	apphttp "rllmx/app/http"
 	"rllmx/app/store/repository"
 )
 
@@ -27,6 +28,9 @@ type KeysController struct {
 	Machine identity.Machine
 	Changed func()
 	Log     log.Log
+	// Users holds the standard-user accounts and their key assignments. Nil
+	// leaves every caller the single operator.
+	Users *auth.Users
 	// Dir is DATA_DIR, where the machine id lives. The server creates it at
 	// start-up, so this only reads it.
 	Dir string
@@ -46,6 +50,8 @@ type keyView struct {
 	MachineID  string       `json:"machineId,omitempty"`
 	// ResponseCache is this key's switch for the answer cache.
 	ResponseCache bool `json:"responseCache"`
+	// Owner is the standard user the key belongs to; absent when nobody's.
+	Owner string `json:"owner,omitempty"`
 }
 
 // accessView is the allow-list shape the dashboard sends and reads.
@@ -55,22 +61,22 @@ type accessView struct {
 }
 
 // masked is the view of one stored key for a list or an update, with its budget
-// when it has one and its answer-cache switch.
-func masked(k repository.APIKey, budget *quota.Limit, cacheOn bool) keyView {
+// when it has one, its answer-cache switch and its owner.
+func masked(k repository.APIKey, budget *quota.Limit, cacheOn bool, owner string) keyView {
 	allow := k.AccessAllow
 	if allow == nil {
 		allow = []string{}
 	}
 	return keyView{
 		ID: k.ID, Name: k.Name, Key: auth.MaskKey(k.Key), IsActive: k.IsActive,
-		CreatedAt: k.CreatedAt, Unreadable: k.Unreadable, Quota: budget, ResponseCache: cacheOn,
+		CreatedAt: k.CreatedAt, Unreadable: k.Unreadable, Quota: budget, ResponseCache: cacheOn, Owner: owner,
 		Access: accessView{Restricted: k.AccessRestricted, Allow: allow},
 	}
 }
 
 // revealed is the view of one key with its full value, for the reveal only.
-func revealed(k repository.APIKey, budget *quota.Limit, cacheOn bool) keyView {
-	v := masked(k, budget, cacheOn)
+func revealed(k repository.APIKey, budget *quota.Limit, cacheOn bool, owner string) keyView {
+	v := masked(k, budget, cacheOn, owner)
 	if !k.Unreadable {
 		v.Key = k.Key
 	}
@@ -107,13 +113,52 @@ func budgetOf(all map[string]quota.Limit, id string) *quota.Limit {
 
 func (c *KeysController) store() *repository.Store { return storeOf(c.DB) }
 
+// owned is the set of keys a standard user may touch. A nil set means every key,
+// which is the admin and every caller the guard did not mark.
+func (c *KeysController) owned(ctx contractshttp.Context) (map[string]bool, contractshttp.Response, bool) {
+	who, ok := apphttp.SessionFrom(ctx)
+	if !ok || who.Role != auth.RoleUser {
+		return nil, nil, true
+	}
+	if c.Users == nil {
+		return nil, flat(ctx, nethttp.StatusForbidden, "Forbidden"), false
+	}
+	keys, err := c.Users.KeysOf(ctx.Request().Origin().Context(), who.UserID)
+	if err != nil {
+		return nil, storageDown(ctx), false
+	}
+	set := make(map[string]bool, len(keys))
+	for _, id := range keys {
+		set[id] = true
+	}
+	return set, nil, true
+}
+
+// ownerMap is every key assignment. A read failure leaves the map empty, which
+// hides an owner rather than failing the list.
+func (c *KeysController) ownerMap(rc context.Context) map[string]string {
+	if c.Users == nil {
+		return nil
+	}
+	owners, err := c.Users.Owners(rc)
+	if err != nil {
+		return nil
+	}
+	return owners
+}
+
 // List answers GET /api/keys: every key, oldest first, masked.
 func (c *KeysController) List(ctx contractshttp.Context) contractshttp.Response {
 	st := c.store()
 	if st == nil {
 		return storageDown(ctx)
 	}
-	rows, err := st.APIKeys().List(ctx.Request().Origin().Context())
+	rc := ctx.Request().Origin().Context()
+	set, out3, ok := c.owned(ctx)
+	if !ok {
+		return out3
+	}
+	rows, err := st.APIKeys().List(rc)
 	if err != nil {
 		return storageDown(ctx)
 	}
@@ -121,14 +166,18 @@ func (c *KeysController) List(ctx contractshttp.Context) contractshttp.Response 
 	if !ok {
 		return out2
 	}
-	cached, err := st.KV().ResponseCacheKeys(ctx.Request().Origin().Context())
+	cached, err := st.KV().ResponseCacheKeys(rc)
 	if err != nil {
 		// A switch that cannot be read is off, as a single key's is.
 		cached = nil
 	}
+	owners := c.ownerMap(rc)
 	out := make([]keyView, 0, len(rows))
 	for _, k := range rows {
-		out = append(out, masked(k, budgetOf(all, k.ID), cached[k.ID]))
+		if set != nil && !set[k.ID] {
+			continue
+		}
+		out = append(out, masked(k, budgetOf(all, k.ID), cached[k.ID], owners[k.ID]))
 	}
 	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"keys": out})
 }
@@ -137,10 +186,18 @@ func (c *KeysController) List(ctx contractshttp.Context) contractshttp.Response 
 // that carries its full value. The reveal is logged with the key's id, never the
 // value.
 func (c *KeysController) Show(ctx contractshttp.Context) contractshttp.Response {
+	set, out3, ok := c.owned(ctx)
+	if !ok {
+		return out3
+	}
 	k, out, ok := c.one(ctx)
 	if !ok {
 		return out
 	}
+	if set != nil && !set[k.ID] {
+		return flat(ctx, nethttp.StatusNotFound, "Key not found")
+	}
+	rc := ctx.Request().Origin().Context()
 	if c.Log != nil {
 		c.Log.Infof("keys: a key was revealed: id=%s key=%s", k.ID, auth.MaskKey(k.Key))
 	}
@@ -151,7 +208,7 @@ func (c *KeysController) Show(ctx contractshttp.Context) contractshttp.Response 
 	if !ok {
 		return out2
 	}
-	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"key": revealed(k, budgetOf(all, k.ID), cacheOn(c.store(), ctx.Request().Origin().Context(), k.ID))})
+	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"key": revealed(k, budgetOf(all, k.ID), cacheOn(c.store(), rc, k.ID), c.ownerMap(rc)[k.ID])})
 }
 
 // Create answers POST /api/keys: a fresh key for this machine, answered once.
@@ -161,7 +218,8 @@ func (c *KeysController) Create(ctx contractshttp.Context) contractshttp.Respons
 		return storageDown(ctx)
 	}
 	var b struct {
-		Name string `json:"name"`
+		Name  string `json:"name"`
+		Owner string `json:"owner"`
 	}
 	if err := bindJSON(ctx, &b); err != nil {
 		return flat(ctx, nethttp.StatusBadRequest, "Invalid request body")
@@ -169,6 +227,16 @@ func (c *KeysController) Create(ctx contractshttp.Context) contractshttp.Respons
 	name := strings.TrimSpace(b.Name)
 	if !auth.ValidName(name) {
 		return flat(ctx, nethttp.StatusBadRequest, "The name must be 1 to 64 bytes with no control character")
+	}
+	owner := strings.TrimSpace(b.Owner)
+	rc := ctx.Request().Origin().Context()
+	if owner != "" {
+		if c.Users == nil {
+			return flat(ctx, nethttp.StatusBadRequest, "That owner does not exist")
+		}
+		if _, ok := c.Users.Get(rc, owner); !ok {
+			return flat(ctx, nethttp.StatusBadRequest, "That owner does not exist")
+		}
 	}
 	machineID, found := c.Machine.Load(c.Dir)
 	if !found {
@@ -178,9 +246,14 @@ func (c *KeysController) Create(ctx contractshttp.Context) contractshttp.Respons
 	if err != nil {
 		return flat(ctx, nethttp.StatusInternalServerError, "The key could not be generated")
 	}
-	row, err := st.APIKeys().Create(ctx.Request().Origin().Context(), name, machineID, key)
+	row, err := st.APIKeys().Create(rc, name, machineID, key)
 	if err != nil {
 		return flat(ctx, nethttp.StatusInternalServerError, "The key could not be stored")
+	}
+	if owner != "" {
+		if err := c.Users.SetOwner(rc, row.ID, owner); err != nil {
+			return ownerRefused(ctx, err)
+		}
 	}
 	c.changed()
 	return ctx.Response().Json(nethttp.StatusCreated, contractshttp.Json{
@@ -202,9 +275,23 @@ func (c *KeysController) Update(ctx contractshttp.Context) contractshttp.Respons
 		Access        json.RawMessage `json:"access"`
 		Quota         json.RawMessage `json:"quota"`
 		ResponseCache *bool           `json:"responseCache"`
+		Owner         *string         `json:"owner"`
 	}
 	if err := bindJSON(ctx, &b); err != nil {
 		return flat(ctx, nethttp.StatusBadRequest, "Invalid request body")
+	}
+	set, out3, ok := c.owned(ctx)
+	if !ok {
+		return out3
+	}
+	if set != nil {
+		if !set[id] {
+			return flat(ctx, nethttp.StatusNotFound, "Key not found")
+		}
+		// Pausing and resuming is all a standard user may change.
+		if b.Name != nil || len(b.Access) > 0 || len(b.Quota) > 0 || b.ResponseCache != nil || b.Owner != nil || b.IsActive == nil {
+			return flat(ctx, nethttp.StatusForbidden, "A standard user may only pause or resume a key")
+		}
 	}
 	patch := repository.APIKeyPatch{}
 	if b.Name != nil {
@@ -253,12 +340,29 @@ func (c *KeysController) Update(ctx contractshttp.Context) contractshttp.Respons
 			return flat(ctx, nethttp.StatusInternalServerError, "The key's cache switch could not be stored")
 		}
 	}
+	if b.Owner != nil {
+		if c.Users == nil {
+			return storageDown(ctx)
+		}
+		if err := c.Users.SetOwner(rc, id, strings.TrimSpace(*b.Owner)); err != nil {
+			return ownerRefused(ctx, err)
+		}
+	}
 	c.changed()
 	all, out2, ok := c.limits(ctx)
 	if !ok {
 		return out2
 	}
-	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"key": masked(row, budgetOf(all, row.ID), cacheOn(st, ctx.Request().Origin().Context(), row.ID))})
+	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"key": masked(row, budgetOf(all, row.ID), cacheOn(st, rc, row.ID), c.ownerMap(rc)[row.ID])})
+}
+
+// ownerRefused turns an assignment the user list refuses into the answer the
+// dashboard shows: a missing user is a bad request, anything else the store.
+func ownerRefused(ctx contractshttp.Context, err error) contractshttp.Response {
+	if errors.Is(err, auth.ErrUserMissing) || errors.Is(err, auth.ErrUserName) || errors.Is(err, auth.ErrUserEmail) {
+		return flat(ctx, nethttp.StatusBadRequest, "That owner does not exist")
+	}
+	return storageDown(ctx)
 }
 
 // storeBudget stores a key's budget. An empty one is how a client clears it.
@@ -292,11 +396,15 @@ func (c *KeysController) Delete(ctx contractshttp.Context) contractshttp.Respons
 	if !deleted {
 		return flat(ctx, nethttp.StatusNotFound, "Key not found")
 	}
+	rc := ctx.Request().Origin().Context()
+	if c.Users != nil {
+		_ = c.Users.SetOwner(rc, ctx.Request().Route("id"), "")
+	}
 	if c.Quota != nil {
 		// A budget with no key is harmless; the row goes with it.
-		_ = c.Quota.Delete(ctx.Request().Origin().Context(), ctx.Request().Route("id"))
+		_ = c.Quota.Delete(rc, ctx.Request().Route("id"))
 	}
-	_ = st.KV().Delete(ctx.Request().Origin().Context(), repository.ScopeResponseCache, ctx.Request().Route("id"))
+	_ = st.KV().Delete(rc, repository.ScopeResponseCache, ctx.Request().Route("id"))
 	c.changed()
 	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"message": "Key deleted successfully"})
 }

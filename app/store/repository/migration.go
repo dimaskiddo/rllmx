@@ -23,10 +23,11 @@ var ErrForwardOnly = errors.New("repository: migrations are forward-only")
 // facade exists and only run later.
 func Migrations(sch func() contractsschema.Schema, d dialect.Dialect) []contractsschema.Migration {
 	var out []contractsschema.Migration
-	for _, tb := range tables {
+	all := allTables()
+	for _, tb := range all {
 		out = append(out, &createTable{sch: sch, d: d, table: tb, n: tb.Seq})
 	}
-	for _, tb := range tables {
+	for _, tb := range all {
 		for _, c := range tb.Columns {
 			if c.Added {
 				out = append(out, &addColumn{sch: sch, d: d, table: tb, col: c})

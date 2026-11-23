@@ -239,32 +239,32 @@ func TestStartingAndFinishingFlowsDoesNotGrowTheQueue(t *testing.T) {
 	}
 }
 
-func TestParseAllow(t *testing.T) {
-	open := ParseAllow("")
-	if !open.Empty() || !open.Allows("anyone@anywhere.test", false) {
-		t.Fatal("an empty list does not admit everyone")
+func TestParseAdmins(t *testing.T) {
+	none := ParseAdmins("")
+	if none.Len() != 0 || none.IsAdmin("anyone@anywhere.test", false) {
+		t.Fatal("an empty list named an admin")
 	}
-	closed := ParseAllow(" Ops@Example.com , @Corp.example , ")
-	if closed.Empty() || closed.Len() != 2 {
-		t.Fatalf("len %d empty %v", closed.Len(), closed.Empty())
+	list := ParseAdmins(" Ops@Example.com , @Corp.example , ")
+	if list.Len() != 2 {
+		t.Fatalf("len %d", list.Len())
 	}
-	if !closed.Allows("ops@example.com", false) {
-		t.Fatal("an exact entry was refused")
+	if !list.IsAdmin("ops@example.com", false) {
+		t.Fatal("an exact entry was not the admin")
 	}
-	if !closed.Allows("someone@corp.example", false) {
-		t.Fatal("a domain entry was refused")
+	if !list.IsAdmin("someone@corp.example", false) {
+		t.Fatal("a domain entry was not the admin")
 	}
-	if closed.Allows("someone@other.example", false) {
-		t.Fatal("an address outside the list was admitted")
+	if list.IsAdmin("someone@other.example", false) {
+		t.Fatal("an address outside the list was made the admin")
 	}
-	if closed.Allows("someone@corp.example", true) {
-		t.Fatal("a domain entry admitted a user-editable claim")
+	if list.IsAdmin("someone@corp.example", true) {
+		t.Fatal("a domain entry made a user-editable claim the admin")
 	}
-	if !closed.Allows("ops@example.com", true) {
+	if !list.IsAdmin("ops@example.com", true) {
 		t.Fatal("an exact entry was refused for a user-editable claim")
 	}
-	if closed.Allows("", false) {
-		t.Fatal("an empty address was admitted")
+	if list.IsAdmin("", false) {
+		t.Fatal("an empty address was made the admin")
 	}
 }
 

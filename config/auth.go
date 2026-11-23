@@ -22,8 +22,11 @@ func init() {
 		// Refuse to start while the dashboard password is still a public
 		// default. The check runs once the store is open.
 		"refuse_default_password": config.Env("AUTH_REFUSE_DEFAULT_PASSWORD", false),
-		// Who may sign in through the identity provider: exact addresses or
-		// @domain. Empty admits every account the provider accepts.
-		"sso_allow": config.Env("AUTH_SSO_ALLOW", ""),
+		// Who signs in through the identity provider as the admin: exact
+		// addresses or @domain. An address not listed is admitted as a
+		// standard user.
+		"sso_admin": config.Env("AUTH_SSO_ADMIN", ""),
+		// The most standard users the list may hold, provisioned or created.
+		"max_users": config.Env("AUTH_MAX_USERS", 200),
 	})
 }

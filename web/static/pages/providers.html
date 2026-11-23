@@ -40,14 +40,14 @@
           <div class="rl-provider-stats">
             <span class="badge" x-show="card.total === 0" x-text="statusText(card)"></span>
             <span class="badge badge-ok" x-show="card.connected > 0"><span x-text="card.connected"></span> <span x-t="providers.connected"></span></span>
-            <span class="badge badge-err" x-show="card.failed > 0" x-bind:title="formatDate(card.errorAt)"><span x-text="card.failed"></span> <span x-t="providers.error"></span> <span x-text="tagLabel(card.tag)"></span></span>
+            <span class="badge badge-err" x-show="card.failed > 0" x-bind:title="formatDate(card.errorAt)" x-text="errorBadge(card)"></span>
             <span class="badge" x-show="card.allDisabled" x-t="providers.disabled"></span>
           </div>
           <div class="rl-provider-actions">
-            <button type="button" class="btn btn-sm btn-ghost" x-show="card.total > 0" x-on:click="toggleProvider(card)" x-bind:title="card.allDisabled ? label('keys.resume') : label('keys.pause')">
+            <button type="button" class="btn btn-sm btn-ghost" x-show="card.total > 0" x-on:click="toggleProvider(card)" x-bind:title="card.allDisabled ? label('keys.active') : label('keys.inactive')">
               <span class="rl-icon" x-show="!card.allDisabled" x-icon="pause"></span>
               <span class="rl-icon" x-show="card.allDisabled" x-icon="play"></span>
-              <span class="visually-hidden" x-text="card.allDisabled ? label('keys.resume') : label('keys.pause')"></span>
+              <span class="visually-hidden" x-text="card.allDisabled ? label('keys.active') : label('keys.inactive')"></span>
             </button>
           </div>
         </div>
@@ -74,14 +74,14 @@
           <div class="rl-provider-stats">
             <span class="badge" x-show="card.total === 0" x-text="statusText(card)"></span>
             <span class="badge badge-ok" x-show="card.connected > 0"><span x-text="card.connected"></span> <span x-t="providers.connected"></span></span>
-            <span class="badge badge-err" x-show="card.failed > 0" x-bind:title="formatDate(card.errorAt)"><span x-text="card.failed"></span> <span x-t="providers.error"></span> <span x-text="tagLabel(card.tag)"></span></span>
+            <span class="badge badge-err" x-show="card.failed > 0" x-bind:title="formatDate(card.errorAt)" x-text="errorBadge(card)"></span>
             <span class="badge" x-show="card.allDisabled" x-t="providers.disabled"></span>
           </div>
           <div class="rl-provider-actions">
-            <button type="button" class="btn btn-sm btn-ghost" x-show="card.total > 0" x-on:click="toggleProvider(card)" x-bind:title="card.allDisabled ? label('keys.resume') : label('keys.pause')">
+            <button type="button" class="btn btn-sm btn-ghost" x-show="card.total > 0" x-on:click="toggleProvider(card)" x-bind:title="card.allDisabled ? label('keys.active') : label('keys.inactive')">
               <span class="rl-icon" x-show="!card.allDisabled" x-icon="pause"></span>
               <span class="rl-icon" x-show="card.allDisabled" x-icon="play"></span>
-              <span class="visually-hidden" x-text="card.allDisabled ? label('keys.resume') : label('keys.pause')"></span>
+              <span class="visually-hidden" x-text="card.allDisabled ? label('keys.active') : label('keys.inactive')"></span>
             </button>
           </div>
         </div>
@@ -108,14 +108,14 @@
           <div class="rl-provider-stats">
             <span class="badge" x-show="card.total === 0" x-text="statusText(card)"></span>
             <span class="badge badge-ok" x-show="card.connected > 0"><span x-text="card.connected"></span> <span x-t="providers.connected"></span></span>
-            <span class="badge badge-err" x-show="card.failed > 0" x-bind:title="formatDate(card.errorAt)"><span x-text="card.failed"></span> <span x-t="providers.error"></span> <span x-text="tagLabel(card.tag)"></span></span>
+            <span class="badge badge-err" x-show="card.failed > 0" x-bind:title="formatDate(card.errorAt)" x-text="errorBadge(card)"></span>
             <span class="badge" x-show="card.allDisabled" x-t="providers.disabled"></span>
           </div>
           <div class="rl-provider-actions">
-            <button type="button" class="btn btn-sm btn-ghost" x-show="card.total > 0" x-on:click="toggleProvider(card)" x-bind:title="card.allDisabled ? label('keys.resume') : label('keys.pause')">
+            <button type="button" class="btn btn-sm btn-ghost" x-show="card.total > 0" x-on:click="toggleProvider(card)" x-bind:title="card.allDisabled ? label('keys.active') : label('keys.inactive')">
               <span class="rl-icon" x-show="!card.allDisabled" x-icon="pause"></span>
               <span class="rl-icon" x-show="card.allDisabled" x-icon="play"></span>
-              <span class="visually-hidden" x-text="card.allDisabled ? label('keys.resume') : label('keys.pause')"></span>
+              <span class="visually-hidden" x-text="card.allDisabled ? label('keys.active') : label('keys.inactive')"></span>
             </button>
           </div>
         </div>
@@ -142,14 +142,14 @@
           <div class="rl-provider-stats">
             <span class="badge" x-show="card.total === 0" x-text="statusText(card)"></span>
             <span class="badge badge-ok" x-show="card.connected > 0"><span x-text="card.connected"></span> <span x-t="providers.connected"></span></span>
-            <span class="badge badge-err" x-show="card.failed > 0" x-bind:title="formatDate(card.errorAt)"><span x-text="card.failed"></span> <span x-t="providers.error"></span> <span x-text="tagLabel(card.tag)"></span></span>
+            <span class="badge badge-err" x-show="card.failed > 0" x-bind:title="formatDate(card.errorAt)" x-text="errorBadge(card)"></span>
             <span class="badge" x-show="card.allDisabled" x-t="providers.disabled"></span>
           </div>
           <div class="rl-provider-actions">
-            <button type="button" class="btn btn-sm btn-ghost" x-show="card.total > 0" x-on:click="toggleProvider(card)" x-bind:title="card.allDisabled ? label('keys.resume') : label('keys.pause')">
+            <button type="button" class="btn btn-sm btn-ghost" x-show="card.total > 0" x-on:click="toggleProvider(card)" x-bind:title="card.allDisabled ? label('keys.active') : label('keys.inactive')">
               <span class="rl-icon" x-show="!card.allDisabled" x-icon="pause"></span>
               <span class="rl-icon" x-show="card.allDisabled" x-icon="play"></span>
-              <span class="visually-hidden" x-text="card.allDisabled ? label('keys.resume') : label('keys.pause')"></span>
+              <span class="visually-hidden" x-text="card.allDisabled ? label('keys.active') : label('keys.inactive')"></span>
             </button>
           </div>
         </div>

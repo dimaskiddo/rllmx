@@ -12,6 +12,7 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 	"github.com/tidwall/gjson"
 
+	"rllmx/app/access/auth"
 	"rllmx/app/access/identity"
 	"rllmx/app/gateway/account"
 	"rllmx/app/gateway/pipeline"
@@ -36,6 +37,9 @@ const (
 type keyed struct{}
 
 func (keyed) Session(*nethttp.Request) bool { return false }
+func (keyed) SessionInfo(*nethttp.Request) (auth.Session, bool) {
+	return auth.Session{}, false
+}
 func (keyed) APIKey(*nethttp.Request) identity.KeyResult {
 	return identity.KeyResult{Status: identity.KeyValid, Caller: identity.Caller{ID: "key-7", Name: "ci"}}
 }
@@ -56,6 +60,9 @@ type chatRig struct {
 type fixedCaller struct{ c identity.Caller }
 
 func (fixedCaller) Session(*nethttp.Request) bool { return true }
+func (fixedCaller) SessionInfo(*nethttp.Request) (auth.Session, bool) {
+	return auth.Session{Role: auth.RoleAdmin}, true
+}
 func (f fixedCaller) APIKey(*nethttp.Request) identity.KeyResult {
 	return identity.KeyResult{Status: identity.KeyValid, Caller: f.c}
 }

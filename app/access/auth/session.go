@@ -35,8 +35,10 @@ var ErrSessionMalformed = errors.New("auth: the session token is not a signed HS
 type Claims struct {
 	Authenticated bool   `json:"authenticated"`
 	Method        string `json:"method,omitempty"`
-	Email         string `json:"email,omitempty"`
-	Name          string `json:"name,omitempty"`
+	// UID names the standard user the session belongs to. Empty is the admin.
+	UID   string `json:"uid,omitempty"`
+	Email string `json:"email,omitempty"`
+	Name  string `json:"name,omitempty"`
 	// PV ties the token to a password hash and a session epoch, so a password
 	// change or a "logout everywhere" ends every session at once.
 	PV  string `json:"pv,omitempty"`

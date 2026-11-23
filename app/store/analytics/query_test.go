@@ -59,7 +59,7 @@ func TestTheDailyRollupsAnswerAWindowWhoseHoursWerePruned(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	all, err := s.Sums(ctx, dayA, false)
+	all, err := s.Sums(ctx, dayA, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestTheDailyRollupsAnswerAWindowWhoseHoursWerePruned(t *testing.T) {
 		t.Fatalf("dims %v", all)
 	}
 
-	hours, err := s.Sums(ctx, dayB, true)
+	hours, err := s.Sums(ctx, dayB, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestTheDailyRollupsAnswerAWindowWhoseHoursWerePruned(t *testing.T) {
 func TestTheWindowStartExcludesWhatCameBefore(t *testing.T) {
 	s := newStore(t)
 	dayA, dayB, _ := usageRows(t, s)
-	sums, err := s.Sums(context.Background(), dayB, false)
+	sums, err := s.Sums(context.Background(), dayB, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,10 +100,10 @@ func TestTheWindowStartExcludesWhatCameBefore(t *testing.T) {
 	if got[Dims{Provider: "p1", Model: "m1", ConnectionID: "c-p1", APIKeyID: "k-p1", Endpoint: "/v1/chat/completions"}].Requests != 1 {
 		t.Fatalf("the earlier day leaked in: %v", sums)
 	}
-	if sumsAll, err := s.Sums(context.Background(), dayA, false); err != nil || len(sumsAll) != 2 {
+	if sumsAll, err := s.Sums(context.Background(), dayA, false, nil); err != nil || len(sumsAll) != 2 {
 		t.Fatalf("all: %v %v", sumsAll, err)
 	}
-	if sums, err := s.Sums(context.Background(), time.Time{}, false); err != nil || len(sums) != 2 {
+	if sums, err := s.Sums(context.Background(), time.Time{}, false, nil); err != nil || len(sums) != 2 {
 		t.Fatalf("zero from: %v %v", sums, err)
 	}
 }
@@ -115,7 +115,7 @@ func TestBucketsGroupByHourOrByDay(t *testing.T) {
 
 	// The oldest day comes from the daily rollup, the days after it from the
 	// hourly ones, which the caller folds into its own days.
-	mixed, err := s.Buckets(ctx, dayA, false)
+	mixed, err := s.Buckets(ctx, dayA, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestBucketsGroupByHourOrByDay(t *testing.T) {
 		t.Fatalf("the second hour %+v", mixed[2])
 	}
 
-	hours, err := s.Buckets(ctx, dayB, true)
+	hours, err := s.Buckets(ctx, dayB, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +181,7 @@ func TestAWindowIsLaidOutOverTheTwoRollups(t *testing.T) {
 func TestLastSeenGivesTheNewestRequestTime(t *testing.T) {
 	s := newStore(t)
 	_, dayB, _ := usageRows(t, s)
-	seen, err := s.LastSeen(context.Background(), dayB)
+	seen, err := s.LastSeen(context.Background(), dayB, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +194,7 @@ func TestLastSeenGivesTheNewestRequestTime(t *testing.T) {
 func TestRecentIsNewestFirstAndCapped(t *testing.T) {
 	s := newStore(t)
 	_, dayB, _ := usageRows(t, s)
-	rows, err := s.Recent(context.Background(), 2)
+	rows, err := s.Recent(context.Background(), 2, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +219,7 @@ func TestRecentServedSkipsRowsThatUsedNoTokensAndStaysCapped(t *testing.T) {
 	if err := w.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	rows, err := s.RecentServed(context.Background(), 5)
+	rows, err := s.RecentServed(context.Background(), 5, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +242,7 @@ func TestRecentServedSkipsRowsThatUsedNoTokensAndStaysCapped(t *testing.T) {
 func TestProvidersIsDistinctAndSorted(t *testing.T) {
 	s := newStore(t)
 	usageRows(t, s)
-	got, err := s.Providers(context.Background())
+	got, err := s.Providers(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,5 +263,63 @@ func TestFlushedCountsCommittedBatches(t *testing.T) {
 	}
 	if empty.Flushed() != 0 {
 		t.Fatalf("an empty writer flushed %d", empty.Flushed())
+	}
+}
+
+// A standard user's answer counts only the keys assigned to them, and a user
+// with no keys counts nothing rather than everything.
+func TestAKeyScopeNarrowsEveryUsageRead(t *testing.T) {
+	s := newStore(t)
+	dayA, _, _ := usageRows(t, s)
+	ctx := context.Background()
+
+	one, err := s.Sums(ctx, dayA, false, []string{"k-p2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(one) != 1 || one[0].APIKeyID != "k-p2" || one[0].Requests != 1 {
+		t.Fatalf("sums %+v", one)
+	}
+	if none, err := s.Sums(ctx, dayA, false, []string{}); err != nil || len(none) != 0 {
+		t.Fatalf("an empty scope answered %+v %v", none, err)
+	}
+
+	rows, err := s.Recent(ctx, 10, []string{"k-p2"})
+	if err != nil || len(rows) != 1 || rows[0].Model != "m2" {
+		t.Fatalf("recent %+v %v", rows, err)
+	}
+	served, err := s.RecentServed(ctx, 10, []string{"k-p1"})
+	if err != nil || len(served) != 2 {
+		t.Fatalf("served %+v %v", served, err)
+	}
+
+	seen, err := s.LastSeen(ctx, dayA.Add(-time.Hour), []string{"k-p2"})
+	if err != nil || len(seen) != 1 {
+		t.Fatalf("last seen %+v %v", seen, err)
+	}
+	for dims := range seen {
+		if dims.APIKeyID != "k-p2" {
+			t.Fatalf("last seen named %q", dims.APIKeyID)
+		}
+	}
+
+	buckets, err := s.Buckets(ctx, dayA, false, []string{"k-p2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var requests int64
+	for _, b := range buckets {
+		requests += b.Requests
+	}
+	if requests != 1 {
+		t.Fatalf("buckets counted %d requests, want 1", requests)
+	}
+
+	providers, err := s.Providers(ctx, []string{"k-p2"})
+	if err != nil || len(providers) != 1 || providers[0] != "p2" {
+		t.Fatalf("providers %v %v", providers, err)
+	}
+	if providers, err := s.Providers(ctx, []string{}); err != nil || len(providers) != 0 {
+		t.Fatalf("an empty scope named providers %v %v", providers, err)
 	}
 }

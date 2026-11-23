@@ -19,9 +19,9 @@ func (m Mode) SSO() bool { return m.OIDC || m.SAML }
 
 // ResolveMode turns the `authMode` and `ssoType` settings into one decision.
 // Every mode keeps password login while nothing else is usable, so a
-// half-configured single sign-on never locks the administrator out. The allow
+// half-configured single sign-on never locks the administrator out. The admin
 // list does not decide this: a configured provider is usable on its own, and an
-// empty AUTH_SSO_ALLOW admits every account the provider accepts.
+// address outside AUTH_SSO_ADMIN signs in as a standard user.
 func ResolveMode(authMode, ssoType string, oidcUsable, samlUsable bool) Mode {
 	var m Mode
 	switch authMode {

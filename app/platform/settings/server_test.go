@@ -194,3 +194,19 @@ func TestServerErrorsNeverQuoteTheValue(t *testing.T) {
 		}
 	}
 }
+
+func TestTheUserCapIsReadAndChecked(t *testing.T) {
+	// The default the dashboard documents; settings cannot import the auth
+	// package to share it, so the number is repeated here on purpose.
+	if s, err := loadWith(t, nil); err != nil || s.MaxUsers != 200 {
+		t.Fatalf("%d %v", s.MaxUsers, err)
+	}
+	if s, err := loadWith(t, map[string]any{"auth.max_users": 50}); err != nil || s.MaxUsers != 50 {
+		t.Fatalf("%d %v", s.MaxUsers, err)
+	}
+	for _, bad := range []int{0, -1, 100001} {
+		if _, err := loadWith(t, map[string]any{"auth.max_users": bad}); err == nil {
+			t.Errorf("auth.max_users=%d was accepted", bad)
+		}
+	}
+}

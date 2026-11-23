@@ -71,6 +71,8 @@ Status words: **built** (implemented and tested), **partial** (some behavior mis
 | Login and callback page | built |
 | Dashboard shell, router, theme and locale switch, English and Indonesian | built |
 | Endpoint and API keys page (base URL, key guard, keys, access list, budgets, response cache) | built |
+| Dashboard roles: an admin, and standard users who see only their assigned keys and those keys' usage; the users card and the key owner select | built |
+| Single sign-on roles: `AUTH_SSO_ADMIN` names the admins, any other account the provider authenticates is provisioned as a standard user (first password set from that session), `AUTH_MAX_USERS` caps the list | built |
 | Web stack (Alpine.js, Tabler CSS, Lucide, vendored and pinned; Chart.js and Sortable.js in 4.3) and the `/static` route | built |
 | Dashboard management API (settings, keys, models and aliases, custom and disabled models, availability, pricing, combos and presets, console log) | built |
 | Usage API (stats, chart, history, logs, providers, active providers, live feed) | built |
@@ -78,7 +80,7 @@ Status words: **built** (implemented and tested), **partial** (some behavior mis
 | Usage and quota pages | planned |
 | Provider pages (list, detail, every login flow, custom endpoints, models, header overrides) | built |
 | Outbound pacing per connection, so a burst is queued instead of reaching a provider as an anomaly | built |
-| Dashboard review so far: sign-in and reorder fixes, polling and secret handling, contrast and accessibility, provider aliases and icons | built |
+| Dashboard review so far: sign-in and reorder fixes, polling and secret handling, contrast and accessibility, provider aliases and icons, tooltips and list rhythm, red confirmed deletes | built |
 
 ---
 

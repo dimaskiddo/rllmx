@@ -38,6 +38,8 @@ type Base struct {
 	Pages *controllers.PagesController
 	// Keys is the client-key management handler; nil leaves its routes out.
 	Keys *controllers.KeysController
+	// Users manages the dashboard's standard users; nil leaves its routes out.
+	Users *controllers.UsersController
 	// Health carries the health feed; nil leaves the liveness route alone.
 	Health *controllers.HealthController
 	// Combos suggests and accepts a combo; nil leaves those routes out.
@@ -116,6 +118,12 @@ func webAccess(router route.Route, guard *apphttp.Guard, base Base) {
 		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/keys/{id}", k.Show)
 		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodPut, "/api/keys/{id}", k.Update)
 		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodDelete, "/api/keys/{id}", k.Delete)
+	}
+	if u := base.Users; u != nil {
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/users", u.List)
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodPost, "/api/users", u.Create)
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodPut, "/api/users/{id}", u.Update)
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodDelete, "/api/users/{id}", u.Delete)
 	}
 }
 

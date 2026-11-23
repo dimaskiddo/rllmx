@@ -291,8 +291,9 @@ func newAuthenticator(app foundation.Application, cfg config.Config, db func() *
 	a.SAMLUsable = func(entryPoint, cert, idpEntity string) bool {
 		return saml.Settings{EntryPoint: entryPoint, Cert: cert, IDPEntityID: idpEntity}.Usable()
 	}
-	a.SSOAllow = sso.ParseAllow(cfg.GetString("auth.sso_allow")).Allows
+	a.SSOAdmin = sso.ParseAdmins(cfg.GetString("auth.sso_admin")).IsAdmin
 	a.ClientAddr = trust.ClientAddr
+	a.Users = auth.NewUsers(auth.NewUserRepo(db, s.MaxUsers))
 	return a
 }
 

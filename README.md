@@ -187,7 +187,8 @@ Environment variables or `.env` through `config/`; the process environment wins.
 | `JWT_SECRET` | generated into `DATA_DIR/jwt-secret` | Dashboard session signing |
 | `AUTH_INITIAL_PASSWORD` | none (set it) | First dashboard password |
 | `AUTH_API_KEY_SECRET` / `AUTH_MACHINE_ID_SALT` | 9router's defaults | API key, machine id derivation; your 9router values |
-| `AUTH_SSO_ALLOW` | empty | Exact emails or `@domain` entries for OIDC sign-in. **Empty admits any account the provider accepts.**     |
+| `AUTH_SSO_ADMIN` | empty | Exact emails or `@domain` entries that sign in through the provider as the administrator. **Any other account it authenticates signs in as a standard user.** |
+| `AUTH_MAX_USERS` | 200 | The most standard users the list may hold, created by an admin or provisioned by single sign-on (1 to 100000). |
 | `DB_CONNECTION` / `DB_DATABASE` | `sqlite` / empty | SQLite default, 9router's own format; `postgres` also needs `DB_HOST`, `DB_USERNAME`, `DB_PASSWORD`. Empty `DB_DATABASE` with SQLite = `DATA_DIR/db/data.sqlite`; point at a 9router `data.sqlite` to reuse it |
 | `DB_ENCRYPTION_SECRET` | none, **required**     | 64 hex characters sealing every stored credential with AES-256-GCM |
 | `DB_DATABASE_ANALYTICS` / `ANALYTICS_RETENTION_DAYS` | empty / `90` | Usage-row destination (empty: beside the main database); per-request row retention |
@@ -206,7 +207,7 @@ Routing strategies, token savers and similar behavior: runtime database settings
 
 - **OIDC:** issuer URL, client id and client secret in the settings row; register `https://<your address>/api/auth/oidc/callback` at the provider and set `APP_URL`.
 - **SAML:** sign-on URL, the IdP's signing certificate and the issuer from its responses; register `https://<your address>/api/auth/saml/acs`, and offer `https://<your address>/api/auth/saml/metadata` as its metadata. Its entity id is that same address unless `samlIssuer` overrides it; a 9router import carries `urn:9router:sp` for you.
-- **Allow list:** `AUTH_SSO_ALLOW` is optional. Empty admits every account the provider accepts, so set exact addresses or `@domain` entries unless you trust the provider to decide who belongs. An OIDC token without an `email` claim may fall back to `preferred_username`; only an exact entry admits that, never a whole `@domain`.
+- **Admin list:** `AUTH_SSO_ADMIN` names the addresses that sign in as the administrator; everyone else the provider authenticates becomes a standard user, provisioned on first sign-in with a password nobody knows, which they may set from their own session. Leave the list empty to give nobody admin through SSO. An OIDC token without an `email` claim may fall back to `preferred_username`; such an address must already belong to a user, because the claim is editable.
 - **Sessions:** a password change, a narrowed allow list or switching the mode off ends a provider session at the next request.
 
 ---
@@ -252,7 +253,7 @@ Report a vulnerability through GitHub Security Advisories (the **Security** tab)
 - Credentials and OAuth tokens are sealed with `DB_ENCRYPTION_SECRET`.
 - No token, key, cookie or prompt text is ever logged.
 - Every outbound request goes through an SSRF-guarded dialer.
-- Protect `DATA_DIR`, keep `AUTH_SSO_ALLOW` narrow, and use a strong dashboard password on any reachable deployment.
+- Protect `DATA_DIR`, set `AUTH_SSO_ADMIN` deliberately, and use a strong dashboard password on any reachable deployment.
 
 More in [`docs/design/`](docs/design/).
 

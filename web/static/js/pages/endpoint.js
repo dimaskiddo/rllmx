@@ -42,18 +42,30 @@ function emptyBudget() {
 window.Alpine.data("endpointPage", () => Object.assign({
   loading: true,
   error: "",
+  role: "admin",
   keys: [],
+  users: [],
   settings: { requireApiKey: false, requireLogin: true },
   baseUrl: location.origin + "/v1",
   revealed: {},
   busy: {},
-  create: { name: "", error: "", busy: false },
+  create: { name: "", owner: "", error: "", busy: false },
   created: null,
   edit: null,
+  userForm: null,
   choices: [],
 
   setField(path, event) {
     setPath(this, path, event.target.value);
+  },
+
+  isAdmin() {
+    return this.role !== "user";
+  },
+
+  userName(id) {
+    const found = this.users.find((u) => u.id === id);
+    return found ? found.username : t("users.ownerNone");
   },
 
   async init() {
@@ -64,22 +76,30 @@ window.Alpine.data("endpointPage", () => Object.assign({
     this.loading = true;
     this.error = "";
     try {
-      const [settings, listing, aliases, combos, models, custom, catalog, providers] = await Promise.all([
+      const status = await api("/api/auth/status").catch(() => ({}));
+      this.role = status.role === "user" ? "user" : "admin";
+      const listing = await api("/api/keys");
+      this.keys = listing.keys || [];
+      if (!this.isAdmin()) {
+        return;
+      }
+
+      const [settings, aliases, combos, models, custom, catalog, providers, users] = await Promise.all([
         api("/api/settings"),
-        api("/api/keys"),
         api("/api/models/alias").catch(() => ({ aliases: {} })),
         api("/api/combos").catch(() => ({ combos: [] })),
         api("/api/models").catch(() => ({ models: [] })),
         api("/api/models/custom").catch(() => ({ models: [] })),
         api("/api/providers/catalog").catch(() => ({ providers: [] })),
         api("/api/providers").catch(() => ({ connections: [] })),
+        api("/api/users").catch(() => ({ users: [] })),
       ]);
       this.settings = {
         requireApiKey: settings.requireApiKey === true,
         requireLogin: settings.requireLogin === true,
         hasPassword: settings.hasPassword === true,
       };
-      this.keys = listing.keys || [];
+      this.users = users.users || [];
       const names = Object.keys(aliases.aliases || {}).concat((combos.combos || []).map((c) => c.name));
       const live = liveModels(models.models || [], custom.models || [], catalog.providers || [], providers.connections || []);
       this.choices = Array.from(new Set(names.concat(live))).sort();
@@ -131,16 +151,25 @@ window.Alpine.data("endpointPage", () => Object.assign({
     }
   },
 
+  // copyKey copies the value without putting it on screen; only the eye button
+  // reveals a key.
   async copyKey(key) {
-    if (!this.revealed[key.id]) {
-      await this.reveal(key);
+    let value = this.revealed[key.id] || "";
+    if (!value) {
+      try {
+        const full = await api("/api/keys/" + encodeURIComponent(key.id));
+        value = full.key.key;
+      } catch (err) {
+        toast().error(err.message);
+        return;
+      }
     }
-    await copy(this.revealed[key.id] || key.key, null);
+    await copy(value, null);
   },
 
   async toggleActive(key) {
     if (key.isActive) {
-      const yes = await ask({ title: t("keys.pauseTitle"), message: t("keys.pauseBody") });
+      const yes = await ask({ title: t("keys.pauseTitle"), message: t("keys.pauseBody"), danger: false });
       if (!yes) {
         return;
       }
@@ -171,7 +200,7 @@ window.Alpine.data("endpointPage", () => Object.assign({
   },
 
   openCreate() {
-    this.create = { name: "", error: "", busy: false };
+    this.create = { name: "", owner: "", error: "", busy: false };
     this.$refs.createDlg.showModal();
     this.$refs.createName.focus();
   },
@@ -184,7 +213,7 @@ window.Alpine.data("endpointPage", () => Object.assign({
     this.create.error = "";
     this.create.busy = true;
     try {
-      const made = await api("/api/keys", { method: "POST", body: { name: this.create.name } });
+      const made = await api("/api/keys", { method: "POST", body: { name: this.create.name, owner: this.create.owner } });
       this.keys = (await api("/api/keys")).keys || [];
       this.created = made;
       this.closeCreate();
@@ -230,6 +259,7 @@ window.Alpine.data("endpointPage", () => Object.assign({
     this.edit = {
       id: key.id,
       name: key.name,
+      owner: key.owner || "",
       isActive: key.isActive,
       responseCache: key.responseCache === true,
       restricted: access.restricted === true,
@@ -303,6 +333,7 @@ window.Alpine.data("endpointPage", () => Object.assign({
     this.edit.busy = true;
     const body = {
       name: this.edit.name,
+      owner: this.edit.owner,
       isActive: this.edit.isActive,
       responseCache: this.edit.responseCache,
       access: { restricted: this.edit.restricted, allow: this.edit.allow },
@@ -317,6 +348,66 @@ window.Alpine.data("endpointPage", () => Object.assign({
       this.edit.error = err.message;
     } finally {
       this.edit.busy = false;
+    }
+  },
+
+  openUser(user) {
+    this.userForm = {
+      id: user ? user.id : "",
+      name: user ? user.username : "",
+      email: user ? user.email || "" : "",
+      password: "",
+      error: "",
+      busy: false,
+    };
+    this.$refs.userDlg.showModal();
+    this.$refs.userName.focus();
+  },
+
+  closeUser() {
+    this.$refs.userDlg.close();
+    this.userForm = null;
+  },
+
+  setUser(field, event) {
+    this.userForm[field] = event.target.value;
+  },
+
+  async saveUser() {
+    const form = this.userForm;
+    form.error = "";
+    form.busy = true;
+    try {
+      const body = { name: form.name, email: form.email };
+      if (form.password !== "") {
+        body.password = form.password;
+      }
+      if (form.id) {
+        await api("/api/users/" + encodeURIComponent(form.id), { method: "PUT", body: body });
+      } else {
+        await api("/api/users", { method: "POST", body: body });
+      }
+      this.closeUser();
+      await this.load();
+      toast().success(t("users.saved"));
+    } catch (err) {
+      form.error = err.message;
+    } finally {
+      form.busy = false;
+    }
+  },
+
+  async removeUser(user) {
+    const yes = await ask({ title: t("users.deleteTitle"), message: t("users.deleteBody"), confirm: t("common.delete") });
+    if (!yes) {
+      return;
+    }
+    try {
+      await api("/api/users/" + encodeURIComponent(user.id), { method: "DELETE" });
+      await this.load();
+      toast().success(t("users.deleted"));
+    } catch (err) {
+      toast().error(err.message);
     }
   },
 }, formatMethods));

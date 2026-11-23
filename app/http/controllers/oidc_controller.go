@@ -34,8 +34,6 @@ type OIDCController struct {
 	// Pending is the single-use store a sign-in lives in. One per process, so a
 	// flow must finish on the instance that started it.
 	Pending *sso.Pending
-	// Allow is AUTH_SSO_ALLOW.
-	Allow sso.Allow
 }
 
 // Start answers GET /api/auth/oidc/start: it builds the authorization request
@@ -50,9 +48,6 @@ func (c *OIDCController) Start(ctx contractshttp.Context) contractshttp.Response
 	set := c.settings(r.Context())
 	if !set.Configured() || !c.Auth.Mode(r.Context()).OIDC {
 		return c.fail(ctx, base, sso.CodeDisabled)
-	}
-	if !c.Allow.Empty() && c.Allow.Len() == 0 {
-		return c.fail(ctx, base, sso.CodeNotConfigured)
 	}
 
 	key := ssoKey(c.Trust.ClientAddr(r))
@@ -196,15 +191,11 @@ func (c *OIDCController) Callback(ctx contractshttp.Context) contractshttp.Respo
 		c.countFailure(key)
 		return c.fail(ctx, base, sso.CodeNoEmail)
 	}
-	if !c.Allow.Allows(email, exactOnly) {
-		c.countFailure(key)
-		return c.fail(ctx, base, sso.CodeNotAllowed)
-	}
 
 	cookie, issued := c.Auth.IssueSSO(r.Context(), auth.MethodOIDC, email, oidc.DisplayName(claims), exactOnly, c.Trust.SecureRequest(r))
 	if !issued {
 		c.countFailure(key)
-		return c.fail(ctx, base, sso.CodeDisabled)
+		return c.fail(ctx, base, sso.CodeNoAccount)
 	}
 	c.Auth.Limiter.Succeed(key)
 	ctx.Response().Cookie(cookie)

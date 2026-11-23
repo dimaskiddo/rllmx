@@ -8,6 +8,7 @@ import { load, locale, t } from "./ui/i18n.js";
 
 Alpine.data("loginPage", () => ({
   ready: false,
+  username: "",
   password: "",
   error: "",
   busy: false,
@@ -59,6 +60,9 @@ Alpine.data("loginPage", () => ({
     }
     this.ready = true;
   },
+  setUsername(event) {
+    this.username = event.target.value;
+  },
   setPassword(event) {
     this.password = event.target.value;
   },
@@ -69,7 +73,7 @@ Alpine.data("loginPage", () => ({
     this.busy = true;
     this.error = "";
     try {
-      await api("/api/auth/login", { method: "POST", body: { password: this.password } });
+      await api("/api/auth/login", { method: "POST", body: { username: this.username, password: this.password } });
       location.assign(this.target);
     } catch (err) {
       if (err.status === 429) {

@@ -12,6 +12,7 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 	"github.com/goravel/framework/contracts/route"
 
+	"rllmx/app/access/auth"
 	"rllmx/app/access/identity"
 	"rllmx/app/platform/failure"
 )
@@ -139,7 +140,7 @@ func (g *Guard) Protect(ctx contractshttp.Context) {
 		class = unroutedClass(r.URL.Path)
 	}
 	local := isLocalRequest(r, g.trustLoopback)
-	session := g.auth.Session(r)
+	who, signedIn := g.auth.SessionInfo(r)
 	anonymousOK := local && !g.auth.RequireLogin(r.Context())
 	keyOK := false
 	var caller identity.Caller
@@ -166,10 +167,21 @@ func (g *Guard) Protect(ctx contractshttp.Context) {
 		}
 	}
 
-	switch decide(class, local, session, anonymousOK, keyOK) {
+	switch decide(class, local, signedIn, anonymousOK, keyOK) {
 	case verdictAllow:
 		if class == ClassLLM {
 			WithCaller(ctx, caller)
+		}
+		// A local request let through with login off acts as the admin: that
+		// switch already says this machine is trusted.
+		role := auth.RoleAdmin
+		if signedIn {
+			role = who.Role
+			WithSession(ctx, who)
+		}
+		if !roleAllows(role, r.Method, r.URL.Path) {
+			deny(ctx, nethttp.StatusForbidden, "")
+			return
 		}
 		ctx.Request().Next()
 	case verdictUnauthorized:

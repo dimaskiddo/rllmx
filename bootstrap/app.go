@@ -138,6 +138,7 @@ func dashboardRoutes(base *routes.Base, h *providers.HTTP, db func() *repository
 			return 0
 		},
 		DB: db, Registry: h.Registry, Inflight: h.Inflight, Log: facades.Log(),
+		Users: h.Auth.Users,
 		Quota: func() controllers.QuotaReader {
 			if h.Quota == nil {
 				return nil
@@ -149,6 +150,7 @@ func dashboardRoutes(base *routes.Base, h *providers.HTTP, db func() *repository
 		DB: db, Client: headroomClient(h), DefaultURL: headroomURL(h),
 	}
 	base.Skills = &controllers.SkillsController{DB: db, Dir: dir, Reg: skills, Log: facades.Log()}
+	base.Users = &controllers.UsersController{Users: h.Auth.Users, Pass: h.Auth.Pass, Log: facades.Log()}
 }
 
 // headroomClient builds the guarded client for one sidecar host; the address is
@@ -178,6 +180,7 @@ func keysController(h *providers.HTTP, db func() *repository.Store) *controllers
 		DB: db, Quota: h.Limits, Codec: identity.NewKeys(cfg.GetString("auth.api_key_secret")),
 		Machine: identity.NewMachine(cfg.GetString("auth.machine_id_salt")),
 		Dir:     cfg.GetString("app.data_dir"),
+		Users:   h.Auth.Users,
 		Changed: h.Auth.Keys.Changed, Log: facades.Log(),
 	}
 }
@@ -190,7 +193,6 @@ func oidcController(h *providers.HTTP) *controllers.OIDCController {
 		Log:     facades.Log(),
 		DB:      func() *repository.Store { return providers.DataOf(facades.App()).Runner.Store() },
 		Pending: sso.NewPending(),
-		Allow:   sso.ParseAllow(facades.Config().GetString("auth.sso_allow")),
 	}
 }
 
@@ -203,7 +205,6 @@ func samlController(h *providers.HTTP) *controllers.SAMLController {
 		DB:      func() *repository.Store { return providers.DataOf(facades.App()).Runner.Store() },
 		Pending: sso.NewPending(),
 		Replay:  saml.NewReplay(),
-		Allow:   sso.ParseAllow(facades.Config().GetString("auth.sso_allow")),
 	}
 }
 

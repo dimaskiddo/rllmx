@@ -87,6 +87,8 @@ Deferred until their handshake is designed: MiniMax Code (a signed account API),
 ## Remaining work
 **The usage rows, the readers, every usage route and the per-connection quota readers are built. Each row carries the savers and skills that acted, as names only.** What stays open is the quota auto-ping scheduler, three providers whose reading needs a handshake of its own, and a paged history.**
 
+A standard user's read is narrowed to the keys assigned to them inside the query (`Sums`, `Buckets`, `LastSeen`, `Recent`, `RecentServed` and `Providers` take the key list; nil means every key, an empty list means none). The in-flight counts stay admin-only because that table holds no key id (`design doc 2`).
+
 - [x] `/api/usage/*` over `requests` and the rollups, with the live feed; `history` answers the all-time totals (D363), and a keyset-paged history is not built (open)
 - [x] Pricing lookup over the embedded baseline and the `pricing` overrides; the pipeline's usage hook calls it
 - [x] Per-key request, token and cost budgets with the day, month and total windows, checked before dispatch (step 2.3, `design doc 21`)
@@ -148,5 +150,6 @@ One row per lesson; the decision is what the code does because of it.
 | A value taken from a vendor's answer must not reach the next query as it came. | Command Code's organisation id is escaped when it is joined into the billing address, as the reference's `URLSearchParams` does. |
 | A pricing row that cannot be read must never be replaced by the write that follows it. | `mergeCards` and `dropCard` refuse a stored row that is not an object and leave it as it was. |
 | A failed read of the operator's prices must not become the price list for good. | The source returns the embedded table together with `ErrPricingOverrides`; requests price with it, and the next call reads again. |
+| Filtering a user's rows in the handler would still read every row, and a forgotten filter shows another account's numbers. | The key scope is a query parameter on every reader; an empty scope returns nothing rather than everything. |
 | An unknown model must not look free. | `Table.Cost` returns `known=false`; an override of `{}` is the only way to say a model costs nothing. |
 

@@ -18,7 +18,7 @@
     <nav x-bind:aria-label="label('nav.dashboard')">
       <ul class="rl-nav">
         <li><a href="/dashboard/endpoint" x-bind:aria-current="isCurrent('/dashboard/endpoint') ? 'page' : false"><span class="rl-icon" x-icon="key-round"></span><span x-t="nav.endpoint"></span></a></li>
-        <li><a href="/dashboard/providers" x-bind:aria-current="isCurrent('/dashboard/providers') ? 'page' : false"><span class="rl-icon" x-icon="server"></span><span x-t="nav.providers"></span></a></li>
+        <li x-show="isAdmin()"><a href="/dashboard/providers" x-bind:aria-current="isCurrent('/dashboard/providers') ? 'page' : false"><span class="rl-icon" x-icon="server"></span><span x-t="nav.providers"></span></a></li>
       </ul>
     </nav>
   </aside>
@@ -34,6 +34,7 @@
           <span class="rl-icon" x-icon="globe"></span>
           <span aria-hidden="true" x-text="locale === 'en' ? 'EN' : 'ID'"></span>
         </button>
+        <span class="badge" x-show="userName !== ''" x-text="userName"></span>
         <div class="rl-menu-wrap">
           <button type="button" class="btn btn-sm btn-ghost" x-on:click="toggleMenu()" x-bind:aria-expanded="menu ? 'true' : 'false'" x-tip="menu.open">
             <span class="rl-icon" x-icon="user"></span>
@@ -68,8 +69,8 @@
 <dialog class="rl-dialog" x-ref="password" x-on:close="forgetPassword()" aria-labelledby="dlg-password-title">
   <form x-on:submit.prevent="savePassword()">
     <h2 id="dlg-password-title" x-t="password.title"></h2>
-    <label class="form-label" for="pw-current" x-t="password.current"></label>
-    <input class="form-control" id="pw-current" type="password" autocomplete="current-password" x-ref="passwordCurrent" x-bind:value="pw.current" x-on:input="setPw('current', $event)" required>
+    <label class="form-label" for="pw-current" x-show="!needsPassword" x-t="password.current"></label>
+    <input class="form-control" id="pw-current" type="password" autocomplete="current-password" x-show="!needsPassword" x-ref="passwordCurrent" x-bind:value="pw.current" x-on:input="setPw('current', $event)" x-bind:required="!needsPassword">
     <label class="form-label" for="pw-next" x-t="password.next"></label>
     <input class="form-control" id="pw-next" type="password" autocomplete="new-password" x-bind:value="pw.next" x-on:input="setPw('next', $event)" required>
     <label class="form-label" for="pw-again" x-t="password.again"></label>

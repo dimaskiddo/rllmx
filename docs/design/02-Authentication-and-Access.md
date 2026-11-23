@@ -4,13 +4,15 @@
 
 Built: `app/access/identity` (key format, machine id, key extraction), `app/access/auth` (session, password rules, login limiter, sign-in mode, settings snapshot, key lookup, the authenticator), the five `/api/auth/*` and `/api/settings/require-login` routes, the six commands, and the authenticator the guard now asks.
 
-Built: `app/access/sso` (public base, guarded IdP client, single-use flow state, allow list, bind cookie, error codes), `app/access/oidc` (settings, discovery, JWKS, PKCE, ID-token verification, identity), the two `/api/auth/oidc/*` routes, `AUTH_SSO_ALLOW`, and the real `Mode`.
+Built: `app/access/sso` (public base, guarded IdP client, single-use flow state, admin list, bind cookie, error codes), `app/access/oidc` (settings, discovery, JWKS, PKCE, ID-token verification, identity), the two `/api/auth/oidc/*` routes, `AUTH_SSO_ADMIN`, and the real `Mode`.
 
 Built: `app/access/saml` (settings, response parsing, XML-DSig verification over `goxmldsig`, the replay set, identity extraction, the AuthnRequest and the metadata document) and the three `/api/auth/saml/*` routes. Both sign-in types are done; `ResolveMode` now receives a real `samlUsable`, so a `saml` mode turns the password form off once its provider is configured.
 
-**The allow list is optional.** An empty `AUTH_SSO_ALLOW` admits every account the configured provider accepts. A first draft required a non-empty list; a company IdP makes it noise, and `Configured` already refuses a half-set-up IdP.
+Built: `app/access/auth/users.go` (the user repository over the Go-only `users` and `userKeys` tables, its cached list), the role gate in the guard, username + password login, the per-user session and password reset, single sign-on provisioning, the first-password path, the four `/api/users` routes, and the ownership narrowing of the key and usage routes.
 
-**The trade-off, stated plainly:** with an empty list the dashboard is as open as the provider's own registration. Point `oidcIssuerUrl` and `oidcClientId` at a public provider and every account there can sign in. Set `AUTH_SSO_ALLOW` to exact addresses or `@domain` entries to close that.
+**Any account the provider authenticates may sign in.** `AUTH_SSO_ADMIN` names the addresses that sign in as the administrator: exact addresses or `@domain` entries. Every other address becomes a standard user, provisioned on its first sign-in with a `users` row and a password nobody knows; the user sets one from inside their session, and only then does password login work. `AUTH_MAX_USERS` caps the list (default 200).
+
+**The trade-off, stated plainly:** the dashboard is as open as the provider's own registration. Point `oidcIssuerUrl` and `oidcClientId` at a public provider and any account there signs in as a standard user, which owns no keys and reaches no admin route, but does take a row. Leave `AUTH_SSO_ADMIN` empty and nobody has admin through SSO; the operator password remains the way to configure the router.
 
 ### Client API
 
@@ -117,7 +119,7 @@ Change-password shares this counter. SSO counts differently (below).
 
 `auth.ResolveMode` turns `authMode` and `ssoType` into one decision.
 
-- SSO is usable only when its type is configured and the settings pass their own checks: `oidc.Settings.Usable` and `saml.Settings.Usable`. An issuer discovery would refuse never counts. `AUTH_SSO_ALLOW` decides who may sign in, not whether the button exists.
+- SSO is usable only when its type is configured and the settings pass their own checks: `oidc.Settings.Usable` and `saml.Settings.Usable`. An issuer discovery would refuse never counts. `AUTH_SSO_ADMIN` decides the role, not whether the button exists.
 - Password login is off only when the mode is SSO-only **and** SSO is usable, so half-configured SSO cannot lock the administrator out.
 - SSO sessions are re-checked on every request against the current mode and allow-list.
 
@@ -171,6 +173,23 @@ Routes `GET /api/auth/saml/start`, `POST /api/auth/saml/acs`, `GET /api/auth/sam
 | Metadata | `SPSSODescriptor`, one POST ACS, assertions required signed, requests not signed. Served only while SAML is in force. The entity id is `<APP_URL>/api/auth/saml/metadata` unless `samlIssuer` overrides it (divergence 211) |
 | Deferred | Signed requests (an SP key pair and a second exchange), single logout, and the two `*/test` routes. Artifact binding and encrypted assertions are refused by design (D71-74) |
 
+### Roles (`app/access/auth/users.go`)
+
+Two roles, resolved on every request from the stored user list rather than from
+the token, so deleting or demoting an account ends its access at the next call.
+
+| Item | Behavior |
+|---|---|
+| Storage | Go-only tables, created beside the 9router set: `users` (`id`, `username` unique, `email` unique and null when empty, `password` holding the bcrypt hash, `provisioned`, `createdAt`) and `userKeys` (`keyId`, `userId`). Additive; a 9router database gains them and keeps every row it had. `AUTH_MAX_USERS` caps the list, default 200 |
+| Admin | The operator who signs in with the settings password, or the local request the guard let through with `requireLogin` off. Reaches every route |
+| Standard user | Username + password, hashed through the framework hasher and judged by the same rule. A wrong name is counted like a wrong password. Claims carry `uid`; `pv` is the HMAC of **that user's** hash and the epoch, so a reset ends their sessions only |
+| Session resolution | `Authenticator.SessionInfo` loads the user when `uid` is set: a missing user, a deleted account or a `pv` mismatch is not a session. `Session()` delegates. The guard records the session with `http.WithSession` |
+| Route policy | One pure function, `roleAllows`. A standard user reaches `GET /api/auth/status`, `POST /api/auth/logout`, `POST /api/auth/change-password`, `GET /api/settings/require-login`, `POST /api/locale`, `GET /api/keys`, `GET|PUT /api/keys/{id}` and the five usage reads (`stats`, `chart`, `history`, `logs`, `request-logs`, `providers`). Every other `/api` route is 403. Pages and static files are not narrowed |
+| Keys | A user reads and pause/resumes only the keys assigned to them; a `PUT` carrying any field but `isActive` is 403, and another user's key is 404, not 403, so its existence is not confirmed |
+| Usage | A user's read is narrowed to their keys inside the query (`WHERE "apiKeyId" IN …`); a user with no keys reads zero. The in-flight table carries no key id, so a user's page omits it |
+| Single sign-on | An address on `AUTH_SSO_ADMIN` becomes the admin (`Issue`, no user row). Every other address is a standard user: the row is found by email, or provisioned with a 32-character random password that is hashed and dropped, and `provisioned` set. An address from a user-editable claim must already belong to a row. An admin session re-checks the list on every request; a standard session checks only that its method is still in force |
+| Routes | `GET/POST /api/users`, `PUT/DELETE /api/users/{id}`. Admin only, `ClassAlwaysProtected`. The list never carries a hash |
+
 ### Files & Compatibility Formats (`app/access/identity/`)
 
 | Item | Format |
@@ -196,7 +215,8 @@ Anything the dashboard asks the router to do against its own endpoints (model te
 | `keys:create`, `keys:list`, `keys:revoke`, `password:reset`, `db:export-plain` | `app/console/commands`, `app/access/identity` | done |
 | `/api/auth/oidc/test`, `/api/auth/saml/test` | none | deferred |
 | `/api/settings` (GET, PATCH) | `app/http/controllers` | done (an allow list of the keys this build reads, each typed and bounded; the password hash, the SSO secret and every unlisted stored key stay out. The database export/import is CLI-only, `db:export-plain`) |
-| `/api/keys/*` (list, create, reveal, rename, enable/disable, delete) | `app/http/controllers`, `app/access/auth` | done (a dashboard session even when `requireLogin` is off; the list is masked and only the reveal and the create answer a whole key) |
+| `/api/keys/*` (list, create, reveal, rename, enable/disable, delete) | `app/http/controllers`, `app/access/auth` | done (a dashboard session even when `requireLogin` is off; the list is masked and only the reveal and the create answer a whole key. A standard user's list is narrowed to their assigned keys) |
+| `/api/users` (list, create, rename, password reset, delete, key assignment through `PUT /api/keys/{id}`) | `app/http/controllers`, `app/access/auth` | done (admin only; the reference has no dashboard accounts) |
 | `/api/locale`, `/api/tags` | `app/http/controllers` | done (`tags` is Ollama's shape over the caller's own catalog, on an API key) |
 
 ---
@@ -228,12 +248,12 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 53, 54, 57 | Count before compare, slot semaphore, no compare for locked address, Redis copy takes stricter state; remote login on well-known password refused (`mustChangePassword`); `X-Forwarded-For` only from trusted proxy, IPv6 as /64 | No free guesses in a burst, no fresh budget from forged header |
 | 55, 56 | `hasPassword` only to local or signed-in callers; `Secure` from TLS, `AUTH_COOKIE_SECURE`, trusted proxy | Anonymous callers learn nothing; clients cannot pick cookie flags |
 | 145 | Failed settings read stops start; corrupt session epoch fails snapshot, so no session validates | Unreadable hash never means "no password" |
-| 59, 60 | One resolver for `oidc`, `saml`, `sso`, `both`. SSO usable when its provider is configured; `AUTH_SSO_ALLOW` narrows who may sign in and **empty admits anyone the provider accepts**; password login off only when SSO usable | No lockout by a half-configured IdP; an operator who wants a closed door sets the list |
+| 59, 60 | One resolver for `oidc`, `saml`, `sso`, `both`. SSO usable when its provider is configured; `AUTH_SSO_ADMIN` names the admins and **every other address the provider authenticated signs in as a standard user**; password login off only when SSO usable | No lockout by a half-configured IdP; the admin list is the one thing an operator sets |
 | 348 | `/api/settings` is an allow list: only the keys this build reads are writable, each with a type and a bound, and an unknown key is a 400. The password changes through `POST /api/auth/change-password`; the view never carries the password hash, the SSO client secret, `mitmSudoEncrypted` or an unlisted stored key **(built)** | The reference mass-assigns any key into the settings row, returns `mitmSudoEncrypted`, accepts `newPassword` with no length or strength rule, and lets a first-time change skip the current password |
 | 349 | The `locale` cookie is `SameSite=Lax`, and `Secure` when the request arrived over TLS **(built)** | The reference sets a bare cookie that another site can send and a plain-HTTP proxy can read |
 | 61, 62 | `APP_URL` (remote request without it refused). State keys server-side single-use sign-in plus HMAC bind cookie; verifier, nonce server-side | Caller cannot choose where code goes; planted `code` + `state` refused |
 | 63, 64 | RS256, ES256 only; issuer equals discovery; `azp` for several audiences; `at_hash` when present; `sub` required; unverified email refused; `preferred_username` only on exact allow-list entry | No algorithm confusion or token substitution; editable claim cannot admit a domain |
-| 210 | `AUTH_SSO_ALLOW` empty admits every account the provider accepts | One setting to explain, and the reference's own behaviour; the closed door is one line away |
+| 210 | `AUTH_SSO_ADMIN` empty makes nobody the admin through SSO; every account the provider accepts still signs in as a standard user | One setting to explain; the operator password remains the way to configure the router |
 | 211 | The SAML entity id defaults to `<APP_URL>/api/auth/saml/metadata`; `samlIssuer` overrides it. A 9router import carries `urn:9router:sp` in, so a migrated IdP keeps working | A fresh install gets the value its IdP expects and the value the metadata route serves; the reference's `urn:9router:sp` stays reachable as a one-line override |
 | 67, 68, 69, 70 | `samlIdpEntityId` pinned, required; request id server-side under single-use relay state; `InResponseTo` must match; IdP-initiated refused; audience naming our entity id required; assertion ids remembered 24 h. Imported setup lacks entity id, so SAML starts unconfigured | Response must answer a request this server made, once |
 | 71, 72, 73, 74 | Only while SAML in force; nine fixed codes; `SAMLart` refused before parsing; POST body 512 KiB, response 256 KiB, no DTD, bearer only; encrypted assertions unsupported | No back door when off; bounded input; response cannot choose connection |
@@ -249,6 +269,8 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 331 | `PUT /api/keys/{id}` renames; the reference's takes only `isActive` and `access`. **Built** | Renaming is what an operator means; delete and create would change the key and its usage history |
 | 332 | The last active key may be disabled or deleted, as the reference allows | The reference behaves the same, and an operator on this machine recovers through `keys:create`; a lockout rule here would be a behaviour nobody asked for (trade-off) |
 | 333 | The allow list compares exactly on the resolved identity, not lowercased as the reference does; a combo is checked by name alone until 2.4 expands its members. **Built** | A case-folded model id can route to a different upstream model, and a member is only a target once a combo expands it |
+| 351 | Single sign-on provisions a standard user on the first sign-in: a `users` row whose password is 32 random characters, hashed and dropped, so the account works over SSO and password login waits until the user sets one | The reference has no accounts at all, and an operator adding a team should not create each row by hand |
+| 350 | Two dashboard roles. The admin configures everything; a standard user signs in with their own username and password, sees only the keys assigned to them and those keys' usage, and may pause or resume them. An SSO address maps to a user by email once any user exists. The role is read from the user list on every request, not trusted from the token | The reference has one operator password, so a shared dashboard cannot say who did what; a demoted or deleted account loses access at the next request rather than at token expiry |
 
 ---
 
@@ -262,3 +284,9 @@ One row per lesson; the decision is what the code does because of it.
 | Inclusive C14N pulls in-scope namespace declarations, so a signature made while attached can fail once detached. | The verifier reads only what it proved, never the re-serialised document. |
 | The ACS parses the certificate on every sign-in, and the stored value changes only when the row does. | `saml.ParseCertificate` caches one certificate keyed by the stored text. |
 | A revocation must not wait for the key cache. | Every mutation calls `Keys.Changed`, and a test looks a key up before disabling it and expects the next lookup to fail; the ten-second TTL is not the answer. |
+| A role carried in the token stays true after the account is deleted or demoted. | The role is read from the user list on every request; `pv` is the user's own hash, so a reset ends only their sessions. |
+| A wrong username answered faster than a wrong password tells a caller which names exist. | An unknown name fails through the same limiter and the same message as a wrong password. |
+| Ownership read from a cache shows a key the admin just reassigned. | `KeysOf` reads the assignment live; only the user list itself is cached. |
+| An address taken from `preferred_username` is not proof of the address. | Provisioning from a user-editable claim is refused; only an address that already has a row signs in through one. |
+| The random password exists to make password login impossible before the user sets one, not to be read by anyone. | It is hashed in memory and dropped; no log line, response or users view carries it. |
+| Admission and role are different questions. | The admin list is re-checked for an admin session only; a standard session rests on its stored row. |

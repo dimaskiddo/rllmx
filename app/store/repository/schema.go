@@ -89,6 +89,23 @@ var tables = []Table{
 		Indexes: []Index{{"idx_kv_scope", []string{"scope"}}}},
 }
 
+// ownTables are this program's own tables, created beside the compatibility set.
+// A 9router database gains them on open and keeps every row it already had.
+var ownTables = []Table{
+	{Seq: 100, Name: "users", Columns: []Column{
+		{Name: "id", Type: tText, PK: true}, {Name: "username", Type: tText, NotNull: true, Unique: true},
+		{Name: "email", Type: tText, Unique: true}, txtNN("password"),
+		intDef("provisioned", "0"), txtNN("createdAt"),
+	}},
+	{Seq: 101, Name: "userKeys", Columns: []Column{
+		{Name: "keyId", Type: tText, PK: true}, txtNN("userId"),
+	}, Indexes: []Index{{"idx_userkeys_user", []string{"userId"}}}},
+}
+
+// allTables is what the migrator and the repair pass create: the compatibility
+// set first, then this program's own.
+func allTables() []Table { return append(append([]Table{}, tables...), ownTables...) }
+
 // validateTables rejects an additive column that ALTER TABLE could not add.
 func validateTables(ts []Table) error {
 	for _, tb := range ts {

@@ -11,6 +11,7 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 	"github.com/tidwall/gjson"
 
+	"rllmx/app/access/auth"
 	"rllmx/app/access/identity"
 	"rllmx/app/gateway/catalog"
 	apphttp "rllmx/app/http"
@@ -25,6 +26,9 @@ import (
 type asCaller struct{ c identity.Caller }
 
 func (asCaller) Session(*nethttp.Request) bool { return false }
+func (asCaller) SessionInfo(*nethttp.Request) (auth.Session, bool) {
+	return auth.Session{}, false
+}
 func (a asCaller) APIKey(*nethttp.Request) identity.KeyResult {
 	return identity.KeyResult{Status: identity.KeyValid, Caller: a.c}
 }

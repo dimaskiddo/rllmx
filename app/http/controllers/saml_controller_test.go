@@ -63,8 +63,8 @@ func newSAMLRig(t *testing.T) *samlRig {
 		_, err := s.Validate()
 		return err == nil
 	}
-	allowSSO := sso.ParseAllow("")
-	a.SSOAllow = allowSSO.Allows
+	a.Users = auth.NewUsers(auth.NewUserRepo(db, 0))
+	a.SSOAdmin = sso.ParseAdmins("").IsAdmin
 
 	server, err := settings.LoadServer(tests.Config{Values: tests.ServerValues()})
 	if err != nil {
@@ -73,7 +73,7 @@ func newSAMLRig(t *testing.T) *samlRig {
 	ctrl := &SAMLController{
 		Auth: a, Trust: apphttp.NewTrust(nil), Server: server,
 		Log: &tests.Log{}, DB: db,
-		Pending: sso.NewPending(), Replay: saml.NewReplay(), Allow: allowSSO,
+		Pending: sso.NewPending(), Replay: saml.NewReplay(),
 	}
 
 	r := tests.NewRoute(t)
@@ -237,7 +237,7 @@ func TestASuccessfulSignInIssuesTheSession(t *testing.T) {
 	req := httptest.NewRequest(nethttp.MethodGet, "/", nil)
 	req.AddCookie(&nethttp.Cookie{Name: auth.CookieName, Value: cookie})
 	claims, ok := r.auth.Claims(req)
-	if !ok || claims.Method != auth.MethodSAML || claims.Email != "ops@example.com" || claims.Name != "Ops" {
+	if !ok || claims.Method != auth.MethodSAML || claims.Email != "ops@example.com" || claims.UID == "" {
 		t.Fatalf("%+v ok=%v", claims, ok)
 	}
 	if !r.auth.Session(req) {
@@ -266,15 +266,20 @@ func TestASecondUseOfTheSameAssertionIsRefused(t *testing.T) {
 	_ = cookies
 }
 
-func TestASAMLAddressOutsideTheAllowListIsRefused(t *testing.T) {
+func TestASAMLAddressOutsideTheAdminListSignsInAsAStandardUser(t *testing.T) {
 	r := newSAMLRig(t)
-	r.ctrl.Allow = sso.ParseAllow("@other.example")
 	rec, _ := r.flow(t, nil)
-	if !strings.HasSuffix(location(rec), "error="+sso.CodeNotAllowed) {
-		t.Fatalf("%q", location(rec))
+	cookie := sessionCookie(rec)
+	if cookie == "" {
+		t.Fatalf("no session cookie: %s", location(rec))
 	}
-	if sessionCookie(rec) != "" {
-		t.Fatal("a session was issued for an address outside the list")
+	req := httptest.NewRequest(nethttp.MethodGet, "/", nil)
+	req.AddCookie(&nethttp.Cookie{Name: auth.CookieName, Value: cookie})
+	if info, ok := r.auth.SessionInfo(req); !ok || info.Role != auth.RoleUser {
+		t.Fatalf("%+v %v", info, ok)
+	}
+	if u, found, err := r.sq.Store.Users().GetByEmail(context.Background(), "ops@example.com"); err != nil || !found || !u.Provisioned {
+		t.Fatalf("%+v %v %v", u, found, err)
 	}
 }
 
@@ -291,8 +296,6 @@ func TestASAMLFailureCountsUnderItsOwnPrefix(t *testing.T) {
 	}
 }
 
-// flow runs start, then posts the signed response with the bind cookie, and
-// returns the ACS answer.
 func (r *samlRig) flow(t *testing.T, hdr map[string]string) (*httptest.ResponseRecorder, map[string]string) {
 	t.Helper()
 	start := r.get("/api/auth/saml/start", nil)

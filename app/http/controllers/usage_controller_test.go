@@ -30,29 +30,30 @@ type usageFake struct {
 	err       error
 	lastFrom  time.Time
 	lastHours bool
+	lastKeys  []string
 }
 
-func (f *usageFake) Sums(_ context.Context, from time.Time, hourly bool) ([]analytics.Sum, error) {
-	f.lastFrom, f.lastHours = from, hourly
+func (f *usageFake) Sums(_ context.Context, from time.Time, hourly bool, keys []string) ([]analytics.Sum, error) {
+	f.lastFrom, f.lastHours, f.lastKeys = from, hourly, keys
 	return f.sums, f.err
 }
 
-func (f *usageFake) Buckets(_ context.Context, from time.Time, hourly bool) ([]analytics.Bucket, error) {
+func (f *usageFake) Buckets(_ context.Context, from time.Time, hourly bool, _ []string) ([]analytics.Bucket, error) {
 	f.lastFrom, f.lastHours = from, hourly
 	return f.buckets, f.err
 }
 
-func (f *usageFake) LastSeen(context.Context, time.Time) (map[analytics.Dims]time.Time, error) {
+func (f *usageFake) LastSeen(context.Context, time.Time, []string) (map[analytics.Dims]time.Time, error) {
 	return f.seen, f.err
 }
 
-func (f *usageFake) Recent(context.Context, int) ([]analytics.Request, error) {
+func (f *usageFake) Recent(context.Context, int, []string) ([]analytics.Request, error) {
 	return f.recent, f.err
 }
 
 // RecentServed applies the store's rule: only rows that used tokens, at most
 // limit of them.
-func (f *usageFake) RecentServed(_ context.Context, limit int) ([]analytics.Request, error) {
+func (f *usageFake) RecentServed(_ context.Context, limit int, _ []string) ([]analytics.Request, error) {
 	var out []analytics.Request
 	for _, r := range f.recent {
 		if r.Prompt+r.Completion > 0 && len(out) < limit {
@@ -62,7 +63,7 @@ func (f *usageFake) RecentServed(_ context.Context, limit int) ([]analytics.Requ
 	return out, f.err
 }
 
-func (f *usageFake) Providers(context.Context) ([]string, error) {
+func (f *usageFake) Providers(context.Context, []string) ([]string, error) {
 	return f.providers, f.err
 }
 

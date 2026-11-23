@@ -768,28 +768,41 @@ func TestNoTagIsFollowedByAStrayAngleBracket(t *testing.T) {
 }
 
 // Every row of a list keeps the same buttons, so the right-hand group lines up.
-// A button that does not apply is disabled, never left out of one row.
+// A button that does not apply is disabled, never left out of one row. The alias
+// is cleared from its own dialog, so a row has one alias button, not two.
 func TestTheModelActionButtonsAreNeverHiddenPerRow(t *testing.T) {
-	removeAlias := 0
 	for _, m := range regexp.MustCompile(`<button\b(?:[^>"]|"[^"]*")*>`).FindAllString(modelRowBlock(t), -1) {
 		if strings.Contains(m, "removeCustom") && !strings.Contains(m, "x-bind:disabled") {
 			t.Errorf("the delete button must be disabled for a built-in model: %s", m)
 		}
-		if strings.Contains(m, "removeAlias") {
-			removeAlias++
-			if !strings.Contains(m, "x-bind:disabled") {
-				t.Errorf("the remove-alias button must be disabled when there is no alias: %s", m)
-			}
-			if !strings.Contains(m, `x-show="!node"`) {
-				t.Errorf("a custom provider has no alias to remove, so the button must not show there: %s", m)
-			}
+		if strings.Contains(m, "removeAlias") || strings.Contains(m, "dropAlias") {
+			t.Errorf("the alias is cleared in its dialog, not from the row: %s", m)
 		}
 		if strings.Contains(m, "removeCustom") && strings.Contains(m, "x-show=") {
 			t.Errorf("a per-row x-show shifts the buttons of other rows: %s", m)
 		}
 	}
-	if removeAlias != 1 {
-		t.Errorf("%d remove-alias buttons, want one", removeAlias)
+	body := readWeb(t, "static/pages/provider.html")
+	start := strings.Index(body, `x-ref="aliasDlg"`)
+	end := strings.Index(body[start:], "</dialog>")
+	if start < 0 || end < 0 {
+		t.Fatal("the alias dialog was not found")
+	}
+	dialog := body[start : start+end]
+	action := ""
+	for _, m := range regexp.MustCompile(`<button\b(?:[^>"]|"[^"]*")*>`).FindAllString(dialog, -1) {
+		if strings.Contains(m, "dropAlias()") {
+			action = m
+		}
+	}
+	if action == "" {
+		t.Fatal("the alias dialog cannot clear an alias")
+	}
+	if !strings.Contains(action, `x-show="aliasForm.alias"`) {
+		t.Errorf("the remove action must hide when there is no alias: %s", action)
+	}
+	if !strings.Contains(action, "btn-ghost-danger") {
+		t.Errorf("the remove action is not drawn as a destructive button: %s", action)
 	}
 }
 
@@ -992,5 +1005,235 @@ func TestListRowsShareOneVerticalRhythm(t *testing.T) {
 	}
 	if !regexp.MustCompile(`\.rl-row-select \{[^}]*padding-block: 0\.75rem`).MatchString(css) {
 		t.Error("the select-all row has a different padding from the rows under it")
+	}
+}
+
+// The pause and play buttons name the state the click produces, not the word
+// "Resume" or "Pause"; the dialog copy keeps those words.
+func TestPauseAndPlayTooltipsNameTheResult(t *testing.T) {
+	controlKey := regexp.MustCompile(`\bkeys\.(pause|resume)\b`)
+	for _, name := range []string{"static/pages/endpoint.html", "static/pages/provider.html", "static/pages/providers.html"} {
+		body := readWeb(t, name)
+		if controlKey.MatchString(body) {
+			t.Errorf("%s: a pause control still says Resume or Pause", name)
+		}
+	}
+	if body := readWeb(t, "static/pages/endpoint.html"); !strings.Contains(body, `x-tip="keys.inactive"`) || !strings.Contains(body, `x-tip="keys.active"`) {
+		t.Error("the key pause and resume buttons do not name Active and Inactive")
+	}
+	for _, name := range []string{"static/pages/provider.html", "static/pages/providers.html"} {
+		if body := readWeb(t, name); !strings.Contains(body, "? label('keys.active') : label('keys.inactive')") {
+			t.Errorf("%s: the connection toggle still names Resume or Pause", name)
+		}
+	}
+}
+
+// "OpenAI- " was the suspended hyphen that read as a stray dash when the hint
+// wrapped. The hyphen inside "OpenAI-compatible" is a normal compound.
+func TestNoProviderHintLeavesAWordOnAHyphen(t *testing.T) {
+	suspended := regexp.MustCompile(`\w+-\s`)
+	for _, locale := range []string{"en", "id"} {
+		for key, value := range loadTranslations(t, locale) {
+			if suspended.MatchString(value) {
+				t.Errorf("%s.json %s ends a word in a hyphen: %q", locale, key, value)
+			}
+		}
+	}
+}
+
+// The old badge printed the count, the lowercase word and a tag that said
+// "Error" again. One helper now builds "2 Error (429)".
+func TestAProviderCardShowsOneFailureBadge(t *testing.T) {
+	body := readWeb(t, "static/pages/providers.html")
+	if !strings.Contains(body, `x-text="errorBadge(card)"`) {
+		t.Error("the failure badge is not built by errorBadge")
+	}
+	if strings.Contains(body, `x-t="providers.error"`) {
+		t.Error("the failure badge prints the word beside the tag again")
+	}
+	if !strings.Contains(readWeb(t, "static/js/pages/providers.js"), "errorBadge(card) {") {
+		t.Error("providers.js has no errorBadge")
+	}
+	for _, locale := range []string{"en", "id"} {
+		if value := loadTranslations(t, locale)["providers.connected"]; value == "" || strings.ToUpper(value[:1]) != value[:1] {
+			t.Errorf("%s.json providers.connected does not start with a capital: %q", locale, value)
+		}
+	}
+}
+
+// Copying a key is silent; the eye button is the only way to put it on screen.
+func TestCopyingAKeyDoesNotRevealIt(t *testing.T) {
+	js := readWeb(t, "static/js/pages/endpoint.js")
+	start := strings.Index(js, "async copyKey(")
+	if start < 0 {
+		t.Fatal("copyKey was not found")
+	}
+	end := strings.Index(js[start:], "async toggleActive(")
+	if end < 0 {
+		t.Fatal("the end of copyKey was not found")
+	}
+	if strings.Contains(js[start:start+end], "reveal(") {
+		t.Error("copyKey reveals the key on screen")
+	}
+}
+
+// The card body already pads; a first row that pads again leaves the list
+// looking indented under its header.
+func TestAFirstListRowAddsNoTopPadding(t *testing.T) {
+	css := readWeb(t, "static/css/components.css")
+	if !regexp.MustCompile(`(?s)\.rl-list-row:first-of-type \{[^}]*padding-block-start: 0;`).MatchString(css) {
+		t.Error("the first row keeps its own top padding above the card's")
+	}
+	if !regexp.MustCompile(`(?s)dialog\.rl-dialog \.form-check \{[^}]*margin-block-start: 0\.75rem;`).MatchString(css) {
+		t.Error("a checkbox in a dialog sits flush against the field above it")
+	}
+	block := regexp.MustCompile(`(?s)\.rl-provider-name:hover \{[^}]*\}`).FindString(css)
+	if block == "" {
+		t.Fatal("the provider-name hover rule was not found")
+	}
+	if !strings.Contains(block, "text-decoration: none;") {
+		t.Errorf("a hovered provider name is underlined: %s", block)
+	}
+}
+
+// Deleting stored data is red and asks first. The handlers that delete are
+// checked in their own module.
+func TestDeleteButtonsAreRedAndAskFirst(t *testing.T) {
+	button := regexp.MustCompile(`(?s)<button\b((?:[^>"]|"[^"]*")*)>(.*?)</button>`)
+	handlers := map[string]bool{}
+	ours(t, func(name, body string) {
+		if !strings.HasSuffix(name, ".html") {
+			return
+		}
+		for _, m := range button.FindAllStringSubmatch(body, -1) {
+			if !strings.Contains(m[2], `x-icon="trash"`) {
+				continue
+			}
+			if !strings.Contains(m[1], "btn-ghost-danger") {
+				t.Errorf("%s: a delete button is not drawn as destructive: <button%s>", name, strings.TrimSpace(m[1]))
+			}
+			for _, h := range regexp.MustCompile(`x-on:click="([A-Za-z]+)\(`).FindAllStringSubmatch(m[1], -1) {
+				handlers[h[1]] = true
+			}
+		}
+	})
+	if len(handlers) == 0 {
+		t.Fatal("no delete handler was found")
+	}
+	for _, h := range []string{"remove", "removeSelected", "deleteNode", "removeCustom", "dropAlias"} {
+		if !handlers[h] {
+			t.Errorf("no delete button calls %s", h)
+		}
+	}
+	var pages strings.Builder
+	for _, name := range []string{"endpoint.js", "provider-connections.js", "provider-models.js", "provider-settings.js"} {
+		pages.WriteString(readWeb(t, "static/js/pages/"+name))
+		pages.WriteString("\n")
+	}
+	for h := range handlers {
+		ask := regexp.MustCompile(`(?s)(?:async )?` + h + `\([^)]*\)\s*\{.{0,400}?ask\(`)
+		if !ask.MatchString(pages.String()) {
+			t.Errorf("%s deletes without asking first", h)
+		}
+	}
+}
+
+func TestTheBackLinkCarriesAnArrow(t *testing.T) {
+	body := readWeb(t, "static/pages/provider.html")
+	line := ""
+	for l := range strings.SplitSeq(body, "\n") {
+		if strings.Contains(l, "provider.back") {
+			line = l
+		}
+	}
+	if line == "" {
+		t.Fatal("the back link was not found")
+	}
+	if !strings.Contains(line, `x-icon="arrow-left"`) {
+		t.Errorf("the back link has no arrow: %s", strings.TrimSpace(line))
+	}
+}
+
+// A standard user configures nothing; the console narrows the same pages it
+// narrows on the server, so a refused control is also not shown.
+func TestAStandardUserSeesNoAdminControls(t *testing.T) {
+	shell := readWeb(t, "static/shell.html")
+	nav := ""
+	for l := range strings.SplitSeq(shell, "\n") {
+		if strings.Contains(l, "/dashboard/providers") && strings.Contains(l, "<li") {
+			nav = l
+		}
+	}
+	if !strings.Contains(nav, `x-show="isAdmin()"`) {
+		t.Errorf("the providers entry is offered to every role: %s", strings.TrimSpace(nav))
+	}
+
+	endpoint := readWeb(t, "static/pages/endpoint.html")
+	buttons := regexp.MustCompile(`<button\b(?:[^>"]|"[^"]*")*>`).FindAllString(endpoint, -1)
+	for _, call := range []string{"openCreate()", "openEdit(key)", "remove(key)"} {
+		found := false
+		for _, tag := range buttons {
+			if !strings.Contains(tag, call) {
+				continue
+			}
+			found = true
+			if !strings.Contains(tag, `x-show="isAdmin()"`) {
+				t.Errorf("%s is offered to every role: %s", call, tag)
+			}
+		}
+		if !found {
+			t.Errorf("no button calls %s", call)
+		}
+	}
+	for _, id := range []string{"create-owner", "edit-owner"} {
+		if !strings.Contains(endpoint, `id="`+id+`"`) {
+			t.Errorf("the key dialog has no %s owner select", id)
+		}
+	}
+	if !strings.Contains(endpoint, `x-t="users.title"`) {
+		t.Error("the users card is missing")
+	}
+	// The users card carries the gate for its own buttons.
+	if !strings.Contains(endpoint, `x-show="!loading && isAdmin()"`) {
+		t.Error("the users card is offered to every role")
+	}
+	if !strings.Contains(readWeb(t, "static/js/pages/endpoint.js"), "role: \"admin\"") {
+		t.Error("the page never reads its role")
+	}
+}
+
+func TestTheSignInFormOffersAUsername(t *testing.T) {
+	body := readWeb(t, "static/login.html")
+	if !strings.Contains(body, `autocomplete="username"`) {
+		t.Error("the sign-in form has no username field")
+	}
+	js := readWeb(t, "static/js/login.js")
+	if !strings.Contains(js, "username: this.username") {
+		t.Error("the form never sends the username")
+	}
+}
+
+// An account single sign-on provisioned has no password the user knows, so the
+// dialog asks only for the new one until they set it.
+func TestASetPasswordDialogAsksNoCurrentPasswordWhenNoneIsKnown(t *testing.T) {
+	shell := readWeb(t, "static/shell.html")
+	if !strings.Contains(shell, `x-show="!needsPassword"`) {
+		t.Error("the current-password field is shown to a user who has none")
+	}
+	app := readWeb(t, "static/js/app.js")
+	for _, want := range []string{"needsPassword = status.needsPassword === true", `this.needsPassword ? "" : this.pw.current`} {
+		if !strings.Contains(app, want) {
+			t.Errorf("app.js lacks %q", want)
+		}
+	}
+	endpoint := readWeb(t, "static/pages/endpoint.html")
+	if !strings.Contains(endpoint, "user.username") {
+		t.Error("the users card still reads a field the API does not send")
+	}
+	if strings.Contains(endpoint, "user.name") {
+		t.Error("the users card reads user.name, which the API no longer sends")
+	}
+	if !strings.Contains(endpoint, `x-t="users.sso"`) {
+		t.Error("a provisioned account is not marked")
 	}
 }

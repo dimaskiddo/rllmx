@@ -52,7 +52,7 @@ func (c *UsageController) Stream(ctx contractshttp.Context) contractshttp.Respon
 	// The counters are read before the first frame: a change that lands while
 	// it is written must still produce the next one.
 	generation, flushed := c.generation(), c.flushed()
-	recent, err := c.recent(rctx)
+	recent, err := c.recent(rctx, nil)
 	if err != nil {
 		recent = []usageRecent{}
 	}
@@ -74,7 +74,7 @@ func (c *UsageController) Stream(ctx contractshttp.Context) contractshttp.Respon
 				continue
 			}
 			if nextFlushed != flushed {
-				if fresh, err := c.recent(rctx); err == nil {
+				if fresh, err := c.recent(rctx, nil); err == nil {
 					recent = fresh
 				}
 			}

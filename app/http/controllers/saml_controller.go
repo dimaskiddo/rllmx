@@ -35,8 +35,6 @@ type SAMLController struct {
 	Pending *sso.Pending
 	// Replay remembers assertion ids already used.
 	Replay *saml.Replay
-	// Allow is AUTH_SSO_ALLOW.
-	Allow sso.Allow
 }
 
 // Start answers GET /api/auth/saml/start: it mints a request id, keeps it and
@@ -160,15 +158,11 @@ func (c *SAMLController) ACS(ctx contractshttp.Context) contractshttp.Response {
 		c.countFailure(key)
 		return c.fail(ctx, base, sso.CodeNoEmail)
 	}
-	if !c.Allow.Allows(email, exactOnly) {
-		c.countFailure(key)
-		return c.fail(ctx, base, sso.CodeNotAllowed)
-	}
 
 	cookie, issued := c.Auth.IssueSSO(r.Context(), auth.MethodSAML, email, saml.Name(assertion, set), exactOnly, c.Trust.SecureRequest(r))
 	if !issued {
 		c.countFailure(key)
-		return c.fail(ctx, base, sso.CodeDisabled)
+		return c.fail(ctx, base, sso.CodeNoAccount)
 	}
 	c.Auth.Limiter.Succeed(key)
 	ctx.Response().Cookie(cookie)
