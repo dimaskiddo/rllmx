@@ -5,11 +5,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io/fs"
+	"os"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
+	"rllmx/app/gateway/plan"
 	"rllmx/app/llm/upstream"
 	"rllmx/web"
 )
@@ -86,9 +89,13 @@ func TestOurWebFilesCarryNoMarkupFromDataOrInlineCode(t *testing.T) {
 	})
 }
 
+// svgNS is the namespace a hand-drawn SVG node needs. It is an identifier, not
+// an address the browser fetches, so the origin scan allows this one string.
+const svgNS = "http://www.w3.org/2000/svg"
+
 func TestOurWebFilesLoadNothingFromAnotherOrigin(t *testing.T) {
 	ours(t, func(name, body string) {
-		if m := absoluteURL.FindString(body); m != "" {
+		if m := absoluteURL.FindString(strings.ReplaceAll(body, svgNS, "")); m != "" {
 			t.Errorf("%s names an absolute address; the page policy would refuse it", name)
 		}
 	})
@@ -307,7 +314,7 @@ func TestTheTranslationsCoverEveryKeyAndBothLocales(t *testing.T) {
 	// full set both files must hold is checked here.
 	for _, code := range []string{
 		"sso.sso_disabled", "sso.sso_not_configured", "sso.sso_busy", "sso.sso_expired",
-		"sso.sso_invalid", "sso.sso_not_allowed", "sso.sso_no_email", "sso.sso_unverified", "sso.sso_idp_error",
+		"sso.sso_invalid", "sso.sso_no_email", "sso.sso_unverified", "sso.sso_idp_error",
 	} {
 		if strings.TrimSpace(en[code]) == "" || strings.TrimSpace(id[code]) == "" {
 			t.Errorf("%s is missing from a locale", code)
@@ -1120,13 +1127,13 @@ func TestDeleteButtonsAreRedAndAskFirst(t *testing.T) {
 	if len(handlers) == 0 {
 		t.Fatal("no delete handler was found")
 	}
-	for _, h := range []string{"remove", "removeSelected", "deleteNode", "removeCustom", "dropAlias"} {
+	for _, h := range []string{"remove", "removeSelected", "deleteNode", "removeCustom", "dropAlias", "removeCombo"} {
 		if !handlers[h] {
 			t.Errorf("no delete button calls %s", h)
 		}
 	}
 	var pages strings.Builder
-	for _, name := range []string{"endpoint.js", "provider-connections.js", "provider-models.js", "provider-settings.js"} {
+	for _, name := range []string{"endpoint.js", "provider-connections.js", "provider-models.js", "provider-settings.js", "combos.js", "console-log.js", "pricing.js", "skills-studio.js"} {
 		pages.WriteString(readWeb(t, "static/js/pages/"+name))
 		pages.WriteString("\n")
 	}
@@ -1197,7 +1204,7 @@ func TestAStandardUserSeesNoAdminControls(t *testing.T) {
 	if !strings.Contains(endpoint, `x-show="!loading && isAdmin()"`) {
 		t.Error("the users card is offered to every role")
 	}
-	if !strings.Contains(readWeb(t, "static/js/pages/endpoint.js"), "role: \"admin\"") {
+	if !strings.Contains(readWeb(t, "static/js/pages/endpoint.js"), "this.role = (await session()).role") {
 		t.Error("the page never reads its role")
 	}
 }
@@ -1221,7 +1228,7 @@ func TestASetPasswordDialogAsksNoCurrentPasswordWhenNoneIsKnown(t *testing.T) {
 		t.Error("the current-password field is shown to a user who has none")
 	}
 	app := readWeb(t, "static/js/app.js")
-	for _, want := range []string{"needsPassword = status.needsPassword === true", `this.needsPassword ? "" : this.pw.current`} {
+	for _, want := range []string{"this.needsPassword = who.needsPassword", `this.needsPassword ? "" : this.pw.current`} {
 		if !strings.Contains(app, want) {
 			t.Errorf("app.js lacks %q", want)
 		}
@@ -1235,5 +1242,1010 @@ func TestASetPasswordDialogAsksNoCurrentPasswordWhenNoneIsKnown(t *testing.T) {
 	}
 	if !strings.Contains(endpoint, `x-t="users.sso"`) {
 		t.Error("a provisioned account is not marked")
+	}
+}
+
+// methodBody is the text of one method in a page component, matched by braces,
+// so a scan can look inside it without matching the rest of the file.
+func methodBody(body, name string) string {
+	start := strings.Index(body, "\n  "+name+"(")
+	if start < 0 {
+		return ""
+	}
+	open := start + strings.Index(body[start:], "{")
+	depth := 0
+	for i := open; i < len(body); i++ {
+		switch body[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return body[open : i+1]
+			}
+		}
+	}
+	return ""
+}
+
+// A stream outlives the fragment unless the page closes it: the router destroys
+// the old tree, and a stream nobody closes keeps writing into a detached node.
+func TestEveryPageScriptClosesItsEventSource(t *testing.T) {
+	ours(t, func(name, body string) {
+		if !strings.HasSuffix(name, ".js") || !strings.Contains(body, "new EventSource(") {
+			return
+		}
+		destroy := methodBody(body, "destroy")
+		if destroy == "" {
+			t.Errorf("%s opens a stream and defines no destroy", name)
+			return
+		}
+		if !strings.Contains(destroy, ".close()") {
+			t.Errorf("%s: destroy does not close the stream", name)
+		}
+	})
+}
+
+// A Chart.js instance holds a canvas and its own listeners; the page that built
+// it has to destroy it when the router leaves the page.
+func TestEveryChartIsBuiltAndDestroyedByThePage(t *testing.T) {
+	ours(t, func(name, body string) {
+		if !strings.HasSuffix(name, ".js") || !strings.Contains(body, "makeChart(") || name == "static/js/ui/charts.js" {
+			return
+		}
+		if !strings.Contains(body, "destroyChart(") {
+			t.Errorf("%s builds a chart and does not destroy it", name)
+		}
+	})
+}
+
+// The strategy select writes the four names the combo policy acts on, and the
+// router policy offers the reference's four, because a stored fifth value would
+// save and do nothing.
+func TestTheComboStrategySelectOffersTheServerValues(t *testing.T) {
+	body := readWeb(t, "static/pages/combos.html")
+	for _, want := range []string{`value="fallback"`, `value="round-robin"`, `value="smart"`, `value="fusion"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the strategy select lacks %s", want)
+		}
+	}
+	for _, want := range []string{`value="smart"`, `value="strict"`, `value="per-turn"`, `value="custom"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the router policy select lacks %s", want)
+		}
+	}
+	js := readWeb(t, "static/js/pages/combos.js")
+	if !strings.Contains(js, "patch.confidenceThreshold = 0.8") {
+		t.Error("the smart policy does not write the 80% threshold the policy reads")
+	}
+}
+
+// Drag order is a nicety; the arrows are what a keyboard can reach. Both move
+// the same array, and the page never sends the DOM's order.
+func TestTheComboModelEditorKeepsAnAccessibleOrder(t *testing.T) {
+	body := readWeb(t, "static/pages/combos.html")
+	for _, want := range []string{`x-tip="combos.moveUp"`, `x-tip="combos.moveDown"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the model editor has no %s button", want)
+		}
+	}
+	js := readWeb(t, "static/js/pages/combo-models.js")
+	if !strings.Contains(js, "models.splice(from, 1)") {
+		t.Error("a reorder does not move the stored list")
+	}
+}
+
+// A standard user may read the totals, the chart and the log; the live feed,
+// the active count and the latency stream are admin reads, so the page asks for
+// them only behind isAdmin().
+func TestTheUsagePageAsksOnlyForWhatTheRoleAllows(t *testing.T) {
+	js := readWeb(t, "static/js/pages/usage.js")
+	for _, path := range []string{"/api/usage/stats", "/api/usage/chart", "/api/usage/logs"} {
+		if !strings.Contains(js, path) {
+			t.Errorf("usage.js never reads %s", path)
+		}
+	}
+	if !strings.Contains(js, "if (this.isAdmin()) {") {
+		t.Error("the page does not gate the admin reads on the role")
+	}
+	for _, path := range []string{"/api/usage/stream", "/api/usage/active-providers", "/api/health/latency-stream"} {
+		at := strings.Index(js, path)
+		if at < 0 {
+			t.Errorf("usage.js never reads %s", path)
+			continue
+		}
+		start := strings.Index(js, "async start()")
+		if start < 0 || at < start {
+			t.Errorf("%s is read outside start()", path)
+		}
+	}
+	body := readWeb(t, "static/pages/usage.html")
+	for _, value := range []string{"today", "24h", "7d", "30d", "60d", "all"} {
+		if !strings.Contains(body, `value="`+value+`"`) {
+			t.Errorf("the period select lacks %q", value)
+		}
+	}
+}
+
+// One reading per card is a provider call, so the client list pages; a great
+// many accounts must not become one unstyled list.
+func TestTheQuotaPagePagesItsAccountsAndLimits(t *testing.T) {
+	body := readWeb(t, "static/pages/quota.html")
+	for _, want := range []string{`value="10"`, `value="20"`, `value="50"`, `value="100"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the page-size select lacks %s", want)
+		}
+	}
+	js := readWeb(t, "static/js/pages/quota.js")
+	if !strings.Contains(js, "const quotaPageSize = 10") {
+		t.Error("a card shows every limit at once")
+	}
+	if !strings.Contains(js, "async function readQuota") {
+		t.Error("a 401 from a quota reading would send the browser to the sign-in page")
+	}
+}
+
+// The console page follows the server's stream; it has nothing to poll and
+// nothing to read from disk.
+func TestTheConsoleLogPageReadsOnlyTheStream(t *testing.T) {
+	js := readWeb(t, "static/js/pages/console-log.js")
+	if !strings.Contains(js, `new EventSource("/api/translator/console-logs/stream")`) {
+		t.Error("the page does not open the log stream")
+	}
+	if strings.Contains(js, "setInterval(") {
+		t.Error("the page polls; the stream already pushes")
+	}
+	if strings.Contains(js, "/api/translator/console-logs?") {
+		t.Error("the page fetches the ring instead of taking the stream's init frame")
+	}
+}
+
+// The settings page writes the keys the controller validates. A key the page
+// sends but the allow list does not hold is a 400 a person finds in a browser.
+func TestTheSettingsPageWritesOnlyAllowedKeys(t *testing.T) {
+	raw, err := os.ReadFile("../app/http/controllers/settings_controller.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	controller := string(raw)
+	js := readWeb(t, "static/js/pages/settings.js")
+	for _, key := range []string{
+		"requireLogin", "authMode", "ssoType", "oidcIssuerUrl", "oidcClientId", "oidcClientSecret",
+		"oidcScopes", "oidcLoginLabel", "samlEntryPoint", "samlIssuer", "samlCert", "samlIdpEntityId",
+		"samlLoginLabel", "samlAttributeEmail", "samlAttributeName", "fallbackStrategy",
+		"stickyRoundRobinLimit", "comboStrategy", "comboStickyRoundRobinLimit",
+	} {
+		if !strings.Contains(js, key) {
+			t.Errorf("settings.js never writes %s", key)
+		}
+		if !strings.Contains(controller, `"`+key+`"`) {
+			t.Errorf("settingsRules does not accept %s", key)
+		}
+	}
+}
+
+// The client secret is write-only: the server never returns it, and the page
+// never puts a stored value back into the field.
+func TestTheOIDCSecretIsWriteOnly(t *testing.T) {
+	body := readWeb(t, "static/pages/settings.html")
+	if !strings.Contains(body, `id="oidc-secret" type="password"`) {
+		t.Error("the client secret field is not a password field")
+	}
+	js := readWeb(t, "static/js/pages/settings.js")
+	if strings.Contains(js, "settings.oidcClientSecret") {
+		t.Error("the page reads the stored secret back")
+	}
+	if !strings.Contains(js, `if (secret !== "") {`) {
+		t.Error("an empty secret field would overwrite the stored secret")
+	}
+}
+
+// The addresses the IdP is configured with are this origin's, never a value
+// from the store.
+func TestTheSSOAddressesComeFromTheBrowser(t *testing.T) {
+	js := readWeb(t, "static/js/pages/settings.js")
+	for _, want := range []string{`location.origin + "/api/auth/oidc/callback"`, `location.origin + "/api/auth/saml/acs"`, `location.origin + "/api/auth/saml/metadata"`} {
+		if !strings.Contains(js, want) {
+			t.Errorf("settings.js lacks %s", want)
+		}
+	}
+}
+
+// A price is a non-negative number; the input says so and the page drops a
+// value it cannot read rather than storing a NaN.
+func TestAPriceInputIsANonNegativeNumber(t *testing.T) {
+	body := readWeb(t, "static/pages/pricing.html")
+	if !strings.Contains(body, `type="number" min="0" step="0.01"`) {
+		t.Error("a price input is not a bounded number field")
+	}
+	js := readWeb(t, "static/js/pages/pricing.js")
+	if !strings.Contains(js, "if (isNaN(value) || value < 0) {") {
+		t.Error("pricing.js stores a value it cannot read")
+	}
+	if !strings.Contains(js, "if (Object.keys(body).length === 0) {") {
+		t.Error("a save with nothing edited would still send a write")
+	}
+}
+
+// A hook the manifest check refuses would be a save that can never succeed.
+func TestTheStudioOffersOnlyAcceptedHooks(t *testing.T) {
+	js := readWeb(t, "static/js/pages/skills-studio.js")
+	for _, hook := range []string{"system-prompt", "pre-route", "pre-request"} {
+		if !strings.Contains(js, `"`+hook+`"`) {
+			t.Errorf("the studio never offers the %s hook", hook)
+		}
+	}
+	manifest, err := os.ReadFile("../app/gateway/skill/manifest.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, hook := range []string{"system-prompt", "pre-route", "pre-request"} {
+		if !strings.Contains(string(manifest), `"`+hook+`": true`) {
+			t.Errorf("the manifest check does not accept %s", hook)
+		}
+	}
+}
+
+// The draft is data. A field that names a process or claims another writer's
+// folder is refused by the server, so the page must never send one.
+func TestTheStudioSendsNoRefusedKey(t *testing.T) {
+	js := readWeb(t, "static/js/pages/skills-studio.js")
+	for _, key := range []string{"hook_script", "install_command", "update_command", "uninstall_command"} {
+		if strings.Contains(js, key) {
+			t.Errorf("the studio writes %s", key)
+		}
+	}
+}
+
+// Every saver row writes a key the settings write accepts; a key outside the
+// allow list is a switch that answers 400.
+func TestTheSaverKeysAreInTheAllowList(t *testing.T) {
+	raw, err := os.ReadFile("../app/http/controllers/settings_controller.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	controller := string(raw)
+	body := readWeb(t, "static/pages/token-saver.html")
+	for _, key := range []string{
+		"rtkEnabled", "headroomEnabled", "headroomUrl", "headroomCompressUserMessages", "headroomTimeoutMs",
+		"cavemanEnabled", "cavemanLevel", "cavemanRoutingMode", "ponytailEnabled", "ponytailLevel",
+		"ponytailRoutingMode", "customPromptEnabled", "customPrompt",
+	} {
+		if !strings.Contains(body, key) {
+			t.Errorf("token-saver.html never writes %s", key)
+		}
+		if !strings.Contains(controller, `"`+key+`"`) {
+			t.Errorf("settingsRules does not accept %s", key)
+		}
+	}
+}
+
+// The auto-plan inputs are bounded where the server clamps, so a person cannot
+// type a value the plan reader would silently change.
+func TestTheAutoPlanBoundsMatchTheServer(t *testing.T) {
+	body := readWeb(t, "static/pages/skills.html")
+	for _, want := range []string{
+		`min="` + strconv.Itoa(plan.MinThreshold) + `" max="` + strconv.Itoa(plan.MaxThreshold) + `"`,
+		`min="` + strconv.Itoa(plan.MinMaxTokens) + `" max="` + strconv.Itoa(plan.MaxMaxTokens) + `"`,
+		`min="` + strconv.Itoa(plan.MinTimeoutMS) + `" max="` + strconv.Itoa(plan.MaxTimeoutMS) + `"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("skills.html lacks %s", want)
+		}
+	}
+}
+
+// $root is the element a component sits on, not a component, so a method called
+// through it throws at click time.
+func TestNoPageReachesAMethodThroughRoot(t *testing.T) {
+	ours(t, func(name, body string) {
+		if path.Dir(name) == "static/pages" && strings.Contains(body, "$root.") {
+			t.Errorf("%s calls through $root; dispatch an event the shell listens for", name)
+		}
+	})
+}
+
+// definedMethod matches a method written at the top level of a component or
+// mixin object: two spaces in, a parameter list, and an opening brace.
+var definedMethod = regexp.MustCompile(`(?m)^  (?:async\s+)?([A-Za-z_]\w*)\([^)]*\)\s*\{$`)
+
+// A mixin's method overwrites a page method of the same name, so the page's own
+// handler stops running without a sign of it.
+func TestNoMixinMethodShadowsAPageMethod(t *testing.T) {
+	ours(t, func(name, body string) {
+		if path.Dir(name) != "static/js/pages" || !strings.HasSuffix(name, ".js") {
+			return
+		}
+		mixed := mixinNames(body)
+		if len(mixed) == 0 {
+			return
+		}
+		page := body
+		seen := map[string]bool{}
+		for _, m := range definedMethod.FindAllStringSubmatch(page, -1) {
+			seen[m[1]] = true
+		}
+		for _, imp := range scopeImport.FindAllStringSubmatch(body, -1) {
+			file := "static/js/pages/" + strings.TrimPrefix(imp[1], "./")
+			more, err := fs.ReadFile(web.Static, file)
+			if err != nil || len(exportedMixin.FindAllString(string(more), -1)) == 0 || !mixedIn(string(more), mixed) {
+				continue
+			}
+			for _, m := range definedMethod.FindAllStringSubmatch(string(more), -1) {
+				if seen[m[1]] {
+					t.Errorf("%s defines %s() and so does %s: the mixin wins", name, m[1], file)
+				}
+			}
+		}
+	})
+}
+
+var numberInput = regexp.MustCompile(`<input[^>]*type="(?:number|range)"[^>]*x-on:(?:change|input)="(\w+)\(([^)]*)\)"`)
+
+// A number input's value is a string, and the server's integer rules refuse one.
+func TestEveryNumberInputSendsANumber(t *testing.T) {
+	ours(t, func(name, body string) {
+		if path.Dir(name) != "static/pages" || !strings.HasSuffix(name, ".html") {
+			return
+		}
+		page := strings.TrimSuffix(path.Base(name), ".html")
+		src := readWeb(t, "static/js/pages/"+page+".js")
+		for _, in := range numberInput.FindAllStringSubmatch(body, -1) {
+			handler := methodBody(src, in[1])
+			if handler == "" {
+				for _, imp := range scopeImport.FindAllStringSubmatch(src, -1) {
+					if more, err := fs.ReadFile(web.Static, "static/js/pages/"+strings.TrimPrefix(imp[1], "./")); err == nil {
+						handler = methodBody(string(more), in[1])
+					}
+					if handler != "" {
+						break
+					}
+				}
+			}
+			if handler == "" {
+				continue
+			}
+			// A handler that only stores the text is fine when a later step parses it.
+			if in[1] == "setText" || in[1] == "setEnum" {
+				t.Errorf("%s: a number input calls %s(), which sends the raw text", name, in[1])
+			}
+		}
+	})
+}
+
+// A selected chip must look selected: aria-pressed alone paints nothing.
+func TestAPressedButtonLooksPressed(t *testing.T) {
+	css := readWeb(t, "static/css/components.css")
+	if !strings.Contains(css, `[aria-pressed="true"]`) {
+		t.Error(`components.css has no [aria-pressed="true"] rule, so a chosen level or hook looks like the others`)
+	}
+}
+
+// Two controls with one id leave a label pointing at whichever comes first,
+// which may be hidden. x-show keeps every control in the page, so a field's
+// controls must be rendered by x-if, one at a time.
+func TestAFieldRendersOneControlPerType(t *testing.T) {
+	body := readWeb(t, "static/pages/skills.html")
+	for _, line := range strings.Split(body, "\n") {
+		if strings.Contains(line, `x-bind:id="skill.id + '-' + field.key"`) && strings.Contains(line, "x-show=") {
+			t.Errorf("a field control is hidden with x-show, so its id stays in the page: %s", strings.TrimSpace(line))
+		}
+	}
+	if !strings.Contains(body, `<template x-if="field.type === 'enum'">`) {
+		t.Error("the enum control is not rendered by x-if")
+	}
+}
+
+// Alpine sets a select's value before a nested x-for has made its options, so
+// the value is lost; the option marks itself selected instead.
+func TestASelectWithRenderedOptionsMarksTheOption(t *testing.T) {
+	body := readWeb(t, "static/pages/skills.html")
+	i := strings.Index(body, `x-show="field.type === 'enum'"`)
+	if i < 0 {
+		i = strings.Index(body, `field.type === 'enum'`)
+	}
+	if i < 0 {
+		t.Fatal("skills.html has no enum control")
+	}
+	end := strings.Index(body[i:], "</select>")
+	block := body[i : i+end]
+	if strings.Contains(block, "<template x-for") && strings.Contains(block, "x-bind:value=\"fieldValue") {
+		t.Error("the enum select binds its value before its options exist; bind selected on each option")
+	}
+}
+
+// A page that opens a stream after an await may be gone by then: the router has
+// already destroyed it, so nothing would ever close what it opens.
+func TestAStreamOpenedAfterAnAwaitChecksThePageIsStillShown(t *testing.T) {
+	ours(t, func(name, body string) {
+		if path.Dir(name) != "static/js/pages" || !strings.HasSuffix(name, ".js") || !strings.Contains(body, "new EventSource(") {
+			return
+		}
+		start := methodBody(body, "async start")
+		if start == "" || !strings.Contains(start, "await ") {
+			return
+		}
+		if !strings.Contains(start, "this.gone") || !strings.Contains(methodBody(body, "destroy"), "this.gone = true") {
+			t.Errorf("%s: start() awaits and then opens streams, so it must stop when destroy() ran first", name)
+		}
+	})
+}
+
+// A slower answer for an earlier period must not replace the newer one.
+func TestTheUsageLoadDropsAnAnswerThatIsNoLongerTheLatest(t *testing.T) {
+	body := methodBody(readWeb(t, "static/js/pages/usage.js"), "async load")
+	if !strings.Contains(body, "this.loadSeq") || !strings.Contains(body, "seq !== this.loadSeq") {
+		t.Error("usage load() has no sequence guard")
+	}
+}
+
+// Sorting names with subtraction gives NaN, and a header that sorts a column the
+// reader cannot see is a trap.
+func TestTheUsageBreakdownSortsWhatItShows(t *testing.T) {
+	js := readWeb(t, "static/js/pages/usage.js")
+	html := readWeb(t, "static/pages/usage.html")
+	if !strings.Contains(js, "localeCompare") {
+		t.Error("usage.js sorts names without localeCompare")
+	}
+	if strings.Contains(html, "setSort('cost')\" x-text=\"costMode") {
+		t.Error("the last header sorts cost even when it shows total tokens")
+	}
+	if strings.Count(html, "aria-sort") < 6 {
+		t.Error("a breakdown column header has no aria-sort")
+	}
+}
+
+// A reset spends a credit, so a second confirmation while the first call is in
+// flight must not spend another; a reading pass must also stop with its page.
+func TestTheQuotaResetAndReadingPassAreGuarded(t *testing.T) {
+	js := readWeb(t, "static/js/pages/quota.js")
+	html := readWeb(t, "static/pages/quota.html")
+	reset := methodBody(js, "async reset")
+	if !strings.Contains(reset, "resetting") || !strings.Contains(html, "resetting") {
+		t.Error("the reset button can be confirmed twice while the first call runs")
+	}
+	all := methodBody(js, "async readAll")
+	if !strings.Contains(all, "this.gone") || !strings.Contains(all, "this.pass") {
+		t.Error("readAll outlives the page or overlaps itself")
+	}
+	if !strings.Contains(methodBody(js, "destroy"), "this.gone = true") {
+		t.Error("destroy() does not stop a running reading pass")
+	}
+}
+
+// The studio fills itself after a fetch; by then the reader may have closed it or
+// opened another skill, and the answer must not land in that one.
+func TestTheStudioIgnoresAnAnswerForAnEarlierSkill(t *testing.T) {
+	body := methodBody(readWeb(t, "static/js/pages/skills-studio.js"), "async openEdit")
+	if !strings.Contains(body, "const studio = this.studio") || !strings.Contains(body, "studio !== this.studio") {
+		t.Error("openEdit writes the fetched skill into whatever studio is open by then")
+	}
+}
+
+// A failed reload must not throw out of a test run, which would leave the stop
+// button up and the run flag set.
+func TestAFailedConnectionReloadIsReportedNotThrown(t *testing.T) {
+	body := methodBody(readWeb(t, "static/js/pages/provider-connections.js"), "async reloadConnections")
+	if !strings.Contains(body, "catch") || !strings.Contains(body, "toast().error") {
+		t.Error("reloadConnections lets a failed fetch escape its callers")
+	}
+}
+
+// Every settings write goes through one helper, and a control whose save failed
+// goes back to what is stored: the browser keeps the value it was given and an
+// unchanged state never re-applies it.
+func TestSettingsWritesShareOneHelperAndRollBack(t *testing.T) {
+	if !strings.Contains(readWeb(t, "static/js/ui/api.js"), "export function patchSettings(") {
+		t.Error("ui/api.js has no patchSettings")
+	}
+	ours(t, func(name, body string) {
+		if path.Dir(name) == "static/js/pages" && strings.Contains(body, `"/api/settings", { method: "PATCH"`) {
+			t.Errorf("%s: writes /api/settings by hand instead of patchSettings", name)
+		}
+	})
+	saver := readWeb(t, "static/js/pages/token-saver.js")
+	for _, m := range []string{"async setBool", "async setText", "async setNumber", "async setEnum"} {
+		if !strings.Contains(methodBody(saver, m), "restore") && !strings.Contains(methodBody(saver, m), "checked = ") {
+			t.Errorf("token-saver %s leaves the control changed after a failed save", m)
+		}
+	}
+	combos := readWeb(t, "static/js/pages/combos.js")
+	for _, m := range []string{"async setStrategy", "async setPolicy", "async setThreshold", "async setRouter", "async setJudge"} {
+		if !strings.Contains(methodBody(combos, m), "restore") {
+			t.Errorf("combos %s leaves the control changed after a failed save", m)
+		}
+	}
+	if !strings.Contains(methodBody(readWeb(t, "static/js/pages/provider-settings.js"), "async saveStrategy"), "this.applyStrategy()") {
+		t.Error("a failed strategy save leaves the switch flipped")
+	}
+}
+
+// The combos page keeps a module-level Sortable handle, so leaving with a dialog
+// open must release it; suggestions arrive in any order, and a strategy write
+// merges into what is stored now, not into a copy loaded at page open.
+func TestTheCombosPageReleasesAndOrdersWhatItStarts(t *testing.T) {
+	js := readWeb(t, "static/js/pages/combos.js")
+	if !strings.Contains(methodBody(js, "destroy"), "this.stopSortable()") {
+		t.Error("combos destroy() does not release the Sortable handle")
+	}
+	run := methodBody(js, "async runSuggest")
+	if !strings.Contains(run, "++this.suggestSeq") || !strings.Contains(run, "seq !== this.suggestSeq") {
+		t.Error("runSuggest lets a slower earlier answer replace the latest")
+	}
+	if !strings.Contains(methodBody(js, "async writeEntry"), `api("/api/settings")`) {
+		t.Error("writeEntry merges into a stale copy of the strategies")
+	}
+	if strings.Contains(methodBody(js, "async removeCombo"), "saveStrategies") {
+		t.Error("removeCombo repeats the strategy cleanup the server already does")
+	}
+}
+
+// A page that leaves while a request is out must not start a clock, and a
+// failed translation fetch must not blank the dashboard before it starts.
+func TestAGonePageStartsNoClockAndATranslationFailureIsSurvived(t *testing.T) {
+	if !strings.Contains(methodBody(readWeb(t, "static/js/pages/provider.js"), "startTimer"), "this.gone") {
+		t.Error("provider startTimer restarts after the page was left")
+	}
+	i18n := readWeb(t, "static/js/ui/i18n.js")
+	if !strings.Contains(i18n, "catch (err) {\n    messages = {};") {
+		t.Error("i18n load() throws on a failed fetch, which stops app.js and login.js at the top level")
+	}
+}
+
+// A saved secret is cleared only when the save worked, and a page's error line
+// does not outlive the request that raised it.
+func TestAFailedSaveKeepsTheSecretAndALoadClearsTheError(t *testing.T) {
+	settings := readWeb(t, "static/js/pages/settings.js")
+	if !strings.Contains(settings, "ok) {") && !strings.Contains(settings, "if (saved)") {
+		t.Error("the OIDC secret is cleared whether or not the save worked")
+	}
+	for _, name := range []string{"settings", "pricing", "token-saver"} {
+		body := methodBody(readWeb(t, "static/js/pages/"+name+".js"), "async load")
+		if !strings.Contains(body, `this.error = ""`) {
+			t.Errorf("%s: load() leaves an earlier error on the page", name)
+		}
+	}
+}
+
+// A frame the server sent is data from outside the script: one bad frame must
+// not throw out of the event handler.
+func TestEveryStreamFrameParseIsGuarded(t *testing.T) {
+	ours(t, func(name, body string) {
+		if path.Dir(name) != "static/js/pages" || !strings.HasSuffix(name, ".js") {
+			return
+		}
+		lines := strings.Split(body, "\n")
+		for i, line := range lines {
+			if strings.Contains(line, "JSON.parse(event.data)") && !strings.Contains(strings.Join(lines[max(0, i-2):i+1], "\n"), "try {") {
+				t.Errorf("%s:%d: a stream frame is parsed outside a try", name, i+1)
+			}
+		}
+	})
+}
+
+// The role is read once through ui/session.js, and a status that cannot be read
+// leaves the narrow view: the server enforces either way, but a failed read
+// must not hand a standard user the admin controls.
+func TestTheRoleIsReadOnceAndDefaultsToTheNarrowView(t *testing.T) {
+	session := readWeb(t, "static/js/ui/session.js")
+	if !strings.Contains(session, `role: "user"`) {
+		t.Error("a failed status read does not fall back to the standard-user view")
+	}
+	ours(t, func(name, body string) {
+		if !strings.HasSuffix(name, ".js") || name == "static/js/ui/session.js" || name == "static/js/login.js" {
+			return
+		}
+		if strings.Contains(body, "/api/auth/status") {
+			t.Errorf("%s: reads /api/auth/status itself instead of session()", name)
+		}
+	})
+	for _, name := range []string{"endpoint", "usage"} {
+		if !strings.Contains(readWeb(t, "static/js/pages/"+name+".js"), `role: "user"`) {
+			t.Errorf("%s: the role starts as admin before it is known", name)
+		}
+	}
+}
+
+// The topology is redrawn on every live frame. Replacing the nodes under a
+// keyboard user drops their focus, and role="img" would hide the nodes from a
+// screen reader altogether.
+func TestTheTopologyKeepsFocusAndNamesEachNode(t *testing.T) {
+	js := methodBody(readWeb(t, "static/js/pages/usage-charts.js"), "drawTopology")
+	if !strings.Contains(js, "svg.contains(document.activeElement)") {
+		t.Error("drawTopology redraws under a focused node")
+	}
+	if !strings.Contains(js, `"aria-label"`) || !strings.Contains(js, `"role", "link"`) {
+		t.Error("a topology node has no role and name")
+	}
+	html := readWeb(t, "static/pages/usage.html")
+	if strings.Contains(html, `class="rl-topology" x-ref="topology" viewBox="0 0 640 360" role="img"`) {
+		t.Error("the topology svg is role=img, which hides its focusable nodes")
+	}
+}
+
+// Design doc 18 records that a first visit writes nothing: a key is created
+// when a person asks for one. A page view that posts would also create one key
+// per tab opened on an empty list.
+func TestOpeningTheEndpointPageCreatesNoKey(t *testing.T) {
+	if strings.Contains(readWeb(t, "static/js/pages/endpoint.js"), `name: "Default Key"`) {
+		t.Error("endpoint.js creates a Default Key when the list is empty")
+	}
+}
+
+// A canvas cannot parse light-dark(), which is how Tabler declares the body
+// colour, so chart text must come from plain tokens that each theme sets, and a
+// theme switch must repaint the charts already drawn.
+func TestChartColoursAreTokensACanvasCanRead(t *testing.T) {
+	charts := readWeb(t, "static/js/ui/charts.js")
+	if strings.Contains(charts, "--tblr-body-color") || strings.Contains(charts, "--tblr-border-color") {
+		t.Error("charts.js reads a token Tabler declares with light-dark()")
+	}
+	theme := readWeb(t, "static/css/theme.css")
+	if strings.Count(theme, "--rl-chart-text:") != 2 || strings.Count(theme, "--rl-chart-grid:") != 2 {
+		t.Error("each theme must set --rl-chart-text and --rl-chart-grid")
+	}
+	if !strings.Contains(readWeb(t, "static/js/app.js"), `dispatchEvent(new Event("rl-theme"))`) {
+		t.Error("the theme switch announces nothing the charts can hear")
+	}
+	usage := readWeb(t, "static/pages/usage.html")
+	if !strings.Contains(usage, `x-on:rl-theme.window="drawAll()"`) {
+		t.Error("the usage page does not repaint on a theme switch")
+	}
+	if strings.Count(usage, "<canvas") != strings.Count(usage, `<canvas role="img" x-bind:aria-label=`) {
+		t.Error("a canvas has no role and name")
+	}
+}
+
+// One selector, one block; status colours come from tokens each theme sets; a
+// colour variable never carries a fallback literal that hides a missing token.
+func TestTheStylesheetKeepsOneBlockPerSelectorAndTokenColours(t *testing.T) {
+	css := readWeb(t, "static/css/components.css")
+	for _, sel := range []string{".rl-toolbar {", ".rl-provider-card {"} {
+		if n := strings.Count("\n"+css, "\n"+sel); n != 1 {
+			t.Errorf("%s is declared %d times", sel, n)
+		}
+	}
+	if regexp.MustCompile(`var\(--[a-z-]+, #`).MatchString(css) {
+		t.Error("a var() carries a literal fallback")
+	}
+	if regexp.MustCompile(`light-dark\(#`).MatchString(css) {
+		t.Error("a status colour is a literal light-dark() pair, not a --rl-ok/--rl-err/--rl-warn token")
+	}
+	theme := readWeb(t, "static/css/theme.css")
+	for _, tok := range []string{"--rl-ok:", "--rl-err:", "--rl-warn:"} {
+		if strings.Count(theme, tok) != 2 {
+			t.Errorf("each theme must set %s", tok)
+		}
+	}
+	for _, want := range []string{".rl-split > .card {", ".rl-topo-node:focus-visible", "var(--tblr-primary-fg)"} {
+		if !strings.Contains(css, want) {
+			t.Errorf("components.css lacks %s", want)
+		}
+	}
+	if strings.Contains(css, ".rl-topo-node:focus {") {
+		t.Error("the topology node's focus ring shows on a mouse click")
+	}
+	head := css[strings.Index(css, ".rl-card-head {"):]
+	head = head[:strings.Index(head, "}")]
+	if !strings.Contains(head, "flex-wrap: wrap") {
+		t.Error("a card head cannot wrap at 375px")
+	}
+}
+
+// Small layout rules the 375px pass needs: the tight table keeps its tight
+// padding, a sub-heading has room above it, a price input never collapses, the
+// topology scrolls instead of shrinking, and no class names a rule nobody wrote.
+func TestSmallLayoutRulesExist(t *testing.T) {
+	css := readWeb(t, "static/css/components.css")
+	for _, want := range []string{".table:not(.table-sm) > :not(caption) > * > *", "h3.rl-card-title {", ".rl-topology-wrap {", "td .form-control {"} {
+		if !strings.Contains(css, want) {
+			t.Errorf("components.css lacks %s", want)
+		}
+	}
+	if !strings.Contains(readWeb(t, "static/pages/usage.html"), `class="rl-topology-wrap"`) {
+		t.Error("the topology has no scroll wrapper")
+	}
+	ours(t, func(name, body string) {
+		if strings.HasSuffix(name, ".html") && strings.Contains(body, "rl-provider-logo") {
+			t.Errorf("%s uses rl-provider-logo, which no stylesheet defines", name)
+		}
+	})
+}
+
+// A control with no name is announced as "edit text". Every input, select and
+// textarea has an aria-label, a label that points at its id, or a label around it.
+func TestEveryControlHasAName(t *testing.T) {
+	control := regexp.MustCompile(`<(input|select|textarea)\b((?:[^>"]|"[^"]*")*)>`)
+	ours(t, func(name, body string) {
+		if !strings.HasSuffix(name, ".html") {
+			return
+		}
+		for _, m := range control.FindAllStringSubmatchIndex(body, -1) {
+			attrs := body[m[4]:m[5]]
+			if strings.Contains(attrs, `type="hidden"`) || strings.Contains(attrs, "aria-label") {
+				continue
+			}
+			if id := regexp.MustCompile(`\bid="([^"]+)"`).FindStringSubmatch(attrs); id != nil && strings.Contains(body, `for="`+id[1]+`"`) {
+				continue
+			}
+			if strings.Contains(attrs, "x-bind:id=") && strings.Contains(body, "x-bind:for=") {
+				continue
+			}
+			before := body[:m[0]]
+			if strings.LastIndex(before, "<label") > strings.LastIndex(before, "</label>") {
+				continue
+			}
+			t.Errorf("%s:%d: a control has no accessible name", name, strings.Count(before, "\n")+1)
+		}
+	})
+}
+
+// A tab strip without panels and arrow keys is a broken tab pattern, so these
+// are buttons that say which is pressed; a radio group has a name; a route
+// change sets the tab title and moves focus into the new view.
+func TestTheSwitchersAreButtonsAndARouteChangeIsAnnounced(t *testing.T) {
+	for _, page := range []string{"settings", "usage"} {
+		html := readWeb(t, "static/pages/"+page+".html")
+		if strings.Contains(html, `role="tab`) || strings.Contains(html, "aria-selected") {
+			t.Errorf("%s: a switcher claims the tab pattern it does not implement", page)
+		}
+		if !strings.Contains(html, `class="rl-tabs" role="group"`) {
+			t.Errorf("%s: the switcher is not a group", page)
+		}
+	}
+	if !strings.Contains(readWeb(t, "static/css/components.css"), `.rl-tabs button[aria-pressed="true"]`) {
+		t.Error("the pressed switcher button is not styled")
+	}
+	settings := readWeb(t, "static/pages/settings.html")
+	if !strings.Contains(settings, "<fieldset") || !strings.Contains(settings, "<legend") {
+		t.Error("the sign-in mode radios have no group name")
+	}
+	router := readWeb(t, "static/js/router.js")
+	if !strings.Contains(router, "document.title =") || !strings.Contains(router, "view.focus(") {
+		t.Error("a route change leaves the tab title and the focus where they were")
+	}
+}
+
+// Enter in a dialog's text field saves it, as in every other dialog: the form
+// submits through the save method and the primary button is the submit button.
+func TestTheCombosAndSkillsDialogsSubmitOnEnter(t *testing.T) {
+	cases := []struct{ page, form, save string }{
+		{"combos", "form", "saveForm()"},
+		{"combos", "suggest", "acceptSuggest()"},
+		{"skills", "studio", "saveStudio()"},
+	}
+	for _, c := range cases {
+		html := readWeb(t, "static/pages/"+c.page+".html")
+		dlg := html[strings.Index(html, `x-ref="`+c.form+`"`):]
+		dlg = dlg[:strings.Index(dlg, "</dialog>")]
+		if !strings.Contains(dlg, `x-on:submit.prevent="`+c.save+`"`) {
+			t.Errorf("%s/%s: the form does not submit through %s", c.page, c.form, c.save)
+		}
+		if !regexp.MustCompile(`type="submit"[^>]*`).MatchString(dlg) {
+			t.Errorf("%s/%s: the primary button is not a submit button", c.page, c.form)
+		}
+		if strings.Contains(dlg, `x-on:click="`+c.save+`"`) {
+			t.Errorf("%s/%s: the button also calls %s on click, which would run it twice", c.page, c.form, c.save)
+		}
+	}
+}
+
+// One pattern each: a save row outside a dialog is .rl-actions, a dialog title
+// is a bare h2, and an empty state is a hint line.
+func TestThePagesUseOneSavePatternOneTitleAndOneEmptyState(t *testing.T) {
+	ours(t, func(name, body string) {
+		if !strings.HasSuffix(name, ".html") {
+			return
+		}
+		if strings.Contains(body, "modal-title") {
+			t.Errorf("%s: a dialog title carries modal-title", name)
+		}
+		for i := 0; ; {
+			k := strings.Index(body[i:], "rl-dialog-actions")
+			if k < 0 {
+				break
+			}
+			at := i + k
+			if strings.LastIndex(body[:at], "<dialog") < strings.LastIndex(body[:at], "</dialog>") || !strings.Contains(body[:at], "<dialog") {
+				t.Errorf("%s:%d: a save row outside a dialog uses rl-dialog-actions", name, strings.Count(body[:at], "\n")+1)
+			}
+			i = at + 1
+		}
+		if regexp.MustCompile(`class="text-secondary"[^>]*x-t="[a-z.A-Z]*[eE]mpty"`).MatchString(body) || strings.Contains(body, `class="rl-empty"`) {
+			t.Errorf("%s: an empty state is not a .rl-hint line", name)
+		}
+	})
+	if !strings.Contains(readWeb(t, "static/css/components.css"), "\n.rl-actions,\n.rl-dialog-actions {") {
+		t.Error("no .rl-actions rule")
+	}
+}
+
+// The remaining one-pattern rules: a table sits in .rl-table-wrap (it scrolls
+// instead of widening the page), a range input is .form-range, a toolbar
+// control is the small size, and a hint is .rl-hint.
+func TestTablesRangesToolbarsAndHintsFollowOnePattern(t *testing.T) {
+	ours(t, func(name, body string) {
+		if !strings.HasSuffix(name, ".html") {
+			return
+		}
+		for _, m := range regexp.MustCompile(`<table\b`).FindAllStringIndex(body, -1) {
+			pre := body[:m[0]]
+			if strings.LastIndex(pre, "rl-table-wrap") < strings.LastIndex(pre, "</table>") || !strings.Contains(pre, "rl-table-wrap") {
+				t.Errorf("%s:%d: a table is not inside .rl-table-wrap", name, strings.Count(pre, "\n")+1)
+			}
+		}
+		for _, m := range regexp.MustCompile(`<input\b[^>]*type="range"[^>]*>`).FindAllString(body, -1) {
+			if !strings.Contains(m, "form-range") {
+				t.Errorf("%s: a range input is not .form-range: %.60s", name, m)
+			}
+		}
+		for _, m := range regexp.MustCompile(`(?s)<div class="rl-toolbar"[^>]*>.*?\n  </div>`).FindAllString(body, -1) {
+			for _, c := range regexp.MustCompile(`<(?:input|select)\b[^>]*class="(form-(?:control|select)[^"]*)"`).FindAllStringSubmatch(m, -1) {
+				if !strings.Contains(c[1], "-sm") {
+					t.Errorf("%s: a toolbar control is not the small size: %s", name, c[1])
+				}
+			}
+		}
+		if regexp.MustCompile(`class="text-secondary"[^>]*x-t="[a-zA-Z.]*Hint"`).MatchString(body) {
+			t.Errorf("%s: a hint line is not .rl-hint", name)
+		}
+	})
+}
+
+// A level shown only by colour is lost to a reader who cannot see it, and an
+// "Enabled" switch repeated on five cards must say which card it belongs to.
+func TestLevelsAndSwitchesAreNamedInText(t *testing.T) {
+	if !strings.Contains(methodBody(readWeb(t, "static/js/pages/console-log.js"), "lineText"), "row.level") {
+		t.Error("a log line shows its level by colour only")
+	}
+	saver := readWeb(t, "static/pages/token-saver.html")
+	if n := strings.Count(saver, `x-bind:aria-label="label('saver.enabled') + ' ' + label('saver.`); n != 5 {
+		t.Errorf("%d of 5 saver switches name their card", n)
+	}
+}
+
+// A focus ring needs 3:1 against the surface (WCAG 1.4.11). The ring token is a
+// translucent tint, so its alpha decides whether it clears that.
+func TestTheFocusRingIsOpaqueEnoughToSee(t *testing.T) {
+	theme := readWeb(t, "static/css/theme.css")
+	for _, m := range regexp.MustCompile(`--rl-ring: rgba\([0-9, ]+, ([0-9.]+)\)`).FindAllStringSubmatch(theme, -1) {
+		if a, _ := strconv.ParseFloat(m[1], 64); a < 0.6 {
+			t.Errorf("--rl-ring alpha %s is too faint", m[1])
+		}
+	}
+}
+
+// One implementation of each small helper: label() and num() live in
+// ui/format.js, setField() in ui/fields.js, and the integer clamp in fields.js.
+func TestSmallHelpersHaveOneImplementation(t *testing.T) {
+	defs := map[string]*regexp.Regexp{
+		"label(key)":            regexp.MustCompile(`(?m)^  label\(key\) \{`),
+		"num(value)":            regexp.MustCompile(`(?m)^  num\(value\) \{`),
+		"setField(path, event)": regexp.MustCompile(`(?m)^  setField\(path, event\) \{`),
+		"a clamp function":      regexp.MustCompile(`(?m)^function clamp\(`),
+		"setCheckedField":       regexp.MustCompile(`(?m)^  setCheckedField\(path, event\) \{`),
+		"nodeLabel(card)":       regexp.MustCompile(`(?m)^  nodeLabel\(card\) \{`),
+		"closeResults()":        regexp.MustCompile(`(?m)^  closeResults\(\) \{`),
+	}
+	owner := map[string]string{
+		"label(key)": "static/js/ui/format.js", "num(value)": "static/js/ui/format.js", "setField(path, event)": "static/js/ui/fields.js",
+		"setCheckedField": "static/js/pages/provider-card.js", "nodeLabel(card)": "static/js/pages/provider-card.js",
+		"closeResults()": "static/js/pages/provider-card.js",
+	}
+	ours(t, func(name, body string) {
+		if !strings.HasSuffix(name, ".js") {
+			return
+		}
+		for what, re := range defs {
+			if re.MatchString(body) && owner[what] != name {
+				t.Errorf("%s: defines %s, which has one home", name, what)
+			}
+		}
+	})
+	for what, file := range owner {
+		_ = what
+		if !defs[what].MatchString(readWeb(t, file)) {
+			t.Errorf("%s does not define %s", file, what)
+		}
+	}
+	if !strings.Contains(readWeb(t, "static/js/ui/fields.js"), "export function clampInt(") {
+		t.Error("fields.js has no clampInt")
+	}
+	if !strings.Contains(readWeb(t, "static/js/ui/fields.js"), "export const fieldMethods = {") {
+		t.Error("fields.js has no fieldMethods")
+	}
+	for _, page := range []string{"provider", "providers", "combos", "settings", "endpoint"} {
+		if !regexp.MustCompile(`\}, [A-Za-z, ]*fieldMethods[A-Za-z, ]*\)\);\s*$`).MatchString(readWeb(t, "static/js/pages/"+page+".js")) {
+			t.Errorf("%s does not mix in fieldMethods", page)
+		}
+	}
+	ours(t, func(name, body string) {
+		if strings.HasSuffix(name, ".js") && strings.Contains(body, `Alpine.store("toasts")`) && name != "static/js/ui/toast.js" && name != "static/js/app.js" {
+			t.Errorf("%s: reaches the toast store directly instead of toast()", name)
+		}
+	})
+	if strings.Contains(readWeb(t, "static/js/app.js"), `window.Alpine.store("toasts")`) {
+		t.Error("app.js reaches the toast store directly instead of toast()")
+	}
+}
+
+// State nothing reads and helpers nobody calls are weight a reader has to
+// carry; an export no other module imports is a public surface nobody asked for.
+func TestNoDeadStateOrUnusedExportsInThePages(t *testing.T) {
+	dead := []string{"addSuggested", "suggest.open", "suggest.context", "bulk.open", "nodeForm.open", "modelAdd.open", "context: {}", "keys.pause\"", "keys.resume\""}
+	ours(t, func(name, body string) {
+		if !strings.HasSuffix(name, ".js") && !strings.HasSuffix(name, ".html") && !strings.HasSuffix(name, ".json") {
+			return
+		}
+		for _, d := range dead {
+			if strings.Contains(body, d) {
+				t.Errorf("%s: still has %q, which nothing reads", name, d)
+			}
+		}
+	})
+	for _, c := range []struct{ file, decl string }{
+		{"static/js/ui/api.js", "export class ApiError"},
+		{"static/js/ui/i18n.js", "export const locales"},
+		{"static/js/router.js", "export function match"},
+		{"static/js/router.js", "export function navFor"},
+		{"static/js/pages/providers.js", "export function statsOf"},
+	} {
+		if strings.Contains(readWeb(t, c.file), c.decl) {
+			t.Errorf("%s exports something no module imports: %s", c.file, c.decl)
+		}
+	}
+	if strings.Contains(readWeb(t, "static/pages/token-saver.html"), "Mode', 'always')") {
+		t.Error("text() takes one argument; the second is ignored")
+	}
+}
+
+// Every vendored icon file is mapped, and every mapped icon is used by a page:
+// a file nothing draws is weight that ships to every browser.
+func TestEveryVendoredIconIsMappedAndUsed(t *testing.T) {
+	icons := readWeb(t, "static/js/ui/icons.js")
+	entries, err := fs.ReadDir(web.Static, libDir+"lucide/icons")
+	if err != nil {
+		t.Fatal(err)
+	}
+	used := ""
+	ours(t, func(name, body string) {
+		if (strings.HasSuffix(name, ".html") || strings.HasSuffix(name, ".js")) && name != "static/js/ui/icons.js" {
+			used += body
+		}
+	})
+	for _, e := range entries {
+		id := strings.TrimSuffix(e.Name(), ".mjs")
+		if !strings.Contains(icons, `"`+id+`": () => import`) {
+			t.Errorf("%s is vendored but not mapped", id)
+		}
+		if !strings.Contains(used, `"`+id+`"`) && !strings.Contains(used, `'`+id+`'`) {
+			t.Errorf("%s is vendored but no page draws it", id)
+		}
+	}
+}
+
+// The quota pager's bounds come from the one integer clamp, like every other
+// page; a hand-written Math.max/Math.min pair for a page number is a second copy.
+func TestThePagerBoundsUseTheSharedClamp(t *testing.T) {
+	js := readWeb(t, "static/js/pages/quota.js")
+	for _, m := range []string{"turnPage", "turnClientPage"} {
+		body := methodBody(js, m)
+		if !strings.Contains(body, "clampInt(") || strings.Contains(body, "Math.max(") {
+			t.Errorf("quota %s clamps by hand", m)
+		}
+	}
+}
+
+// A row's "Enabled" switch is announced with the row's name, or a list of
+// skills reads as the same word repeated.
+func TestASkillSwitchNamesItsSkill(t *testing.T) {
+	html := readWeb(t, "static/pages/skills.html")
+	i := strings.Index(html, `x-on:change="toggle(skill, $event)"`)
+	if i < 0 {
+		t.Fatal("no skill switch")
+	}
+	line := html[strings.LastIndex(html[:i], "<input"):i]
+	if !strings.Contains(line, "aria-label") || !strings.Contains(line, "skill.name") {
+		t.Error("a skill's switch does not name the skill")
 	}
 }

@@ -78,6 +78,8 @@ type Refresher struct {
 	// Dialects are the provider-specific steps; the zero value takes the ones in
 	// DefaultDialects.
 	Dialects Dialects
+
+	rejects rejectCount
 }
 
 // flowOf is the login an account renews with: the provider's own, or for a

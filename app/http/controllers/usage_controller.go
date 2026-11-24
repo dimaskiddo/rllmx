@@ -207,16 +207,19 @@ func (c *UsageController) reader() UsageReader {
 }
 
 // scope is the key ids a standard user may read, or nil for the admin. A user
-// with no keys reads zero, never everything.
+// with no keys reads zero, never everything. No session means a local request
+// let through with login off, which the guard treats as the admin.
 func (c *UsageController) scope(ctx contractshttp.Context) ([]string, contractshttp.Response, bool) {
 	who, ok := apphttp.SessionFrom(ctx)
-	if !ok || who.Role != auth.RoleUser {
-		return nil, nil, true
+	var session *auth.Session
+	if ok {
+		session = &who
 	}
-	if c.Users == nil {
-		return []string{}, nil, true
+	var lister apphttp.KeyLister
+	if c.Users != nil {
+		lister = c.Users
 	}
-	keys, err := c.Users.KeysOf(ctx.Request().Origin().Context(), who.UserID)
+	keys, _, err := apphttp.ScopedKeys(ctx.Request().Origin().Context(), session, lister)
 	if err != nil {
 		return nil, storageDown(ctx), false
 	}

@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	nethttp "net/http"
 	"strings"
 
@@ -68,4 +69,30 @@ func roleAllows(role, method, path string) bool {
 func oneSegmentAfter(path, prefix string) bool {
 	rest, ok := strings.CutPrefix(path, prefix)
 	return ok && rest != "" && !strings.Contains(rest, "/")
+}
+
+// KeyLister is what ScopedKeys asks for a user's keys.
+type KeyLister interface {
+	KeysOf(ctx context.Context, userID string) ([]string, error)
+}
+
+// ScopedKeys is the one place a session becomes a set of key ids. scoped is
+// false for the admin and for a request with no session (a local one with login
+// off), who see every key. A standard user gets their own keys, never nil: a
+// caller reads nil as "every key". A nil lister gives a user none.
+func ScopedKeys(ctx context.Context, who *auth.Session, users KeyLister) (keys []string, scoped bool, err error) {
+	if who == nil || who.Role != auth.RoleUser {
+		return nil, false, nil
+	}
+	if users == nil {
+		return []string{}, true, nil
+	}
+	keys, err = users.KeysOf(ctx, who.UserID)
+	if err != nil {
+		return nil, true, err
+	}
+	if keys == nil {
+		keys = []string{}
+	}
+	return keys, true, nil
 }

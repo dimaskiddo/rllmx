@@ -1,0 +1,121 @@
+<section x-data="tokenSaverPage">
+  <div class="rl-page-head">
+    <h1 class="rl-page-title" x-t="saver.title"></h1>
+  </div>
+  <p class="text-secondary" x-t="saver.hint"></p>
+  <p class="rl-error" x-show="error" x-text="error"></p>
+  <p class="text-secondary" x-show="loading" x-t="common.loading"></p>
+
+  <div x-show="!loading">
+    <section class="card">
+      <div class="card-header rl-card-head">
+        <h2 class="rl-card-title" x-t="saver.rtk"></h2>
+        <label class="form-check form-switch rl-switch">
+          <input class="form-check-input" type="checkbox" role="switch" x-bind:aria-label="label('saver.enabled') + ' ' + label('saver.rtk')" x-bind:checked="bool('rtkEnabled')" x-on:change="setBool('rtkEnabled', $event)">
+          <span class="form-check-label" x-t="saver.enabled"></span>
+        </label>
+      </div>
+      <div class="card-body">
+        <p class="rl-hint" x-t="saver.rtkHint"></p>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-header rl-card-head">
+        <h2 class="rl-card-title" x-t="saver.headroom"></h2>
+        <label class="form-check form-switch rl-switch">
+          <input class="form-check-input" type="checkbox" role="switch" x-bind:aria-label="label('saver.enabled') + ' ' + label('saver.headroom')" x-bind:checked="bool('headroomEnabled')" x-on:change="setBool('headroomEnabled', $event)">
+          <span class="form-check-label" x-t="saver.enabled"></span>
+        </label>
+      </div>
+      <div class="card-body">
+        <p class="rl-hint" x-t="saver.headroomHint"></p>
+        <div x-show="bool('headroomEnabled')">
+          <label class="form-label" for="headroom-url" x-t="saver.headroomUrl"></label>
+          <input class="form-control" id="headroom-url" type="url" maxlength="2048" x-bind:placeholder="label('saver.headroomUrlPlaceholder')" x-bind:value="text('headroomUrl')" x-on:change="setText('headroomUrl', $event)">
+          <div class="form-check form-switch rl-switch">
+            <input class="form-check-input" type="checkbox" id="headroom-user" role="switch" x-bind:checked="bool('headroomCompressUserMessages')" x-on:change="setBool('headroomCompressUserMessages', $event)">
+            <label class="form-check-label" for="headroom-user" x-t="saver.headroomUser"></label>
+          </div>
+          <label class="form-label" for="headroom-timeout" x-t="saver.headroomTimeout"></label>
+          <input class="form-control" id="headroom-timeout" type="number" min="100" step="100" x-bind:value="text('headroomTimeoutMs')" x-on:change="setNumber('headroomTimeoutMs', $event)">
+          <p class="rl-hint" x-t="saver.headroomSetup"></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-header rl-card-head">
+        <h2 class="rl-card-title" x-t="saver.caveman"></h2>
+        <label class="form-check form-switch rl-switch">
+          <input class="form-check-input" type="checkbox" role="switch" x-bind:aria-label="label('saver.enabled') + ' ' + label('saver.caveman')" x-bind:checked="bool('cavemanEnabled')" x-on:change="setBool('cavemanEnabled', $event)">
+          <span class="form-check-label" x-t="saver.enabled"></span>
+        </label>
+      </div>
+      <div class="card-body">
+        <p class="rl-hint" x-t="saver.cavemanHint"></p>
+        <div x-show="bool('cavemanEnabled')">
+          <ul class="rl-chips">
+            <template x-for="level in levels()" x-bind:key="level">
+              <li class="rl-chip">
+                <button type="button" class="btn btn-sm" x-bind:aria-pressed="displayLevel('cavemanLevel') === level ? 'true' : 'false'" x-on:click="setLevel('cavemanLevel', level)" x-text="levelName(level)"></button>
+              </li>
+            </template>
+          </ul>
+          <p class="rl-hint" x-text="levelDesc(displayLevel('cavemanLevel'))"></p>
+          <label class="form-label" for="caveman-mode" x-t="saver.routing"></label>
+          <select class="form-select" id="caveman-mode" x-bind:value="text('cavemanRoutingMode')" x-on:change="setEnum('cavemanRoutingMode', $event)">
+            <option value="always" x-t="saver.always"></option>
+            <option value="smart" x-t="saver.smart"></option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-header rl-card-head">
+        <h2 class="rl-card-title" x-t="saver.ponytail"></h2>
+        <label class="form-check form-switch rl-switch">
+          <input class="form-check-input" type="checkbox" role="switch" x-bind:aria-label="label('saver.enabled') + ' ' + label('saver.ponytail')" x-bind:checked="bool('ponytailEnabled')" x-on:change="setBool('ponytailEnabled', $event)">
+          <span class="form-check-label" x-t="saver.enabled"></span>
+        </label>
+      </div>
+      <div class="card-body">
+        <p class="rl-hint" x-t="saver.ponytailHint"></p>
+        <div x-show="bool('ponytailEnabled')">
+          <ul class="rl-chips">
+            <template x-for="level in levels()" x-bind:key="level">
+              <li class="rl-chip">
+                <button type="button" class="btn btn-sm" x-bind:aria-pressed="displayLevel('ponytailLevel') === level ? 'true' : 'false'" x-on:click="setLevel('ponytailLevel', level)" x-text="levelName(level)"></button>
+              </li>
+            </template>
+          </ul>
+          <p class="rl-hint" x-text="levelDesc(displayLevel('ponytailLevel'))"></p>
+          <label class="form-label" for="ponytail-mode" x-t="saver.routing"></label>
+          <select class="form-select" id="ponytail-mode" x-bind:value="text('ponytailRoutingMode')" x-on:change="setEnum('ponytailRoutingMode', $event)">
+            <option value="always" x-t="saver.always"></option>
+            <option value="smart" x-t="saver.smart"></option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-header rl-card-head">
+        <h2 class="rl-card-title" x-t="saver.customPrompt"></h2>
+        <label class="form-check form-switch rl-switch">
+          <input class="form-check-input" type="checkbox" role="switch" x-bind:aria-label="label('saver.enabled') + ' ' + label('saver.customPrompt')" x-bind:checked="bool('customPromptEnabled')" x-on:change="setBool('customPromptEnabled', $event)">
+          <span class="form-check-label" x-t="saver.enabled"></span>
+        </label>
+      </div>
+      <div class="card-body">
+        <p class="rl-hint" x-t="saver.customPromptHint"></p>
+        <div x-show="bool('customPromptEnabled')">
+          <label class="form-label" for="custom-prompt" x-t="saver.promptText"></label>
+          <textarea class="form-control" id="custom-prompt" rows="5" maxlength="4000" x-bind:value="text('customPrompt')" x-on:change="setText('customPrompt', $event)"></textarea>
+          <p class="rl-hint" x-t="saver.promptSaveHint"></p>
+        </div>
+      </div>
+    </section>
+  </div>
+</section>

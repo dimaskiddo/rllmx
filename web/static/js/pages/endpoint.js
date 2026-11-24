@@ -1,12 +1,14 @@
 // Endpoint & Keys: the address a client calls, the dashboard's settings that
 // guard it, and this machine's API keys.
-import { api } from "/static/js/ui/api.js";
+import { api, patchSettings } from "/static/js/ui/api.js";
+import { session } from "/static/js/ui/session.js";
 import { ask } from "/static/js/ui/dialog.js";
 import { copy } from "/static/js/ui/copy.js";
 import { t } from "/static/js/ui/i18n.js";
 import { toast } from "/static/js/ui/toast.js";
 import { formatMethods } from "/static/js/ui/format.js";
 import { setPath } from "/static/js/ui/fields.js";
+import { fieldMethods } from "/static/js/ui/fields.js";
 
 // liveModels is every provider/model a request could reach now: the models of a
 // provider that has an active connection, spelled the way a client types them.
@@ -42,7 +44,7 @@ function emptyBudget() {
 window.Alpine.data("endpointPage", () => Object.assign({
   loading: true,
   error: "",
-  role: "admin",
+  role: "user",
   keys: [],
   users: [],
   settings: { requireApiKey: false, requireLogin: true },
@@ -55,9 +57,6 @@ window.Alpine.data("endpointPage", () => Object.assign({
   userForm: null,
   choices: [],
 
-  setField(path, event) {
-    setPath(this, path, event.target.value);
-  },
 
   isAdmin() {
     return this.role !== "user";
@@ -76,8 +75,7 @@ window.Alpine.data("endpointPage", () => Object.assign({
     this.loading = true;
     this.error = "";
     try {
-      const status = await api("/api/auth/status").catch(() => ({}));
-      this.role = status.role === "user" ? "user" : "admin";
+      this.role = (await session()).role;
       const listing = await api("/api/keys");
       this.keys = listing.keys || [];
       if (!this.isAdmin()) {
@@ -103,10 +101,6 @@ window.Alpine.data("endpointPage", () => Object.assign({
       const names = Object.keys(aliases.aliases || {}).concat((combos.combos || []).map((c) => c.name));
       const live = liveModels(models.models || [], custom.models || [], catalog.providers || [], providers.connections || []);
       this.choices = Array.from(new Set(names.concat(live))).sort();
-      if (this.keys.length === 0) {
-        await api("/api/keys", { method: "POST", body: { name: "Default Key" } });
-        this.keys = (await api("/api/keys")).keys || [];
-      }
     } catch (err) {
       this.error = err.message;
     } finally {
@@ -122,7 +116,7 @@ window.Alpine.data("endpointPage", () => Object.assign({
     const box = event.target;
     const next = box.checked;
     try {
-      await api("/api/settings", { method: "PATCH", body: { requireApiKey: next } });
+      await patchSettings({ requireApiKey: next });
       this.settings.requireApiKey = next;
     } catch (err) {
       // The browser already flipped the box; :checked is not re-applied when the
@@ -410,4 +404,4 @@ window.Alpine.data("endpointPage", () => Object.assign({
       toast().error(err.message);
     }
   },
-}, formatMethods));
+}, formatMethods, fieldMethods));

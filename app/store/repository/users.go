@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strings"
 
 	contractsdb "github.com/goravel/framework/contracts/database/db"
@@ -69,20 +70,6 @@ func (r *UsersRepo) Get(ctx context.Context, id string) (UserRow, bool, error) {
 	return r.one(r.s.on(ctx), `"id" = ?`, id)
 }
 
-// GetByUsername finds a user by name, ignoring case.
-func (r *UsersRepo) GetByUsername(ctx context.Context, username string) (UserRow, bool, error) {
-	return r.one(r.s.on(ctx), `lower("username") = lower(?)`, dialect.StripNUL(username))
-}
-
-// GetByEmail finds a user by address, ignoring case. An empty address matches
-// nobody, never the rows that have none.
-func (r *UsersRepo) GetByEmail(ctx context.Context, email string) (UserRow, bool, error) {
-	if email == "" {
-		return UserRow{}, false, nil
-	}
-	return r.one(r.s.on(ctx), `lower("email") = lower(?)`, dialect.StripNUL(email))
-}
-
 // List returns every user, ordered by name.
 func (r *UsersRepo) List(ctx context.Context) ([]UserRow, error) {
 	var rows []userRow
@@ -96,15 +83,33 @@ func (r *UsersRepo) List(ctx context.Context) ([]UserRow, error) {
 	return out, nil
 }
 
-// Count returns how many users the table holds.
-func (r *UsersRepo) Count(ctx context.Context) (int64, error) {
-	return r.s.count(r.s.on(ctx), `SELECT count(*) FROM "users"`)
-}
+// ErrFull is what CreateWithin reports when the table already holds the limit.
+var ErrFull = errors.New("repository: the user table is full")
 
 // Create stores a user. The caller builds the id and the hash; an empty email is
 // stored NULL, so the unique index admits several users without one.
 func (r *UsersRepo) Create(ctx context.Context, u UserRow) error {
-	return r.s.stmt(r.s.on(ctx), `INSERT INTO "users"(`+userCols+`,"email") VALUES(?,?,?,?,?,NULLIF(?,''))`,
+	return r.insert(r.s.on(ctx), u)
+}
+
+// CreateWithin stores a user only while the table holds fewer than limit rows.
+// The count and the insert share one transaction, so parallel sign-ins cannot
+// each see room for one more.
+func (r *UsersRepo) CreateWithin(ctx context.Context, u UserRow, limit int) error {
+	return r.s.Tx(ctx, func(tx contractsdb.Tx) error {
+		n, err := r.s.count(tx, `SELECT count(*) FROM "users"`)
+		if err != nil {
+			return err
+		}
+		if n >= int64(limit) {
+			return ErrFull
+		}
+		return r.insert(tx, u)
+	})
+}
+
+func (r *UsersRepo) insert(x contractsdb.Tx, u UserRow) error {
+	return r.s.stmt(x, `INSERT INTO "users"(`+userCols+`,"email") VALUES(?,?,?,?,?,NULLIF(?,''))`,
 		dialect.StripNUL(u.ID), dialect.StripNUL(u.Username), dialect.StripNUL(u.Password),
 		dialect.BoolInt(u.Provisioned), dialect.StripNUL(u.CreatedAt), strings.ToLower(dialect.StripNUL(u.Email)))
 }
@@ -173,21 +178,10 @@ func (r *UsersRepo) Owners(ctx context.Context) (map[string]string, error) {
 	return out, nil
 }
 
-// OwnerOf returns the user a key belongs to, or "" when it belongs to nobody.
-func (r *UsersRepo) OwnerOf(ctx context.Context, keyID string) (string, error) {
-	var out []string
-	if err := r.s.sel(r.s.on(ctx), &out, `SELECT "userId" FROM "userKeys" WHERE "keyId" = ?`, dialect.StripNUL(keyID)); err != nil {
-		return "", err
-	}
-	if len(out) == 0 {
-		return "", nil
-	}
-	return out[0], nil
-}
-
-// KeysOf returns the keys assigned to a user, sorted.
+// KeysOf returns the keys assigned to a user, sorted. A user with none gets an
+// empty list, never nil: a caller reads nil as "every key".
 func (r *UsersRepo) KeysOf(ctx context.Context, userID string) ([]string, error) {
-	var out []string
+	out := []string{}
 	if err := r.s.sel(r.s.on(ctx), &out, `SELECT "keyId" FROM "userKeys" WHERE "userId" = ? ORDER BY "keyId"`, dialect.StripNUL(userID)); err != nil {
 		return nil, err
 	}

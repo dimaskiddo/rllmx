@@ -5,7 +5,9 @@ import (
 	nethttp "net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
 	goravelgin "github.com/goravel/gin"
@@ -49,6 +51,9 @@ func newAuthRig(t *testing.T) *authRig {
 	g.Handle(r, apphttp.ClassPublic, nethttp.MethodPost, "/api/auth/login", c.Login)
 	g.Handle(r, apphttp.ClassPublic, nethttp.MethodPost, "/api/auth/logout", c.Logout)
 	g.Handle(r, apphttp.ClassPublic, nethttp.MethodGet, "/api/auth/status", c.Status)
+	g.Handle(r, apphttp.ClassPublic, nethttp.MethodGet, "/api/health", func(ctx contractshttp.Context) contractshttp.Response {
+		return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"ok": true})
+	})
 	g.Handle(r, apphttp.ClassPublic, nethttp.MethodGet, "/api/settings/require-login", c.RequireLogin)
 	g.Handle(r, apphttp.ClassAlwaysProtected, nethttp.MethodPost, "/api/auth/change-password", c.ChangePassword)
 	return &authRig{route: r, guard: g, sq: sq, auth: a}
@@ -61,6 +66,18 @@ type bcryptOnly struct{}
 func (bcryptOnly) Make(v string) (string, error) { return "hashed:" + v, nil }
 func (bcryptOnly) Check(v, h string) bool        { return h == "hashed:"+v }
 func (bcryptOnly) NeedsRehash(string) bool       { return false }
+
+// countingHash counts password checks, so a test sees a guess cost the same
+// work whether or not the name exists.
+type countingHash struct {
+	bcryptOnly
+	checks *atomic.Int32
+}
+
+func (c countingHash) Check(v, h string) bool {
+	c.checks.Add(1)
+	return c.bcryptOnly.Check(v, h)
+}
 
 const (
 	localPeer  = "127.0.0.1:5000"
@@ -428,5 +445,105 @@ func TestAProvisionedUserSetsTheFirstPasswordWithoutTheCurrentOne(t *testing.T) 
 	}
 	if rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"ops@example.com","password":"another-password"}`, nil); rec.Code != nethttp.StatusOK {
 		t.Fatalf("the user cannot sign in with the password they set: %d", rec.Code)
+	}
+}
+
+func TestAStandardUsersLogoutEverywhereLeavesTheAdminSignedIn(t *testing.T) {
+	r := newAuthRig(t)
+	admin := cookieHeader(r.call(nethttp.MethodPost, "/api/auth/login", `{"password":"123456"}`, nil))
+	if admin == nil {
+		t.Fatal("no admin cookie")
+	}
+	user := auth.User{ID: "u1", Username: "dimas", Hash: "hashed:secret"}
+	if err := r.auth.Users.Put(t.Context(), user); err != nil {
+		t.Fatal(err)
+	}
+	cookie, ok := r.auth.IssueUser(t.Context(), user, auth.MethodPassword, false)
+	if !ok {
+		t.Fatal("no user cookie")
+	}
+	theirs := map[string]string{"Cookie": auth.CookieName + "=" + cookie.Value}
+
+	if rec := r.call(nethttp.MethodPost, "/api/auth/logout", `{"everywhere":true}`, theirs); rec.Code != nethttp.StatusOK {
+		t.Fatalf("logout %d", rec.Code)
+	}
+	if rec := r.call(nethttp.MethodGet, "/api/auth/status", "", admin); !strings.Contains(rec.Body.String(), `"authenticated":true`) {
+		t.Fatalf("a standard user ended the admin's session: %q", rec.Body.String())
+	}
+}
+
+func TestAnUnknownNameCostsTheSameWorkAsAWrongPassword(t *testing.T) {
+	r := newAuthRig(t)
+	var n atomic.Int32
+	r.auth.Pass = auth.NewPasswords(countingHash{checks: &n}, "")
+	addRigUser(t, r, "u1", "Dimas")
+
+	r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"dimas","password":"wrong"}`, nil)
+	known := n.Load()
+	n.Store(0)
+	r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"nobody","password":"wrong"}`, nil)
+	if n.Load() != known || known == 0 {
+		t.Fatalf("an unknown name ran %d checks, a known one %d: response time tells which names exist", n.Load(), known)
+	}
+}
+
+func TestAStandardUserSeesNoPasswordFacts(t *testing.T) {
+	r := newAuthRig(t)
+	addRigUser(t, r, "u1", "Dimas")
+	rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"dimas","password":"user-pass-1"}`, nil)
+	body := r.call(nethttp.MethodGet, "/api/auth/status", "", cookieHeader(rec)).Body.String()
+	for _, leak := range []string{"hasPassword", "defaultPassword"} {
+		if strings.Contains(body, leak) {
+			t.Errorf("a standard user's status carries %s", leak)
+		}
+	}
+}
+
+// matchAny passes every check, the worst case for the decoy: whatever it is
+// compared with, the answer is "match".
+type matchAny struct{ bcryptOnly }
+
+func (matchAny) Check(string, string) bool { return true }
+
+func TestAnUnknownNameNeverSignsInEvenWhenTheCheckPasses(t *testing.T) {
+	r := newAuthRig(t)
+	r.auth.Pass = auth.NewPasswords(matchAny{}, "")
+	rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"nobody","password":"anything"}`, nil)
+	if rec.Code != nethttp.StatusUnauthorized || cookieHeader(rec) != nil {
+		t.Fatalf("%d, cookie %v", rec.Code, cookieHeader(rec))
+	}
+}
+
+func TestASignedInUserStillReachesThePublicRoutes(t *testing.T) {
+	r := newAuthRig(t)
+	addRigUser(t, r, "u1", "Dimas")
+	hdr := cookieHeader(r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"dimas","password":"user-pass-1"}`, nil))
+	if rec := r.call(nethttp.MethodGet, "/api/health", "", hdr); rec.Code != nethttp.StatusOK {
+		t.Fatalf("a signed-in standard user got %d from a public route", rec.Code)
+	}
+}
+
+func TestSettingAPasswordKeepsTheSignInMethod(t *testing.T) {
+	r := newAuthRig(t)
+	r.auth.OIDCUsable = func(string, string, string) bool { return true }
+	if err := r.sq.Settings().Patch(context.Background(), map[string]string{
+		"authMode": `"both"`, "oidcIssuerUrl": `"https://idp.example"`, "oidcClientId": `"c"`, "oidcClientSecret": `"s"`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	r.auth.Store.Changed()
+	u := addProvisionedUser(t, r)
+	cookie, ok := r.auth.IssueUser(context.Background(), u, auth.MethodOIDC, false)
+	if !ok {
+		t.Fatal("no session")
+	}
+	hdr := map[string]string{"Cookie": auth.CookieName + "=" + cookie.Value}
+	rec := r.call(nethttp.MethodPost, "/api/auth/change-password", `{"newPassword":"a-new-password"}`, hdr)
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("%d %s", rec.Code, rec.Body)
+	}
+	claims, ok := auth.Verify(rigSecret, strings.TrimPrefix(cookieHeader(rec)["Cookie"], auth.CookieName+"="), time.Now())
+	if !ok || claims.Method != auth.MethodOIDC {
+		t.Fatalf("the re-issued session is %q, not the OIDC one it replaced", claims.Method)
 	}
 }

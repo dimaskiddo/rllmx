@@ -57,7 +57,7 @@ DDL follows the reference (`src/lib/db/schema.js`, pinned in `PARITY.md`). Every
 
 `accessRestricted` and `accessAllow` are the only columns an older file may lack; the migration adds them. The framework's migration table is `migrations` (`config/database.go`), a plain identifier 9router ignores.
 
-**Go-only tables.** Created beside the compatibility set by their own migrations (numbers 100 and 101). A 9router database gains them on open and every row it already had is untouched; they are outside the contract the fixture plan measures.
+**Go-only tables.** Created beside the compatibility set by their own migrations (numbers 100 and 101). A 9router database gains them on open and every row it already had is untouched; the migration plan and the repair pass walk them like any other table, so a database opened before they existed gains them on its next start, but a fixture of the 9router layout is measured against the compatibility set alone.
 
 | Table | Columns | Indexes |
 |---|---|---|
@@ -285,4 +285,6 @@ One row per lesson; the decision is what the code does because of it.
 | The Schema facade's SQLite column reader scans the primary-key position into a bool and fails on `kv`'s two-column key. | Columns are read with `pragma_table_info` / `information_schema.columns` instead. |
 | The framework migrator logs a migration once and never re-runs it. | `Store.Migrate` repairs a dropped index or column from its own plan. |
 | `WithCommandsFilter` does not reach the database provider, which registers fifteen commands with a bare `artisan.Register`. | `providers.CommandsServiceProvider` wraps the bound `Artisan` to close that (F-fix). |
-
+| A database opened before the user tables existed got an empty plan, so `repair` never ran and every owner read logged `no such table`. | `readCatalog` and `computePlan` walk the compatibility set and the own tables; a missing own table or index is in the plan and `NeedsMigration` reports it. |
+| Quoted and unquoted rollup names differ on PostgreSQL, which folds the unquoted one. | One `quoted()` builds the name in both usage queries, and a test fails a query that splices a bare name. |
+| A cap checked before the insert lets parallel first sign-ins each see room. | `CreateWithin` counts and inserts in one transaction. |

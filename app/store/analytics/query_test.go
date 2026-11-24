@@ -2,6 +2,8 @@ package analytics
 
 import (
 	"context"
+	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -321,5 +323,28 @@ func TestAKeyScopeNarrowsEveryUsageRead(t *testing.T) {
 	}
 	if providers, err := s.Providers(ctx, []string{}); err != nil || len(providers) != 0 {
 		t.Fatalf("an empty scope named providers %v %v", providers, err)
+	}
+}
+
+// PostgreSQL folds an unquoted name to lower case, and the rollup tables are
+// created with a capital letter, so a name spliced bare into a query fails there
+// and passes on SQLite, which ignores case.
+func TestTheRollupTableNamesAreQuoted(t *testing.T) {
+	for hourly, want := range map[bool]string{true: `"rollupHourly"`, false: `"rollupDaily"`} {
+		if got := quoted(hourly); got != want {
+			t.Errorf("quoted(%v) = %s, want %s", hourly, got, want)
+		}
+	}
+}
+
+func TestNoQuerySplicesABareRollupName(t *testing.T) {
+	src, err := os.ReadFile("query.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, line := range strings.Split(string(src), "\n") {
+		if strings.Contains(line, "` + table(") && !strings.HasPrefix(strings.TrimSpace(line), "func quoted") {
+			t.Errorf("query.go:%d splices table() into a query; use quoted(): %s", i+1, strings.TrimSpace(line))
+		}
 	}
 }

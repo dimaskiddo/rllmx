@@ -6,6 +6,8 @@ import { toast } from "/static/js/ui/toast.js";
 import { cooldownOf } from "./provider-status.js";
 import { formatMethods } from "/static/js/ui/format.js";
 import { setPath } from "/static/js/ui/fields.js";
+import { fieldMethods } from "/static/js/ui/fields.js";
+import { cardMethods } from "./provider-card.js";
 
 // PROVIDER_ICONS points a provider with no image of its own at the mark it
 // shares, as the reference does. An id in neither the image directory nor this
@@ -55,22 +57,9 @@ export function effectiveStatus(conn, now) {
   return cooldownOf(conn, now) > 0 ? status : "active";
 }
 
-// nodeTypeLabel is the words for a custom endpoint's kind.
-export function nodeTypeLabel(node) {
-  if (!node) {
-    return "";
-  }
-  if (node.type === "anthropic-compatible") {
-    return t("providers.nodeTypes.anthropic");
-  }
-  if (node.type === "custom-embedding") {
-    return t("providers.nodeTypes.embedding");
-  }
-  return node.apiType === "responses" ? t("providers.nodeTypes.responses") : t("providers.nodeTypes.openai");
-}
 
 // statsOf counts one provider's connections and names its latest failure.
-export function statsOf(connections, now) {
+function statsOf(connections, now) {
   let connected = 0;
   let failed = 0;
   let latest = null;
@@ -114,7 +103,6 @@ window.Alpine.data("providersPage", () => Object.assign({
   results: null,
   iconsFailed: {},
   add: {
-    open: false,
     type: "openai-compatible",
     name: "",
     prefix: "",
@@ -128,15 +116,6 @@ window.Alpine.data("providersPage", () => Object.assign({
     error: "",
   },
 
-  setField(path, event) {
-    setPath(this, path, event.target.value);
-  },
-
-  // A key or model that changed is no longer the one that was checked.
-  setCheckedField(path, event) {
-    this.setField(path, event);
-    this.add.check = null;
-  },
 
   async init() {
     await this.load();
@@ -171,10 +150,6 @@ window.Alpine.data("providersPage", () => Object.assign({
   setView(path, event) {
     this.setField(path, event);
     this.refreshView();
-  },
-
-  nodeLabel(card) {
-    return nodeTypeLabel(card.entry.node);
   },
 
   // errorBadge is one badge, "2 Error (429)", rather than the count, the word
@@ -309,14 +284,9 @@ window.Alpine.data("providersPage", () => Object.assign({
     this.$refs.resultsDlg.showModal();
   },
 
-  closeResults() {
-    this.$refs.resultsDlg.close();
-    this.results = null;
-  },
-
   openAdd(type) {
     this.add = {
-      open: true, type: type, name: "", prefix: "", apiType: "chat", baseUrl: "",
+      type: type, name: "", prefix: "", apiType: "chat", baseUrl: "",
       apiKey: "", modelId: "", check: null, checking: false, busy: false, error: "",
     };
     this.$refs.addDlg.showModal();
@@ -330,7 +300,6 @@ window.Alpine.data("providersPage", () => Object.assign({
 
   closeAdd() {
     this.$refs.addDlg.close();
-    this.add.open = false;
   },
 
   async checkNode() {
@@ -401,4 +370,4 @@ window.Alpine.data("providersPage", () => Object.assign({
   detailHref(id) {
     return "/dashboard/providers/" + encodeURIComponent(id);
   },
-}, formatMethods));
+}, formatMethods, fieldMethods, cardMethods));

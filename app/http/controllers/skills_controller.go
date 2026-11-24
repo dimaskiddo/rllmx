@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"encoding/json"
 	"errors"
 	nethttp "net/http"
 	"path/filepath"
@@ -38,6 +39,29 @@ type skillItem struct {
 	skill.Manifest
 	Enabled bool   `json:"enabled"`
 	Mode    string `json:"mode"`
+	// Values is each config field's stored value by field key. A field nobody
+	// set is absent, so the page shows the manifest's default.
+	Values map[string]any `json:"values,omitempty"`
+}
+
+// storedValues reads the config fields of m that the settings document holds.
+func storedValues(m skill.Manifest, raw func(string) (string, bool)) map[string]any {
+	var out map[string]any
+	for _, f := range m.Config {
+		text, ok := raw(skill.SettingKey(m, f))
+		if !ok {
+			continue
+		}
+		var v any
+		if json.Unmarshal([]byte(text), &v) != nil {
+			continue
+		}
+		if out == nil {
+			out = make(map[string]any, len(m.Config))
+		}
+		out[f.Key] = v
+	}
+	return out
 }
 
 // fetchClass names why a fetch failed, without the address or the output, which
@@ -81,7 +105,7 @@ func (c *SkillsController) List(ctx contractshttp.Context) contractshttp.Respons
 	items := make([]skillItem, 0, 16)
 	for _, m := range c.Reg.List() {
 		enabled, mode := skill.Switch(m, get, legacy)
-		items = append(items, skillItem{Manifest: m, Enabled: enabled, Mode: mode})
+		items = append(items, skillItem{Manifest: m, Enabled: enabled, Mode: mode, Values: storedValues(m, doc.GetRaw)})
 	}
 	ctx.Response().Header("Cache-Control", "no-store")
 	return ctx.Response().Json(nethttp.StatusOK, skillList{Skills: items, Problems: c.Reg.Problems()})

@@ -42,7 +42,10 @@ There is no bundler, build step or runtime CDN. Pages call the same `/api/*` pat
 | Libraries | A new library is an entry in `docs/ARCHITECTURE.md` first. Its files are copied unchanged into `static/lib/` and listed with their sha256 in `VERSIONS.json`. Chart.js uses its UMD file, because the ES build needs an import map |
 | Console Log | `GET /api/translator/console-logs` returns the ring and `GET …/stream` follows it: `init` with the ring, `lines` in batches, `clear` when the ring is emptied, a comment every 25 s. The lines are already redacted, so the page renders them as text and never re-fetches the log file |
 | Secrets | The API masks them and the dashboard never receives raw tokens. The one exception is a deliberate reveal: a signed-in operator asks for one key by id and the answer is logged (D330) |
-| Roles | The shell reads `/api/auth/status` and hides the Providers entry from a standard user; the Endpoint page hides the create, edit and delete key controls, the settings switches and the users card, and keeps only pause/resume. The server narrows the same routes (`design doc 2`), so a hidden control is also a refused one |
+| Roles | The shell reads `/api/auth/status` and shows a standard user only Endpoint & Keys and Usage; every other entry is admin-only and the page behind it is refused by the server (`design doc 2`). The Endpoint page hides the create, edit and delete key controls, the settings switches and the users card, and keeps only pause/resume. The Usage page asks for the live feed, the active count and the latency stream only behind `isAdmin()`; the totals, the chart and the log are the user-allowed reads |
+| Streams | The usage feed, the latency feed and the console log are one `EventSource` each, closed in the component's `destroy()` so leaving the page ends the read. The log tab and the active count poll only while the tab is visible; a hidden tab skips its tick |
+| Charts | Chart.js draws the usage trend and the two bar charts. A chart is built by a component method from `ui/charts.js` and destroyed with the page; no Chart.js call sits in an Alpine expression, where the instance has nowhere to live. The provider topology is our own SVG, drawn node by node with `createElementNS`, so no React Flow and no new library |
+| Quota | One card per connection a reading answers for, in pages of 10 limits. A reading's 401 is the provider refusing the stored credential, not the session ending, so the page reads it with its own fetch and shows the message instead of the shared `api()` sign-out |
 
 ### Provider Routes (`app/http/controllers`)
 
@@ -81,8 +84,17 @@ Plain HTML, ES modules, CSS; same flows and `/api/*` contract (design doc 18).
 | login, the shell and router, endpoint and keys (base URL, key guard, keys: create, reveal, pause, rename, delete, access list, budgets, response cache), i18n `en` and `id`, theme switch | done (4.1a) |
 | providers: list (search, filter, status tags, test all), detail (connections, order, round robin, every login flow, custom endpoints), models (list, alias, custom, disabled, test), header overrides | done (4.1b) |
 | 4.2 audit fixes: login directives, reorder, sticky limit, polling and router races, key/value editor, secrets cleared, contrast, dialogs and toasts, split provider modules | done (4.2) |
-| combos, token saver, setup wizard, home | todo (4.3) |
-| usage, quota, console log, media providers (per kind, combos), profile, translator playground, basic chat, pricing settings, skills Studio (extended), routing health, auto plan (extended) | todo; auto plan's nine keys are already readable and writable through `/api/settings` |
+| home: the dashboard root opens Endpoint & Keys, as 4.1a decided | done (4.1a) |
+| combos: list, search, per-combo strategy, smart policy, judge and router, create/edit with drag and arrow reorder, delete, auto-suggest with weights, prompt and accept | done (4.3a) |
+| usage: period, five totals, live pills, provider topology, recent requests, trend chart, provider and model bars, grouped table, request log | done (4.3b) |
+| quota: provider and status filters, per-account limits with reset countdowns, reset credits, active switch, auto-refresh | done (4.3b) |
+| console log: the ring over its stream, level colours, search, clear | done (4.3b) |
+| settings: login, password, auth mode, OIDC and SAML, routing strategy and sticky limits | done (4.3c) |
+| pricing: per-provider tables, edit, save, reset | done (4.3c) |
+| skills Studio: list, switch, mode, config fields, create/edit with prompt and rules, delete, catalog sync, auto plan | done (4.3d) |
+| token saver: RTK, Headroom, Caveman, Ponytail, custom prompt | done (4.3d) |
+| media providers (per kind, combos), translator playground, basic chat, routing health, setup wizard | todo (5.x); the system-one router card waits for the smart router's own page |
+| profile as the reference draws it (database backup and import, proxy, observability, shutdown, update check) | out: the routes do not exist here |
 | cli-tools, mitm, pxpipe, other i18n locales | deferred |
 | proxy pages and the per-connection proxy fields | out |
 | landing | out |
@@ -96,7 +108,10 @@ Plain HTML, ES modules, CSS; same flows and `/api/*` contract (design doc 18).
 - [x] 4.1a: the routes `/`, `/login`, `/dashboard` and `/dashboard/*path`, the shell and router, the `ui` core (`api`, i18n, icons, toast, confirm dialog, copy), the theme switch, i18n (`web/static/i18n/{en,id}.json`), login, endpoint and keys
 - [x] 4.1b: the provider catalog route, the providers list and detail, every login flow, custom nodes, models, aliases, custom and disabled models, header overrides
 - [x] 4.2: the audit of 4.0 to 4.1b, its fixes and the web scans
-- [ ] 4.3: combos, usage charts, logs, settings, skills studio
+- [x] 4.3a: the vendored Chart.js and Sortable.js, the nav and router table, the combos page
+- [x] 4.3b: the usage page with its two charts and the SVG topology, the quota page, the console log
+- [x] 4.3c: the settings page and the pricing page, plus `fallbackStrategy` on the settings write
+- [x] 4.3d: the skills list and Studio, the catalog sync, auto plan, the token saver page
 - [x] `/api/settings`, `/api/locale`, `/api/tags` and the Console Log ring with its read and stream routes (2.6a); `/api/keys/*` (2.1)
 - [x] `/api/models/*`, `/api/pricing`, `/api/combos/*` and presets (2.6b)
 - [x] `/api/usage/*` and its live feed (2.6c)
@@ -119,6 +134,15 @@ Plain HTML, ES modules, CSS; same flows and `/api/*` contract (design doc 18).
 | Errors arrive as `alert()` next to toasts and inline text (D408) | A toast or an inline line, and nothing else | One channel, one place to look |
 | A bare strategy word is stored but the selector reads only the object (D409) | The selector reads both shapes, and only `fill-first` and `round-robin` are accepted on write | A saved strategy must do what it says; `smart` and `fallback` are combo words that behaved as fill-first |
 | A deleted extra field stays stored and every edit turns a number into text (D410) | A removed row is sent as `null`, an untouched row is not sent, and an edited one keeps its type | The merge removes a key only on `null`, and a provider that reads a number must still get one |
+
+| A preset button pair sits in a `hidden` div, and the bulk strategy select calls a handler that is never defined (D425) | Presets stay API-only (`/api/combos/presets`) and the list has no bulk toolbar | A button that throws is worse than no button; per-card strategy is the working path |
+| The combos page edits the vision and audio capacity pools (D426) | Not offered | The pool is not built (D337, doc 3): a saved switch would change nothing |
+| The usage page's Details tab lists stored request and response bodies (D427) | No Details tab; the Logs tab is the request record | `/api/usage/request-details` is out (doc 16); usage rows hold metadata only |
+| The reference settings page carries database backup and import, an outbound proxy, observability, a shutdown button and an update check (D428) | Login, single sign-on and routing only | Those routes do not exist here: there is no backup route, proxy is deferred (doc 22), observability is stored with no behavior (doc 17), and `/api/version/shutdown` is absent |
+| The quota page hides single limit rows and turns empty accounts off in bulk (D429) | Per account: refresh, reset credits, active switch, auto-refresh | `quotaVisibility` is stored but not in the settings allow list, and the two bulk actions need a key of their own; the actions that change state stay explicit and confirmed |
+| The Studio writes `hook_script` and shell install commands (D430) | The Studio writes a prompt or rules, and the server refuses the other fields | A skill is data, never code (doc 11); nothing here runs a process |
+| The topology is a React Flow graph with an elliptic layout (D431) | An SVG ring drawn node by node with `createElementNS` | No new library and no layout engine; a provider node is a circle, a label and a link |
+| Pricing is a modal under `/dashboard/settings/pricing` (D432) | One page at `/dashboard/pricing`, one table per provider, saving only the providers touched | A modal hides the table behind a click and rewrites the whole map on save |
 
 ## Findings
 
@@ -167,4 +191,19 @@ Plain HTML, ES modules, CSS; same flows and `/api/*` contract (design doc 18).
 | 4.2 browser pass: a list row was taller below its text than above it | A row's paragraphs drop Tabler's bottom margin, so every gap is 0.75rem plus one 1px rule |
 | 4.2 browser pass: the key whitelist offered no built-in model, and the budget text named UTC | The suggestions add every model of a provider with an active connection; the budget columns say per day and per month and the hint names the server's time zone |
 | 4.2 browser pass: status, failure tag, priority and the budget table gave no meaning or unit | Words for each status and tag with the code kept, a labelled priority, and budget columns that name the UTC window, the unit and what an empty box means |
+| 4.3: the combos bulk handler is undefined and the shared combo modal is never imported; the quota page's limit card and progress bar are dead, and the console config's poll interval is unused | None of the four is copied; the parity table above records what replaces them |
+| 4.3: the settings write refused `fallbackStrategy`, which the account selector reads, so the global round-robin switch could not be saved on any page | The key is in `settingsRules` with the two names `account.KnownStrategy` accepts, and a combo word is refused (D409's rule) |
+| 4.3: the shared `api()` helper sends the browser to the sign-in page on any 401, but a quota reading answers 401 when the stored provider credential expired | The quota page reads a connection through its own fetch, which shows the provider's message; the session 401 still comes from the guard |
+| 4.3: the reference's grouped table expands into children | Our stats maps are already keyed per model, account, key and endpoint, so the table is flat; there is nothing to expand |
+| 4.3: the reference marks rows with requests in flight, but `pending` names models only | The breakdown shows no pending column; the live pills show the in-flight count, where every key is known |
+| 4.3: the reference creates a Default Key when the home page finds none | Not copied: a key is created when a person asks for one, so a first visit writes nothing |
+| 4.3: the headroom default address cannot be a literal in a page (`http://` is refused by the origin scan, and rightly so) | The field carries a translated placeholder; the address is stored only when the operator types one |
+| 4.3: a browser run is still not possible in this environment | The 4.3 additions to the browser checklist: the combos drag save, the suggest dialog, a period switch, a stream reconnect after a restart, a real quota reading, settings saved and re-read, pricing saved and reset, a skill created and edited |
 | 4.2: a browser run was still not possible in this environment | The browser checklist below stands open: CSP console, both locales on the login page, move up twice quickly, sticky limit saves, leave a login mid-flow (no further `status` or `poll` requests), the masked-secret edit, dark-mode switch, 375 px detail page, a toast above an open dialog, a keyboard pass over every dialog, in Chrome and Firefox |
+| A control flipped by the reader stays flipped when its save fails, and an unchanged state never re-applies it. | One `patchSettings` throws the reason; each control puts its stored value back. |
+| The role was read three times per view and defaulted to admin when the read failed. | `ui/session.js` reads it once and answers the standard-user view on failure; the API narrows either way. |
+| A canvas cannot parse `light-dark()`, which is how Tabler declares the body colour. | Chart text and grid come from `--rl-chart-text` and `--rl-chart-grid`, set by each theme, and a theme switch repaints the charts. |
+| A topology redrawn on every live frame drops the keyboard focus. | The redraw waits while a node holds focus; each node has a role and a name. |
+| A focus ring at 35% alpha does not reach 3:1 against the surface. | `--rl-ring` is 65% in both themes, pinned by a test. |
+| An `await` in `start()` lets a page that was already left open a stream nobody will close. | Every page that opens a stream after an await checks `gone`; a scan fails one that does not. |
+| 4.4: the page created a Default Key on every load with none, against the row above. | The page reads the list and shows "No key yet."; the scan fails the post. |

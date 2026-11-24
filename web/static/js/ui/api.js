@@ -1,7 +1,7 @@
 // The dashboard's one way to call /api. The session is a same-site cookie, and
 // the server refuses a cross-site write, so no token or header is added here.
 
-export class ApiError extends Error {
+class ApiError extends Error {
   constructor(message, status, data) {
     super(message);
     this.status = status;
@@ -50,4 +50,10 @@ export async function api(path, options) {
     throw new ApiError((data && data.error) || "Request failed (" + res.status + ")", res.status, data);
   }
   return data;
+}
+
+// patchSettings writes the keys it is given and answers the merged settings
+// view, or throws the server's reason.
+export function patchSettings(body) {
+  return api("/api/settings", { method: "PATCH", body: body });
 }

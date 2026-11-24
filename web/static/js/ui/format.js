@@ -33,6 +33,11 @@ export const formatMethods = {
     return text === "provider.status." + status ? status : text;
   },
 
+  // num groups digits the way the reader's locale does.
+  num(value) {
+    return Number(value || 0).toLocaleString();
+  },
+
   // label is t() for markup whose key is chosen at render.
   label(key) {
     return t(key);

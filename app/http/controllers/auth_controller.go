@@ -30,12 +30,20 @@ type AuthController struct {
 	// Slots bounds the concurrent comparisons. nil means the default of one per
 	// CPU, built on first use.
 	slots chan struct{}
+	// decoy is a hash of a password nobody holds, checked in place of a stored
+	// hash when the name is not a user, so the answer takes as long as a wrong
+	// password does.
+	decoy string
 }
 
 // NewAuthController builds the handler the auth routes serve. trust supplies the
 // client address, the local test and the cookie's Secure flag.
 func NewAuthController(a *auth.Authenticator, trust apphttp.Trust) *AuthController {
-	return &AuthController{Auth: a, Trust: trust, Now: time.Now, slots: make(chan struct{}, max(runtime.NumCPU(), 1))}
+	c := &AuthController{Auth: a, Trust: trust, Now: time.Now, slots: make(chan struct{}, max(runtime.NumCPU(), 1))}
+	if secret, err := auth.NewUserPassword(); err == nil {
+		c.decoy, _ = a.Pass.Hash(secret)
+	}
+	return c
 }
 
 // Login answers POST /api/auth/login. An empty username is the admin; any other
@@ -111,14 +119,17 @@ func (c *AuthController) loginUser(ctx contractshttp.Context, r *http.Request, n
 		return invalid()
 	}
 	u, ok := c.Auth.Users.ByUsername(r.Context(), name)
+	stored := u.Hash
 	if !ok {
-		return invalid()
+		// Spend the same check an existing name costs, so the time to answer does
+		// not say which names exist.
+		stored = c.decoy
 	}
-	pass, busy := c.compareStored(r, u.Hash, password)
+	pass, busy := c.compareStored(r, stored, password)
 	if busy {
 		return flat(ctx, statusLocked, "The server is busy; try again")
 	}
-	if !pass {
+	if !pass || !ok {
 		return invalid()
 	}
 	c.Auth.Limiter.Succeed(limitKey)
@@ -139,7 +150,9 @@ func (c *AuthController) Logout(ctx contractshttp.Context) contractshttp.Respons
 	}
 	_ = ctx.Request().Bind(&body)
 
-	if body.Everywhere && c.Auth.Session(r) {
+	// The epoch is shared by every session, so only the admin may move it: a
+	// standard user doing so would sign the admin out at will.
+	if who, ok := c.Auth.SessionInfo(r); body.Everywhere && ok && who.Admin() {
 		if _, err := c.Auth.Store.BumpEpoch(r.Context()); err != nil {
 			return flat(ctx, http.StatusInternalServerError, "Could not end the sessions")
 		}
@@ -175,7 +188,7 @@ func (c *AuthController) Status(ctx contractshttp.Context) contractshttp.Respons
 			out["needsPassword"] = true
 		}
 	}
-	if session || apphttp.IsLocalRequest(r, c.Auth.TrustLoopback) {
+	if (session && who.Admin()) || (!session && apphttp.IsLocalRequest(r, c.Auth.TrustLoopback)) {
 		out["hasPassword"] = st.Password != ""
 		out["defaultPassword"] = c.Auth.Pass.WellKnown(st.Password)
 	}
@@ -246,7 +259,7 @@ func (c *AuthController) ChangePassword(ctx contractshttp.Context) contractshttp
 		if err := c.Auth.Users.Put(rc, u); err != nil {
 			return flat(ctx, http.StatusInternalServerError, "Could not store the password")
 		}
-		cookie, issued := c.Auth.IssueUser(rc, u, auth.MethodPassword, c.Trust.SecureRequest(r))
+		cookie, issued := c.Auth.IssueUser(rc, u, who.Method, c.Trust.SecureRequest(r))
 		if !issued {
 			return flat(ctx, http.StatusInternalServerError, "Could not start a session")
 		}

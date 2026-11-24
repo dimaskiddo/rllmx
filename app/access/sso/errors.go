@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"net/url"
-	"strings"
 
 	"github.com/goravel/framework/contracts/log"
 )
@@ -17,7 +16,6 @@ const (
 	CodeBusy          = "sso_busy"
 	CodeExpired       = "sso_expired"
 	CodeInvalid       = "sso_invalid"
-	CodeNotAllowed    = "sso_not_allowed"
 	CodeNoAccount     = "sso_no_account"
 	CodeNoEmail       = "sso_no_email"
 	CodeUnverified    = "sso_unverified"
@@ -37,16 +35,6 @@ func Debugf(l log.Log, format string, args ...any) {
 		return
 	}
 	l.Debugf(format, args...)
-}
-
-// Has reports whether a comma-separated value names an item exactly.
-func Has(list, item string) bool {
-	for entry := range strings.SplitSeq(list, ",") {
-		if strings.EqualFold(strings.TrimSpace(entry), item) {
-			return true
-		}
-	}
-	return false
 }
 
 // ShortHash is what may be logged about an issuer, an entity id or a subject: a

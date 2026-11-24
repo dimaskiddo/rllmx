@@ -5,9 +5,9 @@
  * See the LICENSE file in the root directory of this source tree.
  */
 
-const CircleCheck = [
-  ["circle", { cx: "12", cy: "12", r: "10" }],
-  ["path", { d: "m16 9-5.5 5.5L8 12" }]
+const Terminal = [
+  ["path", { d: "M12 19h8" }],
+  ["path", { d: "m4 17 6-6-6-6" }]
 ];
 
-export { CircleCheck as default };
+export { Terminal as default };

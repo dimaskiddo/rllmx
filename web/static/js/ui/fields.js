@@ -9,3 +9,20 @@ export function setPath(target, path, value) {
   }
   node[parts[parts.length - 1]] = value;
 }
+
+// clampInt reads text as a whole number inside low..high, or answers null when
+// it is not a number at all.
+export function clampInt(value, low, high) {
+  const n = parseInt(value, 10);
+  if (isNaN(n)) {
+    return null;
+  }
+  return Math.max(low, Math.min(high, n));
+}
+
+// fieldMethods is the one setField a page mixes in for its text inputs.
+export const fieldMethods = {
+  setField(path, event) {
+    setPath(this, path, event.target.value);
+  },
+};

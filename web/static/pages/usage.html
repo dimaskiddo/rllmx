@@ -1,0 +1,223 @@
+<section x-data="usagePage" x-on:rl-theme.window="drawAll()">
+  <div class="rl-page-head">
+    <h1 class="rl-page-title" x-t="usage.title"></h1>
+  </div>
+
+  <div class="rl-toolbar">
+    <div class="rl-tabs" role="group" x-bind:aria-label="label('usage.title')">
+      <button type="button" x-bind:aria-pressed="tab === 'overview' ? 'true' : 'false'" x-on:click="setTab('overview')" x-t="usage.overview"></button>
+      <button type="button" x-bind:aria-pressed="tab === 'logs' ? 'true' : 'false'" x-on:click="setTab('logs')" x-t="usage.logsTab"></button>
+    </div>
+    <select class="form-select form-select-sm ms-auto" x-bind:aria-label="label('usage.period')" x-bind:value="period" x-on:change="setPeriod($event)">
+      <option value="today" x-t="usage.today"></option>
+      <option value="24h" x-t="usage.last24h"></option>
+      <option value="7d" x-t="usage.last7d"></option>
+      <option value="30d" x-t="usage.last30d"></option>
+      <option value="60d" x-t="usage.last60d"></option>
+      <option value="all" x-t="usage.all"></option>
+    </select>
+  </div>
+
+  <p class="rl-error" x-show="error" x-text="error"></p>
+  <p class="text-secondary" x-show="loading" x-t="common.loading"></p>
+
+  <div x-show="tab === 'overview'">
+    <div class="rl-grid">
+      <div class="rl-stat"><span class="text-secondary" x-t="usage.requests"></span><span class="rl-stat-value" x-text="num(stats.totalRequests)"></span></div>
+      <div class="rl-stat"><span class="text-secondary" x-t="usage.inputTokens"></span><span class="rl-stat-value" x-text="num(stats.totalPromptTokens)"></span></div>
+      <div class="rl-stat"><span class="text-secondary" x-t="usage.cachedTokens"></span><span class="rl-stat-value" x-text="num(stats.totalCachedTokens)"></span></div>
+      <div class="rl-stat"><span class="text-secondary" x-t="usage.outputTokens"></span><span class="rl-stat-value" x-text="num(stats.totalCompletionTokens)"></span></div>
+      <div class="rl-stat"><span class="text-secondary" x-t="usage.cost"></span><span class="rl-stat-value" x-text="money(stats.totalCost)"></span></div>
+    </div>
+
+    <div class="rl-toolbar" x-show="isAdmin()">
+      <span class="badge" x-text="label('usage.live') + ': ' + liveRequests()"></span>
+      <span class="badge" x-text="label('usage.active') + ': ' + activeCount"></span>
+      <span class="badge" x-text="label('usage.average') + ': ' + averageLatency() + ' ms'"></span>
+      <span class="badge" x-show="pendingOf() > 0" x-text="label('usage.pendingCount') + ': ' + pendingOf()"></span>
+    </div>
+
+    <div class="rl-split" x-show="isAdmin()">
+      <section class="card">
+        <div class="card-header rl-card-head">
+          <h2 class="rl-card-title" x-t="usage.topology"></h2>
+        </div>
+        <div class="card-body">
+          <div class="rl-topology-wrap"><svg class="rl-topology" x-ref="topology" viewBox="0 0 640 360" role="group" x-bind:aria-label="label('usage.topology')"></svg></div>
+          <p class="rl-hint" x-t="usage.topologyHint"></p>
+        </div>
+      </section>
+      <section class="card">
+        <div class="card-header rl-card-head">
+          <h2 class="rl-card-title" x-t="usage.recent"></h2>
+        </div>
+        <div class="card-body">
+          <p class="rl-hint" x-show="live.recentRequests.length === 0" x-t="usage.recentEmpty"></p>
+          <div class="rl-table-wrap">
+            <table class="table table-sm" x-show="live.recentRequests.length > 0">
+              <caption class="visually-hidden" x-t="usage.recent"></caption>
+              <thead>
+                <tr>
+                  <th scope="col" x-t="usage.model"></th>
+                  <th scope="col" class="text-end" x-t="usage.inputShort"></th>
+                  <th scope="col" class="text-end" x-t="usage.outputShort"></th>
+                  <th scope="col" class="text-end" x-t="usage.age"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="row in live.recentRequests" x-bind:key="row.timestamp + row.model">
+                  <tr>
+                    <td><span x-text="row.model"></span><span class="text-secondary" x-text="row.status === 'ok' ? '' : ' · ' + statusWord(row.status)"></span></td>
+                    <td class="text-end" x-text="num(row.promptTokens)"></td>
+                    <td class="text-end" x-text="num(row.completionTokens)"></td>
+                    <td class="text-end" x-text="relative(row.timestamp)"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <section class="card">
+      <div class="card-header rl-card-head">
+        <h2 class="rl-card-title" x-t="usage.trend"></h2>
+        <select class="form-select form-select-sm" x-bind:aria-label="label('usage.metric')" x-bind:value="metric" x-on:change="setMetric($event)">
+          <option value="tokens" x-t="usage.tokens"></option>
+          <option value="requests" x-t="usage.requests"></option>
+          <option value="cost" x-t="usage.cost"></option>
+        </select>
+      </div>
+      <div class="card-body">
+        <div class="rl-chart"><canvas role="img" x-bind:aria-label="label('usage.trend')" x-ref="trend"></canvas></div>
+      </div>
+    </section>
+
+    <div class="rl-toolbar">
+      <select class="form-select form-select-sm" x-bind:aria-label="label('usage.metric')" x-bind:value="barMetric" x-on:change="setBarMetric($event)">
+        <option value="tokens" x-t="usage.tokens"></option>
+        <option value="requests" x-t="usage.requests"></option>
+      </select>
+    </div>
+    <div class="rl-split">
+      <section class="card">
+        <div class="card-header rl-card-head">
+          <h2 class="rl-card-title" x-t="usage.byProvider"></h2>
+        </div>
+        <div class="card-body">
+          <div class="rl-chart"><canvas role="img" x-bind:aria-label="label('usage.byProvider')" x-ref="providerBars"></canvas></div>
+        </div>
+      </section>
+      <section class="card">
+        <div class="card-header rl-card-head">
+          <h2 class="rl-card-title" x-t="usage.topModels"></h2>
+        </div>
+        <div class="card-body">
+          <div class="rl-chart"><canvas role="img" x-bind:aria-label="label('usage.topModels')" x-ref="modelBars"></canvas></div>
+        </div>
+      </section>
+    </div>
+
+    <section class="card">
+      <div class="card-header rl-card-head">
+        <h2 class="rl-card-title" x-t="usage.breakdown"></h2>
+        <div class="rl-inline">
+          <select class="form-select form-select-sm" x-bind:aria-label="label('usage.group')" x-bind:value="group" x-on:change="setGroup($event)">
+            <option value="byModel" x-t="usage.groupModel"></option>
+            <option value="byAccount" x-t="usage.groupAccount"></option>
+            <option value="byApiKey" x-t="usage.groupKey"></option>
+            <option value="byEndpoint" x-t="usage.groupEndpoint"></option>
+          </select>
+          <select class="form-select form-select-sm" x-bind:aria-label="label('usage.unit')" x-bind:value="costMode ? 'cost' : 'tokens'" x-on:change="setCost($event)">
+            <option value="tokens" x-t="usage.tokens"></option>
+            <option value="cost" x-t="usage.cost"></option>
+          </select>
+        </div>
+      </div>
+      <div class="card-body">
+        <p class="rl-hint" x-show="rows().length === 0" x-t="usage.empty"></p>
+        <div class="rl-table-wrap">
+          <table class="table table-sm" x-show="rows().length > 0">
+            <caption class="visually-hidden" x-t="usage.breakdown"></caption>
+            <thead>
+              <tr>
+                <th scope="col" x-bind:aria-sort="sortLabel('name')"><button type="button" class="btn btn-sm btn-ghost" x-on:click="setSort('name')" x-t="usage.name"></button></th>
+                <th scope="col" class="text-end" x-bind:aria-sort="sortLabel('requests')"><button type="button" class="btn btn-sm btn-ghost" x-on:click="setSort('requests')" x-t="usage.requests"></button></th>
+                <th scope="col" class="text-end" x-bind:aria-sort="sortLabel('promptTokens')"><button type="button" class="btn btn-sm btn-ghost" x-on:click="setSort('promptTokens')" x-t="usage.inputTokens"></button></th>
+                <th scope="col" class="text-end" x-bind:aria-sort="sortLabel('cachedTokens')"><button type="button" class="btn btn-sm btn-ghost" x-on:click="setSort('cachedTokens')" x-t="usage.cachedTokens"></button></th>
+                <th scope="col" class="text-end" x-bind:aria-sort="sortLabel('completionTokens')"><button type="button" class="btn btn-sm btn-ghost" x-on:click="setSort('completionTokens')" x-t="usage.outputTokens"></button></th>
+                <th scope="col" class="text-end" x-bind:aria-sort="sortLabel(costOrTotal())"><button type="button" class="btn btn-sm btn-ghost" x-on:click="setSort(costOrTotal())" x-text="costMode ? label('usage.cost') : label('usage.totalTokens')"></button></th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="row in rows()" x-bind:key="row.key">
+                <tr>
+                  <td><span x-text="row.name"></span><span class="text-secondary" x-show="row.detail !== ''" x-text="row.detail !== '' ? ' · ' + row.detail : ''"></span></td>
+                  <td class="text-end" x-text="num(row.requests)"></td>
+                  <td class="text-end" x-text="num(row.promptTokens)"></td>
+                  <td class="text-end" x-text="num(row.cachedTokens)"></td>
+                  <td class="text-end" x-text="num(row.completionTokens)"></td>
+                  <td class="text-end" x-text="costMode ? money(row.cost) : num(totalOf(row))"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div x-show="tab === 'logs'">
+    <div class="rl-toolbar">
+      <select class="form-select form-select-sm" x-bind:aria-label="label('usage.status')" x-bind:value="logStatus" x-on:change="setLogStatus($event)">
+        <option value="all" x-t="usage.allStatus"></option>
+        <option value="ok" x-t="usage.ok"></option>
+        <option value="failed" x-t="usage.failed"></option>
+        <option value="pending" x-t="usage.pending"></option>
+      </select>
+      <input class="form-control form-control-sm" type="search" x-bind:placeholder="label('usage.searchLogs')" x-bind:aria-label="label('usage.searchLogs')" x-bind:value="logFilter" x-on:input="setLogFilter($event)">
+      <div class="form-check form-switch rl-switch">
+        <input class="form-check-input" type="checkbox" id="log-refresh" role="switch" x-bind:checked="logRefresh" x-on:change="toggleLogRefresh($event)">
+        <label class="form-check-label" for="log-refresh" x-t="usage.autoRefresh"></label>
+      </div>
+    </div>
+
+    <section class="card">
+      <div class="card-body">
+        <p class="rl-hint" x-show="logRows().length === 0" x-t="usage.logEmpty"></p>
+        <div class="rl-table-wrap">
+          <table class="table table-sm" x-show="logRows().length > 0">
+            <caption class="visually-hidden" x-t="usage.logsTab"></caption>
+            <thead>
+              <tr>
+                <th scope="col" x-t="usage.time"></th>
+                <th scope="col" x-t="usage.model"></th>
+                <th scope="col" x-t="usage.provider"></th>
+                <th scope="col" x-t="usage.account"></th>
+                <th scope="col" class="text-end" x-t="usage.inputShort"></th>
+                <th scope="col" class="text-end" x-t="usage.outputShort"></th>
+                <th scope="col" x-t="usage.status"></th>
+                <th scope="col" x-t="usage.extra"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="(row, index) in logRows()" x-bind:key="index">
+                <tr>
+                  <td x-text="row.time"></td>
+                  <td x-text="row.model"></td>
+                  <td x-text="row.provider"></td>
+                  <td x-text="row.account"></td>
+                  <td class="text-end" x-text="row.inTokens"></td>
+                  <td class="text-end" x-text="row.outTokens"></td>
+                  <td x-text="statusWord(row.status)"></td>
+                  <td x-text="row.extra"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+</section>

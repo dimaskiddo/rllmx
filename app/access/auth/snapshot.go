@@ -134,7 +134,10 @@ func (s *Store) read(ctx context.Context) (Settings, bool) {
 	v.SAMLLoginLabel, _ = d.GetString("samlLoginLabel")
 
 	epoch, found, err := db.KV().Get(ctx, ScopeSession, EpochKey)
-	if err == nil && found {
+	if err != nil {
+		return Settings{}, false
+	}
+	if found {
 		v.Epoch = epoch
 	}
 	return v, true

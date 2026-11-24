@@ -94,6 +94,8 @@ The id must match the manifest's alphabet, must not be the catalog folder or an 
 
 `GET /api/skills` lists every installed skill with its effective switch, mode and unsupported files, plus the folders that were skipped. It never returns prompt text.
 
+`/dashboard/skills` lists them with the switch, the routing mode and one control per `config_schema` field, and marks a folder this build cannot rewrite. The Studio dialog loads `GET /api/skills/{id}`, writes a prompt for a `system-prompt` skill or rule rows for the two request hooks, and never sends a script or an install command. The catalog sync is its own card, and the auto-plan card writes the eight `autoPlan*` keys with the plan reader's own bounds.
+
 ### Session Id (`app/gateway/conversation/`, built)
 
 `Store.Resolve` returns the id a request belongs to. First match wins; every candidate is trimmed and dropped above 256 characters.
@@ -263,3 +265,4 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | The smart router's question ran skills and savers and marked the session, so the real request got a reminder | every internal call carries every bypass switch and no session id (divergence 424) |
 | The reference's plan call keeps the client's tools, and `Promise.race` leaves the timed-out request running | The internal call carries no tools and is cancelled by its context (divergence 414) |
 | The reference's `stripPlanMarkersForClient` is imported and never called, so `autoPlanShowInResponse` is decorative | The flag is stored and answered, and the design says plainly that it changes nothing: the plan never travels in the answer |
+| `/api/settings` is a fixed view, so a skill's saved config value was never read back and the control snapped to its default. | `GET /api/skills` carries each skill's stored `values`, read under the same `SettingKey` the write uses. |

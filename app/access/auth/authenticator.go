@@ -2,9 +2,11 @@ package auth
 
 import (
 	"context"
+	"errors"
 	nethttp "net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	frameworkhash "github.com/goravel/framework/contracts/hash"
 	contractshttp "github.com/goravel/framework/contracts/http"
@@ -157,15 +159,6 @@ func (a *Authenticator) modeAllows(r *nethttp.Request, claims Claims) bool {
 	return true
 }
 
-// Claims returns the session claims for a request that has one.
-func (a *Authenticator) Claims(r *nethttp.Request) (Claims, bool) {
-	claims, ok := Verify(a.Secret(), RequestCookie(r, CookieName), a.Now())
-	if !ok {
-		return Claims{}, false
-	}
-	return claims, true
-}
-
 // APIKey judges the key a client request presents.
 func (a *Authenticator) APIKey(r *nethttp.Request) identity.KeyResult {
 	key := identity.ExtractKey(r)
@@ -250,17 +243,14 @@ func (a *Authenticator) IssueSSO(ctx context.Context, method, email, name string
 }
 
 // ssoUser is the standard user an address signs in as. An address from a
-// user-editable claim must already belong to an account, because that claim is
-// not proof of the address.
+// user-editable claim signs in as nobody: it is not proof of the address, so
+// matching it to an account would hand that account to whoever typed it.
 func (a *Authenticator) ssoUser(ctx context.Context, email string, exactOnly bool) (User, bool) {
-	if a.Users == nil || strings.TrimSpace(email) == "" {
+	if a.Users == nil || exactOnly || strings.TrimSpace(email) == "" {
 		return User{}, false
 	}
 	if u, ok := a.Users.ByEmail(ctx, email); ok {
 		return u, true
-	}
-	if exactOnly {
-		return User{}, false
 	}
 	id, err := NewUserID()
 	if err != nil {
@@ -274,14 +264,39 @@ func (a *Authenticator) ssoUser(ctx context.Context, email string, exactOnly boo
 	if err != nil {
 		return User{}, false
 	}
-	username := strings.ToLower(strings.TrimSpace(email))
-	if err := a.Users.Put(ctx, User{ID: id, Username: username, Email: email, Hash: hash, Provisioned: true}); err != nil {
-		return User{}, false
+	if err := a.Users.Put(ctx, User{ID: id, Username: ssoUsername(email, id, false), Email: email, Hash: hash, Provisioned: true}); err != nil {
+		if !errors.Is(err, ErrUserTaken) {
+			return User{}, false
+		}
+		// A password user already holds the address as a name. The address is
+		// the account's identity, so it gets a derived name, not that user.
+		if err := a.Users.Put(ctx, User{ID: id, Username: ssoUsername(email, id, true), Email: email, Hash: hash, Provisioned: true}); err != nil {
+			return User{}, false
+		}
 	}
 	if stored, ok := a.Users.ByEmail(ctx, email); ok {
 		return stored, true
 	}
 	return User{}, false
+}
+
+// ssoUsername is the name a provisioned account carries: the address when it
+// fits a username, else its start, and with the id's tail when the plain name
+// is taken or the address is too long to keep whole.
+func ssoUsername(email, id string, disambiguate bool) string {
+	name := strings.ToLower(strings.TrimSpace(email))
+	if !disambiguate && len(name) <= maxUsername {
+		return name
+	}
+	tail := id
+	if len(tail) > 8 {
+		tail = tail[len(tail)-8:]
+	}
+	end := min(len(name), maxUsername-len(tail)-1)
+	for end > 0 && end < len(name) && !utf8.RuneStart(name[end]) {
+		end--
+	}
+	return name[:end] + "~" + tail
 }
 
 // Issue signs a session for the admin, who just proved the operator's password.

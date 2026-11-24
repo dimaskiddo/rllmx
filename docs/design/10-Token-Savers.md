@@ -42,6 +42,10 @@ The proxy strips hop-by-hop headers, does not forward `Host`, follows no redirec
 
 ---
 
+## Dashboard
+
+`/dashboard/token-saver` writes `rtkEnabled`, `headroomEnabled`, `headroomUrl`, `headroomCompressUserMessages`, `headroomTimeoutMs`, the four `caveman*` and `ponytail*` keys, and `customPromptEnabled` with `customPrompt`. The level buttons offer lite, full and ultra; a stored `wenyan*` level shows as ultra outside a Chinese locale, and the sidecar's process controls are not offered here (D398).
+
 ## Parity: Token Savers
 
 | Feature | Reference | Package | Status |

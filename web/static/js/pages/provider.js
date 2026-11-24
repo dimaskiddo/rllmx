@@ -10,7 +10,9 @@ import { loginMethods } from "./provider-login.js";
 import { modelMethods } from "./provider-models.js";
 import { settingsMethods } from "./provider-settings.js";
 import { cooldownOf, span } from "./provider-status.js";
-import { effectiveStatus, errorTag, nodeTypeLabel } from "./providers.js";
+import { effectiveStatus, errorTag } from "./providers.js";
+import { cardMethods } from "./provider-card.js";
+import { fieldMethods } from "/static/js/ui/fields.js";
 
 window.Alpine.data("providerPage", () => Object.assign({
   loading: true,
@@ -33,11 +35,11 @@ window.Alpine.data("providerPage", () => Object.assign({
   gone: false,
   working: {},
   edit: null,
-  add: { open: false, name: "", key: "", defaultModel: "", priority: "1", region: "", psd: [], check: null, checking: false, busy: false, error: "" },
-  bulk: { open: false, text: "", results: null, busy: false, error: "" },
-  nodeForm: { open: false, name: "", prefix: "", apiType: "chat", baseUrl: "", error: "", busy: false },
+  add: { name: "", key: "", defaultModel: "", priority: "1", region: "", psd: [], check: null, checking: false, busy: false, error: "" },
+  bulk: { text: "", results: null, busy: false, error: "" },
+  nodeForm: { name: "", prefix: "", apiType: "chat", baseUrl: "", error: "", busy: false },
   models: { items: [], disabled: [], byTarget: {}, test: {}, error: "", loading: false },
-  modelAdd: { open: false, id: "", name: "", vision: false, reasoning: false, error: "", busy: false },
+  modelAdd: { id: "", name: "", vision: false, reasoning: false, error: "", busy: false },
   aliasForm: { open: false, model: "", alias: "", error: "" },
   overrides: { rows: [], error: "", busy: false },
   login: {
@@ -47,15 +49,6 @@ window.Alpine.data("providerPage", () => Object.assign({
     token: "", baseUrl: "", email: "", fields: {}, bulk: "", results: null,
   },
 
-  setField(path, event) {
-    setPath(this, path, event.target.value);
-  },
-
-  // A key or model that changed is no longer the one that was checked.
-  setCheckedField(path, event) {
-    this.setField(path, event);
-    this.add.check = null;
-  },
 
   async init() {
     this.id = this.$store.route.params.id || "";
@@ -108,7 +101,7 @@ window.Alpine.data("providerPage", () => Object.assign({
   // nobody looking, that would be wasted work.
   startTimer() {
     this.now = Date.now();
-    if (this.timer || document.hidden || !this.counting()) {
+    if (this.gone || this.timer || document.hidden || !this.counting()) {
       return;
     }
     this.timer = setInterval(() => this.tick(), 1000);
@@ -197,10 +190,6 @@ window.Alpine.data("providerPage", () => Object.assign({
     return data && typeof data.region === "string" ? data.region : "";
   },
 
-  nodeLabel(card) {
-    return nodeTypeLabel(card.entry.node);
-  },
-
   // busy and run keep one request per control in flight: a second click while
   // the first is out would send a body built from the list as it was.
   busy(key) {
@@ -224,4 +213,4 @@ window.Alpine.data("providerPage", () => Object.assign({
   copyText(text) {
     return copy(text, null);
   },
-}, loginMethods, formatMethods, connectionMethods, settingsMethods, modelMethods));
+}, loginMethods, formatMethods, connectionMethods, settingsMethods, modelMethods, fieldMethods, cardMethods));

@@ -2,7 +2,7 @@
 // cookie /api/locale sets. A missing key shows the key, so a gap is visible and
 // never breaks a page.
 
-export const locales = ["en", "id"];
+const locales = ["en", "id"];
 
 let messages = {};
 
@@ -14,8 +14,14 @@ export function locale() {
 
 export async function load() {
   const current = locale();
-  const res = await fetch("/static/i18n/" + current + ".json", { credentials: "same-origin" });
-  messages = res.ok ? await res.json() : {};
+  // A missing catalogue leaves the keys as text; throwing here would stop the
+  // page script before Alpine starts and leave a blank dashboard.
+  try {
+    const res = await fetch("/static/i18n/" + current + ".json", { credentials: "same-origin" });
+    messages = res.ok ? await res.json() : {};
+  } catch (err) {
+    messages = {};
+  }
   return current;
 }
 

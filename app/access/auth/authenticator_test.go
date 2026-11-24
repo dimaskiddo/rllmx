@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"rllmx/app/store/repository"
 	"rllmx/tests/store"
@@ -164,7 +165,7 @@ func TestSingleSignOnProvisionsAnUnlistedAddressAsAStandardUser(t *testing.T) {
 	}
 }
 
-func TestAnEditableClaimMustAlreadyBelongToAnAccount(t *testing.T) {
+func TestAnEditableClaimNeverSignsInAsAnAccount(t *testing.T) {
 	a, s := newUserAuth(t)
 	ctx := context.Background()
 	enableOIDC(t, a, s)
@@ -172,13 +173,12 @@ func TestAnEditableClaimMustAlreadyBelongToAnAccount(t *testing.T) {
 	if _, ok := a.IssueSSO(ctx, MethodOIDC, "claim@example.com", "", true, false); ok {
 		t.Fatal("a user-editable claim provisioned an account")
 	}
-	u := addStandardUser(t, a, "u1", "Claim", "claim@example.com")
-	cookie, ok := a.IssueSSO(ctx, MethodOIDC, "CLAIM@example.com", "", true, false)
-	if !ok {
-		t.Fatal("an existing account was refused for an editable claim")
+	addStandardUser(t, a, "u1", "Claim", "claim@example.com")
+	if _, ok := a.IssueSSO(ctx, MethodOIDC, "CLAIM@example.com", "", true, false); ok {
+		t.Fatal("a user-editable claim signed in as the account that owns that address")
 	}
-	if info, _ := a.SessionInfo(withCookie(cookie.Value)); info.UserID != u.ID {
-		t.Fatalf("%+v", info)
+	if _, ok := a.IssueSSO(ctx, MethodOIDC, "CLAIM@example.com", "", false, false); !ok {
+		t.Fatal("a verified address was refused for its own account")
 	}
 }
 
@@ -219,5 +219,42 @@ func TestProvisioningRespectsTheUserCap(t *testing.T) {
 	}
 	if _, ok := a.IssueSSO(ctx, MethodOIDC, "new@example.com", "", false, false); ok {
 		t.Fatal("an account was provisioned past the cap")
+	}
+}
+
+func TestALongAddressStillSignsIn(t *testing.T) {
+	a, s := newUserAuth(t)
+	ctx := context.Background()
+	enableOIDC(t, a, s)
+	long := strings.Repeat("a", 70) + "@example.com"
+	cookie, ok := a.IssueSSO(ctx, MethodOIDC, long, "", false, false)
+	if !ok {
+		t.Fatal("an address over the username limit was refused")
+	}
+	if info, ok := a.SessionInfo(withCookie(cookie.Value)); !ok || info.Email != long {
+		t.Fatalf("%+v %v", info, ok)
+	}
+}
+
+func TestAPasswordUserNamedLikeAnAddressDoesNotBlockItsSignIn(t *testing.T) {
+	a, s := newUserAuth(t)
+	ctx := context.Background()
+	enableOIDC(t, a, s)
+	addStandardUser(t, a, "u1", "boss@example.com", "")
+	cookie, ok := a.IssueSSO(ctx, MethodOIDC, "boss@example.com", "", false, false)
+	if !ok {
+		t.Fatal("the address was refused because a password user already holds that name")
+	}
+	info, _ := a.SessionInfo(withCookie(cookie.Value))
+	if info.UserID == "u1" {
+		t.Fatal("the sign-in landed on the password user: an address a person can claim by name is not proof of it")
+	}
+}
+
+func TestAShortenedAddressNameIsValidUTF8(t *testing.T) {
+	long := strings.Repeat("é", 40) + "@example.com"
+	name := ssoUsername(long, "0123456789abcdef", false)
+	if !utf8.ValidString(name) || len(name) > maxUsername {
+		t.Fatalf("%q (%d bytes)", name, len(name))
 	}
 }

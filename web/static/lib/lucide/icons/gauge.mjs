@@ -5,6 +5,9 @@
  * See the LICENSE file in the root directory of this source tree.
  */
 
-const ChevronDown = [["path", { d: "m6 9 6 6 6-6" }]];
+const Gauge = [
+  ["path", { d: "m12 14 4-4" }],
+  ["path", { d: "M3.34 19a10 10 0 1 1 17.32 0" }]
+];
 
-export { ChevronDown as default };
+export { Gauge as default };

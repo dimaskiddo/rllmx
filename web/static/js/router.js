@@ -7,6 +7,7 @@ let routes = null;
 // renderSeq numbers every render. A fragment that arrives after a newer click
 // or a back press is dropped, so the page on screen is the one the address names.
 let renderSeq = 0;
+let rendered = false;
 
 async function table() {
   if (!routes) {
@@ -21,7 +22,7 @@ async function table() {
 
 // match compares a "/dashboard/providers/:id" pattern with a path and returns
 // its parameters, or null.
-export function match(pattern, path) {
+function match(pattern, path) {
   const want = pattern.split("/");
   const got = path.split("/");
   if (want.length !== got.length) {
@@ -45,9 +46,24 @@ export function match(pattern, path) {
   return params;
 }
 
-export function navFor(path) {
-  if (path === "/dashboard/providers" || path.indexOf("/dashboard/providers/") === 0) {
-    return "/dashboard/providers";
+// navRoots are the sidebar entries, so a page marks its own entry current.
+const navRoots = [
+  "/dashboard/providers",
+  "/dashboard/combos",
+  "/dashboard/usage",
+  "/dashboard/quota",
+  "/dashboard/console-log",
+  "/dashboard/skills",
+  "/dashboard/token-saver",
+  "/dashboard/pricing",
+  "/dashboard/settings",
+];
+
+function navFor(path) {
+  for (const root of navRoots) {
+    if (path === root || path.indexOf(root + "/") === 0) {
+      return root;
+    }
   }
   return "/dashboard/endpoint";
 }
@@ -108,9 +124,20 @@ async function render() {
   store.path = path;
   store.params = route.params;
   store.nav = navFor(path);
+  // The first view is the page load itself; only a later one moves focus.
+  const announce = rendered;
+  rendered = true;
   window.Alpine.destroyTree(view);
   view.replaceChildren(...fragment.childNodes);
   window.Alpine.initTree(view);
+  // The directives write the heading text on the next tick; read it after.
+  window.Alpine.nextTick(() => {
+    const heading = view.querySelector("h1");
+    document.title = (heading ? heading.textContent + " · " : "") + "Router-LLM";
+    if (announce) {
+      view.focus({ preventScroll: true });
+    }
+  });
 }
 
 export function startRouter() {

@@ -20,6 +20,9 @@ const (
 	RoleUser  = "user"
 )
 
+// maxUsername is the longest username CleanUser accepts, in bytes.
+const maxUsername = 64
+
 // DefaultMaxUsers bounds the user list when no limit is configured. The server
 // reads AUTH_MAX_USERS into the repository at wiring time.
 const DefaultMaxUsers = 200
@@ -103,37 +106,6 @@ func (r *UserRepo) Get(ctx context.Context, id string) (User, bool, error) {
 	return User{}, false, nil
 }
 
-// ByUsername finds a user by name, ignoring case.
-func (r *UserRepo) ByUsername(ctx context.Context, name string) (User, bool, error) {
-	users, err := r.List(ctx)
-	if err != nil {
-		return User{}, false, err
-	}
-	for _, u := range users {
-		if strings.EqualFold(u.Username, name) {
-			return u, true, nil
-		}
-	}
-	return User{}, false, nil
-}
-
-// ByEmail finds a user by email, ignoring case.
-func (r *UserRepo) ByEmail(ctx context.Context, email string) (User, bool, error) {
-	if email == "" {
-		return User{}, false, nil
-	}
-	users, err := r.List(ctx)
-	if err != nil {
-		return User{}, false, err
-	}
-	for _, u := range users {
-		if u.Email != "" && strings.EqualFold(u.Email, email) {
-			return u, true, nil
-		}
-	}
-	return User{}, false, nil
-}
-
 // Put creates or updates a user. A username and an email are unique across the
 // list, and a new row is refused once the list is full.
 func (r *UserRepo) Put(ctx context.Context, u User) error {
@@ -162,16 +134,16 @@ func (r *UserRepo) Put(ctx context.Context, u User) error {
 			return ErrUserTaken
 		}
 	}
-	if fresh && len(users) >= r.limit {
-		return ErrUserFull
-	}
 	u.Username, u.Email = name, email
 	if fresh {
 		if u.CreatedAt == "" {
 			u.CreatedAt = time.Now().UTC().Format(time.RFC3339)
 		}
 		row := repository.UserRow{ID: u.ID, Username: u.Username, Email: u.Email, Password: u.Hash, Provisioned: u.Provisioned, CreatedAt: u.CreatedAt}
-		if err := st.Users().Create(ctx, row); err != nil {
+		if err := st.Users().CreateWithin(ctx, row, r.limit); err != nil {
+			if errors.Is(err, repository.ErrFull) {
+				return ErrUserFull
+			}
 			return err
 		}
 		return nil
@@ -220,15 +192,6 @@ func (r *UserRepo) SetOwner(ctx context.Context, keyID, userID string) error {
 	return st.Users().SetOwner(ctx, keyID, userID)
 }
 
-// OwnerOf returns the user a key belongs to, or "" when it belongs to nobody.
-func (r *UserRepo) OwnerOf(ctx context.Context, keyID string) (string, error) {
-	st := r.store()
-	if st == nil {
-		return "", ErrUserNoStore
-	}
-	return st.Users().OwnerOf(ctx, keyID)
-}
-
 // Owners maps every assigned key id to its user.
 func (r *UserRepo) Owners(ctx context.Context) (map[string]string, error) {
 	st := r.store()
@@ -251,7 +214,7 @@ func (r *UserRepo) KeysOf(ctx context.Context, userID string) ([]string, error) 
 // lower-case, so the unique index cannot admit a second spelling of one address.
 func CleanUser(username, email string) (string, string, error) {
 	username, email = strings.TrimSpace(username), strings.ToLower(strings.TrimSpace(email))
-	if username == "" || len(username) > 64 || text.HasControl(username) || strings.Contains(username, "/") {
+	if username == "" || len(username) > maxUsername || text.HasControl(username) || strings.Contains(username, "/") {
 		return "", "", ErrUserName
 	}
 	if email != "" && (len(email) > 320 || strings.Count(email, "@") != 1 || text.HasControl(email) || strings.ContainsAny(email, " \t")) {
@@ -311,6 +274,15 @@ func NewUsers(repo *UserRepo) *Users {
 // Changed drops the cache for a write this process just made.
 func (u *Users) Changed() { u.cached.Drop() }
 
+// Read returns every user and says when the list cannot be read, for the one
+// caller that must not mistake a failure for an empty list.
+func (u *Users) Read(ctx context.Context) ([]User, error) {
+	if u == nil {
+		return nil, ErrUserNoStore
+	}
+	return u.cached.Get(ctx, settingsLoadTimeout)
+}
+
 // All returns every user, or none when the list cannot be read.
 func (u *Users) All(ctx context.Context) []User {
 	if u == nil {
@@ -355,9 +327,6 @@ func (u *Users) ByEmail(ctx context.Context, email string) (User, bool) {
 	}
 	return User{}, false
 }
-
-// Any reports whether the dashboard has any standard user.
-func (u *Users) Any(ctx context.Context) bool { return len(u.All(ctx)) > 0 }
 
 // Put stores a user and drops the list this process reads.
 func (u *Users) Put(ctx context.Context, v User) error {

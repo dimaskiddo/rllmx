@@ -568,3 +568,59 @@ func TestAnAutoPingSettingKeepsTheReferenceShape(t *testing.T) {
 		}
 	}
 }
+
+// The account selector reads fallbackStrategy, so the settings write has to
+// accept the same two names it acts on and refuse the combo words.
+func TestASettingsWriteStoresTheAccountStrategy(t *testing.T) {
+	m := newMgmtRig(t)
+	seededSettings(t, m)
+	m.settingsRoutes(&SettingsController{DB: func() *repository.Store { return m.st.Store }, Auth: m.auth})
+	for _, value := range []string{"round-robin", "fill-first"} {
+		code, out, raw := m.call(nethttp.MethodPatch, "/api/settings", `{"fallbackStrategy":"`+value+`"}`, true)
+		if code != 200 {
+			t.Fatalf("%s: %d %s", value, code, raw)
+		}
+		if out["fallbackStrategy"] != value {
+			t.Fatalf("%s: the view answered %v", value, out["fallbackStrategy"])
+		}
+	}
+	code, _, raw := m.call(nethttp.MethodPatch, "/api/settings", `{"fallbackStrategy":"smart"}`, true)
+	if code != 400 {
+		t.Fatalf("a combo word was stored: %d %s", code, raw)
+	}
+}
+
+func TestACustomPromptKeepsItsLineBreaksButNotOtherControls(t *testing.T) {
+	m := newMgmtRig(t)
+	seededSettings(t, m)
+	m.settingsRoutes(&SettingsController{DB: func() *repository.Store { return m.st.Store }, Auth: m.auth})
+	code, out, raw := m.call(nethttp.MethodPatch, "/api/settings", `{"customPrompt":"Line one.\r\n\tLine two."}`, true)
+	if code != 200 || out["customPrompt"] != "Line one.\r\n\tLine two." {
+		t.Fatalf("a multi-line prompt: %d %s", code, raw)
+	}
+	for _, bad := range []string{`"a\u0000b"`, `"a\u001bb"`, `"a\u0085b"`} {
+		if code, _, raw := m.call(nethttp.MethodPatch, "/api/settings", `{"customPrompt":`+bad+`}`, true); code != 400 {
+			t.Fatalf("%s was stored: %d %s", bad, code, raw)
+		}
+	}
+	long := strings.Repeat("x", 4001)
+	if code, _, _ := m.call(nethttp.MethodPatch, "/api/settings", `{"customPrompt":"`+long+`"}`, true); code != 400 {
+		t.Fatalf("an oversized prompt was stored: %d", code)
+	}
+}
+
+// An imported database can hold a strategy word this program does not act on.
+// The page sends the value it was given back, so the view must show the one the
+// router uses, or the routing card could never be saved.
+func TestTheViewShowsTheStrategyTheRouterUses(t *testing.T) {
+	m := newMgmtRig(t)
+	seededSettings(t, m)
+	if err := m.st.Store.Settings().Patch(context.Background(), map[string]string{"fallbackStrategy": `"smart"`}); err != nil {
+		t.Fatal(err)
+	}
+	m.settingsRoutes(&SettingsController{DB: func() *repository.Store { return m.st.Store }, Auth: m.auth})
+	code, out, raw := m.call(nethttp.MethodGet, "/api/settings", "", true)
+	if code != 200 || out["fallbackStrategy"] != "fill-first" {
+		t.Fatalf("%d %s", code, raw)
+	}
+}

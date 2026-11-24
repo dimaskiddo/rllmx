@@ -18,7 +18,8 @@ In development, early, and usable today for chat, models and media. The table is
 | Password login with dashboard sessions, API keys, OIDC and SAML sign-in, SSRF-guarded outbound client | Built |
 | Request pipeline, model resolution, account selection and cooldown, format translation, executors, OAuth login and token refresh | Built |
 | Embeddings, image generation, speech, transcription and voice lists | Built |
-| Combos, token savers, skills, the full dashboard | Planned |
+| Combos, token savers, skills, auto plan | Built |
+| Dashboard: sign-in, endpoint and keys with users and roles, providers and every login flow, combos, usage and quota, console log, settings and single sign-on, pricing, skills Studio and token savers | Built |
 
 Design and parity: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/PARITY.md`](docs/PARITY.md), [`docs/DIVERGENCES.md`](docs/DIVERGENCES.md), and one design document per area in [`docs/design/`](docs/design/).
 
@@ -37,7 +38,7 @@ Design and parity: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/PARITY
 *   **🗂️ Drop-In Database:** 9router SQLite schema for providers, keys, combos; SQLite default, PostgreSQL optional, credentials sealed.
 *   **📈 Usage Analytics:** Metadata-only row per request (key, model, tokens, cost, latency) in a separate store; no bodies, no prompts.
 *   **⚡ Cache:** In-process default, Redis optional; requests survive Redis loss.
-*   **📊 Dashboard & Binary:** Login and callback pages today, the rest planned. Pure Go, `CGO_ENABLED=0`, Linux, macOS, Windows, amd64, arm64.
+*   **📊 Dashboard & Binary:** Every page the reference has, less the ones this build leaves out (media, translator playground, basic chat). Pure Go, `CGO_ENABLED=0`, Linux, macOS, Windows, amd64, arm64.
 
 ---
 

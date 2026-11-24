@@ -108,6 +108,10 @@ func table(hourly bool) string {
 	return "rollupDaily"
 }
 
+// quoted is the rollup table as a query names it. PostgreSQL folds a bare name
+// to lower case, and the tables are created with a capital letter.
+func quoted(hourly bool) string { return `"` + table(hourly) + `"` }
+
 // start is where an hourly window begins.
 func start(from time.Time) int64 {
 	if from.IsZero() {
@@ -170,14 +174,14 @@ func (s *Store) Sums(ctx context.Context, from time.Time, hourly bool, keys []st
 		return []Sum{}, nil
 	}
 	var rows []sumRow
-	query := `SELECT ` + groupCols + `,` + sumAgg + `,MAX("bucket") AS "last" FROM ` + table(true) +
+	query := `SELECT ` + groupCols + `,` + sumAgg + `,MAX("bucket") AS "last" FROM ` + quoted(true) +
 		` WHERE "bucket" >= ?` + clause + ` GROUP BY ` + groupCols
 	if err := s.db.WithContext(ctx).Select(&rows, s.q(query), append([]any{sp.hourFrom}, args...)...); err != nil {
 		return nil, err
 	}
 	if !hourly {
 		var days []sumRow
-		query := `SELECT ` + groupCols + `,` + sumAgg + `,MAX("bucket") AS "last" FROM ` + table(false) +
+		query := `SELECT ` + groupCols + `,` + sumAgg + `,MAX("bucket") AS "last" FROM ` + quoted(false) +
 			` WHERE "bucket" >= ? AND "bucket" < ?` + clause + ` GROUP BY ` + groupCols
 		if err := s.db.WithContext(ctx).Select(&days, s.q(query), append([]any{sp.dayFrom, sp.split}, args...)...); err != nil {
 			return nil, err

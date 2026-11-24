@@ -30,6 +30,8 @@ When a request completes, the pipeline enqueues one row to the analytics writer.
 
 `/api/usage/stream` sends those four live fields on connect and again when a request starts or ends or a batch of rows lands. It never recomputes the totals (D363).
 
+**Page.** `/dashboard/usage` reads the totals, the chart and the log for every role, and the live feed, the active count and the latency stream only for an admin, because the server refuses those three to a standard user. Period and tab live in the URL. The topology, the two bar charts and the breakdown table are drawn from the same stats answer, so a period switch is one read (doc 18, D427).
+
 ### Pricing (`app/llm/upstream/pricing.go`, data `app/llm/upstream/data/pricing/prices.json`; built)
 
 Rates are dollars per million tokens: input, output, cached, reasoning, cache creation. A missing cached or cache-creation rate means the input rate; a missing reasoning rate means the output rate.
@@ -68,6 +70,8 @@ A connection this build cannot read answers the reference's two messages: an uns
 **Providers.** Read: GitHub, Gemini CLI, Antigravity (through the selector's own fetcher), Claude, Codex, Kiro, GLM, MiniMax, Kimi, DeepSeek, OpenCode, Zed, Cursor, Grok CLI, CodeBuddy, Cline, Freebuff, Groq, Ollama, Vercel AI Gateway and Command Code.
 
 Deferred until their handshake is designed: MiniMax Code (a signed account API), Xiaomi MiMo (a cookie SSO chain) and Qoder (a pasted token exchanged for a job token) (D379). API key quota limits are a separate feature (design doc 21).
+
+**Page.** `/dashboard/quota` lists the connections `/api/providers/client` says a reading answers for, reads one card per connection through `/api/usage/{id}`, and offers the two refill routes and the active switch behind a confirmation. A reading's 401 is the provider refusing the stored credential and is shown on the card, never treated as a session end. Hidden rows (`quotaVisibility`) and the bulk enable/disable actions are not offered (doc 18, D429).
 
 **Auto-ping.** The two settings are read and written in the reference's shape — a switch, or an object of opted-in connections and their anchored schedules — and nothing pings yet; the scheduler is its own step (D380).
 

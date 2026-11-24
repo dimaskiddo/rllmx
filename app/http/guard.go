@@ -179,7 +179,9 @@ func (g *Guard) Protect(ctx contractshttp.Context) {
 			role = who.Role
 			WithSession(ctx, who)
 		}
-		if !roleAllows(role, r.Method, r.URL.Path) {
+		// A public route needs no session, so the role has nothing to narrow: a
+		// signed-in user would otherwise be refused what an anonymous caller gets.
+		if class != ClassPublic && !roleAllows(role, r.Method, r.URL.Path) {
 			deny(ctx, nethttp.StatusForbidden, "")
 			return
 		}

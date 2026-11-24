@@ -121,3 +121,16 @@ func TestBumpEpochEndsEverySession(t *testing.T) {
 		t.Fatal("the pv survived the bump, so old sessions still validate")
 	}
 }
+
+// An epoch that cannot be read must not read as epoch 0: a cookie issued before
+// a logout-everywhere would validate again for as long as the answer is cached.
+func TestAFailedEpochReadIsNotATrustedSnapshot(t *testing.T) {
+	s, sq := newSettings(t)
+	ctx := context.Background()
+	if err := sq.SQ.DB.Statement(`DROP TABLE "kv"`); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := s.read(ctx); ok {
+		t.Fatal("a snapshot with an unreadable epoch was reported as read")
+	}
+}

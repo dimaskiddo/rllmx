@@ -1,0 +1,124 @@
+<section x-data="settingsPage">
+  <div class="rl-page-head">
+    <h1 class="rl-page-title" x-t="settings.title"></h1>
+  </div>
+  <p class="rl-error" x-show="error" x-text="error"></p>
+  <p class="rl-error" x-show="fieldError" x-text="fieldError"></p>
+  <p class="text-secondary" x-show="loading" x-t="common.loading"></p>
+
+  <section class="card" x-show="!loading">
+    <div class="card-header rl-card-head">
+      <h2 class="rl-card-title" x-t="settings.security"></h2>
+    </div>
+    <div class="card-body">
+      <div class="form-check form-switch rl-switch">
+        <input class="form-check-input" type="checkbox" id="require-login" role="switch" x-bind:checked="form.requireLogin" x-on:change="setBool('form.requireLogin', $event)">
+        <label class="form-check-label" for="require-login" x-t="settings.requireLogin"></label>
+      </div>
+      <p class="rl-hint" x-t="settings.requireLoginHint"></p>
+      <p class="rl-warning" x-show="!form.requireLogin"><span class="rl-icon" x-icon="triangle-exclamation-point"></span><span x-t="settings.loginOffWarning"></span></p>
+      <p class="text-secondary" x-show="settings.hasPassword === true" x-t="settings.passwordSet"></p>
+      <p class="text-secondary" x-show="settings.hasPassword !== true" x-t="settings.passwordUnset"></p>
+      <button type="button" class="btn btn-sm" x-on:click="$dispatch('open-password')" x-text="settings.hasPassword === true ? label('settings.changePassword') : label('settings.setPassword')"></button>
+      <div class="rl-actions">
+        <button type="button" class="btn btn-primary" x-bind:disabled="busy === true" x-on:click="savedSecurity()" x-t="common.save"></button>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" x-show="!loading">
+    <div class="card-header rl-card-head">
+      <h2 class="rl-card-title" x-t="settings.sso"></h2>
+    </div>
+    <div class="card-body">
+      <p class="rl-hint" x-t="settings.ssoHint"></p>
+      <fieldset>
+      <legend class="visually-hidden" x-t="settings.sso"></legend>
+      <ul class="rl-chips">
+        <template x-for="mode in modeOptions()" x-bind:key="mode">
+          <li class="rl-chip">
+            <label>
+              <input class="form-check-input" type="radio" name="auth-mode" x-bind:value="mode" x-bind:checked="form.authMode === mode" x-on:change="setMode(mode)">
+              <span x-text="modeName(mode)"></span>
+            </label>
+          </li>
+        </template>
+      </ul>
+      </fieldset>
+      <div class="rl-tabs" role="group" x-bind:aria-label="label('settings.sso')">
+        <button type="button" x-bind:aria-pressed="ssoType() === 'oidc' ? 'true' : 'false'" x-on:click="setType('oidc')" x-t="settings.oidc"></button>
+        <button type="button" x-bind:aria-pressed="ssoType() === 'saml' ? 'true' : 'false'" x-on:click="setType('saml')" x-t="settings.saml"></button>
+      </div>
+
+      <div x-show="ssoType() === 'oidc'">
+        <label class="form-label" for="oidc-issuer" x-t="settings.oidcIssuer"></label>
+        <input class="form-control" id="oidc-issuer" type="url" maxlength="2048" x-bind:value="form.oidcIssuerUrl" x-on:input="setField('form.oidcIssuerUrl', $event)">
+        <label class="form-label" for="oidc-client" x-t="settings.oidcClientId"></label>
+        <input class="form-control" id="oidc-client" type="text" maxlength="512" x-bind:value="form.oidcClientId" x-on:input="setField('form.oidcClientId', $event)">
+        <label class="form-label" for="oidc-secret" x-t="settings.oidcSecret"></label>
+        <input class="form-control" id="oidc-secret" type="password" maxlength="512" autocomplete="new-password" x-bind:placeholder="label('settings.oidcSecretKeep')" x-bind:value="secret.oidcClientSecret" x-on:input="setField('secret.oidcClientSecret', $event)">
+        <label class="form-label" for="oidc-scopes" x-t="settings.oidcScopes"></label>
+        <input class="form-control" id="oidc-scopes" type="text" maxlength="512" x-bind:value="form.oidcScopes" x-on:input="setField('form.oidcScopes', $event)">
+        <label class="form-label" for="oidc-label" x-t="settings.loginLabel"></label>
+        <input class="form-control" id="oidc-label" type="text" maxlength="100" x-bind:value="form.oidcLoginLabel" x-on:input="setField('form.oidcLoginLabel', $event)">
+        <p class="rl-hint"><span x-t="settings.redirectURI"></span> <code class="rl-code" x-text="redirectURI()"></code></p>
+        <div class="rl-actions">
+          <button type="button" class="btn btn-primary" x-bind:disabled="busy === true" x-on:click="savedOIDC()" x-t="common.save"></button>
+        </div>
+      </div>
+
+      <div x-show="ssoType() === 'saml'">
+        <label class="form-label" for="saml-entry" x-t="settings.samlEntryPoint"></label>
+        <input class="form-control" id="saml-entry" type="url" maxlength="2048" x-bind:value="form.samlEntryPoint" x-on:input="setField('form.samlEntryPoint', $event)">
+        <label class="form-label" for="saml-issuer" x-t="settings.samlIssuer"></label>
+        <input class="form-control" id="saml-issuer" type="text" maxlength="512" x-bind:value="form.samlIssuer" x-on:input="setField('form.samlIssuer', $event)">
+        <label class="form-label" for="saml-idp" x-t="settings.samlIdpEntityId"></label>
+        <input class="form-control" id="saml-idp" type="text" maxlength="512" x-bind:value="form.samlIdpEntityId" x-on:input="setField('form.samlIdpEntityId', $event)">
+        <label class="form-label" for="saml-cert" x-t="settings.samlCert"></label>
+        <textarea class="form-control" id="saml-cert" rows="4" x-bind:value="form.samlCert" x-on:input="setField('form.samlCert', $event)"></textarea>
+        <label class="form-label" for="saml-label" x-t="settings.loginLabel"></label>
+        <input class="form-control" id="saml-label" type="text" maxlength="100" x-bind:value="form.samlLoginLabel" x-on:input="setField('form.samlLoginLabel', $event)">
+        <label class="form-label" for="saml-attr-email" x-t="settings.samlAttributeEmail"></label>
+        <input class="form-control" id="saml-attr-email" type="text" maxlength="128" x-bind:value="form.samlAttributeEmail" x-on:input="setField('form.samlAttributeEmail', $event)">
+        <label class="form-label" for="saml-attr-name" x-t="settings.samlAttributeName"></label>
+        <input class="form-control" id="saml-attr-name" type="text" maxlength="128" x-bind:value="form.samlAttributeName" x-on:input="setField('form.samlAttributeName', $event)">
+        <p class="rl-hint"><span x-t="settings.acsURI"></span> <code class="rl-code" x-text="acsURI()"></code></p>
+        <p class="rl-hint"><a x-bind:href="metadataURI()" target="_blank" rel="noopener" x-t="settings.samlMetadata"></a></p>
+        <div class="rl-actions">
+          <button type="button" class="btn btn-primary" x-bind:disabled="busy === true" x-on:click="savedSAML()" x-t="common.save"></button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" x-show="!loading">
+    <div class="card-header rl-card-head">
+      <h2 class="rl-card-title" x-t="settings.routing"></h2>
+    </div>
+    <div class="card-body">
+      <label class="form-label" for="account-strategy" x-t="settings.accountStrategy"></label>
+      <select class="form-select" id="account-strategy" x-bind:value="form.fallbackStrategy" x-on:change="setField('form.fallbackStrategy', $event)">
+        <option value="fill-first" x-t="settings.fillFirst"></option>
+        <option value="round-robin" x-t="settings.roundRobin"></option>
+      </select>
+      <label class="form-label" for="sticky-limit" x-t="settings.stickyLimit"></label>
+      <input class="form-control" id="sticky-limit" type="number" min="1" max="100" x-bind:value="form.stickyRoundRobinLimit" x-on:input="setField('form.stickyRoundRobinLimit', $event)">
+      <p class="rl-hint" x-t="settings.stickyHint"></p>
+
+      <label class="form-label" for="combo-strategy" x-t="settings.comboStrategy"></label>
+      <select class="form-select" id="combo-strategy" x-bind:value="form.comboStrategy" x-on:change="setField('form.comboStrategy', $event)">
+        <option value="fallback" x-t="settings.comboFallback"></option>
+        <option value="round-robin" x-t="settings.roundRobin"></option>
+        <option value="smart" x-t="settings.comboSmart"></option>
+        <option value="fusion" x-t="settings.comboFusion"></option>
+      </select>
+      <label class="form-label" for="combo-sticky" x-t="settings.comboStickyLimit"></label>
+      <input class="form-control" id="combo-sticky" type="number" min="1" max="1000" x-bind:value="form.comboStickyRoundRobinLimit" x-on:input="setField('form.comboStickyRoundRobinLimit', $event)">
+      <p class="rl-hint" x-t="settings.comboStickyHint"></p>
+
+      <div class="rl-actions">
+        <button type="button" class="btn btn-primary" x-bind:disabled="busy === true" x-on:click="savedRouting()" x-t="common.save"></button>
+      </div>
+    </div>
+  </section>
+</section>

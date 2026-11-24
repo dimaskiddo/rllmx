@@ -3,8 +3,8 @@
     <h1 class="rl-page-title" x-t="providers.title"></h1>
   </div>
   <div class="rl-toolbar">
-    <input class="form-control" type="search" x-bind:value="search" x-on:input="setView('search', $event)" x-bind:placeholder="label('providers.search')" x-bind:aria-label="label('providers.search')">
-    <select class="form-select" x-bind:value="filter" x-on:change="setView('filter', $event)" x-bind:aria-label="label('providers.status')">
+    <input class="form-control form-control-sm" type="search" x-bind:value="search" x-on:input="setView('search', $event)" x-bind:placeholder="label('providers.search')" x-bind:aria-label="label('providers.search')">
+    <select class="form-select form-select-sm" x-bind:value="filter" x-on:change="setView('filter', $event)" x-bind:aria-label="label('providers.status')">
       <option value="all" x-t="providers.all"></option>
       <option value="active" x-t="providers.activeOnly"></option>
       <option value="inactive" x-t="providers.inactiveOnly"></option>
@@ -31,7 +31,7 @@
         <div class="rl-provider-card" x-bind:data-disabled="card.allDisabled ? 'yes' : 'no'">
           <div class="rl-provider-head">
             <span class="rl-provider-icon">
-              <img class="rl-provider-logo" x-show="iconSrc(card) && iconsFailed[card.entry.id] !== true" x-bind:src="iconSrc(card)" x-on:error="failIcon(card)" alt="" loading="lazy">
+              <img x-show="iconSrc(card) && iconsFailed[card.entry.id] !== true" x-bind:src="iconSrc(card)" x-on:error="failIcon(card)" alt="" loading="lazy">
               <span x-show="!iconSrc(card) || iconsFailed[card.entry.id] === true" x-text="initials(card)"></span>
             </span>
             <a class="rl-provider-name stretched-link" x-bind:href="detailHref(card.entry.id)" x-text="card.entry.name"></a>
@@ -65,7 +65,7 @@
         <div class="rl-provider-card" x-bind:data-disabled="card.allDisabled ? 'yes' : 'no'">
           <div class="rl-provider-head">
             <span class="rl-provider-icon">
-              <img class="rl-provider-logo" x-show="iconSrc(card) && iconsFailed[card.entry.id] !== true" x-bind:src="iconSrc(card)" x-on:error="failIcon(card)" alt="" loading="lazy">
+              <img x-show="iconSrc(card) && iconsFailed[card.entry.id] !== true" x-bind:src="iconSrc(card)" x-on:error="failIcon(card)" alt="" loading="lazy">
               <span x-show="!iconSrc(card) || iconsFailed[card.entry.id] === true" x-text="initials(card)"></span>
             </span>
             <a class="rl-provider-name stretched-link" x-bind:href="detailHref(card.entry.id)" x-text="card.entry.name"></a>
@@ -99,7 +99,7 @@
         <div class="rl-provider-card" x-bind:data-disabled="card.allDisabled ? 'yes' : 'no'">
           <div class="rl-provider-head">
             <span class="rl-provider-icon">
-              <img class="rl-provider-logo" x-show="iconSrc(card) && iconsFailed[card.entry.id] !== true" x-bind:src="iconSrc(card)" x-on:error="failIcon(card)" alt="" loading="lazy">
+              <img x-show="iconSrc(card) && iconsFailed[card.entry.id] !== true" x-bind:src="iconSrc(card)" x-on:error="failIcon(card)" alt="" loading="lazy">
               <span x-show="!iconSrc(card) || iconsFailed[card.entry.id] === true" x-text="initials(card)"></span>
             </span>
             <a class="rl-provider-name stretched-link" x-bind:href="detailHref(card.entry.id)" x-text="card.entry.name"></a>
@@ -133,7 +133,7 @@
         <div class="rl-provider-card" x-bind:data-disabled="card.allDisabled ? 'yes' : 'no'">
           <div class="rl-provider-head">
             <span class="rl-provider-icon">
-              <img class="rl-provider-logo" x-show="iconSrc(card) && iconsFailed[card.entry.id] !== true" x-bind:src="iconSrc(card)" x-on:error="failIcon(card)" alt="" loading="lazy">
+              <img x-show="iconSrc(card) && iconsFailed[card.entry.id] !== true" x-bind:src="iconSrc(card)" x-on:error="failIcon(card)" alt="" loading="lazy">
               <span x-show="!iconSrc(card) || iconsFailed[card.entry.id] === true" x-text="initials(card)"></span>
             </span>
             <a class="rl-provider-name stretched-link" x-bind:href="detailHref(card.entry.id)" x-text="card.entry.name"></a>

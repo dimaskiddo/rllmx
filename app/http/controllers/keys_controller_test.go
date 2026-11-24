@@ -547,3 +547,61 @@ func TestCreatingAUserChecksTheNameAndPassword(t *testing.T) {
 		t.Fatalf("the user list carries a hash: %s", list.Body.String())
 	}
 }
+
+func TestAFailedOwnerReadNeverUnassignsAKeyOnRename(t *testing.T) {
+	rig := newKeysRig(t, signedSession{})
+	seedUser(t, rig, "u1", "Dimas")
+	id, _ := rig.create(t, "laptop")
+	if rec := rig.call(t, nethttp.MethodPut, "/api/keys/"+id, `{"owner":"u1"}`, keysLocalPeer); rec.Code != nethttp.StatusOK {
+		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+	if err := rig.sq.SQ.DB.Statement(`DROP TABLE "userKeys"`); err != nil {
+		t.Fatal(err)
+	}
+	rec := rig.call(t, nethttp.MethodGet, "/api/keys", "", keysLocalPeer)
+	if rec.Code != nethttp.StatusInternalServerError && rec.Code != nethttp.StatusServiceUnavailable {
+		t.Fatalf("a list with unreadable owners answered %d: it would show every key as unassigned", rec.Code)
+	}
+}
+
+func TestAnUnknownOwnerOnUpdateChangesNothingElse(t *testing.T) {
+	rig := newKeysRig(t, signedSession{})
+	id, _ := rig.create(t, "laptop")
+	rec := rig.call(t, nethttp.MethodPut, "/api/keys/"+id, `{"name":"renamed","owner":"nobody"}`, keysLocalPeer)
+	if rec.Code != nethttp.StatusBadRequest {
+		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+	row, _, _ := rig.sq.APIKeys().GetByID(t.Context(), id)
+	if row.Name != "laptop" {
+		t.Fatalf("the rename was stored (%q) though the owner was refused", row.Name)
+	}
+}
+
+func TestAKeyWhoseOwnerCannotBeSetIsNotLeftBehind(t *testing.T) {
+	rig := newKeysRig(t, signedSession{})
+	if err := rig.sq.SQ.DB.Statement(`DROP TABLE "userKeys"`); err != nil {
+		t.Fatal(err)
+	}
+	seedUser(t, rig, "u1", "Dimas")
+	rec := rig.call(t, nethttp.MethodPost, "/api/keys", `{"name":"orphan","owner":"u1"}`, keysLocalPeer)
+	if rec.Code == nethttp.StatusCreated {
+		t.Fatalf("a key was created with an owner that could not be stored: %s", rec.Body.String())
+	}
+	rows, _ := rig.sq.APIKeys().List(t.Context())
+	if len(rows) != 0 {
+		t.Fatalf("%d key(s) left behind", len(rows))
+	}
+}
+
+func TestTheUserListFailsWhenTheAssignmentsCannotBeRead(t *testing.T) {
+	rig := newKeysRig(t, signedSession{})
+	seedUser(t, rig, "u1", "Dimas")
+	if err := rig.sq.SQ.DB.Statement(`DROP TABLE "users"`); err != nil {
+		t.Fatal(err)
+	}
+	rig.users.Changed()
+	rec := rig.call(t, nethttp.MethodGet, "/api/users", "", keysLocalPeer)
+	if rec.Code == nethttp.StatusOK {
+		t.Fatalf("an unreadable user table answered 200: %s", rec.Body.String())
+	}
+}

@@ -43,7 +43,10 @@ func (c *UsersController) List(ctx contractshttp.Context) contractshttp.Response
 		return out
 	}
 	rc := ctx.Request().Origin().Context()
-	users := c.Users.All(rc)
+	users, err := c.Users.Read(rc)
+	if err != nil {
+		return storageDown(ctx)
+	}
 	owners, err := c.Users.Owners(rc)
 	if err != nil {
 		return storageDown(ctx)

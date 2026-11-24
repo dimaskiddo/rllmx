@@ -1,6 +1,6 @@
 // The settings half of a provider page: the round-robin strategy, the custom
 // endpoint and the header overrides. Mixed into the page component.
-import { api } from "/static/js/ui/api.js";
+import { api, patchSettings } from "/static/js/ui/api.js";
 import { ask } from "/static/js/ui/dialog.js";
 import { t } from "/static/js/ui/i18n.js";
 import { toast } from "/static/js/ui/toast.js";
@@ -57,22 +57,22 @@ export const settingsMethods = {
       } else {
         current[this.id] = own;
       }
-      await api("/api/settings", { method: "PATCH", body: { providerStrategies: current } });
+      await patchSettings({ providerStrategies: current });
       this.settings.providerStrategies = current;
       toast().success(t("provider.strategySaved"));
     } catch (err) {
+      this.applyStrategy();
       toast().error(err.message);
     }
   },
 
   openNode() {
-    this.nodeForm = { open: true, name: this.node.name, prefix: this.node.prefix || "", apiType: this.node.apiType || "chat", baseUrl: this.node.baseUrl || "", error: "", busy: false };
+    this.nodeForm = { name: this.node.name, prefix: this.node.prefix || "", apiType: this.node.apiType || "chat", baseUrl: this.node.baseUrl || "", error: "", busy: false };
     this.$refs.nodeDlg.showModal();
   },
 
   closeNode() {
     this.$refs.nodeDlg.close();
-    this.nodeForm.open = false;
   },
 
   async saveNode() {

@@ -149,8 +149,8 @@ Files under `web/static/lib/`, taken unchanged from the registry tarball except 
 | `@alpinejs/csp` | 3.17.5 | MIT | ES module `alpine.csp.js` | The standard build compiles expressions with `Function`, which the policy blocks, so only the CSP build runs. It has no arrow functions, template literals, spread or globals in expressions, and no `x-html`; logic lives in `Alpine.data` |
 | `@tabler/core` | 1.7.3, CSS only | MIT | `tabler.min.css` | 25 inline SVG `data:` images, hence `img-src data:`. No fonts, no external URL. Its JavaScript (Bootstrap, Popper) is not shipped |
 | `lucide` | 1.70.0, `createElement` and a subset of icons | ISC | ES modules in `lucide/` | Builds SVG with `createElementNS`, no `innerHTML`. The 4,000-icon bundle is not shipped; an icon is added by copying its file |
-| `chart.js` | 4.6.1 | MIT | `chart.umd.min.js`, a classic script | Not vendored until step 4.3. Its ES build imports the bare name `@kurkle/color`, which needs an import map that the policy blocks, so the UMD file is the one to use |
-| `sortablejs` | 1.15.7 | MIT | `modular/sortable.core.esm.js` | Not vendored until step 4.3. One export, no imports |
+| `chart.js` | 4.6.1 | MIT | `chart.umd.min.js`, a classic script in the shell | Its ES build imports the bare name `@kurkle/color`, which needs an import map that the policy blocks, so the UMD file is the one to use. It builds no markup and holds no `eval` |
+| `sortablejs` | 1.15.7 | MIT | `sortablejs/sortable.core.esm.js`, imported by the combos page only | One export, no imports, no `innerHTML`, no `eval` |
 
 Refresh by hand: download the new tarball into an empty scratch folder, compare its integrity string with the registry's, copy the same files, regenerate `VERSIONS.json`, and read the library's changelog for policy-relevant changes. A pin at least two weeks old is preferred, which is why Tabler is 1.7.3.
 

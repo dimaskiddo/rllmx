@@ -3,29 +3,26 @@
 import Alpine from "/static/lib/alpine.csp.js";
 import "./ui/directives.js";
 import { api } from "./ui/api.js";
+import { session } from "./ui/session.js";
 import { bindConfirm } from "./ui/dialog.js";
 import { load, locale, setLocale, t } from "./ui/i18n.js";
 import { startRouter } from "./router.js";
-import { toastStore } from "./ui/toast.js";
+import { toast, toastStore } from "./ui/toast.js";
+import { formatMethods } from "./ui/format.js";
 
-Alpine.data("shell", () => ({
+Alpine.data("shell", () => Object.assign({
   theme: document.documentElement.getAttribute("data-bs-theme") || "light",
   locale: locale(),
   menu: false,
-  role: "admin",
+  role: "user",
   userName: "",
   needsPassword: false,
   pw: { current: "", next: "", again: "", error: "", busy: false },
   async init() {
-    try {
-      const status = await api("/api/auth/status");
-      this.role = status.role === "user" ? "user" : "admin";
-      this.userName = status.user || "";
-      this.needsPassword = status.needsPassword === true;
-    } catch (err) {
-      // The guard already let the page through; a failed status leaves the
-      // admin view, which the API narrows again on every call.
-    }
+    const who = await session();
+    this.role = who.role;
+    this.userName = who.user;
+    this.needsPassword = who.needsPassword;
   },
   isAdmin() {
     return this.role !== "user";
@@ -39,12 +36,10 @@ Alpine.data("shell", () => ({
   closeMenu() {
     this.menu = false;
   },
-  label(key) {
-    return t(key);
-  },
   toggleTheme() {
     this.theme = this.theme === "dark" ? "light" : "dark";
     document.documentElement.setAttribute("data-bs-theme", this.theme);
+    window.dispatchEvent(new Event("rl-theme"));
     try {
       localStorage.setItem("rl-theme", this.theme);
     } catch (err) {
@@ -55,7 +50,7 @@ Alpine.data("shell", () => ({
     try {
       await setLocale(this.locale === "en" ? "id" : "en");
     } catch (err) {
-      window.Alpine.store("toasts").error(t("locale.failed"));
+      toast().error(t("locale.failed"));
     }
   },
   async signOut() {
@@ -95,14 +90,14 @@ Alpine.data("shell", () => ({
         body: { currentPassword: this.needsPassword ? "" : this.pw.current, newPassword: this.pw.next },
       });
       this.closePassword();
-      window.Alpine.store("toasts").success(t("password.changed"));
+      toast().success(t("password.changed"));
     } catch (err) {
       this.pw.error = err.message;
     } finally {
       this.pw.busy = false;
     }
   },
-}));
+}, formatMethods));
 
 Alpine.store("toasts", toastStore());
 Alpine.store("route", { path: "", params: {}, nav: "/dashboard/endpoint" });

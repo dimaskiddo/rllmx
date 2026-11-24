@@ -236,7 +236,7 @@ func TestASuccessfulSignInIssuesTheSession(t *testing.T) {
 	}
 	req := httptest.NewRequest(nethttp.MethodGet, "/", nil)
 	req.AddCookie(&nethttp.Cookie{Name: auth.CookieName, Value: cookie})
-	claims, ok := r.auth.Claims(req)
+	claims, ok := auth.Verify(rigSecret, cookie, time.Now())
 	if !ok || claims.Method != auth.MethodSAML || claims.Email != "ops@example.com" || claims.UID == "" {
 		t.Fatalf("%+v ok=%v", claims, ok)
 	}
@@ -275,10 +275,11 @@ func TestASAMLAddressOutsideTheAdminListSignsInAsAStandardUser(t *testing.T) {
 	}
 	req := httptest.NewRequest(nethttp.MethodGet, "/", nil)
 	req.AddCookie(&nethttp.Cookie{Name: auth.CookieName, Value: cookie})
-	if info, ok := r.auth.SessionInfo(req); !ok || info.Role != auth.RoleUser {
+	info, ok := r.auth.SessionInfo(req)
+	if !ok || info.Role != auth.RoleUser {
 		t.Fatalf("%+v %v", info, ok)
 	}
-	if u, found, err := r.sq.Store.Users().GetByEmail(context.Background(), "ops@example.com"); err != nil || !found || !u.Provisioned {
+	if u, found, err := r.sq.Store.Users().Get(context.Background(), info.UserID); err != nil || !found || !u.Provisioned {
 		t.Fatalf("%+v %v %v", u, found, err)
 	}
 }

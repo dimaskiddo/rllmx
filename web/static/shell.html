@@ -6,12 +6,13 @@
 <meta name="referrer" content="no-referrer">
 <title>Router-LLM</title>
 <script src="/static/js/theme.js"></script>
+<script src="/static/lib/chart.umd.min.js" defer></script>
 <link rel="stylesheet" href="/static/lib/tabler.min.css">
 <link rel="stylesheet" href="/static/css/theme.css">
 <link rel="stylesheet" href="/static/css/components.css">
 <script type="module" src="/static/js/app.js"></script>
 </head>
-<body x-data="shell" x-cloak>
+<body x-data="shell" x-on:open-password.window="openPassword()" x-cloak>
 <div class="rl-shell">
   <aside class="rl-sidebar">
     <a class="rl-brand" href="/dashboard">Router-LLM</a>
@@ -19,6 +20,14 @@
       <ul class="rl-nav">
         <li><a href="/dashboard/endpoint" x-bind:aria-current="isCurrent('/dashboard/endpoint') ? 'page' : false"><span class="rl-icon" x-icon="key-round"></span><span x-t="nav.endpoint"></span></a></li>
         <li x-show="isAdmin()"><a href="/dashboard/providers" x-bind:aria-current="isCurrent('/dashboard/providers') ? 'page' : false"><span class="rl-icon" x-icon="server"></span><span x-t="nav.providers"></span></a></li>
+        <li x-show="isAdmin()"><a href="/dashboard/combos" x-bind:aria-current="isCurrent('/dashboard/combos') ? 'page' : false"><span class="rl-icon" x-icon="layers"></span><span x-t="nav.combos"></span></a></li>
+        <li><a href="/dashboard/usage" x-bind:aria-current="isCurrent('/dashboard/usage') ? 'page' : false"><span class="rl-icon" x-icon="activity"></span><span x-t="nav.usage"></span></a></li>
+        <li x-show="isAdmin()"><a href="/dashboard/quota" x-bind:aria-current="isCurrent('/dashboard/quota') ? 'page' : false"><span class="rl-icon" x-icon="gauge"></span><span x-t="nav.quota"></span></a></li>
+        <li x-show="isAdmin()"><a href="/dashboard/console-log" x-bind:aria-current="isCurrent('/dashboard/console-log') ? 'page' : false"><span class="rl-icon" x-icon="terminal"></span><span x-t="nav.consoleLog"></span></a></li>
+        <li x-show="isAdmin()"><a href="/dashboard/skills" x-bind:aria-current="isCurrent('/dashboard/skills') ? 'page' : false"><span class="rl-icon" x-icon="wand-sparkles"></span><span x-t="nav.skills"></span></a></li>
+        <li x-show="isAdmin()"><a href="/dashboard/token-saver" x-bind:aria-current="isCurrent('/dashboard/token-saver') ? 'page' : false"><span class="rl-icon" x-icon="piggy-bank"></span><span x-t="nav.tokenSaver"></span></a></li>
+        <li x-show="isAdmin()"><a href="/dashboard/pricing" x-bind:aria-current="isCurrent('/dashboard/pricing') ? 'page' : false"><span class="rl-icon" x-icon="coins"></span><span x-t="nav.pricing"></span></a></li>
+        <li x-show="isAdmin()"><a href="/dashboard/settings" x-bind:aria-current="isCurrent('/dashboard/settings') ? 'page' : false"><span class="rl-icon" x-icon="sliders-horizontal"></span><span x-t="nav.settings"></span></a></li>
       </ul>
     </nav>
   </aside>
@@ -47,7 +56,7 @@
         </div>
       </div>
     </header>
-    <main id="view" class="rl-main"></main>
+    <main id="view" class="rl-main" tabindex="-1"></main>
   </div>
 </div>
 

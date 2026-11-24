@@ -2,5 +2,13 @@
   { "path": "/dashboard", "page": "endpoint" },
   { "path": "/dashboard/endpoint", "page": "endpoint" },
   { "path": "/dashboard/providers", "page": "providers" },
-  { "path": "/dashboard/providers/:id", "page": "provider" }
+  { "path": "/dashboard/providers/:id", "page": "provider" },
+  { "path": "/dashboard/combos", "page": "combos" },
+  { "path": "/dashboard/usage", "page": "usage" },
+  { "path": "/dashboard/quota", "page": "quota" },
+  { "path": "/dashboard/console-log", "page": "console-log" },
+  { "path": "/dashboard/skills", "page": "skills" },
+  { "path": "/dashboard/token-saver", "page": "token-saver" },
+  { "path": "/dashboard/pricing", "page": "pricing" },
+  { "path": "/dashboard/settings", "page": "settings" }
 ]

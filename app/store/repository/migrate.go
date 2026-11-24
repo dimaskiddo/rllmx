@@ -65,7 +65,7 @@ func (s *Store) readCatalog(ctx context.Context) (catalog, error) {
 		return catalog{}, fmt.Errorf("repository: the database does not answer: %w", err)
 	}
 	c := catalog{tables: map[string]bool{}, indexes: map[string]bool{}, columns: map[string]map[string]bool{}}
-	for _, tb := range tables {
+	for _, tb := range allTables() {
 		if !s.hasTable(tb.Name) {
 			continue
 		}
@@ -114,7 +114,7 @@ func (s *Store) computePlan(ctx context.Context) (plan, error) {
 		return plan{}, err
 	}
 	var p plan
-	for _, tb := range tables {
+	for _, tb := range allTables() {
 		if !cat.tables[tb.Name] {
 			p.tables = append(p.tables, tb)
 		} else {
@@ -423,19 +423,6 @@ func (s *Store) repair(ctx context.Context) error {
 	p, err := s.computePlan(ctx)
 	if err != nil {
 		return err
-	}
-	// The plan covers the compatibility set, because a real 9router database
-	// must satisfy it as it is. Our own tables are created unconditionally;
-	// CREATE TABLE IF NOT EXISTS makes that a no-op on a database that has them.
-	for _, tb := range ownTables {
-		if err := s.schema.Sql(createTableSQL(tb, s.dialect)); err != nil {
-			return fmt.Errorf("repository: create table %s: %w", tb.Name, err)
-		}
-		for _, ix := range tb.Indexes {
-			if err := s.schema.Sql(createIndexSQL(tb, ix)); err != nil {
-				return fmt.Errorf("repository: create index %s: %w", ix.Name, err)
-			}
-		}
 	}
 	for _, tb := range p.tables {
 		if err := s.schema.Sql(createTableSQL(tb, s.dialect)); err != nil {

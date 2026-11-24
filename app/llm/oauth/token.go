@@ -39,6 +39,20 @@ type Error struct{ Class Class }
 
 func (e *Error) Error() string { return "oauth: the token call failed: " + string(e.Class) }
 
+// serverError is a token call a provider answered with a 5xx. Its class is the
+// same as any other refusal, but it says nothing about the token itself, which
+// is what a caller deciding to give up on an account needs to tell apart.
+type serverError struct{ cause *Error }
+
+func (e *serverError) Error() string { return e.cause.Error() }
+func (e *serverError) Unwrap() error { return e.cause }
+
+// ProviderDown reports a token call the provider's own failure ended.
+func ProviderDown(err error) bool {
+	var s *serverError
+	return errors.As(err, &s)
+}
+
 // ClassOf returns the class of a token error, or "" for any other error.
 func ClassOf(err error) Class {
 	var e *Error
@@ -145,6 +159,9 @@ func (c *TokenClient) call(ctx context.Context, tokenURL, encoding string, field
 		return Tokens{}, err
 	}
 	if status < 200 || status > 299 {
+		if status >= 500 {
+			return Tokens{}, &serverError{&Error{Classify(raw)}}
+		}
 		return Tokens{}, &Error{Classify(raw)}
 	}
 	return ParseTokens(raw)

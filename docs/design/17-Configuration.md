@@ -70,6 +70,8 @@ No code reads rows marked *planned* yet, so setting one in `.env` fails startup 
 
 Everything the dashboard edits lives in `settings.data` with the reference's defaults. Keys this version does not use are kept. The defaults list is in `this design doc, Settings Keys`.
 
+Two pages write the same allow list: `/dashboard/endpoint` (key guard, response cache, users) and, from 4.3, `/dashboard/settings` (login, single sign-on, routing), `/dashboard/token-saver` and the skills and auto-plan cards. Every write goes through the same `PATCH /api/settings` validation, so no page can store a key another page refuses.
+
 ---
 
 ## Parity: Settings Keys

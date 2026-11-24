@@ -28,9 +28,6 @@ const (
 	MethodSAML     = "saml"
 )
 
-// ErrSessionMalformed is returned for a token this package cannot read.
-var ErrSessionMalformed = errors.New("auth: the session token is not a signed HS256 token")
-
 // Claims is what a session carries.
 type Claims struct {
 	Authenticated bool   `json:"authenticated"`

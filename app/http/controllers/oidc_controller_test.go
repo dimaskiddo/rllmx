@@ -358,7 +358,7 @@ func TestTheSessionFromAProviderCarriesItsMethod(t *testing.T) {
 	}
 	req := httptest.NewRequest(nethttp.MethodGet, "/", nil)
 	req.AddCookie(&nethttp.Cookie{Name: auth.CookieName, Value: cookie})
-	claims, ok := r.auth.Claims(req)
+	claims, ok := auth.Verify(rigSecret, cookie, time.Now())
 	if !ok || claims.Method != auth.MethodOIDC || claims.Email != "ops@example.com" || claims.UID == "" {
 		t.Fatalf("%+v ok=%v", claims, ok)
 	}
@@ -380,7 +380,7 @@ func TestAnAddressOutsideTheAdminListSignsInAsAStandardUser(t *testing.T) {
 	if !ok || info.Role != auth.RoleUser || info.UserID == "" {
 		t.Fatalf("%+v %v", info, ok)
 	}
-	u, found, err := r.sq.Store.Users().GetByEmail(contextBackground(), "ops@example.com")
+	u, found, err := r.sq.Store.Users().Get(contextBackground(), info.UserID)
 	if err != nil || !found {
 		t.Fatalf("%+v %v %v", u, found, err)
 	}

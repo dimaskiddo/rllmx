@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/binary"
+	"sync"
 	"time"
 
 	"rllmx/app/store/repository"
@@ -14,6 +15,35 @@ const (
 	FirstPass = 10 * time.Second
 	PassEvery = 5 * time.Minute
 )
+
+// rejectLimit is how many renewals in a row a provider may refuse with a plain
+// rejection before the account is called expired. One refusal can be a hiccup;
+// the same answer every five minutes is a token that will never work again.
+const rejectLimit = 3
+
+// rejectCount counts consecutive rejected renewals per account. It lives in
+// memory: a restart gives an account three more tries, which costs nothing.
+type rejectCount struct {
+	mu sync.Mutex
+	n  map[string]int
+}
+
+// add records one rejection and returns how many in a row there are now.
+func (c *rejectCount) add(id string) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.n == nil {
+		c.n = make(map[string]int)
+	}
+	c.n[id]++
+	return c.n[id]
+}
+
+func (c *rejectCount) clear(id string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.n, id)
+}
 
 // due picks the accounts a pass renews: active, readable, not expired, with a
 // refresh token and a known expiry within the flow's lead time or half an
@@ -76,11 +106,32 @@ func (r *Refresher) Pass(ctx context.Context, gap time.Duration) int {
 		pause = r.gapAfter(c, gap)
 		if _, err := r.Refresh(ctx, c.ID, ""); err != nil {
 			r.warn("oauth: the background renewal of a %s account failed: %s", c.Provider, reason(err))
+			r.expireIfRefused(ctx, st, c, err)
 			continue
 		}
+		r.rejects.clear(c.ID)
 		renewed++
 	}
 	return renewed
+}
+
+// expireIfRefused marks an account expired once its renewals have been rejected
+// rejectLimit times running, so the dashboard asks for a reconnect and the pass
+// stops calling a provider that will not answer differently. Any other failure
+// leaves the count alone: an outage says nothing about the token.
+func (r *Refresher) expireIfRefused(ctx context.Context, st Store, c repository.Connection, err error) {
+	if ClassOf(err) != ClassRejected || ProviderDown(err) {
+		return
+	}
+	if r.rejects.add(c.ID) < rejectLimit {
+		return
+	}
+	rt, _ := c.Doc().GetString("refreshToken")
+	if _, merr := st.MarkExpired(ctx, c.ID, rt, ReconnectMessage, r.now()); merr != nil {
+		r.warn("oauth: a %s account could not be marked as needing a reconnect", c.Provider)
+		return
+	}
+	r.rejects.clear(c.ID)
 }
 
 // MaxSlowJitter is the most random time added to the pause after a slow

@@ -196,3 +196,45 @@ func TestTheSkillsRoutesNeedASession(t *testing.T) {
 		}
 	}
 }
+
+func TestTheSkillsListCarriesTheStoredConfigValues(t *testing.T) {
+	m := newMgmtRig(t)
+	seededSettings(t, m)
+	root := t.TempDir()
+	for name, body := range map[string]string{
+		"tuned/manifest.json": `{"id":"tuned","name":"Tuned","description":"d","hook":"system-prompt","config_schema":[` +
+			`{"key":"level","type":"enum","default":"full","options":[{"value":"lite"},{"value":"full"}]},` +
+			`{"key":"scale","type":"slider","default":3,"min":1,"max":10,"legacy_key":"tunedScaleLegacy"},` +
+			`{"key":"loud","type":"toggle","default":false},` +
+			`{"key":"untouched","type":"text","default":"x"}]}`,
+		"tuned/prompt.txt": "{level}",
+	} {
+		p := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := m.st.Store.Settings().Patch(context.Background(), map[string]string{
+		"tuned_level": `"lite"`, "tunedScaleLegacy": `7`, "tuned_loud": `true`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	c := &SkillsController{DB: func() *repository.Store { return m.st.Store }, Reg: skill.NewRegistry(root, nil), Dir: t.TempDir()}
+	skillsRoutes(m, c)
+	code, out, raw := m.call(nethttp.MethodGet, "/api/skills", "", true)
+	if code != 200 {
+		t.Fatalf("%d %s", code, raw)
+	}
+	list, _ := out["skills"].([]any)
+	row, _ := list[0].(map[string]any)
+	values, _ := row["values"].(map[string]any)
+	if values["level"] != "lite" || values["scale"] != float64(7) || values["loud"] != true {
+		t.Fatalf("values %v", row["values"])
+	}
+	if _, set := values["untouched"]; set {
+		t.Fatalf("a field nobody set carries a value: %v", values)
+	}
+}

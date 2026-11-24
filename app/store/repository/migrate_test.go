@@ -720,3 +720,47 @@ func TestDumpTablesCarriesTheDDL(t *testing.T) {
 		t.Fatal("a table that was created was not reported")
 	}
 }
+
+// A database opened before the user tables existed has everything else, so its
+// plan must still ask for them: the server logged "no such table" on every key
+// list because the plan once covered only the compatibility set.
+func TestADatabaseWithoutTheUserTablesGainsThem(t *testing.T) {
+	for name, strip := range map[string][]string{
+		"never created":     {`DROP TABLE "userKeys"`, `DROP TABLE "users"`, `DELETE FROM "migrations" WHERE "migration" LIKE '%users_table' OR "migration" LIKE '%userKeys_table'`},
+		"dropped afterward": {`DROP TABLE "userKeys"`, `DROP TABLE "users"`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := newMigrated(t)
+			for _, stmt := range strip {
+				s.exec(t, stmt)
+			}
+			file := s.SQ.File
+			s.SQ.Close()
+
+			s2 := reopen(t, file, tests.DBSecret)
+			ctx := context.Background()
+			if need, err := s2.NeedsMigration(ctx); err != nil || !need {
+				t.Fatalf("NeedsMigration = %v, %v", need, err)
+			}
+			if err := s2.Verify(ctx); !errors.Is(err, ErrNeedsMigration) {
+				t.Fatalf("Verify = %v", err)
+			}
+			if _, err := s2.Migrate(ctx); err != nil {
+				t.Fatal(err)
+			}
+			for _, tb := range ownTables {
+				if !s2.hasTable(tb.Name) {
+					t.Errorf("%s is still missing", tb.Name)
+				}
+				for _, ix := range tb.Indexes {
+					if !s2.hasIndex(t, tb.Name, ix.Name) {
+						t.Errorf("index %s is still missing", ix.Name)
+					}
+				}
+			}
+			if _, err := s2.Users().Owners(ctx); err != nil {
+				t.Fatalf("the user tables do not answer: %v", err)
+			}
+		})
+	}
+}

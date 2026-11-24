@@ -1,6 +1,8 @@
 package http
 
 import (
+	"context"
+	"errors"
 	nethttp "net/http"
 	"strings"
 	"testing"
@@ -93,6 +95,37 @@ func TestTheAdminStillReachesEveryRoute(t *testing.T) {
 	for _, path := range []string{"/api/prot", "/api/always"} {
 		if rec := s.call(remotePeer, "GET", path, nil); rec.Code != 200 {
 			t.Errorf("%s = %d", path, rec.Code)
+		}
+	}
+}
+
+type keyLister struct {
+	keys []string
+	err  error
+}
+
+func (k keyLister) KeysOf(context.Context, string) ([]string, error) { return k.keys, k.err }
+
+func TestScopedKeysSaysWhoSeesWhat(t *testing.T) {
+	cases := []struct {
+		name    string
+		session *auth.Session
+		lister  KeyLister
+		scoped  bool
+		want    []string
+		failed  bool
+	}{
+		{"no session is the admin", nil, nil, false, nil, false},
+		{"an admin is not narrowed", &auth.Session{Role: auth.RoleAdmin}, nil, false, nil, false},
+		{"a user with no keys has none, never nil", &auth.Session{Role: auth.RoleUser, UserID: "u1"}, keyLister{}, true, []string{}, false},
+		{"a user has their keys", &auth.Session{Role: auth.RoleUser, UserID: "u1"}, keyLister{keys: []string{"a"}}, true, []string{"a"}, false},
+		{"a read failure is a failure", &auth.Session{Role: auth.RoleUser, UserID: "u1"}, keyLister{err: errors.New("x")}, true, nil, true},
+		{"a user with no list has none", &auth.Session{Role: auth.RoleUser, UserID: "u1"}, nil, true, []string{}, false},
+	}
+	for _, c := range cases {
+		keys, scoped, err := ScopedKeys(context.Background(), c.session, c.lister)
+		if scoped != c.scoped || (err != nil) != c.failed || (keys == nil) != (c.want == nil) || len(keys) != len(c.want) {
+			t.Errorf("%s: keys=%v scoped=%v err=%v", c.name, keys, scoped, err)
 		}
 	}
 }

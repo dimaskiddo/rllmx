@@ -625,3 +625,55 @@ func TestTheCommonGapIsKeptWhenNoSlowGapIsSet(t *testing.T) {
 		t.Fatalf("%v", g.waits)
 	}
 }
+
+func TestAnAccountTheProviderKeepsRejectingIsMarkedExpired(t *testing.T) {
+	g := newRenewRig(t, func(int, string) (int, string) { return 400, `{"error":"nope"}` })
+	c := dueClaude(g, t)
+	for pass := 1; pass <= 2; pass++ {
+		g.r.Pass(context.Background(), 0)
+		if status, _ := g.reload(t, c.ID).GetString("testStatus"); status == repository.StatusExpired {
+			t.Fatalf("expired after %d rejected passes", pass)
+		}
+	}
+	g.r.Pass(context.Background(), 0)
+	d := g.reload(t, c.ID)
+	if status, _ := d.GetString("testStatus"); status != repository.StatusExpired {
+		t.Fatalf("still %q after three rejected passes", status)
+	}
+	if msg, _ := d.GetString("lastError"); msg != oauth.ReconnectMessage {
+		t.Fatalf("lastError %q", msg)
+	}
+	calls := g.end.calls.Load()
+	g.r.Pass(context.Background(), 0)
+	if g.end.calls.Load() != calls {
+		t.Fatal("the pass kept calling the provider for an expired account")
+	}
+}
+
+func TestARenewalThatSucceedsClearsTheRejectCount(t *testing.T) {
+	// Two rejections, a success, two more rejections: four in all, never three in a row.
+	g := newRenewRig(t, func(call int, body string) (int, string) {
+		if call == 3 {
+			return good(call, body)
+		}
+		return 400, `{"error":"nope"}`
+	})
+	c := dueClaude(g, t)
+	for range 5 {
+		g.r.Pass(context.Background(), 0)
+	}
+	if status, _ := g.reload(t, c.ID).GetString("testStatus"); status == repository.StatusExpired {
+		t.Fatal("a success did not clear the count")
+	}
+}
+
+func TestATransportFailureNeverExpiresAnAccount(t *testing.T) {
+	g := newRenewRig(t, func(int, string) (int, string) { return 500, `down` })
+	c := dueClaude(g, t)
+	for range 5 {
+		g.r.Pass(context.Background(), 0)
+	}
+	if status, _ := g.reload(t, c.ID).GetString("testStatus"); status == repository.StatusExpired {
+		t.Fatal("an outage expired the account")
+	}
+}

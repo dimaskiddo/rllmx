@@ -64,6 +64,7 @@ type settingsView struct {
 	SAMLAttributeName  string `json:"samlAttributeName"`
 
 	ComboStrategy              string          `json:"comboStrategy"`
+	FallbackStrategy           string          `json:"fallbackStrategy"`
 	ComboStrategies            json.RawMessage `json:"comboStrategies"`
 	ComboStickyRoundRobinLimit int             `json:"comboStickyRoundRobinLimit"`
 	StickyRoundRobinLimit      int             `json:"stickyRoundRobinLimit"`
@@ -197,6 +198,7 @@ func (c *SettingsController) view(d document.Doc) settingsView {
 		SAMLAttributeEmail:           d.Str("samlAttributeEmail", "email"),
 		SAMLAttributeName:            d.Str("samlAttributeName", "name"),
 		ComboStrategy:                d.Str("comboStrategy", combo.DefaultStrategy),
+		FallbackStrategy:             account.Strategy(d.Str("fallbackStrategy", "fill-first")),
 		ComboStrategies:              rawObject(d, "comboStrategies", "{}"),
 		ComboStickyRoundRobinLimit:   d.Int("comboStickyRoundRobinLimit", 1),
 		StickyRoundRobinLimit:        d.Int("stickyRoundRobinLimit", 3),
@@ -285,6 +287,7 @@ var settingsRules = map[string]settingRule{
 	"samlAttributeEmail":              textRule(128),
 	"samlAttributeName":               textRule(128),
 	"comboStrategy":                   enumRule(combo.StrategyFallback, combo.StrategyRoundRobin, combo.StrategySmart, combo.StrategyFusion),
+	"fallbackStrategy":                strategyRule,
 	"comboStickyRoundRobinLimit":      intRule(1, 1000),
 	"stickyRoundRobinLimit":           intRule(1, 100),
 	"comboStrategies":                 comboStrategiesRule,
@@ -303,7 +306,7 @@ var settingsRules = map[string]settingRule{
 	"ponytailLevel":                   enumRule("lite", "full", "ultra"),
 	"ponytailRoutingMode":             enumRule("smart", "always"),
 	"customPromptEnabled":             boolRule,
-	"customPrompt":                    textRule(4000),
+	"customPrompt":                    multilineRule(4000),
 	"autoPlanEnabled":                 boolRule,
 	"autoPlanMode":                    enumRule("auto", "manual"),
 	"autoPlanComboId":                 textRule(128),
@@ -521,6 +524,20 @@ func intRule(min, max int) settingRule {
 	}
 }
 
+// strategyRule accepts the two account strategies the selector acts on. A combo
+// word stored here would save and behave as fill-first.
+func strategyRule(raw json.RawMessage) (string, string) {
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return "", "must be a string"
+	}
+	if !account.KnownStrategy(s) {
+		return "", "must be fill-first or round-robin"
+	}
+	out, _ := json.Marshal(s)
+	return string(out), ""
+}
+
 func enumRule(values ...string) settingRule {
 	return func(raw json.RawMessage) (string, string) {
 		var s string
@@ -547,6 +564,25 @@ func textRule(max int) settingRule {
 			return "", "is too long"
 		}
 		if text.HasControl(s) {
+			return "", "has a control character"
+		}
+		out, _ := json.Marshal(s)
+		return string(out), ""
+	}
+}
+
+// multilineRule is textRule for a block of prose: it keeps line breaks and tabs
+// and refuses every other control character.
+func multilineRule(max int) settingRule {
+	return func(raw json.RawMessage) (string, string) {
+		var s string
+		if err := json.Unmarshal(raw, &s); err != nil {
+			return "", "must be a string"
+		}
+		if len(s) > max {
+			return "", "is too long"
+		}
+		if !onlyNewlines(s) || strings.ContainsFunc(s, func(r rune) bool { return r >= 0x7f && r < 0xa0 }) {
 			return "", "has a control character"
 		}
 		out, _ := json.Marshal(s)

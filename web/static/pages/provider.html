@@ -161,8 +161,8 @@
       <p class="rl-error" x-show="overrides.error" x-text="overrides.error"></p>
       <template x-for="(row, index) in overrides.rows" x-bind:key="index">
         <div class="rl-inline">
-          <input class="form-control" x-bind:value="row.name" x-on:input="setHeader(index, 'name', $event)" x-bind:placeholder="label('overrides.name')">
-          <input class="form-control" x-bind:value="row.value" x-on:input="setHeader(index, 'value', $event)" x-bind:placeholder="label('overrides.value')">
+          <input class="form-control" x-bind:aria-label="label('overrides.name')" x-bind:value="row.name" x-on:input="setHeader(index, 'name', $event)" x-bind:placeholder="label('overrides.name')">
+          <input class="form-control" x-bind:aria-label="label('overrides.value')" x-bind:value="row.value" x-on:input="setHeader(index, 'value', $event)" x-bind:placeholder="label('overrides.value')">
           <button type="button" class="btn btn-sm btn-ghost" x-on:click="removeHeaderRow(index)" x-tip="common.remove"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.remove"></span></button>
         </div>
       </template>
@@ -214,8 +214,8 @@
         <p class="rl-hint" x-t="provider.extraHint"></p>
         <template x-for="(row, index) in add.psd" x-bind:key="index">
           <div class="rl-inline">
-            <input class="form-control" x-bind:value="row.key" x-on:input="setAddPsd(index, 'key', $event)" x-bind:placeholder="label('provider.extraKey')">
-            <input class="form-control" x-bind:value="row.value" x-on:input="setAddPsd(index, 'value', $event)" x-bind:placeholder="label('provider.extraValue')">
+            <input class="form-control" x-bind:aria-label="label('provider.extraKey')" x-bind:value="row.key" x-on:input="setAddPsd(index, 'key', $event)" x-bind:placeholder="label('provider.extraKey')">
+            <input class="form-control" x-bind:aria-label="label('provider.extraValue')" x-bind:value="row.value" x-on:input="setAddPsd(index, 'value', $event)" x-bind:placeholder="label('provider.extraValue')">
             <button type="button" class="btn btn-sm btn-ghost" x-on:click="removeAddPsd(index)" x-tip="common.remove"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.remove"></span></button>
           </div>
         </template>
@@ -239,9 +239,9 @@
     <form x-on:submit.prevent="runBulk()">
       <h2 id="dlg-bulkDlg-title" x-t="provider.bulkTitle"></h2>
       <p class="rl-hint" x-t="provider.bulkHint"></p>
-      <textarea class="form-control" rows="8" x-bind:value="bulk.text" x-on:input="setField('bulk.text', $event)"></textarea>
+      <textarea class="form-control" rows="8" x-bind:aria-label="label('provider.bulkTitle')" x-bind:value="bulk.text" x-on:input="setField('bulk.text', $event)"></textarea>
       <p class="rl-error" x-show="bulk.error" x-text="bulk.error"></p>
-      <div x-show="bulk.results">
+      <div x-show="bulk.results" class="rl-table-wrap">
         <table class="table">
           <thead><tr><th x-t="provider.name"></th><th x-t="provider.bulkResult"></th></tr></thead>
           <tbody>
@@ -288,8 +288,8 @@
         <p class="rl-hint" x-t="provider.extraHint"></p>
         <template x-for="(row, index) in (edit ? edit.psd : [])" x-bind:key="index">
           <div class="rl-inline">
-            <input class="form-control" x-bind:value="row.key" x-bind:readonly="row.readonly" x-on:input="setEditPsd(index, 'key', $event)" x-bind:placeholder="label('provider.extraKey')">
-            <input class="form-control" x-bind:value="row.readonly ? label('provider.extraReadonly') : row.value" x-bind:readonly="row.readonly" x-on:input="setEditPsd(index, 'value', $event)" x-bind:placeholder="label('provider.extraValue')">
+            <input class="form-control" x-bind:aria-label="label('provider.extraKey')" x-bind:value="row.key" x-bind:readonly="row.readonly" x-on:input="setEditPsd(index, 'key', $event)" x-bind:placeholder="label('provider.extraKey')">
+            <input class="form-control" x-bind:aria-label="label('provider.extraValue')" x-bind:value="row.readonly ? label('provider.extraReadonly') : row.value" x-bind:readonly="row.readonly" x-on:input="setEditPsd(index, 'value', $event)" x-bind:placeholder="label('provider.extraValue')">
             <button type="button" class="btn btn-sm btn-ghost" x-bind:disabled="row.readonly" x-on:click="removeEditPsd(index)" x-tip="common.remove"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.remove"></span></button>
           </div>
         </template>
@@ -444,7 +444,7 @@
 
     <div x-show="login.kind === 'bulk'">
       <p class="rl-hint" x-t="provider.bulkImportHint"></p>
-      <textarea class="form-control" rows="8" x-bind:value="login.bulk" x-on:input="setField('login.bulk', $event)"></textarea>
+      <textarea class="form-control" rows="8" x-bind:aria-label="label('provider.bulkImport')" x-bind:value="login.bulk" x-on:input="setField('login.bulk', $event)"></textarea>
       <div class="rl-inline">
         <button type="button" class="btn btn-primary" x-bind:disabled="login.busy" x-on:click="bulkImport()" x-t="provider.bulkImport"></button>
       </div>

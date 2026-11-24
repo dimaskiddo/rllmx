@@ -1,0 +1,93 @@
+<section x-data="quotaPage">
+  <div class="rl-page-head">
+    <h1 class="rl-page-title" x-t="quota.title"></h1>
+  </div>
+  <p class="text-secondary" x-t="quota.hint"></p>
+  <p class="rl-error" x-show="error" x-text="error"></p>
+
+  <div class="rl-toolbar">
+    <select class="form-select form-select-sm" x-bind:aria-label="label('quota.provider')" x-bind:value="provider" x-on:change="setProvider($event)">
+      <option value="all" x-t="quota.allProviders"></option>
+      <template x-for="name in providerOptions" x-bind:key="name">
+        <option x-bind:value="name" x-text="name"></option>
+      </template>
+    </select>
+    <select class="form-select form-select-sm" x-bind:aria-label="label('quota.status')" x-bind:value="accountStatus" x-on:change="setStatus($event)">
+      <option value="all" x-t="quota.allStatus"></option>
+      <option value="active" x-t="quota.activeOnly"></option>
+      <option value="inactive" x-t="quota.inactiveOnly"></option>
+    </select>
+    <select class="form-select form-select-sm" x-bind:aria-label="label('quota.pageSize')" x-bind:value="pagination.pageSize" x-on:change="setPageSize($event)">
+      <option value="10" x-t="quota.perPage"></option>
+      <option value="20">20</option>
+      <option value="50">50</option>
+      <option value="100">100</option>
+    </select>
+    <div class="form-check form-switch rl-switch">
+      <input class="form-check-input" type="checkbox" id="quota-auto" role="switch" x-bind:checked="autoRefresh" x-on:change="toggleAuto($event)">
+      <label class="form-check-label" for="quota-auto" x-text="label('quota.autoRefresh') + ' (' + countdown + 's)'"></label>
+    </div>
+    <button type="button" class="btn btn-sm" x-on:click="refreshAll()"><span class="rl-icon" x-icon="refresh-cw"></span><span x-t="quota.refreshAll"></span></button>
+  </div>
+
+  <p class="text-secondary" x-show="loading" x-t="common.loading"></p>
+  <p class="rl-hint" x-show="!loading && connections.length === 0" x-t="quota.empty"></p>
+
+  <template x-for="conn in connections" x-bind:key="conn.id">
+    <section class="card">
+      <div class="card-header rl-card-head">
+        <h2 class="rl-card-title"><span x-text="connectionName(conn)"></span> <span class="badge" x-text="conn.provider"></span> <span class="badge" x-show="conn.isActive !== true" x-t="quota.inactive"></span></h2>
+        <div class="rl-list-actions">
+          <button type="button" class="btn btn-sm btn-ghost" x-on:click="read(conn, true)" x-tip="quota.refresh"><span class="rl-icon" x-icon="refresh-cw"></span><span class="visually-hidden" x-t="quota.refresh"></span></button>
+          <button type="button" class="btn btn-sm btn-ghost" x-show="conn.isActive === true" x-on:click="toggleActive(conn)" x-tip="quota.deactivate"><span class="rl-icon" x-icon="pause"></span><span class="visually-hidden" x-t="quota.deactivate"></span></button>
+          <button type="button" class="btn btn-sm btn-ghost" x-show="conn.isActive !== true" x-on:click="toggleActive(conn)" x-tip="quota.activate"><span class="rl-icon" x-icon="play"></span><span class="visually-hidden" x-t="quota.activate"></span></button>
+          <button type="button" class="btn btn-sm btn-ghost-danger" x-show="canReset(conn)" x-bind:disabled="resetting[conn.id] === true" x-on:click="reset(conn)" x-tip="quota.reset"><span class="rl-icon" x-icon="gauge"></span><span x-text="resetCredits(conn)"></span><span class="visually-hidden" x-t="quota.reset"></span></button>
+        </div>
+      </div>
+      <div class="card-body">
+        <p class="text-secondary" x-show="readings[conn.id] && readings[conn.id].loading" x-t="common.loading"></p>
+        <p class="rl-error" x-show="readings[conn.id] && readings[conn.id].error" x-text="readings[conn.id] ? readings[conn.id].error : ''"></p>
+        <p class="rl-hint" x-show="readings[conn.id] && readings[conn.id].message" x-text="readings[conn.id] ? readings[conn.id].message : ''"></p>
+        <p class="text-secondary" x-show="readings[conn.id] && !readings[conn.id].loading && rows(conn).length === 0 && !readings[conn.id].error && !readings[conn.id].message" x-t="quota.noRows"></p>
+
+        <div class="rl-table-wrap" x-show="rows(conn).length > 0">
+          <table class="table table-sm">
+            <caption class="visually-hidden" x-text="connectionName(conn)"></caption>
+            <thead>
+              <tr>
+                <th scope="col" x-t="quota.limit"></th>
+                <th scope="col" x-t="quota.remaining"></th>
+                <th scope="col" class="text-end" x-t="quota.used"></th>
+                <th scope="col" x-t="quota.resetAt"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="row in shown(conn)" x-bind:key="row.key">
+                <tr>
+                  <td x-text="row.name"></td>
+                  <td>
+                    <progress class="rl-meter" max="100" x-bind:value="row.percent" x-bind:data-level="level(row)" x-bind:aria-label="row.percent + '%'"></progress>
+                    <span class="text-secondary" x-text="row.percent + '%'"></span>
+                  </td>
+                  <td class="text-end" x-text="amount(row)"></td>
+                  <td x-text="resetText(row)"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+        <div class="rl-toolbar" x-show="quotaPages(conn) > 1">
+          <button type="button" class="btn btn-sm" x-bind:disabled="quotaPage(conn) <= 1" x-on:click="turnPage(conn, -1)" x-t="quota.prev"></button>
+          <span class="text-secondary" x-text="quotaPage(conn) + ' / ' + quotaPages(conn)"></span>
+          <button type="button" class="btn btn-sm" x-bind:disabled="quotaPage(conn) >= quotaPages(conn)" x-on:click="turnPage(conn, 1)" x-t="quota.next"></button>
+        </div>
+      </div>
+    </section>
+  </template>
+
+  <div class="rl-toolbar" x-show="pagination.totalPages > 1">
+    <button type="button" class="btn btn-sm" x-bind:disabled="pagination.page <= 1" x-on:click="turnClientPage(-1)" x-t="quota.prev"></button>
+    <span class="text-secondary" x-text="pagination.page + ' / ' + pagination.totalPages"></span>
+    <button type="button" class="btn btn-sm" x-bind:disabled="pagination.page >= pagination.totalPages" x-on:click="turnClientPage(1)" x-t="quota.next"></button>
+  </div>
+</section>

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sync"
 	"testing"
 
 	"rllmx/app/store/repository"
@@ -38,15 +39,6 @@ func TestAUserRoundTripsThroughItsTable(t *testing.T) {
 	}
 	if got.Username != "Dimas" || got.Email != "dimas@example.com" || got.Hash != "hash-u1" || got.CreatedAt == "" {
 		t.Fatalf("%+v", got)
-	}
-	if _, ok, _ := r.ByUsername(ctx, "dimas"); !ok {
-		t.Fatal("a username lookup ignored case")
-	}
-	if _, ok, _ := r.ByEmail(ctx, "DIMAS@example.com"); !ok {
-		t.Fatal("an email lookup ignored case")
-	}
-	if _, ok, _ := r.ByUsername(ctx, "nobody"); ok {
-		t.Fatal("an unknown username was found")
 	}
 }
 
@@ -145,8 +137,8 @@ func TestAKeyAssignmentIsCountedAndCleared(t *testing.T) {
 	if err := r.SetOwner(ctx, "k3", "u2"); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := r.OwnerOf(ctx, "k1"); got != "u1" {
-		t.Fatalf("owner %q", got)
+	if owners, _ := r.Owners(ctx); owners["k1"] != "u1" {
+		t.Fatalf("owner %q", owners["k1"])
 	}
 	keys, err := r.KeysOf(ctx, "u1")
 	if err != nil || len(keys) != 2 || keys[0] != "k1" || keys[1] != "k2" {
@@ -155,8 +147,8 @@ func TestAKeyAssignmentIsCountedAndCleared(t *testing.T) {
 	if err := r.SetOwner(ctx, "k1", ""); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := r.OwnerOf(ctx, "k1"); got != "" {
-		t.Fatalf("a cleared assignment still names %q", got)
+	if owners, _ := r.Owners(ctx); owners["k1"] != "" {
+		t.Fatalf("a cleared assignment still names %q", owners["k1"])
 	}
 	if err := r.SetOwner(ctx, "k9", "nobody"); !errors.Is(err, ErrUserMissing) {
 		t.Fatalf("%v, want ErrUserMissing", err)
@@ -180,8 +172,8 @@ func TestDeletingAUserKeepsTheKeys(t *testing.T) {
 	if _, ok, _ := r.Get(ctx, "u1"); ok {
 		t.Fatal("the user survived the delete")
 	}
-	if got, _ := r.OwnerOf(ctx, key.ID); got != "" {
-		t.Fatalf("the key still belongs to %q", got)
+	if owners, _ := r.Owners(ctx); owners[key.ID] != "" {
+		t.Fatalf("the key still belongs to %q", owners[key.ID])
 	}
 	if _, found, _ := db.Store.APIKeys().GetByID(ctx, key.ID); !found {
 		t.Fatal("deleting a user deleted their key")
@@ -195,12 +187,12 @@ func TestTheUserSnapshotFollowsAWrite(t *testing.T) {
 	r, _ := newUsers(t)
 	users := NewUsers(r)
 	ctx := context.Background()
-	if users.Any(ctx) {
+	if len(users.All(ctx)) != 0 {
 		t.Fatal("an empty table reports a user")
 	}
 	addUser(t, r, "u1", "Dimas", "dimas@example.com")
 	users.Changed()
-	if !users.Any(ctx) {
+	if len(users.All(ctx)) != 1 {
 		t.Fatal("the cache did not see the new user")
 	}
 	if u, ok := users.ByUsername(ctx, "DIMAS"); !ok || u.ID != "u1" {
@@ -213,7 +205,7 @@ func TestTheUserSnapshotFollowsAWrite(t *testing.T) {
 		t.Fatal("an unknown id was found")
 	}
 	var none *Users
-	if none.Any(ctx) || none.All(ctx) != nil {
+	if none.All(ctx) != nil {
 		t.Fatal("a nil user list answered")
 	}
 }
@@ -254,5 +246,27 @@ func TestNewUserPasswordIsAStrongURLSafeSecret(t *testing.T) {
 			t.Fatalf("%q was drawn twice", secret)
 		}
 		seen[secret] = true
+	}
+}
+
+func TestParallelFirstSignInsNeverExceedTheCap(t *testing.T) {
+	r, _ := newUsers(t)
+	ctx := context.Background()
+	r.limit = 3
+	var wg sync.WaitGroup
+	for i := range 12 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = r.Put(ctx, User{ID: fmt.Sprintf("p%d", i), Username: fmt.Sprintf("Par %d", i), Hash: "h"})
+		}()
+	}
+	wg.Wait()
+	users, err := r.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(users) > 3 {
+		t.Fatalf("%d users stored, the cap is 3", len(users))
 	}
 }

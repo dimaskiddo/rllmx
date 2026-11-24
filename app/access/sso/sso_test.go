@@ -70,8 +70,8 @@ func TestCleanURLJoinsWithOneSlash(t *testing.T) {
 }
 
 func TestLoginURLUsesAFixedCode(t *testing.T) {
-	got := LoginURL("https://gw.example.com", CodeNotAllowed)
-	if got != "https://gw.example.com/login?error=sso_not_allowed" {
+	got := LoginURL("https://gw.example.com", CodeNoAccount)
+	if got != "https://gw.example.com/login?error=sso_no_account" {
 		t.Fatalf("%q", got)
 	}
 }
@@ -241,13 +241,10 @@ func TestStartingAndFinishingFlowsDoesNotGrowTheQueue(t *testing.T) {
 
 func TestParseAdmins(t *testing.T) {
 	none := ParseAdmins("")
-	if none.Len() != 0 || none.IsAdmin("anyone@anywhere.test", false) {
+	if none.IsAdmin("anyone@anywhere.test", false) {
 		t.Fatal("an empty list named an admin")
 	}
 	list := ParseAdmins(" Ops@Example.com , @Corp.example , ")
-	if list.Len() != 2 {
-		t.Fatalf("len %d", list.Len())
-	}
 	if !list.IsAdmin("ops@example.com", false) {
 		t.Fatal("an exact entry was not the admin")
 	}
@@ -265,15 +262,6 @@ func TestParseAdmins(t *testing.T) {
 	}
 	if list.IsAdmin("", false) {
 		t.Fatal("an empty address was made the admin")
-	}
-}
-
-func TestHasMatchesAnExactItem(t *testing.T) {
-	if !Has("openid, profile,email", "profile") {
-		t.Fatal("an exact item was not found")
-	}
-	if Has("openid,profile", "pro") {
-		t.Fatal("a prefix matched")
 	}
 }
 

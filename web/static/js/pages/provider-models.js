@@ -209,14 +209,13 @@ export const modelMethods = {
   },
 
   openModelAdd() {
-    this.modelAdd = { open: true, id: "", name: "", vision: false, reasoning: false, error: "", busy: false };
+    this.modelAdd = { id: "", name: "", vision: false, reasoning: false, error: "", busy: false };
     this.$refs.modelDlg.showModal();
     this.$refs.modelId.focus();
   },
 
   closeModelAdd() {
     this.$refs.modelDlg.close();
-    this.modelAdd.open = false;
   },
 
   toggleModelVision() {

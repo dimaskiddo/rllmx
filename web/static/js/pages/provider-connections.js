@@ -15,11 +15,15 @@ function sleep(ms) {
 
 export const connectionMethods = {
   async reloadConnections() {
-    const providers = await api("/api/providers");
-    this.connections = (providers.connections || []).filter((c) => c.provider === this.id);
-    this.pruneSelection();
-    // A test or a request may have just locked a connection.
-    this.startTimer();
+    try {
+      const providers = await api("/api/providers");
+      this.connections = (providers.connections || []).filter((c) => c.provider === this.id);
+      this.pruneSelection();
+      // A test or a request may have just locked a connection.
+      this.startTimer();
+    } catch (err) {
+      toast().error(err.message);
+    }
   },
 
   pruneSelection() {
@@ -109,11 +113,6 @@ export const connectionMethods = {
     }
   },
 
-  closeResults() {
-    this.$refs.resultsDlg.close();
-    this.results = null;
-  },
-
   async remove(conn) {
     const yes = await ask({ title: t("provider.deleteTitle"), message: t("provider.deleteBody"), confirm: t("common.delete") });
     if (!yes) {
@@ -186,7 +185,7 @@ export const connectionMethods = {
 
   openAddKey() {
     this.add = {
-      open: true, name: "", key: "", defaultModel: "", priority: "1", region: "",
+      name: "", key: "", defaultModel: "", priority: "1", region: "",
       psd: [], check: null, checking: false, busy: false, error: "",
     };
     this.$refs.addDlg.showModal();
@@ -195,7 +194,6 @@ export const connectionMethods = {
 
   closeAddKey() {
     this.$refs.addDlg.close();
-    this.add.open = false;
   },
 
   // The dialogs below are closed by Escape as well as by their buttons, so a
@@ -393,13 +391,12 @@ export const connectionMethods = {
   },
 
   openBulk() {
-    this.bulk = { open: true, text: "", results: null, busy: false, error: "" };
+    this.bulk = { text: "", results: null, busy: false, error: "" };
     this.$refs.bulkDlg.showModal();
   },
 
   closeBulk() {
     this.$refs.bulkDlg.close();
-    this.bulk.open = false;
   },
 
   async runBulk() {

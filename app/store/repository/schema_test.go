@@ -180,7 +180,6 @@ func TestOwnTablesAreCreatedBesideTheCompatibilitySet(t *testing.T) {
 			t.Errorf("%s is missing after migration", tb.Name)
 		}
 	}
-	// The compatibility plan stays the measure of an imported database.
 	p, err := s.computePlan(context.Background())
 	if err != nil || !p.empty() {
 		t.Fatalf("%v %+v", err, p)

@@ -114,18 +114,24 @@ func budgetOf(all map[string]quota.Limit, id string) *quota.Limit {
 func (c *KeysController) store() *repository.Store { return storeOf(c.DB) }
 
 // owned is the set of keys a standard user may touch. A nil set means every key,
-// which is the admin and every caller the guard did not mark.
+// which is the admin and every caller the guard did not mark. A user with no
+// user list owns nothing, so every key reads as someone else's.
 func (c *KeysController) owned(ctx contractshttp.Context) (map[string]bool, contractshttp.Response, bool) {
 	who, ok := apphttp.SessionFrom(ctx)
-	if !ok || who.Role != auth.RoleUser {
-		return nil, nil, true
+	var session *auth.Session
+	if ok {
+		session = &who
 	}
-	if c.Users == nil {
-		return nil, flat(ctx, nethttp.StatusForbidden, "Forbidden"), false
+	var lister apphttp.KeyLister
+	if c.Users != nil {
+		lister = c.Users
 	}
-	keys, err := c.Users.KeysOf(ctx.Request().Origin().Context(), who.UserID)
+	keys, scoped, err := apphttp.ScopedKeys(ctx.Request().Origin().Context(), session, lister)
 	if err != nil {
 		return nil, storageDown(ctx), false
+	}
+	if !scoped {
+		return nil, nil, true
 	}
 	set := make(map[string]bool, len(keys))
 	for _, id := range keys {
@@ -134,17 +140,14 @@ func (c *KeysController) owned(ctx contractshttp.Context) (map[string]bool, cont
 	return set, nil, true
 }
 
-// ownerMap is every key assignment. A read failure leaves the map empty, which
-// hides an owner rather than failing the list.
-func (c *KeysController) ownerMap(rc context.Context) map[string]string {
+// ownerMap is every key assignment. A read failure is an error, not an empty
+// map: the dashboard sends the owner back on a save, so an empty map would
+// unassign a key it merely failed to read.
+func (c *KeysController) ownerMap(rc context.Context) (map[string]string, error) {
 	if c.Users == nil {
-		return nil
+		return nil, nil
 	}
-	owners, err := c.Users.Owners(rc)
-	if err != nil {
-		return nil
-	}
-	return owners
+	return c.Users.Owners(rc)
 }
 
 // List answers GET /api/keys: every key, oldest first, masked.
@@ -171,7 +174,10 @@ func (c *KeysController) List(ctx contractshttp.Context) contractshttp.Response 
 		// A switch that cannot be read is off, as a single key's is.
 		cached = nil
 	}
-	owners := c.ownerMap(rc)
+	owners, err := c.ownerMap(rc)
+	if err != nil {
+		return storageDown(ctx)
+	}
 	out := make([]keyView, 0, len(rows))
 	for _, k := range rows {
 		if set != nil && !set[k.ID] {
@@ -208,7 +214,11 @@ func (c *KeysController) Show(ctx contractshttp.Context) contractshttp.Response 
 	if !ok {
 		return out2
 	}
-	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"key": revealed(k, budgetOf(all, k.ID), cacheOn(c.store(), rc, k.ID), c.ownerMap(rc)[k.ID])})
+	owners, err := c.ownerMap(rc)
+	if err != nil {
+		return storageDown(ctx)
+	}
+	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"key": revealed(k, budgetOf(all, k.ID), cacheOn(c.store(), rc, k.ID), owners[k.ID])})
 }
 
 // Create answers POST /api/keys: a fresh key for this machine, answered once.
@@ -252,6 +262,8 @@ func (c *KeysController) Create(ctx contractshttp.Context) contractshttp.Respons
 	}
 	if owner != "" {
 		if err := c.Users.SetOwner(rc, row.ID, owner); err != nil {
+			// A key nobody can see is a key nobody can revoke.
+			_, _ = st.APIKeys().Delete(rc, row.ID)
 			return ownerRefused(ctx, err)
 		}
 	}
@@ -302,6 +314,18 @@ func (c *KeysController) Update(ctx contractshttp.Context) contractshttp.Respons
 		patch.Name = &name
 	}
 	patch.IsActive = b.IsActive
+	// The owner is checked with the other fields, so a refusal leaves the key as
+	// it was.
+	if b.Owner != nil {
+		if c.Users == nil {
+			return storageDown(ctx)
+		}
+		if owner := strings.TrimSpace(*b.Owner); owner != "" {
+			if _, ok := c.Users.Get(ctx.Request().Origin().Context(), owner); !ok {
+				return flat(ctx, nethttp.StatusBadRequest, "That owner does not exist")
+			}
+		}
+	}
 	if len(b.Access) > 0 && string(b.Access) != "null" {
 		checked, err := auth.ValidateAccess(gjson.ParseBytes(b.Access))
 		if err != nil {
@@ -341,9 +365,6 @@ func (c *KeysController) Update(ctx contractshttp.Context) contractshttp.Respons
 		}
 	}
 	if b.Owner != nil {
-		if c.Users == nil {
-			return storageDown(ctx)
-		}
 		if err := c.Users.SetOwner(rc, id, strings.TrimSpace(*b.Owner)); err != nil {
 			return ownerRefused(ctx, err)
 		}
@@ -353,7 +374,11 @@ func (c *KeysController) Update(ctx contractshttp.Context) contractshttp.Respons
 	if !ok {
 		return out2
 	}
-	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"key": masked(row, budgetOf(all, row.ID), cacheOn(st, rc, row.ID), c.ownerMap(rc)[row.ID])})
+	owners, err := c.ownerMap(rc)
+	if err != nil {
+		return storageDown(ctx)
+	}
+	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"key": masked(row, budgetOf(all, row.ID), cacheOn(st, rc, row.ID), owners[row.ID])})
 }
 
 // ownerRefused turns an assignment the user list refuses into the answer the
@@ -398,7 +423,9 @@ func (c *KeysController) Delete(ctx contractshttp.Context) contractshttp.Respons
 	}
 	rc := ctx.Request().Origin().Context()
 	if c.Users != nil {
-		_ = c.Users.SetOwner(rc, ctx.Request().Route("id"), "")
+		if err := c.Users.SetOwner(rc, ctx.Request().Route("id"), ""); err != nil && c.Log != nil {
+			c.Log.Warningf("keys: the owner of a deleted key could not be cleared: id=%s: %v", ctx.Request().Route("id"), err)
+		}
 	}
 	if c.Quota != nil {
 		// A budget with no key is harmless; the row goes with it.

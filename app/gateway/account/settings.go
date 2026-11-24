@@ -70,6 +70,10 @@ func KnownStrategy(name string) bool {
 	return name == strategyFill || name == strategyRound
 }
 
+// Strategy is the account strategy the router acts on for a stored word: an
+// unknown one runs as fill-first, so a view that shows it must say the same.
+func Strategy(name string) string { return known(name) }
+
 func known(name string) string {
 	if name == strategyRound {
 		return strategyRound

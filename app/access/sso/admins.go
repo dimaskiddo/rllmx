@@ -50,6 +50,3 @@ func (a AdminList) IsAdmin(email string, exactOnly bool) bool {
 	}
 	return a.domains[email[at+1:]]
 }
-
-// Len reports how many entries the list holds.
-func (a AdminList) Len() int { return len(a.exact) + len(a.domains) }

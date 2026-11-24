@@ -8,7 +8,7 @@
   <section class="card" x-show="!loading">
     <div class="card-body">
       <h2 class="rl-card-title" x-t="endpoint.baseUrl"></h2>
-      <p class="text-secondary" x-t="endpoint.baseUrlHint"></p>
+      <p class="rl-hint" x-t="endpoint.baseUrlHint"></p>
       <div class="rl-inline">
         <code class="rl-code" x-text="baseUrl"></code>
         <button type="button" class="btn btn-sm" x-on:click="copyBaseUrl()" x-tip="common.copy"><span class="rl-icon" x-icon="copy"></span><span class="visually-hidden" x-t="common.copy"></span></button>
@@ -28,7 +28,7 @@
       <button type="button" class="btn btn-sm btn-primary" x-show="isAdmin()" x-on:click="openCreate()"><span class="rl-icon" x-icon="plus"></span><span x-t="keys.create"></span></button>
     </div>
     <div class="card-body">
-      <p class="text-secondary" x-show="keys.length === 0" x-t="keys.empty"></p>
+      <p class="rl-hint" x-show="keys.length === 0" x-t="keys.empty"></p>
       <ul class="rl-list">
         <template x-for="key in keys" x-bind:key="key.id">
           <li class="rl-list-row" x-bind:data-paused="key.isActive ? 'no' : 'yes'">
@@ -168,7 +168,7 @@
           </template>
         </ul>
         <div class="rl-inline">
-          <input class="form-control" list="allow-options" x-bind:value="edit ? edit.add : ''" x-on:input="setField('edit.add', $event)" placeholder="provider/model">
+          <input class="form-control" list="allow-options" x-bind:aria-label="label('keys.allowAdd')" x-bind:value="edit ? edit.add : ''" x-on:input="setField('edit.add', $event)" placeholder="provider/model">
           <datalist id="allow-options">
             <template x-for="choice in choices" x-bind:key="choice"><option x-bind:value="choice"></option></template>
           </datalist>
@@ -178,26 +178,26 @@
 
       <h3 class="rl-card-title" x-t="keys.budget"></h3>
       <p class="rl-hint" x-t="keys.budgetHint"></p>
-      <div class="table-responsive"><table class="table rl-budget" x-show="edit">
+      <div class="rl-table-wrap"><table class="table rl-budget" x-show="edit">
         <thead><tr><th></th><th x-t="keys.perDay"></th><th x-t="keys.perMonth"></th><th x-t="keys.allTime"></th></tr></thead>
         <tbody>
           <tr>
             <th><span x-t="keys.requests"></span><span class="rl-hint rl-unit" x-t="keys.requestsUnit"></span></th>
-            <td><input class="form-control" x-bind:placeholder="label('keys.noLimit')" inputmode="numeric" x-bind:value="edit ? edit.budget.requests.day : ''" x-on:input="setBudget('requests', 'day', $event)"></td>
-            <td><input class="form-control" x-bind:placeholder="label('keys.noLimit')" inputmode="numeric" x-bind:value="edit ? edit.budget.requests.month : ''" x-on:input="setBudget('requests', 'month', $event)"></td>
-            <td><input class="form-control" x-bind:placeholder="label('keys.noLimit')" inputmode="numeric" x-bind:value="edit ? edit.budget.requests.total : ''" x-on:input="setBudget('requests', 'total', $event)"></td>
+            <td><input class="form-control" x-bind:aria-label="label('keys.requests') + ' ' + label('keys.perDay')" x-bind:placeholder="label('keys.noLimit')" inputmode="numeric" x-bind:value="edit ? edit.budget.requests.day : ''" x-on:input="setBudget('requests', 'day', $event)"></td>
+            <td><input class="form-control" x-bind:aria-label="label('keys.requests') + ' ' + label('keys.perMonth')" x-bind:placeholder="label('keys.noLimit')" inputmode="numeric" x-bind:value="edit ? edit.budget.requests.month : ''" x-on:input="setBudget('requests', 'month', $event)"></td>
+            <td><input class="form-control" x-bind:aria-label="label('keys.requests') + ' ' + label('keys.allTime')" x-bind:placeholder="label('keys.noLimit')" inputmode="numeric" x-bind:value="edit ? edit.budget.requests.total : ''" x-on:input="setBudget('requests', 'total', $event)"></td>
           </tr>
           <tr>
             <th><span x-t="keys.tokens"></span><span class="rl-hint rl-unit" x-t="keys.tokensUnit"></span></th>
-            <td><input class="form-control" x-bind:placeholder="label('keys.noLimit')" inputmode="numeric" x-bind:value="edit ? edit.budget.tokens.day : ''" x-on:input="setBudget('tokens', 'day', $event)"></td>
-            <td><input class="form-control" x-bind:placeholder="label('keys.noLimit')" inputmode="numeric" x-bind:value="edit ? edit.budget.tokens.month : ''" x-on:input="setBudget('tokens', 'month', $event)"></td>
-            <td><input class="form-control" x-bind:placeholder="label('keys.noLimit')" inputmode="numeric" x-bind:value="edit ? edit.budget.tokens.total : ''" x-on:input="setBudget('tokens', 'total', $event)"></td>
+            <td><input class="form-control" x-bind:aria-label="label('keys.tokens') + ' ' + label('keys.perDay')" x-bind:placeholder="label('keys.noLimit')" inputmode="numeric" x-bind:value="edit ? edit.budget.tokens.day : ''" x-on:input="setBudget('tokens', 'day', $event)"></td>
+            <td><input class="form-control" x-bind:aria-label="label('keys.tokens') + ' ' + label('keys.perMonth')" x-bind:placeholder="label('keys.noLimit')" inputmode="numeric" x-bind:value="edit ? edit.budget.tokens.month : ''" x-on:input="setBudget('tokens', 'month', $event)"></td>
+            <td><input class="form-control" x-bind:aria-label="label('keys.tokens') + ' ' + label('keys.allTime')" x-bind:placeholder="label('keys.noLimit')" inputmode="numeric" x-bind:value="edit ? edit.budget.tokens.total : ''" x-on:input="setBudget('tokens', 'total', $event)"></td>
           </tr>
           <tr>
             <th><span x-t="keys.cost"></span><span class="rl-hint rl-unit" x-t="keys.costUnit"></span></th>
-            <td><div class="input-group"><span class="input-group-text">$</span><input class="form-control" x-bind:placeholder="label('keys.noLimit')" inputmode="decimal" x-bind:value="edit ? edit.budget.cost.day : ''" x-on:input="setBudget('cost', 'day', $event)"></div></td>
-            <td><div class="input-group"><span class="input-group-text">$</span><input class="form-control" x-bind:placeholder="label('keys.noLimit')" inputmode="decimal" x-bind:value="edit ? edit.budget.cost.month : ''" x-on:input="setBudget('cost', 'month', $event)"></div></td>
-            <td><div class="input-group"><span class="input-group-text">$</span><input class="form-control" x-bind:placeholder="label('keys.noLimit')" inputmode="decimal" x-bind:value="edit ? edit.budget.cost.total : ''" x-on:input="setBudget('cost', 'total', $event)"></div></td>
+            <td><div class="input-group"><span class="input-group-text">$</span><input class="form-control" x-bind:aria-label="label('keys.cost') + ' ' + label('keys.perDay')" x-bind:placeholder="label('keys.noLimit')" inputmode="decimal" x-bind:value="edit ? edit.budget.cost.day : ''" x-on:input="setBudget('cost', 'day', $event)"></div></td>
+            <td><div class="input-group"><span class="input-group-text">$</span><input class="form-control" x-bind:aria-label="label('keys.cost') + ' ' + label('keys.perMonth')" x-bind:placeholder="label('keys.noLimit')" inputmode="decimal" x-bind:value="edit ? edit.budget.cost.month : ''" x-on:input="setBudget('cost', 'month', $event)"></div></td>
+            <td><div class="input-group"><span class="input-group-text">$</span><input class="form-control" x-bind:aria-label="label('keys.cost') + ' ' + label('keys.allTime')" x-bind:placeholder="label('keys.noLimit')" inputmode="decimal" x-bind:value="edit ? edit.budget.cost.total : ''" x-on:input="setBudget('cost', 'total', $event)"></div></td>
           </tr>
         </tbody>
       </table></div>
