@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"io"
 	nethttp "net/http"
 	"time"
 
@@ -21,9 +22,11 @@ const (
 	ClientDefaultRead = 10 * time.Minute
 )
 
-// Deadlines sets the socket deadlines once, at entry. A handler must never set
-// a read deadline after it read the body: net/http's background read would fail
-// and cancel the request context, and the upstream call with it.
+// Deadlines sets the socket deadlines once, at entry. A read deadline exists to
+// bound the upload of a body, so it is set only for a request that has one and
+// is lifted when the body ends: net/http watches the socket for a hangup while
+// the handler runs, and a deadline still armed there fails that read and cancels
+// the request context, and the upstream call or the stream with it.
 type Deadlines struct {
 	// APIRead, APIWrite and ClientRead override the defaults when non-zero.
 	APIRead    time.Duration
@@ -52,14 +55,54 @@ func (m *Deadlines) Handle(ctx contractshttp.Context) {
 
 	switch {
 	case apphttp.IsDashboardAPI(r.URL.Path):
-		_ = rc.SetReadDeadline(now.Add(first(m.APIRead, APIDefaultRead)))
+		boundRead(rc, r, now.Add(first(m.APIRead, APIDefaultRead)))
 		// A feed and the provider tests run longer than any dashboard answer;
 		// each of those handlers bounds its own work.
 		if !apphttp.IsLongDashboardCall(r.URL.Path) {
 			_ = rc.SetWriteDeadline(now.Add(first(m.APIWrite, APIDefaultWrite)))
 		}
 	case apphttp.IsClientAPI(r.URL.Path) && r.Body != nil && r.Body != nethttp.NoBody:
-		_ = rc.SetReadDeadline(now.Add(first(m.ClientRead, ClientDefaultRead)))
+		boundRead(rc, r, now.Add(first(m.ClientRead, ClientDefaultRead)))
 	}
 	ctx.Request().Next()
+}
+
+// boundRead arms the read deadline for a request with a body and lifts it when
+// the body is read to its end or closed. A request without a body has nothing
+// to bound.
+func boundRead(rc *nethttp.ResponseController, r *nethttp.Request, at time.Time) {
+	if r.Body == nil || r.Body == nethttp.NoBody {
+		return
+	}
+	if rc.SetReadDeadline(at) != nil {
+		return
+	}
+	r.Body = &liftOnEnd{ReadCloser: r.Body, lift: func() { _ = rc.SetReadDeadline(time.Time{}) }}
+}
+
+// liftOnEnd calls lift once, when the body ends or is closed.
+type liftOnEnd struct {
+	io.ReadCloser
+	lift func()
+	done bool
+}
+
+func (b *liftOnEnd) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	if err != nil {
+		b.release()
+	}
+	return n, err
+}
+
+func (b *liftOnEnd) Close() error {
+	b.release()
+	return b.ReadCloser.Close()
+}
+
+func (b *liftOnEnd) release() {
+	if !b.done {
+		b.done = true
+		b.lift()
+	}
 }

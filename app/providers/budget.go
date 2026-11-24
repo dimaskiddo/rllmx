@@ -13,7 +13,7 @@ import (
 // budget builds the per-key budget check over the same analytics store and
 // writer every usage row goes through, so a check sees what was flushed and what
 // is still queued.
-func budget(limits *quota.Limits, runner *data.Runner) *quota.Quota {
+func Budget(limits *quota.Limits, runner *data.Runner) *quota.Quota {
 	return &quota.Quota{
 		Limits: limits,
 		Usage: func(ctx context.Context, keyID string, since time.Time) (analytics.Totals, error) {

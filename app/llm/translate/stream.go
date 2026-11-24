@@ -62,9 +62,16 @@ func (g *Gate) See(c Chunk) bool {
 func (g *Gate) Held() bool { return g.HasFinish && !g.Released }
 
 // MergeUsage combines two partial reports field by field by maximum, the way
-// an upstream that splits its counts over several events needs.
+// an upstream that splits its counts over several events needs. One exception:
+// a later report that carries the cache counts beside a prompt, when the earlier
+// one carried none, replaces the prompt. The earlier figure is the input before
+// cache accounting, and keeping it would count the cached tokens twice.
 func MergeUsage(a, b Usage) Usage {
-	a.Prompt = max(a.Prompt, b.Prompt)
+	if nextCarriesCache := b.Cached > 0 || b.CacheWrite > 0; nextCarriesCache && a.Cached == 0 && a.CacheWrite == 0 && b.Prompt > 0 {
+		a.Prompt = b.Prompt
+	} else {
+		a.Prompt = max(a.Prompt, b.Prompt)
+	}
 	a.Completion = max(a.Completion, b.Completion)
 	a.Cached = max(a.Cached, b.Cached)
 	a.CacheWrite = max(a.CacheWrite, b.CacheWrite)

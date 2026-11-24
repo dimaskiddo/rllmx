@@ -27,6 +27,9 @@ func (c *call) evaluateRules(ctx context.Context) {
 	if err != nil {
 		return
 	}
+	if !doc.Bool("globalSkillsEnabled", true) {
+		return
+	}
 	setting, legacy := skill.Readers(doc.GetRaw)
 	enabled := func(m skill.Manifest) bool {
 		on, _ := skill.Switch(m, setting, legacy)

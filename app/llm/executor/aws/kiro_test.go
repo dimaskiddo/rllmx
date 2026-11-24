@@ -56,7 +56,7 @@ func TestKiroHeadersMarkTheCredentialKind(t *testing.T) {
 		if tc.method == "api_key" {
 			host = "https://q.us-east-1.amazonaws.com"
 		}
-		h := kiroHeaders(host, kiroAuth{method: tc.method, token: "T"}, "")
+		h := kiroHeaders(host, kiroAuth{method: tc.method, token: "T"}, "", upstream.KiroSeed{})
 		if got := h["TokenType"]; got != tc.wantType {
 			t.Errorf("%s: TokenType %q, want %q", name, got, tc.wantType)
 		}
@@ -70,11 +70,11 @@ func TestKiroHeadersMarkTheCredentialKind(t *testing.T) {
 }
 
 func TestTheCodeWhispererHostAsksForItsTarget(t *testing.T) {
-	h := kiroHeaders("https://codewhisperer.us-east-1.amazonaws.com", kiroAuth{method: "builder-id", token: "T"}, "")
+	h := kiroHeaders("https://codewhisperer.us-east-1.amazonaws.com", kiroAuth{method: "builder-id", token: "T"}, "", upstream.KiroSeed{})
 	if h["X-Amz-Target"] != kiroTarget {
 		t.Errorf("target %q", h["X-Amz-Target"])
 	}
-	if _, ok := kiroHeaders("https://q.us-east-1.amazonaws.com", kiroAuth{token: "T"}, "")["X-Amz-Target"]; ok {
+	if _, ok := kiroHeaders("https://q.us-east-1.amazonaws.com", kiroAuth{token: "T"}, "", upstream.KiroSeed{})["X-Amz-Target"]; ok {
 		t.Error("the Amazon Q host was sent a target")
 	}
 }
@@ -233,5 +233,25 @@ func TestKiroRefusesAMissingCredential(t *testing.T) {
 	k := &Kiro{Default: &executor.Default{Client: http.DefaultClient}}
 	if _, err := k.Execute(context.Background(), executor.Request{Model: "m"}); !errors.Is(err, executor.ErrNoCredential) {
 		t.Errorf("%v", err)
+	}
+}
+
+func TestKiroInferenceSendsTheIDEIdentityAndTheAccountKeepsIt(t *testing.T) {
+	account := func(fields map[string]string) func(string) string { return func(n string) string { return fields[n] } }
+	a := kiroSeed(executor.Request{Account: account(map[string]string{"clientId": "cid", "refreshToken": "r1"})}, kiroAuth{method: "builder-id", token: "access-1"})
+	b := kiroSeed(executor.Request{Account: account(map[string]string{"clientId": "cid", "refreshToken": "r2"})}, kiroAuth{method: "builder-id", token: "access-2"})
+	ha := kiroHeaders("https://q.us-east-1.amazonaws.com", kiroAuth{method: "builder-id", token: "access-1"}, "", a)
+	hb := kiroHeaders("https://q.us-east-1.amazonaws.com", kiroAuth{method: "builder-id", token: "access-2"}, "", b)
+	if !strings.Contains(ha["User-Agent"], "KiroIDE-"+upstream.KiroIDEVersion+"-") || !strings.Contains(ha["User-Agent"], "api/codewhispererstreaming") {
+		t.Fatalf("user agent %q", ha["User-Agent"])
+	}
+	if ha["User-Agent"] != hb["User-Agent"] {
+		t.Fatal("the same sign-in client changed identity when the token rotated")
+	}
+	if strings.Contains(ha["User-Agent"]+ha["x-amz-user-agent"], "access-1") {
+		t.Fatal("a token reached the identity")
+	}
+	if key := kiroSeed(executor.Request{}, kiroAuth{method: "api_key", token: "sk-k"}); key.APIKey != "sk-k" || key.AccessToken != "" {
+		t.Fatalf("an API key was seeded as %+v", key)
 	}
 }

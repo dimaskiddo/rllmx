@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -54,11 +55,7 @@ func (p *ProvidersController) Client(ctx contractshttp.Context) contractshttp.Re
 		rows = keepStatus(rows, false)
 	}
 
-	if ctx.Request().Query("sort") == "provider" {
-		sort.SliceStable(rows, func(i, j int) bool { return rows[i].Provider < rows[j].Provider })
-	} else {
-		sort.SliceStable(rows, func(i, j int) bool { return rows[i].Priority < rows[j].Priority })
-	}
+	sortClients(rows, ctx.Request().Query("sort") == "provider")
 
 	page, size := clientPaging(ctx.Request().Query("page"), ctx.Request().Query("pageSize"))
 	total := len(rows)
@@ -77,6 +74,31 @@ func (p *ProvidersController) Client(ctx contractshttp.Context) contractshttp.Re
 			"eligibleConnections":         eligible,
 			"providerFilteredConnections": filtered,
 		},
+	})
+}
+
+// sortClients orders the accounts a person scans: one provider's accounts
+// together, then by the rank the operator gave them with an unranked account (0)
+// after every ranked one, then by name so a page boundary never reshuffles.
+func sortClients(rows []repository.Connection, providerOnly bool) {
+	rank := func(p int64) int64 {
+		if p <= 0 {
+			return math.MaxInt64
+		}
+		return p
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		a, b := rows[i], rows[j]
+		if a.Provider != b.Provider {
+			return a.Provider < b.Provider
+		}
+		if providerOnly {
+			return false
+		}
+		if ra, rb := rank(a.Priority), rank(b.Priority); ra != rb {
+			return ra < rb
+		}
+		return a.Name < b.Name
 	})
 }
 

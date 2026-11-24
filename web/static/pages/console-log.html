@@ -4,21 +4,29 @@
   </div>
   <p class="text-secondary" x-t="console.hint"></p>
 
-  <section class="card">
-    <div class="card-header rl-card-head">
-      <h2 class="rl-card-title" x-t="console.lines"></h2>
+  <section class="rl-terminal">
+    <div class="rl-terminal-bar">
+      <span class="rl-terminal-status" x-bind:data-state="state" role="status">
+        <span class="rl-terminal-dot" aria-hidden="true"></span>
+        <span x-text="stateText()"></span>
+      </span>
       <div class="rl-inline">
-        <input class="form-control form-control-sm" type="search" x-bind:placeholder="label('console.filter')" x-bind:aria-label="label('console.filter')" x-bind:value="filter" x-on:input="setFilter($event)">
+        <select class="form-select form-select-sm" x-bind:aria-label="label('console.level')" x-on:change="setLevel($event)">
+          <option value="all" x-bind:selected="level === 'all'" x-t="console.levelAll"></option>
+          <option value="warning" x-bind:selected="level === 'warning'" x-t="console.levelWarning"></option>
+          <option value="error" x-bind:selected="level === 'error'" x-t="console.levelError"></option>
+        </select>
+        <input class="form-control form-control-sm" type="search" x-bind:placeholder="label('console.filter')" x-bind:aria-label="label('console.filter')" x-bind:value="filter" x-on:input.debounce.250ms="setFilter($event)">
+        <button type="button" class="btn btn-sm" x-on:click="copyLogs()" x-tip="console.copy"><span class="rl-icon" x-icon="copy"></span><span class="visually-hidden" x-t="console.copy"></span></button>
         <button type="button" class="btn btn-sm btn-ghost-danger" x-on:click="clearLogs()" x-tip="console.clear"><span class="rl-icon" x-icon="trash"></span><span class="visually-hidden" x-t="console.clear"></span></button>
       </div>
     </div>
-    <div class="card-body">
-      <p class="rl-hint" x-show="visible().length === 0" x-t="console.empty"></p>
-      <div class="rl-log" x-ref="panel" role="log" aria-live="polite" x-bind:aria-label="label('console.title')">
-        <template x-for="row in visible()" x-bind:key="row.seq">
-          <div class="rl-log-line" x-bind:data-level="row.level" x-text="lineText(row)"></div>
-        </template>
-      </div>
+    <div class="rl-terminal-screen" x-ref="panel" role="log" aria-live="off" tabindex="0" x-bind:aria-label="label('console.title')" x-on:scroll.passive="onScroll()">
+      <p class="rl-terminal-empty" x-show="visible().length === 0" x-t="console.empty"></p>
+      <template x-for="row in visible()" x-bind:key="row.seq">
+        <div class="rl-log-line" x-bind:data-level="row.level"><span class="rl-log-time" x-text="clock(row)"></span><span class="rl-log-level" x-text="levelText(row)"></span><span class="rl-log-text" x-text="row.message"></span></div>
+      </template>
     </div>
+    <button type="button" class="btn btn-sm btn-primary rl-terminal-jump" x-show="!following" x-cloak x-on:click="jump()" x-t="console.jump"></button>
   </section>
 </section>

@@ -111,9 +111,39 @@ export const settingsMethods = {
     this.overrides.error = "";
     try {
       const out = await api("/api/providers/" + encodeURIComponent(this.id) + "/overrides");
-      this.overrides.rows = Object.keys(out.headers || {}).sort().map((name) => ({ name: name, value: out.headers[name] }));
+      const builtin = out.builtinHeaders || {};
+      const saved = out.headers || {};
+      const names = Object.keys(builtin);
+      for (const name of Object.keys(saved)) {
+        if (names.indexOf(name) < 0) {
+          names.push(name);
+        }
+      }
+      this.overrides.rows = names.sort().map((name) => ({
+        name: name,
+        value: name in saved ? saved[name] : builtin[name],
+        builtin: name in builtin ? builtin[name] : "",
+      }));
     } catch (err) {
       this.overrides.error = err.message;
+    }
+  },
+
+  changedHeader(row) {
+    return row.value !== (row.builtin || "");
+  },
+
+  async resetOverrides() {
+    this.overrides.error = "";
+    this.overrides.busy = true;
+    try {
+      await api("/api/providers/" + encodeURIComponent(this.id) + "/overrides", { method: "PUT", body: { headers: {} } });
+      await this.loadOverrides();
+      toast().success(t("overrides.reset"));
+    } catch (err) {
+      this.overrides.error = err.message;
+    } finally {
+      this.overrides.busy = false;
     }
   },
 
@@ -134,7 +164,7 @@ export const settingsMethods = {
     this.overrides.busy = true;
     const headers = {};
     for (const row of this.overrides.rows) {
-      if (row.name !== "") {
+      if (row.name !== "" && this.changedHeader(row)) {
         headers[row.name] = row.value;
       }
     }

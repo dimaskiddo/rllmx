@@ -55,13 +55,10 @@
       <div class="card-body">
         <p class="rl-hint" x-t="saver.cavemanHint"></p>
         <div x-show="bool('cavemanEnabled')">
-          <ul class="rl-chips">
-            <template x-for="level in levels()" x-bind:key="level">
-              <li class="rl-chip">
-                <button type="button" class="btn btn-sm" x-bind:aria-pressed="displayLevel('cavemanLevel') === level ? 'true' : 'false'" x-on:click="setLevel('cavemanLevel', level)" x-text="levelName(level)"></button>
-              </li>
-            </template>
-          </ul>
+          <label class="form-label" for="caveman-level" x-t="saver.level"></label>
+          <select class="form-select" id="caveman-level" x-on:change="setLevelFrom('cavemanLevel', $event)">
+            <template x-for="level in levels()" x-bind:key="level"><option x-bind:value="level" x-bind:selected="displayLevel('cavemanLevel') === level" x-text="levelName(level)"></option></template>
+          </select>
           <p class="rl-hint" x-text="levelDesc(displayLevel('cavemanLevel'))"></p>
           <label class="form-label" for="caveman-mode" x-t="saver.routing"></label>
           <select class="form-select" id="caveman-mode" x-bind:value="text('cavemanRoutingMode')" x-on:change="setEnum('cavemanRoutingMode', $event)">
@@ -83,13 +80,10 @@
       <div class="card-body">
         <p class="rl-hint" x-t="saver.ponytailHint"></p>
         <div x-show="bool('ponytailEnabled')">
-          <ul class="rl-chips">
-            <template x-for="level in levels()" x-bind:key="level">
-              <li class="rl-chip">
-                <button type="button" class="btn btn-sm" x-bind:aria-pressed="displayLevel('ponytailLevel') === level ? 'true' : 'false'" x-on:click="setLevel('ponytailLevel', level)" x-text="levelName(level)"></button>
-              </li>
-            </template>
-          </ul>
+          <label class="form-label" for="ponytail-level" x-t="saver.level"></label>
+          <select class="form-select" id="ponytail-level" x-on:change="setLevelFrom('ponytailLevel', $event)">
+            <template x-for="level in levels()" x-bind:key="level"><option x-bind:value="level" x-bind:selected="displayLevel('ponytailLevel') === level" x-text="levelName(level)"></option></template>
+          </select>
           <p class="rl-hint" x-text="levelDesc(displayLevel('ponytailLevel'))"></p>
           <label class="form-label" for="ponytail-mode" x-t="saver.routing"></label>
           <select class="form-select" id="ponytail-mode" x-bind:value="text('ponytailRoutingMode')" x-on:change="setEnum('ponytailRoutingMode', $event)">
@@ -97,6 +91,31 @@
             <option value="smart" x-t="saver.smart"></option>
           </select>
         </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-header rl-card-head">
+        <h2 class="rl-card-title" x-t="saver.watermark"></h2>
+        <label class="form-check form-switch rl-switch">
+          <input class="form-check-input" type="checkbox" role="switch" x-bind:aria-label="label('saver.enabled') + ' ' + label('saver.watermark')" x-bind:checked="skill.enabled" x-on:change="setSkillBool($event)">
+          <span class="form-check-label" x-t="saver.enabled"></span>
+        </label>
+      </div>
+      <div class="card-body">
+        <p class="rl-hint" x-t="saver.watermarkHint"></p>
+        <div x-show="skill.enabled">
+          <label class="form-label" for="watermark-mode" x-t="saver.routing"></label>
+          <select class="form-select" id="watermark-mode" x-on:change="setSkillMode($event)">
+            <option value="always" x-bind:selected="skill.mode === 'always'" x-t="saver.always"></option>
+            <option value="smart" x-bind:selected="skill.mode === 'smart'" x-t="saver.smart"></option>
+          </select>
+        </div>
+        <div class="form-check form-switch rl-switch">
+          <input class="form-check-input" type="checkbox" id="watermark-strip" role="switch" x-bind:checked="bool('watermarkStripEnabled')" x-on:change="setBool('watermarkStripEnabled', $event)">
+          <label class="form-check-label" for="watermark-strip" x-t="saver.watermarkStrip"></label>
+        </div>
+        <p class="rl-hint" x-t="saver.watermarkStripHint"></p>
       </div>
     </section>
 

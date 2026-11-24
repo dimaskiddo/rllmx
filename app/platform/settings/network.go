@@ -32,7 +32,23 @@ type Upstream struct {
 	ClaudeCLIVersion string
 	// RateLimit paces outbound calls per connection; a zero RPM is off.
 	RateLimit ratelimit.Config
+	// KiroCreateResponse is when Kiro's second transport is used.
+	KiroCreateResponse KiroCreateResponse
 }
+
+// KiroCreateResponse says when a Kiro request goes to the Responses transport
+// instead of the one the IDE uses.
+type KiroCreateResponse string
+
+const (
+	// KiroAuto falls back to it after a rate-limit answer the other transport
+	// gives accounts that are enrolled in it.
+	KiroAuto KiroCreateResponse = "auto"
+	// KiroAlways uses it for every request.
+	KiroAlways KiroCreateResponse = "always"
+	// KiroOff never uses it.
+	KiroOff KiroCreateResponse = "off"
+)
 
 // LoadUpstream reads and checks the UPSTREAM_* settings. A bad allow-list entry
 // stops the start and the error never repeats the entry.
@@ -59,6 +75,9 @@ func LoadUpstream(cfg config.Config) (*Upstream, error) {
 		return nil, fmt.Errorf("settings: UPSTREAM_RATE_LIMIT_RPM/BURST/MAX_WAIT: %w", err)
 	}
 	u.RateLimit = rate
+	if u.KiroCreateResponse, err = kiroMode(cfg.GetString("upstream.kiro_create_response")); err != nil {
+		return nil, err
+	}
 	return u, nil
 }
 
@@ -96,4 +115,16 @@ func curveSet(raw string) ([]tls.CurveID, error) {
 		return nil, nil
 	}
 	return nil, fmt.Errorf("UPSTREAM_TLS_CURVE must be x25519 or default")
+}
+
+// kiroMode reads the transport setting. A refusal names the variable and never
+// the value.
+func kiroMode(raw string) (KiroCreateResponse, error) {
+	switch m := KiroCreateResponse(strings.ToLower(strings.TrimSpace(raw))); m {
+	case "":
+		return KiroAuto, nil
+	case KiroAuto, KiroAlways, KiroOff:
+		return m, nil
+	}
+	return "", fmt.Errorf("UPSTREAM_KIRO_CREATE_RESPONSE must be auto, always or off")
 }

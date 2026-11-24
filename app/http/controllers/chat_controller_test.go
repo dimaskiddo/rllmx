@@ -54,6 +54,7 @@ type chatRig struct {
 	h    nethttp.Handler
 	// auth answers for the key the routes see; nil uses the fixed key.
 	auth apphttp.Authenticator
+	chat *ChatController
 }
 
 // fixedCaller answers with one caller, for a test about a restricted key.
@@ -144,6 +145,7 @@ func (r *chatRig) mount(limit int64) {
 		&middleware.RequestID{}, &middleware.BodyLimit{ClientMax: limit}, &middleware.Guard{Guard: g},
 	})
 	c := &ChatController{Pipe: func() (*pipeline.Pipeline, error) { return r.pipe() }, Log: &tests.Log{}}
+	r.chat = c
 	for _, path := range []string{"/v1/chat/completions", "/v1/messages", "/v1/responses", "/v1/responses/compact", "/v1beta/models/*path", "/v1/api/chat"} {
 		g.Handle(route, apphttp.ClassLLM, nethttp.MethodPost, path, c.Serve)
 	}

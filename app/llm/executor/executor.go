@@ -44,6 +44,9 @@ type Request struct {
 	Compact bool
 	// Levels are the reasoning efforts the model accepts; empty means any.
 	Levels []string
+	// LongDecode marks a model that continues one answer over several calls on
+	// a token. The caller sets it from the model's capabilities.
+	LongDecode bool
 	// Account reads a text field of the account's provider specific data; nil
 	// reads nothing.
 	Account func(name string) string

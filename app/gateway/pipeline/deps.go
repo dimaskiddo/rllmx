@@ -9,6 +9,7 @@ import (
 	"rllmx/app/gateway/account"
 	"rllmx/app/gateway/combo"
 	"rllmx/app/gateway/conversation"
+	"rllmx/app/gateway/hermes"
 	"rllmx/app/gateway/saver"
 	"rllmx/app/gateway/skill"
 	"rllmx/app/llm/catalog"
@@ -143,6 +144,9 @@ type Deps struct {
 	SaverURL string
 	// Skills is the installed skill registry; nil leaves every skill off.
 	Skills *skill.Registry
+	// Hermes reads the memory a local agent keeps, for the skill that injects it.
+	// Nil reads nothing.
+	Hermes *hermes.Reader
 	// SkillSessions remembers what each conversation already carries. Nil keeps
 	// no state, so a repeat turn gets the full prompt again.
 	SkillSessions *conversation.SkillSessions

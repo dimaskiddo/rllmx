@@ -27,7 +27,7 @@ var connSecretPaths = []string{
 	"apiKey", "accessToken", "refreshToken", "idToken", "sessionToken", "copilotToken",
 	"providerSpecificData.apiKey", "providerSpecificData.sessionToken", "providerSpecificData.copilotToken",
 	"providerSpecificData.accessKeyId", "providerSpecificData.secretAccessKey", "providerSpecificData.mimoPassToken",
-	"providerSpecificData.cookie", "providerSpecificData.clientSecret",
+	"providerSpecificData.cookie", "providerSpecificData.clientSecret", "providerSpecificData.opendesignControlKey",
 }
 
 var settingsSecretPaths = []string{"oidcClientSecret"}

@@ -27,6 +27,16 @@
   padding: 1.5rem;
 }
 
+.rl-nav-section {
+  margin: 1rem 0 0.25rem;
+  padding: 0 0.625rem;
+  color: var(--tblr-muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .rl-nav {
   display: flex;
   flex-direction: column;
@@ -58,8 +68,16 @@
 
 .rl-icon {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 1rem;
   height: 1rem;
+}
+
+/* The SVG sits in the span on its own line box, not on the text baseline. */
+svg.rl-icon {
+  display: block;
 }
 
 .card {
@@ -126,17 +144,8 @@ dialog.rl-dialog {
   color: var(--tblr-body-color);
 }
 
-dialog.rl-dialog .form-label {
-  margin-block-start: 0.75rem;
-}
-
 dialog.rl-dialog .form-check {
   margin-block-start: 0.75rem;
-}
-
-dialog.rl-dialog h2 + .form-label,
-dialog.rl-dialog form > .form-label:first-child {
-  margin-block-start: 0;
 }
 
 dialog.rl-dialog .table td {
@@ -209,6 +218,50 @@ dialog.rl-dialog h2 {
   color: var(--tblr-body-color);
   font-weight: 700;
   text-decoration: none;
+}
+
+/* The one button that changes the sidebar's shape: a drawer on a phone, a rail
+   on a wider screen. */
+.rl-nav-toggle {
+  margin-inline-end: auto;
+}
+
+.rl-nav-backdrop {
+  display: none;
+}
+
+/* A rail keeps the icons and drops the words; the words stay in the markup, so
+   a screen reader still reads the name of each link. */
+@media (min-width: 768px) {
+  [data-rl-nav="rail"] {
+    --rl-sidebar-w: 3.5rem;
+  }
+
+  [data-rl-nav="rail"] .rl-sidebar {
+    padding-inline: 0.375rem;
+  }
+
+  [data-rl-nav="rail"] .rl-brand {
+    overflow: hidden;
+    padding-inline: 0;
+    font-size: 0;
+    text-align: center;
+  }
+
+  [data-rl-nav="rail"] .rl-nav a {
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  [data-rl-nav="rail"] .rl-nav a span:not(.rl-icon),
+  [data-rl-nav="rail"] .rl-nav-section {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    white-space: nowrap;
+    clip-path: inset(50%);
+  }
 }
 
 .rl-content {
@@ -309,18 +362,41 @@ dialog.rl-dialog h2 {
   flex: 1 1 12rem;
 }
 
+/* Tabler makes a select fill its line; in a row of controls it takes its text's
+   width instead. */
+.rl-inline .form-select,
+.rl-card-head .form-select {
+  width: auto;
+  flex: 0 0 auto;
+  max-width: 14rem;
+}
+
 .rl-card-head .rl-inline,
 .rl-section-head .rl-inline {
   margin-block-start: 0;
 }
 
+/* A switch is a flex row, so its box has no Tabler padding or float and centres
+   in a header or a toolbar like the controls beside it. */
 .rl-switch {
-  margin-block-start: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 0;
+  margin-block: 0.75rem 0;
+  padding-inline-start: 0;
+}
+
+.rl-switch .form-check-input {
+  float: none;
+  margin: 0;
 }
 
 .rl-card-head .rl-switch,
 .rl-toolbar .rl-switch,
-.rl-inline .rl-switch {
+.rl-inline .rl-switch,
+.rl-list-actions .rl-switch,
+.rl-fields .rl-switch {
   margin-block-start: 0;
 }
 
@@ -332,6 +408,11 @@ dialog.rl-dialog h2 {
   gap: 0.375rem;
   margin-block-start: 0.5rem;
   font-size: 0.8125rem;
+}
+
+/* A number that changes every second keeps its width. */
+.rl-tabular {
+  font-variant-numeric: tabular-nums;
 }
 
 .rl-warning {
@@ -384,9 +465,78 @@ dialog.rl-dialog h2 {
   font-weight: 600;
 }
 
-.rl-list-title > span:not(.badge) {
+.rl-list-title > span:not(.badge, .rl-cap) {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+/* A capability icon is centred in its own box, not set on the text baseline. */
+.rl-cap {
+  display: inline-flex;
+  align-items: center;
+  color: var(--tblr-secondary);
+}
+
+/* A stacked label keeps its distance from the control above it, and none when it
+   opens a group or sits in a grid cell that already spaces it. */
+.form-label {
+  margin-block-start: 0.75rem;
+}
+
+.form-label:first-child,
+h2 + .form-label,
+.rl-password-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+
+.rl-fields .form-label,
+.rl-range .form-label {
+  margin-block-start: 0;
+}
+
+/* A skill's settings: the mode and each config field in two columns. */
+.rl-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem 1rem;
+  margin-block-start: 0.75rem;
+}
+
+.rl-fields .form-label {
+  margin-block-end: 0.25rem;
+}
+
+@media (max-width: 575.98px) {
+  .rl-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* A slider reads its value and its ends out, so the number is visible while it
+   moves. */
+.rl-range {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.rl-range-value {
+  align-self: flex-start;
+  padding: 0.0625rem 0.5rem;
+  border: 1px solid var(--tblr-border-color);
+  border-radius: var(--tblr-border-radius-pill, 999px);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.rl-range-scale {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: var(--tblr-secondary);
 }
 
 .rl-list-actions {
@@ -423,6 +573,39 @@ dialog.rl-dialog h2 {
   background: var(--rl-hover);
   border-radius: var(--tblr-border-radius-sm);
   font-size: 0.8125rem;
+}
+
+/* A set of choices the reader picks one of: roomier than a tag, and a target
+   large enough for a thumb. */
+.rl-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  margin: 0.75rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rl-choice {
+  display: flex;
+  align-items: center;
+  min-height: 2.5rem;
+  padding: 0.5rem 1rem;
+  background: var(--rl-hover);
+  border-radius: var(--tblr-border-radius);
+}
+
+.rl-choice label {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  margin: 0;
+  cursor: pointer;
+}
+
+.rl-choice .btn {
+  margin: -0.5rem -1rem;
+  padding: 0.5rem 1rem;
 }
 
 .rl-key {
@@ -484,16 +667,27 @@ dialog.rl-dialog h2 {
   }
 
   .rl-sidebar {
-    position: static;
-    height: auto;
-    padding-block: 0.5rem;
-    border-inline-end: 0;
-    border-block-end: 1px solid var(--tblr-border-color);
+    position: fixed;
+    inset-block: 0;
+    inset-inline-start: 0;
+    z-index: 40;
+    width: var(--rl-sidebar-w);
+    max-width: 80vw;
+    height: 100%;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
   }
 
-  .rl-nav {
-    flex-direction: row;
-    overflow-x: auto;
+  .rl-nav-open .rl-sidebar {
+    transform: none;
+  }
+
+  .rl-nav-open .rl-nav-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    background: rgba(0, 0, 0, 0.35);
   }
 }
 
@@ -528,6 +722,7 @@ dialog.rl-dialog h2 {
 .rl-provider-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  align-items: start;
   gap: 0.75rem;
 }
 
@@ -596,11 +791,15 @@ dialog.rl-dialog h2 {
   font-size: 0.75rem;
 }
 
+/* The actions sit at the card's foot, and keep their line when a card has no
+   pause button, so every card in a row lines up. */
 .rl-provider-actions {
   position: relative;
   z-index: 2;
   display: flex;
   justify-content: flex-end;
+  min-height: 1.75rem;
+  margin-block-start: auto;
 }
 
 .rl-provider-card .rl-hint {
@@ -616,6 +815,11 @@ dialog.rl-dialog h2 {
 .badge-err,
 .badge[data-ok="no"] {
   color: var(--rl-err);
+  border-color: currentColor;
+}
+
+.badge[data-ok="changed"] {
+  color: var(--rl-warn);
   border-color: currentColor;
 }
 
@@ -682,6 +886,12 @@ dialog.rl-dialog h2 {
   margin-block-end: 1rem;
 }
 
+/* A toolbar that selects what a card below shows keeps its distance from the
+   card above it. */
+.card + .rl-toolbar {
+  margin-block-start: 1rem;
+}
+
 .rl-tabs {
   display: flex;
   gap: 0.25rem;
@@ -743,6 +953,45 @@ dialog.rl-dialog h2 {
   margin-block-end: 0;
 }
 
+.rl-meters {
+  display: grid;
+  grid-template-columns: 9rem minmax(6rem, 1fr) max-content;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  list-style: none;
+  max-width: 32rem;
+}
+
+/* The rows share the list's columns, so every bar is one width whatever the
+   numbers beside it are. */
+.rl-meter-row {
+  display: contents;
+}
+
+.rl-meters .rl-hint {
+  margin-block-start: 0;
+}
+
+.rl-meter-row .rl-tabular {
+  text-align: end;
+}
+
+/* The owner row spans the bar and value columns, so it lines up with them. */
+.rl-meter-row .rl-owner {
+  grid-column: 2 / -1;
+  overflow-wrap: anywhere;
+}
+
+/* A fieldset that only groups a form's controls for one role, never a frame. */
+.rl-fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
 .rl-meter {
   display: block;
   width: 100%;
@@ -775,35 +1024,200 @@ dialog.rl-dialog h2 {
   background: var(--tblr-yellow);
 }
 
-.rl-log {
-  height: 28rem;
-  max-height: 70vh;
-  overflow-y: auto;
-  padding: 0.75rem;
-  background: #10151c;
+/* The console log is a terminal: always dark, monospace, no card chrome. */
+.rl-terminal {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 14rem);
+  min-height: 20rem;
+  background: #0d1117;
+  border: 1px solid #30363d;
   border-radius: var(--tblr-border-radius);
-  color: #d7dbe0;
+  color: #c9d1d9;
+  overflow: hidden;
+}
+
+.rl-terminal-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: #161b22;
+  border-block-end: 1px solid #30363d;
+}
+
+.rl-terminal-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: #8b949e;
+}
+
+.rl-terminal-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: #d29922;
+}
+
+.rl-terminal-status[data-state="live"] .rl-terminal-dot {
+  background: #3fb950;
+}
+
+.rl-terminal-screen {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.5rem 0.75rem;
   font-family: var(--tblr-font-monospace);
   font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.rl-terminal-empty {
+  margin: 0;
+  color: #8b949e;
+}
+
+.rl-terminal-jump {
+  position: absolute;
+  inset-inline-end: 1rem;
+  inset-block-end: 1rem;
+}
+
+.rl-log-line {
+  display: flex;
+  gap: 0.75rem;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
-.rl-log-line[data-level="warn"] {
-  color: #ffd43b;
+.rl-log-time {
+  flex: none;
+  color: #6e7681;
 }
 
-.rl-log-line[data-level="error"] {
-  color: #ff6b6b;
+.rl-log-level {
+  flex: none;
+  width: 4.5ch;
+  color: #58a6ff;
 }
 
-.rl-log-line[data-level="debug"] {
-  color: #b197fc;
+.rl-log-text {
+  min-width: 0;
+}
+
+.rl-log-line[data-level="warning"] .rl-log-level,
+.rl-log-line[data-level="warning"] .rl-log-text {
+  color: #e3b341;
+}
+
+.rl-log-line[data-level="error"] .rl-log-level,
+.rl-log-line[data-level="error"] .rl-log-text,
+.rl-log-line[data-level="fatal"] .rl-log-level,
+.rl-log-line[data-level="panic"] .rl-log-level {
+  color: #ff7b72;
+}
+
+.rl-log-line[data-level="debug"] .rl-log-level,
+.rl-log-line[data-level="debug"] .rl-log-text {
+  color: #a5a5ff;
+}
+
+.rl-terminal .form-control,
+.rl-terminal .form-select {
+  background-color: #0d1117;
+  border-color: #30363d;
+  color: #c9d1d9;
+}
+
+/* Two columns of cards on a wide screen, one below. */
+.rl-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 1rem;
+}
+
+.rl-columns > .card {
+  margin: 0;
+}
+
+@media (max-width: 991.98px) {
+  .rl-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* A combo row reads in three columns: its name and members, the routing
+   controls, then the actions. */
+.rl-combo-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 1rem;
+}
+
+@media (max-width: 767.98px) {
+  .rl-combo-row {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
+.rl-combo-row .rl-inline {
+  margin-block-start: 0;
+}
+
+.rl-model-row .rl-list-main {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .rl-drag {
-  cursor: grab;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--tblr-border-radius-sm);
+  background: none;
   color: var(--tblr-muted);
+  cursor: grab;
+}
+
+.rl-drag:hover {
+  background: var(--rl-hover);
+  color: var(--tblr-body-color);
+}
+
+.rl-drag:active {
+  cursor: grabbing;
+}
+
+/* Sortable's three clones: the hole the row leaves, the row in the air, and the
+   row following the pointer. */
+.rl-drag-ghost {
+  opacity: 0.4;
+  outline: 1px dashed var(--tblr-border-color);
+  border-radius: var(--tblr-border-radius-sm);
+}
+
+.rl-drag-chosen {
+  background: var(--rl-hover);
+}
+
+.rl-drag-active {
+  box-shadow: var(--tblr-box-shadow-card, 0 0.25rem 0.75rem rgb(0 0 0 / 15%));
+  border-radius: var(--tblr-border-radius-sm);
+  background: var(--tblr-bg-surface);
 }
 
 .rl-chart {
@@ -819,7 +1233,55 @@ dialog.rl-dialog h2 {
   display: block;
   width: 100%;
   min-width: 28rem;
+  max-height: 20rem;
   height: auto;
+}
+
+/* The recent table takes the room its card has left, so the card stops growing
+   with it and the oldest rows are clipped. */
+.rl-fill-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.rl-fill {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 10rem;
+}
+
+.rl-fill > * {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+@media (max-width: 991.98px) {
+  .rl-fill > * {
+    position: static;
+    max-height: 20rem;
+    overflow: auto;
+  }
+}
+
+/* The model name is the one wide column of the recent table; it is cut with the
+   full value in its title, and the numbers keep the rest. */
+.rl-recent {
+  table-layout: fixed;
+}
+
+.rl-recent col.rl-recent-model {
+  width: 45%;
+}
+
+.rl-recent col.rl-recent-num {
+  width: 18.33%;
+}
+
+.rl-recent td:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .rl-topology line {

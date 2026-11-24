@@ -26,7 +26,7 @@ func fullBase() Base {
 		Version: "1", Commit: "c", Connections: func(context.Context) (int64, error) { return 0, nil },
 		Auth: &controllers.AuthController{}, OIDC: &controllers.OIDCController{}, SAML: &controllers.SAMLController{},
 		Providers: &controllers.ProvidersController{}, Nodes: &controllers.NodesController{},
-		Chat: &controllers.ChatController{}, Models: &controllers.ModelsController{}, Media: &controllers.MediaController{},
+		Chat: &controllers.ChatController{}, ClientUsage: &controllers.ClientUsageController{}, Models: &controllers.ModelsController{}, Media: &controllers.MediaController{},
 		OAuth: &controllers.OAuthController{}, Pages: &controllers.PagesController{},
 		Keys: &controllers.KeysController{}, Users: &controllers.UsersController{}, Health: controllers.NewHealthController(),
 		Combos: &controllers.CombosController{}, Settings: &controllers.SettingsController{},

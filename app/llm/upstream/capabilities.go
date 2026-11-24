@@ -53,7 +53,13 @@ type Capability struct {
 	DropOutputConfig        bool     `json:"dropOutputConfig,omitempty"`
 	KeepContextMgmt         bool     `json:"keepContextManagement,omitempty"`
 	ClaudeToolTypes         []string `json:"claudeSupportedToolTypes,omitempty"`
+	// LongDecode marks a model that returns at most MaxOutput tokens per call but
+	// continues on a token, so a request may ask for up to LongDecodeCeiling.
+	LongDecode bool `json:"longDecode,omitempty"`
 }
+
+// LongDecodeCeiling is the most output tokens a long decode may produce in all.
+const LongDecodeCeiling = 1 << 20
 
 // defaultCapability is the floor every lookup is merged over.
 func defaultCapability() Capability {
@@ -152,6 +158,9 @@ type Capabilities struct {
 	registry *Registry
 	// overlay is the synced catalog, swapped whole; nil means the tables alone.
 	overlay atomic.Pointer[Overlay]
+	// custom is what an operator declared for a custom model, keyed
+	// "provider/model" and swapped whole.
+	custom atomic.Pointer[map[string]Capability]
 }
 
 // LoadCapabilities reads the embedded tables. A bad table is an error.
@@ -345,6 +354,10 @@ func (c *Capabilities) For(provider, model string) Capability {
 		c.refine(&out, provider, model)
 		c.finish(&out, model)
 	}
+	if d, ok := c.declared(provider, model); ok {
+		out.Vision = out.Vision || d.Vision
+		out.Reasoning = out.Reasoning || d.Reasoning
+	}
 	if c.registry != nil {
 		if id, ok := c.registry.Resolve(provider); ok {
 			if e, ok := c.registry.ByID(id); ok && e.Transport.ThinkingFormat != "" {
@@ -353,6 +366,21 @@ func (c *Capabilities) For(provider, model string) Capability {
 		}
 	}
 	return out
+}
+
+// SetCustom replaces the capabilities an operator declared for custom models.
+func (c *Capabilities) SetCustom(all map[string]Capability) {
+	c.custom.Store(&all)
+}
+
+// declared is what an operator said about one custom model.
+func (c *Capabilities) declared(provider, model string) (Capability, bool) {
+	all := c.custom.Load()
+	if all == nil {
+		return Capability{}, false
+	}
+	v, ok := (*all)[provider+"/"+model]
+	return v, ok
 }
 
 // Base resolves without the synced catalog: what the tables say on their own.

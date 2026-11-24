@@ -47,7 +47,7 @@ func (c *call) parse() (Output, bool) {
 		req.Stream = false
 	}
 	c.req = req
-	c.requested = req.Model
+	c.requested, c.asked = req.Model, req.Model
 	c.clientStream = req.Stream
 	c.row.Stream = req.Stream
 	return Output{}, true

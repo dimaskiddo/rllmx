@@ -60,7 +60,7 @@ Four embedded files under `data/capabilities/` — `capabilities.json`, `thinkin
 | `Budget(level)` | The token budget of a level |
 | `ParamRules(provider, model)` | The `params.json` rules (drop or rename a parameter, drop or rename an assistant message field, flatten content, cap output tokens) in file order. The translator applies them last, to the final upstream body, on every pair |
 
-The Claude and Gemini placeholder thinking signatures are data in `thinking.json`. A registry model may state its own `contextLength`: the window its gateway truncates to, where it differs from the vendor's. It only stops a catalog sync from writing a context delta; the capability answer still comes from the tables.
+The `qwen` rows are the reference's own, by hand: the seven `qwencloud` model rows carry the format, then the patterns `*qwen*-vl-*`, `*qwen*omni*`, `*qwen*coder*`, `*qwen*max*`, `*qwen3.5*`, `*qwen3.6*`, `*qwen3.7*`, `*qwen*plus*`, `*qwen*235b*`, `*qwq*` (which cannot switch off) and `*qwen*` sit before the GLM rows. The vision of the `vl` pattern is left to the name rule, so an embedding model whose name carries `vl` stays text-only. Nothing is set on a gateway's copy of a Qwen model unless the provider sets the shape itself (D448). The Claude and Gemini placeholder thinking signatures are data in `thinking.json`. A registry model may state its own `contextLength`: the window its gateway truncates to, where it differs from the vendor's. It only stops a catalog sync from writing a context delta; the capability answer still comes from the tables.
 
 **The synced catalog.** `DATA_DIR/model-catalog.json` holds deltas from models.dev. A runner loads it at start and refreshes it every 24 hours (`app/providers/catalog_sync.go`; `CATALOG_SYNC=false` stops the timer only), and `POST /api/models/catalog-sync` refreshes it on demand. The file carries its own version, so a copy this build did not write is ignored and rebuilt.
 
@@ -79,7 +79,7 @@ The upstream JSON is about 4.3 MB. It is decoded one provider at a time under a 
 
 - The registry's `oauth.disguise` flag says which provider uses it (only `claude`).
 - Client headers never reach the upstream raw; the pipeline passes derived values.
-- The shape follows 9router 0.5.119 (Clean-Room). It changes only when a step says so, and the rows kept are the ones a security rule or a router improvement requires.
+- The shape follows 9router 0.5.123 (Clean-Room). It changes only when a step says so, and the rows kept are the ones a security rule or a router improvement requires.
 
 A request is adapted when all of these hold: the upstream format is Claude, the connection is a login of a provider whose data sets `disguise`, its token begins `sk-ant-oat`, and the client is not Claude Code (a Claude Code client is native: its body is already right). Then, in this order, on the finished body:
 1. a billing block becomes `system[0]` (a string system becomes two blocks; nothing is added if `system[0]` already starts with the prefix). Its `cch` is the first five hex characters of SHA-256 over the body as it stood before this step, the build part is three random hex characters, and the version is the one this router advertises (`UPSTREAM_CLAUDE_CLI_VERSION`, else the latest published Claude Code, never below the build's floor `.322`);
@@ -106,8 +106,9 @@ The OpenAI codec writes thinking by the model's `thinkingFormat` (`app/llm/trans
 | `nous` | `reasoning: {"enabled": true, "effort": <level>}`, the effort left out when there is no level; `auto` is `medium`; a budget is the level it stands for (the reference's thresholds, `budgetLevel`); `none` on a model that can switch off writes nothing | none, low, medium, high |
 | `zai` | `thinking: {"type":"enabled"}`, plus `reasoning_effort` (`low` and `minimal` give `low`, `medium` and `high` give `high`, anything else `max`) only on a model whose capability row has `thinkingEffortSupported` (GLM 5.2 and later); `none` on a model that can switch off writes `enable_thinking: false` | none, thinking |
 | `kimi` | `reasoning_effort`: `auto` is `high`, `minimal` is `low`, `xhigh` and `ultra` are `max`, `low`, `medium`, `high` and `max` pass, any other level is left out; `none` on a model that can switch off writes `thinking: {"type":"disabled"}` | none, low, medium, high, max |
+| `qwen` | `enable_thinking: true` with `thinking_budget` from the asked budget or the level's (`auto` and an unknown level carry none, `none` carries `enable_thinking: false` when the model can switch off, else `true` with the smallest budget); the budget is held to the model's `thinkingMin`/`thinkingMax` when it names them. No `reasoning_effort` and no thinking object | none, low, medium, high (the base set) |
 
-A model that cannot switch thinking off is asked for `minimal` instead of `none`, in both formats.
+A model that cannot switch thinking off is asked for `minimal` instead of `none`, in `nous`, `zai`, `kimi` and `qwen` alike.
 
 - The rows are data: `providers.nous` per model id; `providers.kimi` per model id with `thinkingCanDisable: false` for `kimi-k3`, `k3`, `kimi-for-coding*` and `kimi-k2.7-code*`.
 - A Responses-format upstream such as Muse keeps the Responses writer.
@@ -241,9 +242,12 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 383 | The catalog file carries version 3; a file the reference wrote (version 2) is ignored and rebuilt **(trade-off)** | Its deltas were computed against its tables, so applying them here would publish numbers no table of ours ever decided |
 | 384 | No trimmed copy of the whole upstream catalog is written **(scope cut)** | Nothing but the reference's add-models skill reads it |
 | 385 | The file is read once at start and swapped in memory; a hand edit applies at restart or the next sync **(trade-off)** | The reference stats the file on every capability lookup and parses it whenever the mtime moved, which a request pays for |
+| 448 | The OpenAI codec writes the reference's `qwen` shape (`enable_thinking` and `thinking_budget`) and `qwen` is a provider-wide format a data file may name on a transport or a lane. The capability rows are the reference's patterns, but a Qwen model behind another gateway is not given the shape unless that provider names it, and a level's budget is the model's own table row rather than the reference's single map | The reference applies `qwen` to every provider's Qwen model, including gateways whose API may not read the fields; keeping it off a gateway unless it says so avoids a refused request (improvement) |
 | 386 | The status answer names the file, not its absolute path, and a failure is bounded text **(built)** | The reference hands a dashboard reader the host's data path and stores any error text it receives |
 
 ---
+
+**The 0.5.123 sync.** The OpenAI to Claude writer drops a leading `x-anthropic-billing-header:` line from a system message, as the Claude reader always did; the OpenAI stream reader reads a delta whose `content` is a list of parts (Mistral), taking `text` parts as the answer and `thinking` parts as reasoning; `MergeUsage` lets a later report that carries cache counts replace an earlier prompt that carried none, because that earlier figure is the input before cache accounting (the maximum would count the cached tokens twice); a Gemini thinking level is clamped into the set the model serves (`xhigh` falls to `high`, `max` is the highest, `minimal` rises to the floor), with the set carried on `Ctx.Levels`.
 
 **The 0.5.116 sync.**
 

@@ -90,6 +90,8 @@ type settingsView struct {
 	PonytailRoutingMode         string `json:"ponytailRoutingMode"`
 	CustomPromptEnabled         bool   `json:"customPromptEnabled"`
 	CustomPrompt                string `json:"customPrompt"`
+	WatermarkStripEnabled       bool   `json:"watermarkStripEnabled"`
+	GlobalSkillsEnabled         bool   `json:"globalSkillsEnabled"`
 
 	AutoPlanEnabled        bool   `json:"autoPlanEnabled"`
 	AutoPlanMode           string `json:"autoPlanMode"`
@@ -107,6 +109,9 @@ type settingsView struct {
 	ECCAutoSkillRouterMaxSkills  int             `json:"ecc_auto_skill_routerMaxSkills"`
 
 	HasPassword bool `json:"hasPassword"`
+	// DefaultPassword is true while the password anyone could guess still signs
+	// in: none stored, or a stored one that hashes a published default.
+	DefaultPassword bool `json:"defaultPassword"`
 }
 
 // Show answers GET /api/settings.
@@ -220,6 +225,8 @@ func (c *SettingsController) view(d document.Doc) settingsView {
 		PonytailRoutingMode:          d.Str("ponytailRoutingMode", "smart"),
 		CustomPromptEnabled:          d.Bool("customPromptEnabled", false),
 		CustomPrompt:                 d.Str("customPrompt", ""),
+		WatermarkStripEnabled:        d.Bool("watermarkStripEnabled", false),
+		GlobalSkillsEnabled:          d.Bool("globalSkillsEnabled", true),
 		AutoPlanEnabled:              auto.Enabled,
 		AutoPlanMode:                 auto.Mode,
 		AutoPlanComboID:              auto.PlanCombo,
@@ -234,7 +241,11 @@ func (c *SettingsController) view(d document.Doc) settingsView {
 		ECCAutoSkillRouterConfidence: d.Float("ecc_auto_skill_routerConfidence", skill.DefaultThreshold),
 		ECCAutoSkillRouterMaxSkills:  d.Int("ecc_auto_skill_routerMaxSkills", 1),
 	}
-	v.HasPassword = v.HasPassword || d.Str("password", "") != ""
+	stored := d.Str("password", "")
+	v.HasPassword = v.HasPassword || stored != ""
+	if c.Auth != nil {
+		v.DefaultPassword = c.Auth.Pass.WellKnown(stored)
+	}
 	if c.Auth != nil && c.Auth.OIDCUsable != nil {
 		v.OIDCConfigured = c.Auth.OIDCUsable(v.OIDCIssuerURL, v.OIDCClientID, d.Str("oidcClientSecret", ""))
 	}
@@ -307,6 +318,7 @@ var settingsRules = map[string]settingRule{
 	"ponytailRoutingMode":             enumRule("smart", "always"),
 	"customPromptEnabled":             boolRule,
 	"customPrompt":                    multilineRule(4000),
+	"watermarkStripEnabled":           boolRule,
 	"autoPlanEnabled":                 boolRule,
 	"autoPlanMode":                    enumRule("auto", "manual"),
 	"autoPlanComboId":                 textRule(128),
@@ -317,6 +329,7 @@ var settingsRules = map[string]settingRule{
 	"autoPlanTimeoutMs":               intRule(plan.MinTimeoutMS, plan.MaxTimeoutMS),
 	"autoPlanShowInResponse":          boolRule,
 	"skillSources":                    urlListRule("https", 10, 2048),
+	"globalSkillsEnabled":             boolRule,
 	"ecc_auto_skill_routerEnabled":    boolRule,
 	"ecc_auto_skill_routerConfidence": floatRule(0, 1),
 	"ecc_auto_skill_routerMaxSkills":  intRule(1, 5),

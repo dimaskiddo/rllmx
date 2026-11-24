@@ -192,6 +192,9 @@ func newRig(t *testing.T, steps ...tests.Reply) *rig {
 	kim := dev("kim", `,"headers":{"X-Msh-Platform":"rllmx"},"callHeaders":{"X-Msh-Device-Id":"{deviceId}"},"refresh":{"encoding":"form","leadSeconds":300},"account":{"name":"X-Msh-Device-Id","from":["deviceId"]}`)
 	mus := dev("mus", `,"headers":{"x-api-version":"1.0.0"}`)
 	kc := dev("kc", `,"account":{"name":"X-Kilocode-OrganizationID","from":["orgId"]}`)
+	qwn := `{"id":"qwn","category":"apikey","display":{"name":"Q"},"transport":{"baseUrl":"` + up.URL + `/v1/chat/completions","format":"openai","thinkingFormat":"qwen",` +
+		`"lanes":{"claude":{"baseUrl":"` + up.URL + `/v1/messages","thinkingFormat":"claude-adaptive"}}},` +
+		`"auth":{"scheme":"bearer","header":"Authorization"},"models":[{"id":"qm"}]}`
 	lane := `{"id":"lane","category":"oauth","display":{"name":"L"},"transport":{"baseUrl":"` + up.URL + `/v1/messages","format":"claude","urlSuffix":"?beta=true",` +
 		`"headers":{"anthropic-version":"2023-06-01"},"lanes":{` +
 		`"openai":{"baseUrl":"` + up.URL + `/v1/chat/completions","auth":{"scheme":"bearer","header":"Authorization"}},` +
@@ -204,7 +207,7 @@ func newRig(t *testing.T, steps ...tests.Reply) *rig {
 		`"models":[{"id":"claude-4.5-sonnet"}]}`
 	reg, err := upstream.Load(fstest.MapFS{
 		"data/cur.json": {Data: []byte(cur)},
-		"data/kim.json": {Data: []byte(kim)}, "data/mus.json": {Data: []byte(mus)}, "data/kc.json": {Data: []byte(kc)}, "data/lane.json": {Data: []byte(lane)},
+		"data/kim.json": {Data: []byte(kim)}, "data/mus.json": {Data: []byte(mus)}, "data/kc.json": {Data: []byte(kc)}, "data/lane.json": {Data: []byte(lane)}, "data/qwn.json": {Data: []byte(qwn)},
 		"data/cop.json": {Data: []byte(cop)}, "data/cln.json": {Data: []byte(cln)}, "data/glb.json": {Data: []byte(glb)},
 		"data/gcl.json": {Data: []byte(gcl)}, "data/antigravity.json": {Data: []byte(agy)}, "data/cbn.json": {Data: []byte(cbn)}, "data/mmx.json": {Data: []byte(mmx)},
 		"data/cdx.json": {Data: []byte(cdx)}, "data/grk.json": {Data: []byte(grk)},

@@ -67,13 +67,18 @@ func cleanModel(model string) string {
 	return strings.TrimSpace(model)
 }
 
-// tierAlias maps a base model to the tier whose quota it shares.
-var tierAlias = map[string]string{
-	"claude-sonnet-5-5": "claude-sonnet-5-5-high",
-	"claude-opus-5-5":   "claude-opus-5-5-high",
-	"gemini-3.8-flash":  "gemini-3.8-flash-medium",
-	"gemini-3.7-flash":  "gemini-3.7-flash-medium",
-	"gemini-3.6-flash":  "gemini-3.6-flash-medium",
+// tierAlias maps a base model to the tiers whose quota it may share, in the
+// order they are tried: the first one the account's list has is the one used.
+var tierAlias = map[string][]string{
+	"claude-sonnet-5-5": {"claude-sonnet-5-5-medium", "claude-sonnet-5-5-high"},
+	"claude-opus-5-5":   {"claude-opus-5-5-medium", "claude-opus-5-5-high"},
+	"gemini-4-carbon":   {"gemini-4-carbon-high"},
+	"gemini-4-argon":    {"gemini-4-argon-high"},
+	"gemini-4-neon":     {"gemini-4-neon-high"},
+	"gemini-4-hydrogen": {"gemini-4-hydrogen-high"},
+	"gemini-3.8-flash":  {"gemini-3.8-flash-medium"},
+	"gemini-3.7-flash":  {"gemini-3.7-flash-medium"},
+	"gemini-3.6-flash":  {"gemini-3.6-flash-medium"},
 }
 
 // Of finds the bucket that decides whether a model can be used. Every bucket the
@@ -90,8 +95,11 @@ func (s Snapshot) Of(model string, now time.Time) (Bucket, bool) {
 		}
 	}
 	add(clean)
-	if alias, ok := tierAlias[clean]; ok {
-		add(alias)
+	for _, alias := range tierAlias[clean] {
+		if _, ok := s[alias]; ok {
+			add(alias)
+			break
+		}
 	}
 	switch Family(clean) {
 	case "claude_gpt":

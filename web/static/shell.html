@@ -12,27 +12,37 @@
 <link rel="stylesheet" href="/static/css/components.css">
 <script type="module" src="/static/js/app.js"></script>
 </head>
-<body x-data="shell" x-on:open-password.window="openPassword()" x-cloak>
-<div class="rl-shell">
-  <aside class="rl-sidebar">
+<body x-data="shell" x-on:open-password.window="openPassword()" x-on:keydown.escape.window="closeNav()" x-cloak>
+<div class="rl-shell" x-bind:class="navClass()">
+  <aside class="rl-sidebar" id="rl-sidebar">
     <a class="rl-brand" href="/dashboard">Router-LLM</a>
     <nav x-bind:aria-label="label('nav.dashboard')">
+      <p class="rl-nav-section" x-t="nav.groupLlm"></p>
       <ul class="rl-nav">
-        <li><a href="/dashboard/endpoint" x-bind:aria-current="isCurrent('/dashboard/endpoint') ? 'page' : false"><span class="rl-icon" x-icon="key-round"></span><span x-t="nav.endpoint"></span></a></li>
-        <li x-show="isAdmin()"><a href="/dashboard/providers" x-bind:aria-current="isCurrent('/dashboard/providers') ? 'page' : false"><span class="rl-icon" x-icon="server"></span><span x-t="nav.providers"></span></a></li>
-        <li x-show="isAdmin()"><a href="/dashboard/combos" x-bind:aria-current="isCurrent('/dashboard/combos') ? 'page' : false"><span class="rl-icon" x-icon="layers"></span><span x-t="nav.combos"></span></a></li>
-        <li><a href="/dashboard/usage" x-bind:aria-current="isCurrent('/dashboard/usage') ? 'page' : false"><span class="rl-icon" x-icon="activity"></span><span x-t="nav.usage"></span></a></li>
-        <li x-show="isAdmin()"><a href="/dashboard/quota" x-bind:aria-current="isCurrent('/dashboard/quota') ? 'page' : false"><span class="rl-icon" x-icon="gauge"></span><span x-t="nav.quota"></span></a></li>
-        <li x-show="isAdmin()"><a href="/dashboard/console-log" x-bind:aria-current="isCurrent('/dashboard/console-log') ? 'page' : false"><span class="rl-icon" x-icon="terminal"></span><span x-t="nav.consoleLog"></span></a></li>
-        <li x-show="isAdmin()"><a href="/dashboard/skills" x-bind:aria-current="isCurrent('/dashboard/skills') ? 'page' : false"><span class="rl-icon" x-icon="wand-sparkles"></span><span x-t="nav.skills"></span></a></li>
-        <li x-show="isAdmin()"><a href="/dashboard/token-saver" x-bind:aria-current="isCurrent('/dashboard/token-saver') ? 'page' : false"><span class="rl-icon" x-icon="piggy-bank"></span><span x-t="nav.tokenSaver"></span></a></li>
-        <li x-show="isAdmin()"><a href="/dashboard/pricing" x-bind:aria-current="isCurrent('/dashboard/pricing') ? 'page' : false"><span class="rl-icon" x-icon="coins"></span><span x-t="nav.pricing"></span></a></li>
-        <li x-show="isAdmin()"><a href="/dashboard/settings" x-bind:aria-current="isCurrent('/dashboard/settings') ? 'page' : false"><span class="rl-icon" x-icon="sliders-horizontal"></span><span x-t="nav.settings"></span></a></li>
+        <li><a href="/dashboard/endpoint" x-bind:title="label('nav.endpoint')" x-bind:aria-current="isCurrent('/dashboard/endpoint') ? 'page' : false"><span class="rl-icon" x-icon="key-round"></span><span x-t="nav.endpoint"></span></a></li>
+        <li x-show="isAdmin()"><a href="/dashboard/providers" x-bind:title="label('nav.providers')" x-bind:aria-current="isCurrent('/dashboard/providers') ? 'page' : false"><span class="rl-icon" x-icon="server"></span><span x-t="nav.providers"></span></a></li>
+        <li x-show="isAdmin()"><a href="/dashboard/combos" x-bind:title="label('nav.combos')" x-bind:aria-current="isCurrent('/dashboard/combos') ? 'page' : false"><span class="rl-icon" x-icon="layers"></span><span x-t="nav.combos"></span></a></li>
+        <li x-show="isAdmin()"><a href="/dashboard/token-saver" x-bind:title="label('nav.tokenSaver')" x-bind:aria-current="isCurrent('/dashboard/token-saver') ? 'page' : false"><span class="rl-icon" x-icon="piggy-bank"></span><span x-t="nav.tokenSaver"></span></a></li>
+        <li x-show="isAdmin()"><a href="/dashboard/skills" x-bind:title="label('nav.skills')" x-bind:aria-current="isCurrent('/dashboard/skills') ? 'page' : false"><span class="rl-icon" x-icon="wand-sparkles"></span><span x-t="nav.skills"></span></a></li>
+      </ul>
+      <p class="rl-nav-section" x-t="nav.groupSystem"></p>
+      <ul class="rl-nav">
+        <li><a href="/dashboard/usage" x-bind:title="label('nav.usage')" x-bind:aria-current="isCurrent('/dashboard/usage') ? 'page' : false"><span class="rl-icon" x-icon="activity"></span><span x-t="nav.usage"></span></a></li>
+        <li x-show="isAdmin()"><a href="/dashboard/quota" x-bind:title="label('nav.quota')" x-bind:aria-current="isCurrent('/dashboard/quota') ? 'page' : false"><span class="rl-icon" x-icon="gauge"></span><span x-t="nav.quota"></span></a></li>
+        <li x-show="isAdmin()"><a href="/dashboard/pricing" x-bind:title="label('nav.pricing')" x-bind:aria-current="isCurrent('/dashboard/pricing') ? 'page' : false"><span class="rl-icon" x-icon="coins"></span><span x-t="nav.pricing"></span></a></li>
+        <li x-show="isAdmin()"><a href="/dashboard/users" x-bind:title="label('nav.users')" x-bind:aria-current="isCurrent('/dashboard/users') ? 'page' : false"><span class="rl-icon" x-icon="user"></span><span x-t="nav.users"></span></a></li>
+        <li x-show="isAdmin()"><a href="/dashboard/settings" x-bind:title="label('nav.settings')" x-bind:aria-current="isCurrent('/dashboard/settings') ? 'page' : false"><span class="rl-icon" x-icon="sliders-horizontal"></span><span x-t="nav.settings"></span></a></li>
+        <li x-show="isAdmin()"><a href="/dashboard/console-log" x-bind:title="label('nav.consoleLog')" x-bind:aria-current="isCurrent('/dashboard/console-log') ? 'page' : false"><span class="rl-icon" x-icon="terminal"></span><span x-t="nav.consoleLog"></span></a></li>
       </ul>
     </nav>
   </aside>
+  <div class="rl-nav-backdrop" x-show="navOpen" x-cloak x-on:click="closeNav()"></div>
   <div class="rl-content">
     <header class="rl-header">
+      <button type="button" class="btn btn-sm btn-ghost rl-nav-toggle" x-on:click="toggleNav()" x-bind:aria-expanded="navExpanded()" aria-controls="rl-sidebar" x-tip="nav.toggle">
+        <span class="rl-icon" x-icon="menu"></span>
+        <span class="visually-hidden" x-t="nav.toggle"></span>
+      </button>
       <div class="rl-header-actions">
         <button type="button" class="btn btn-sm btn-ghost" x-on:click="toggleTheme()" x-tip="theme.toggle">
           <span class="rl-icon" x-show="theme === 'light'" x-icon="moon"></span>

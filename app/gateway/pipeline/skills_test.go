@@ -10,6 +10,7 @@ import (
 
 	"rllmx/app/access/identity"
 	"rllmx/app/gateway/conversation"
+	"rllmx/app/gateway/hermes"
 	"rllmx/app/gateway/skill"
 	"rllmx/app/llm/stream"
 	"rllmx/app/llm/translate"
@@ -318,6 +319,49 @@ func TestALegacyEnabledKeyTurnsASkillOnThroughTheRealReader(t *testing.T) {
 	}
 }
 
+// The global switch stops every skill, including one whose manifest turns it on
+// by default, and leaves the request's cache key empty.
+func TestTheGlobalSkillsSwitchStopsEverySkill(t *testing.T) {
+	on := skillCall(t, `{"globalSkillsEnabled":true}`, nil, skillFiles())
+	on.applySkills(context.Background())
+	if !strings.Contains(hubSystem(on), "TERSE PROMPT") {
+		t.Fatalf("on: %q", hubSystem(on))
+	}
+	if on.skillKey(context.Background()) == "" {
+		t.Fatal("the switch on made no key")
+	}
+	off := skillCall(t, `{"globalSkillsEnabled":false}`, nil, skillFiles())
+	off.applySkills(context.Background())
+	if body := hubSystem(off); body != "" {
+		t.Fatalf("off: %q", body)
+	}
+	if key := off.skillKey(context.Background()); key != "" {
+		t.Fatalf("off key %q", key)
+	}
+}
+
+// The global switch stops a pre-route rule too, so a reroute cannot happen
+// while the cache key says no skill ran.
+func TestTheGlobalSkillsSwitchStopsRules(t *testing.T) {
+	files := map[string]string{
+		"router/manifest.json": `{"id":"router","name":"Router","description":"d","hook":"pre-route","default_enabled":true}`,
+		"router/rules.json":    `{"rules":[{"stage":"pre-route","when":{"modelRegex":"^m$"},"then":{"rerouteModel":"other"}}]}`,
+	}
+	on := skillCall(t, `{"globalSkillsEnabled":true}`, nil, files)
+	on.evaluateRules(context.Background())
+	if on.rules.Reroute != "other" {
+		t.Fatalf("on: %+v", on.rules)
+	}
+	off := skillCall(t, `{"globalSkillsEnabled":false}`, nil, files)
+	off.evaluateRules(context.Background())
+	if !off.rules.Empty() {
+		t.Fatalf("off: %+v", off.rules)
+	}
+	if key := off.skillKey(context.Background()); key != "" {
+		t.Fatal("a request with the switch off carries a key")
+	}
+}
+
 // sessionRun asks as one conversation, so the skill session table is touched.
 func sessionRun(r *rig, body string) Output {
 	r.t.Helper()
@@ -432,5 +476,32 @@ func TestTheCacheKeyFollowsWhatTheRequestWouldCarry(t *testing.T) {
 	seen3.p.d.SkillSessions.Failover(conversation.SessionKey("key-one", "s1"))
 	if failed := seen3.skillKey(ctx); failed == fresh {
 		t.Error("a conversation that failed over shares the key of one that did not")
+	}
+}
+
+// The memory skill injects what the agent keeps, and the bypass header turns it
+// off for one request.
+func TestTheMemorySkillInjectsTheAgentNotes(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, "memories"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "memories", "MEMORY.md"), []byte("the router is Go"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	row := `{"hermes-toolkitEnabled":true}`
+	for name, header := range map[string]http.Header{
+		"on":       nil,
+		"bypassed": http.Header{"X-9router-Hermes-Memory": []string{"off"}},
+	} {
+		c := skillCall(t, row, header, nil)
+		c.p.d.Skills = skill.NewRegistry("", skill.Builtin())
+		c.p.d.Hermes = &hermes.Reader{Home: home}
+		c.applySkills(context.Background())
+		body := hubSystem(c)
+		want := name == "on"
+		if strings.Contains(body, "the router is Go") != want {
+			t.Errorf("%s: body %q", name, body)
+		}
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	nethttp "net/http"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -118,9 +119,24 @@ type syncBody struct {
 	Force  bool   `json:"force"`
 }
 
-// Sync answers POST /api/skills/sync. It accepts only an https repository on
-// the operator's allowlist; a local path is the command line's business. One
-// sync runs at a time, so two clicks cannot pile up clones.
+// syncTarget resolves a request's repository and branch: the official catalog
+// and branch when the body names neither.
+func syncTarget(b syncBody) (source, ref string) {
+	source = strings.TrimSpace(b.Source)
+	if source == "" {
+		source = skill.ECCSource
+	}
+	ref = strings.TrimSpace(b.Tag)
+	if ref == "" {
+		ref = skill.ECCBranch
+	}
+	return source, ref
+}
+
+// Sync answers POST /api/skills/sync. An empty source is the official catalog,
+// whose address is a constant; a source a client names must be an https
+// repository on the operator's allowlist. One sync runs at a time, so two clicks
+// cannot pile up clones.
 func (c *SkillsController) Sync(ctx contractshttp.Context) contractshttp.Response {
 	if !c.gate.TryLock() {
 		return flat(ctx, nethttp.StatusServiceUnavailable, "A sync is already running")
@@ -130,7 +146,7 @@ func (c *SkillsController) Sync(ctx contractshttp.Context) contractshttp.Respons
 	if err := ctx.Request().Bind(&body); err != nil {
 		return flat(ctx, nethttp.StatusBadRequest, "Invalid request body")
 	}
-	source := strings.TrimSpace(body.Source)
+	source, ref := syncTarget(body)
 	if !strings.HasPrefix(source, "https://") || len(source) > 2048 {
 		return flat(ctx, nethttp.StatusBadRequest, "Source must be an https repository")
 	}
@@ -142,11 +158,11 @@ func (c *SkillsController) Sync(ctx contractshttp.Context) contractshttp.Respons
 	if err != nil {
 		return storageDown(ctx)
 	}
-	ref := strings.TrimSpace(body.Tag)
-	if ref == "" {
-		ref = "main"
+	sources := skill.Sources(doc.GetRaw("skillSources"))
+	if !slices.Contains(sources, skill.ECCSource) {
+		sources = append(sources, skill.ECCSource)
 	}
-	cfg := git.Config{Parent: skill.FetchDir(c.Dir), Sources: skill.Sources(doc.GetRaw("skillSources"))}
+	cfg := git.Config{Parent: skill.FetchDir(c.Dir), Sources: sources}
 	client := network.NewClient(network.Options{ConnectTimeout: git.Timeout, BodyCap: git.MaxSize})
 	dir, cleanup, err := git.NewGate().Fetch(ctx.Request().Origin().Context(), cfg, client, source, ref)
 	if err != nil {

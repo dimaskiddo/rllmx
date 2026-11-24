@@ -6,7 +6,7 @@
   <p class="rl-error" x-show="error" x-text="error"></p>
 
   <div class="rl-toolbar">
-    <input class="form-control form-control-sm" type="search" x-bind:placeholder="label('combos.search')" x-bind:aria-label="label('combos.search')" x-on:input="setField('search', $event)">
+    <input class="form-control form-control-sm" type="search" x-bind:placeholder="label('combos.search')" x-bind:aria-label="label('combos.search')" x-on:input.debounce.250ms="setField('search', $event)">
     <button type="button" class="btn btn-sm" x-on:click="openSuggest()"><span class="rl-icon" x-icon="wand-sparkles"></span><span x-t="combos.suggest"></span></button>
     <button type="button" class="btn btn-sm btn-primary" x-on:click="openCreate()"><span class="rl-icon" x-icon="plus"></span><span x-t="combos.create"></span></button>
   </div>
@@ -22,40 +22,44 @@
     <div class="card-body">
       <ul class="rl-list">
         <template x-for="combo in visible()" x-bind:key="combo.id">
-          <li class="rl-list-row">
+          <li class="rl-list-row rl-combo-row">
             <div class="rl-list-main">
               <div class="rl-list-title">
                 <span x-text="combo.name"></span>
                 <span class="badge" x-show="combo.kind === 'auto'" x-t="combos.auto"></span>
                 <span class="badge" x-text="combo.models.length + ' ' + label('combos.models')"></span>
+                <span class="rl-cap" x-show="comboCaps(combo).vision" x-tip="models.vision"><span class="rl-icon" x-icon="eye"></span><span class="visually-hidden" x-t="models.vision"></span></span>
+                <span class="rl-cap" x-show="comboCaps(combo).reasoning" x-tip="models.reasoning"><span class="rl-icon" x-icon="brain"></span><span class="visually-hidden" x-t="models.reasoning"></span></span>
+                <span class="rl-cap" x-show="comboCaps(combo).audio" x-tip="models.audio"><span class="rl-icon" x-icon="audio-lines"></span><span class="visually-hidden" x-t="models.audio"></span></span>
               </div>
               <ul class="rl-chips">
                 <template x-for="model in modelsPreview(combo)" x-bind:key="model">
-                  <li class="rl-chip"><span x-text="model"></span></li>
+                  <li class="rl-chip"><span x-text="model"></span><span class="rl-cap" x-show="capsOf(model) && capsOf(model).vision" x-tip="models.vision"><span class="rl-icon" x-icon="eye"></span><span class="visually-hidden" x-t="models.vision"></span></span><span class="rl-cap" x-show="capsOf(model) && capsOf(model).reasoning" x-tip="models.reasoning"><span class="rl-icon" x-icon="brain"></span><span class="visually-hidden" x-t="models.reasoning"></span></span><span class="rl-cap" x-show="capsOf(model) && capsOf(model).audio" x-tip="models.audio"><span class="rl-icon" x-icon="audio-lines"></span><span class="visually-hidden" x-t="models.audio"></span></span></li>
                 </template>
                 <li class="rl-chip" x-show="moreCount(combo) > 0"><span x-text="'+' + moreCount(combo)"></span></li>
               </ul>
-              <div class="rl-inline">
-                <select class="form-select form-select-sm" x-bind:aria-label="label('combos.strategy')" x-bind:value="strategyOf(combo)" x-on:change="setStrategy(combo, $event)">
-                  <option value="" x-text="label('combos.strategyDefault') + ' (' + globalStrategy + ')'"></option>
-                  <option value="fallback" x-t="combos.fallback"></option>
-                  <option value="round-robin" x-t="combos.roundRobin"></option>
-                  <option value="smart" x-t="combos.smart"></option>
-                  <option value="fusion" x-t="combos.fusion"></option>
-                </select>
-                <select class="form-select form-select-sm" x-show="strategyOf(combo) === 'smart'" x-bind:aria-label="label('combos.policy')" x-bind:value="policyOf(combo)" x-on:change="setPolicy(combo, $event)">
-                  <option value="smart" x-t="combos.policySmart"></option>
-                  <option value="strict" x-t="combos.policyStrict"></option>
-                  <option value="per-turn" x-t="combos.policyPerTurn"></option>
-                  <option value="custom" x-t="combos.policyCustom"></option>
-                </select>
-                <input class="form-control form-control-sm" type="number" min="1" max="100" x-show="strategyOf(combo) === 'smart' && policyOf(combo) === 'custom'" x-bind:value="thresholdOf(combo)" x-bind:aria-label="label('combos.threshold')" x-on:change="setThreshold(combo, $event)">
-                <input class="form-control form-control-sm" type="text" x-show="strategyOf(combo) === 'smart'" x-bind:value="routerOf(combo)" x-bind:placeholder="label('combos.routerPlaceholder')" x-bind:aria-label="label('combos.router')" x-on:change="setRouter(combo, $event)">
-                <input class="form-control form-control-sm" type="text" x-show="strategyOf(combo) === 'fusion'" x-bind:value="judgeOf(combo)" x-bind:placeholder="label('combos.judgePlaceholder')" x-bind:aria-label="label('combos.judge')" x-on:change="setJudge(combo, $event)">
-              </div>
+            </div>
+            <div class="rl-inline rl-combo-strategy">
+              <select class="form-select form-select-sm" x-bind:aria-label="label('combos.strategy')" x-bind:value="strategyOf(combo)" x-on:change="setStrategy(combo, $event)">
+                <option value="" x-text="label('combos.strategyDefault') + ' (' + globalStrategy + ')'"></option>
+                <option value="fallback" x-t="combos.fallback"></option>
+                <option value="round-robin" x-t="combos.roundRobin"></option>
+                <option value="smart" x-t="combos.smart"></option>
+                <option value="fusion" x-t="combos.fusion"></option>
+              </select>
+              <select class="form-select form-select-sm" x-show="strategyOf(combo) === 'smart'" x-bind:aria-label="label('combos.policy')" x-bind:value="policyOf(combo)" x-on:change="setPolicy(combo, $event)">
+                <option value="smart" x-t="combos.policySmart"></option>
+                <option value="strict" x-t="combos.policyStrict"></option>
+                <option value="per-turn" x-t="combos.policyPerTurn"></option>
+                <option value="custom" x-t="combos.policyCustom"></option>
+              </select>
+              <input class="form-control form-control-sm" type="number" min="1" max="100" x-show="strategyOf(combo) === 'smart' && policyOf(combo) === 'custom'" x-bind:value="thresholdOf(combo)" x-bind:aria-label="label('combos.threshold')" x-on:change="setThreshold(combo, $event)">
+              <input class="form-control form-control-sm" type="text" x-show="strategyOf(combo) === 'smart'" x-bind:value="routerOf(combo)" x-bind:placeholder="label('combos.routerPlaceholder')" x-bind:aria-label="label('combos.router')" x-on:change="setRouter(combo, $event)">
+              <input class="form-control form-control-sm" type="text" x-show="strategyOf(combo) === 'fusion'" x-bind:value="judgeOf(combo)" x-bind:placeholder="label('combos.judgePlaceholder')" x-bind:aria-label="label('combos.judge')" x-on:change="setJudge(combo, $event)">
             </div>
             <div class="rl-list-actions">
-              <button type="button" class="btn btn-sm btn-ghost" x-on:click="copyModels(combo)" x-tip="combos.copyModels"><span class="rl-icon" x-icon="copy"></span><span class="visually-hidden" x-t="combos.copyModels"></span></button>
+              <button type="button" class="btn btn-sm btn-ghost" x-on:click="copyName(combo)" x-tip="combos.copyName"><span class="rl-icon" x-icon="copy"></span><span class="visually-hidden" x-t="combos.copyName"></span></button>
+              <button type="button" class="btn btn-sm btn-ghost" x-on:click="copyModels(combo)" x-tip="combos.copyModels"><span class="rl-icon" x-icon="clipboard-list"></span><span class="visually-hidden" x-t="combos.copyModels"></span></button>
               <button type="button" class="btn btn-sm btn-ghost" x-on:click="openEdit(combo)" x-tip="common.edit"><span class="rl-icon" x-icon="pencil"></span><span class="visually-hidden" x-t="common.edit"></span></button>
               <button type="button" class="btn btn-sm btn-ghost-danger" x-on:click="removeCombo(combo)" x-tip="common.delete"><span class="rl-icon" x-icon="trash"></span><span class="visually-hidden" x-t="common.delete"></span></button>
             </div>
@@ -65,6 +69,89 @@
     </div>
   </div>
 
+  <div class="rl-section" x-show="!loading && adapter">
+    <div class="rl-section-head">
+      <div>
+        <h2 class="rl-card-title" x-t="combos.adapter"></h2>
+        <p class="rl-hint" x-t="combos.adapterHint"></p>
+      </div>
+    </div>
+
+    <section class="card">
+      <div class="card-header rl-card-head">
+        <h2 class="rl-card-title"><span class="rl-icon" x-icon="eye"></span> <span x-t="models.vision"></span></h2>
+        <div class="rl-inline">
+          <label class="form-check form-switch rl-switch" x-show="adapterBlock('vision').enabled">
+            <input class="form-check-input" type="checkbox" role="switch" x-bind:aria-label="label('combos.adapterRotate') + ' ' + label('models.vision')" x-bind:checked="adapterBlock('vision').roundRobin" x-on:change="toggleAdapter('vision', 'roundRobin', $event)">
+            <span class="form-check-label" x-t="combos.adapterRotate"></span>
+          </label>
+          <label class="form-check form-switch rl-switch">
+            <input class="form-check-input" type="checkbox" role="switch" x-bind:aria-label="label('combos.adapterOn') + ' ' + label('models.vision')" x-bind:checked="adapterBlock('vision').enabled" x-on:change="toggleAdapter('vision', 'enabled', $event)">
+            <span class="form-check-label" x-t="combos.adapterOn"></span>
+          </label>
+        </div>
+      </div>
+      <div class="card-body">
+        <p class="rl-hint" x-show="adapterBlock('vision').enabled && adapterBlock('vision').models.length === 0" x-t="combos.adapterEmpty"></p>
+        <ul class="rl-list" x-show="adapterBlock('vision').enabled && adapterBlock('vision').models.length > 0">
+          <template x-for="(member, index) in adapterBlock('vision').models" x-bind:key="member">
+            <li class="rl-list-row">
+              <code class="rl-code" x-text="member"></code>
+              <div class="rl-list-actions">
+                <button type="button" class="btn btn-sm btn-ghost" x-bind:disabled="index === 0" x-on:click="moveAdapterModel('vision', index, -1)" x-tip="combos.moveUp"><span class="rl-icon" x-icon="arrow-up"></span><span class="visually-hidden" x-t="combos.moveUp"></span></button>
+                <button type="button" class="btn btn-sm btn-ghost" x-bind:disabled="index === adapterBlock('vision').models.length - 1" x-on:click="moveAdapterModel('vision', index, 1)" x-tip="combos.moveDown"><span class="rl-icon" x-icon="arrow-down"></span><span class="visually-hidden" x-t="combos.moveDown"></span></button>
+                <button type="button" class="btn btn-sm btn-ghost-danger" x-on:click="removeAdapterModel('vision', index)" x-tip="common.remove"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.remove"></span></button>
+              </div>
+            </li>
+          </template>
+        </ul>
+        <div class="rl-inline" x-show="adapterBlock('vision').enabled">
+          <input class="form-control form-control-sm" type="text" list="adapter-choices" x-bind:placeholder="label('combos.adapterAdd')" x-bind:aria-label="label('combos.adapterAdd') + ' ' + label('models.vision')" x-bind:value="adapterAdd.vision" x-on:input="setAdapterAdd('vision', $event)">
+          <button type="button" class="btn btn-sm" x-on:click="addAdapterModel('vision')"><span class="rl-icon" x-icon="plus"></span><span x-t="common.add"></span></button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-header rl-card-head">
+        <h2 class="rl-card-title"><span class="rl-icon" x-icon="audio-lines"></span> <span x-t="models.audio"></span></h2>
+        <div class="rl-inline">
+          <label class="form-check form-switch rl-switch" x-show="adapterBlock('audioInput').enabled">
+            <input class="form-check-input" type="checkbox" role="switch" x-bind:aria-label="label('combos.adapterRotate') + ' ' + label('models.audio')" x-bind:checked="adapterBlock('audioInput').roundRobin" x-on:change="toggleAdapter('audioInput', 'roundRobin', $event)">
+            <span class="form-check-label" x-t="combos.adapterRotate"></span>
+          </label>
+          <label class="form-check form-switch rl-switch">
+            <input class="form-check-input" type="checkbox" role="switch" x-bind:aria-label="label('combos.adapterOn') + ' ' + label('models.audio')" x-bind:checked="adapterBlock('audioInput').enabled" x-on:change="toggleAdapter('audioInput', 'enabled', $event)">
+            <span class="form-check-label" x-t="combos.adapterOn"></span>
+          </label>
+        </div>
+      </div>
+      <div class="card-body">
+        <p class="rl-hint" x-show="adapterBlock('audioInput').enabled && adapterBlock('audioInput').models.length === 0" x-t="combos.adapterEmpty"></p>
+        <ul class="rl-list" x-show="adapterBlock('audioInput').enabled && adapterBlock('audioInput').models.length > 0">
+          <template x-for="(member, index) in adapterBlock('audioInput').models" x-bind:key="member">
+            <li class="rl-list-row">
+              <code class="rl-code" x-text="member"></code>
+              <div class="rl-list-actions">
+                <button type="button" class="btn btn-sm btn-ghost" x-bind:disabled="index === 0" x-on:click="moveAdapterModel('audioInput', index, -1)" x-tip="combos.moveUp"><span class="rl-icon" x-icon="arrow-up"></span><span class="visually-hidden" x-t="combos.moveUp"></span></button>
+                <button type="button" class="btn btn-sm btn-ghost" x-bind:disabled="index === adapterBlock('audioInput').models.length - 1" x-on:click="moveAdapterModel('audioInput', index, 1)" x-tip="combos.moveDown"><span class="rl-icon" x-icon="arrow-down"></span><span class="visually-hidden" x-t="combos.moveDown"></span></button>
+                <button type="button" class="btn btn-sm btn-ghost-danger" x-on:click="removeAdapterModel('audioInput', index)" x-tip="common.remove"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.remove"></span></button>
+              </div>
+            </li>
+          </template>
+        </ul>
+        <div class="rl-inline" x-show="adapterBlock('audioInput').enabled">
+          <input class="form-control form-control-sm" type="text" list="adapter-choices" x-bind:placeholder="label('combos.adapterAdd')" x-bind:aria-label="label('combos.adapterAdd') + ' ' + label('models.audio')" x-bind:value="adapterAdd.audioInput" x-on:input="setAdapterAdd('audioInput', $event)">
+          <button type="button" class="btn btn-sm" x-on:click="addAdapterModel('audioInput')"><span class="rl-icon" x-icon="plus"></span><span x-t="common.add"></span></button>
+        </div>
+      </div>
+    </section>
+
+    <datalist id="adapter-choices">
+      <template x-for="choice in choices" x-bind:key="choice"><option x-bind:value="choice"></option></template>
+    </datalist>
+  </div>
+
   <dialog class="rl-dialog" x-ref="form" x-on:close="stopSortable()" aria-labelledby="combo-form-title">
     <form method="dialog" x-on:submit.prevent="saveForm()">
       <h2 id="combo-form-title" x-text="form.mode === 'edit' ? label('combos.editTitle') : label('combos.createTitle')"></h2>
@@ -72,13 +159,13 @@
       <input class="form-control" id="combo-name" type="text" maxlength="100" x-bind:value="form.name" x-on:input="setField('form.name', $event)">
       <p class="rl-hint" x-t="combos.nameHint"></p>
 
-      <h3 class="rl-card-title" x-t="combos.models"></h3>
+      <h3 class="rl-card-title" x-t="combos.modelsTitle"></h3>
       <p class="rl-hint" x-show="form.models.length === 0" x-t="combos.modelsEmpty"></p>
       <ul class="rl-list" x-ref="modelList">
-        <template x-for="(model, index) in form.models" x-bind:key="index">
-          <li class="rl-list-row" x-bind:data-index="index">
+        <template x-for="(model, index) in form.models" x-bind:key="model">
+          <li class="rl-list-row rl-model-row" x-bind:data-index="index">
             <div class="rl-list-main">
-              <span class="rl-drag" data-drag aria-hidden="true">≡</span>
+              <button type="button" class="rl-drag" data-drag x-tip="combos.drag"><span class="rl-icon" x-icon="grip-vertical"></span><span class="visually-hidden" x-t="combos.drag"></span></button>
               <input class="form-control form-control-sm" type="text" x-bind:aria-label="label('combos.model')" x-bind:value="model" x-on:change="setModelAt(index, $event)">
             </div>
             <div class="rl-list-actions">
@@ -90,15 +177,9 @@
         </template>
       </ul>
       <div class="rl-inline">
-        <input class="form-control form-control-sm" type="text" list="combo-aliases" x-bind:placeholder="label('combos.addModel')" x-bind:aria-label="label('combos.addModel')" x-bind:value="form.add" x-on:input="setField('form.add', $event)" x-on:keydown.enter.prevent="addModel()">
+        <input class="form-control form-control-sm" type="text" list="adapter-choices" x-bind:placeholder="label('combos.addModel')" x-bind:aria-label="label('combos.addModel')" x-bind:value="form.add" x-on:input="setField('form.add', $event)" x-on:paste="pasteModels($event)" x-on:keydown.enter.prevent="addModel()">
         <button type="button" class="btn btn-sm" x-on:click="addModel()"><span class="rl-icon" x-icon="plus"></span><span x-t="common.add"></span></button>
       </div>
-      <datalist id="combo-aliases">
-        <template x-for="alias in aliases" x-bind:key="alias">
-          <option x-bind:value="alias"></option>
-        </template>
-      </datalist>
-
       <p class="rl-error" x-show="form.error" x-text="form.error"></p>
       <div class="rl-dialog-actions">
         <button type="button" class="btn" x-on:click="closeForm()" x-t="common.cancel"></button>

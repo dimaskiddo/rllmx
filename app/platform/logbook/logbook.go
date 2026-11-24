@@ -10,7 +10,7 @@ import (
 )
 
 // Size is how many lines the ring keeps.
-const Size = 200
+const Size = 500
 
 // maxLine bounds one stored line, so a logged blob cannot fill the ring with a
 // single entry.

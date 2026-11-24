@@ -51,10 +51,12 @@
         <div class="card-header rl-card-head">
           <h2 class="rl-card-title" x-t="usage.recent"></h2>
         </div>
-        <div class="card-body">
+        <div class="card-body rl-fill-body">
           <p class="rl-hint" x-show="live.recentRequests.length === 0" x-t="usage.recentEmpty"></p>
+          <div class="rl-fill">
           <div class="rl-table-wrap">
-            <table class="table table-sm" x-show="live.recentRequests.length > 0">
+            <table class="table table-sm rl-recent" x-show="live.recentRequests.length > 0">
+              <colgroup><col class="rl-recent-model"><col class="rl-recent-num"><col class="rl-recent-num"><col class="rl-recent-num"></colgroup>
               <caption class="visually-hidden" x-t="usage.recent"></caption>
               <thead>
                 <tr>
@@ -67,7 +69,7 @@
               <tbody>
                 <template x-for="row in live.recentRequests" x-bind:key="row.timestamp + row.model">
                   <tr>
-                    <td><span x-text="row.model"></span><span class="text-secondary" x-text="row.status === 'ok' ? '' : ' · ' + statusWord(row.status)"></span></td>
+                    <td x-bind:title="row.model"><span x-text="row.model"></span><span class="text-secondary" x-text="row.status === 'ok' ? '' : ' · ' + statusWord(row.status)"></span></td>
                     <td class="text-end" x-text="num(row.promptTokens)"></td>
                     <td class="text-end" x-text="num(row.completionTokens)"></td>
                     <td class="text-end" x-text="relative(row.timestamp)"></td>
@@ -75,6 +77,7 @@
                 </template>
               </tbody>
             </table>
+          </div>
           </div>
         </div>
       </section>
@@ -138,7 +141,7 @@
       <div class="card-body">
         <p class="rl-hint" x-show="rows().length === 0" x-t="usage.empty"></p>
         <div class="rl-table-wrap">
-          <table class="table table-sm" x-show="rows().length > 0">
+          <table class="table" x-show="rows().length > 0">
             <caption class="visually-hidden" x-t="usage.breakdown"></caption>
             <thead>
               <tr>
@@ -176,7 +179,7 @@
         <option value="failed" x-t="usage.failed"></option>
         <option value="pending" x-t="usage.pending"></option>
       </select>
-      <input class="form-control form-control-sm" type="search" x-bind:placeholder="label('usage.searchLogs')" x-bind:aria-label="label('usage.searchLogs')" x-bind:value="logFilter" x-on:input="setLogFilter($event)">
+      <input class="form-control form-control-sm" type="search" x-bind:placeholder="label('usage.searchLogs')" x-bind:aria-label="label('usage.searchLogs')" x-bind:value="logFilter" x-on:input.debounce.250ms="setLogFilter($event)">
       <div class="form-check form-switch rl-switch">
         <input class="form-check-input" type="checkbox" id="log-refresh" role="switch" x-bind:checked="logRefresh" x-on:change="toggleLogRefresh($event)">
         <label class="form-check-label" for="log-refresh" x-t="usage.autoRefresh"></label>

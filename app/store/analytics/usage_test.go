@@ -184,7 +184,7 @@ func TestTheFeaturesTravelWithTheRow(t *testing.T) {
 	if err := w.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	rows, err := s.Recent(context.Background(), 10, nil)
+	rows, err := s.Recent(context.Background(), time.Time{}, 10, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

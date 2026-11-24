@@ -2,6 +2,8 @@ package redactor
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"time"
 
 	"github.com/goravel/framework/contracts/log"
@@ -27,13 +29,28 @@ func (h *Handler) Tee(fn func(log.Entry)) { h.tee = fn }
 // Enabled follows the wrapped handler.
 func (h *Handler) Enabled(l log.Level) bool { return h.next.Enabled(l) }
 
-// Handle cleans e and hands the copy to the wrapped handler.
+// Handle cleans e and hands the copy to the wrapped handler. A database error
+// whose request ended first is dropped: the framework's query logger writes it
+// for every poll a browser abandons, and it says nothing about the database.
 func (h *Handler) Handle(e log.Entry) error {
+	if abandoned(e) {
+		return nil
+	}
 	clean := cleanEntry(e)
 	if h.tee != nil {
 		h.tee(clean)
 	}
 	return h.next.Handle(clean)
+}
+
+// abandoned reports an error entry written because its own request context
+// ended: the context is canceled and the message says so.
+func abandoned(e log.Entry) bool {
+	if e.Level() != log.LevelError {
+		return false
+	}
+	ctx := e.Context()
+	return ctx != nil && errors.Is(ctx.Err(), context.Canceled) && strings.HasSuffix(strings.TrimSpace(e.Message()), "context canceled")
 }
 
 // entry is a log.Entry whose fields are already clean. Its context is empty on

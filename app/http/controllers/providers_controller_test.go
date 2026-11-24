@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"encoding/json"
+	"github.com/tidwall/gjson"
 	nethttp "net/http"
 	"net/http/httptest"
 	"strings"
@@ -385,6 +386,32 @@ func TestOverridesValidation(t *testing.T) {
 	}
 }
 
+// TestTheOverridesRouteOffersTheProvidersOwnHeaders covers the card's
+// prefill: a login provider's identity headers and its api version, and nothing
+// for a provider node, which has no defaults of its own.
+func TestTheOverridesRouteOffersTheProvidersOwnHeaders(t *testing.T) {
+	m := newMgmtRig(t)
+	got := m.ok(t, "GET", "/api/providers/claude/overrides", "", 200)
+	builtin, _ := got["builtinHeaders"].(map[string]any)
+	if builtin["anthropic-version"] != upstream.ClaudeVersion || builtin["X-App"] != "cli" {
+		t.Fatalf("claude defaults %v", got)
+	}
+	if ua, _ := builtin["User-Agent"].(string); !strings.HasPrefix(ua, "claude-cli/") {
+		t.Fatalf("user agent %v", builtin["User-Agent"])
+	}
+	if _, ok := builtin["anthropic-beta"]; ok {
+		t.Fatal("the beta list is computed per request, not offered as a default")
+	}
+	if _, ok := builtin["Authorization"]; ok {
+		t.Fatalf("a credential was offered: %v", builtin)
+	}
+
+	id := nodeID(t, m.ok(t, "POST", "/api/provider-nodes", `{"name":"My Node","prefix":"mine","baseUrl":"https://x.example","type":"anthropic-compatible","apiType":"chat"}`, 201))
+	if got := m.ok(t, "GET", "/api/providers/"+id+"/overrides", "", 200); len(got["builtinHeaders"].(map[string]any)) != 0 {
+		t.Fatalf("a node has no defaults: %v", got)
+	}
+}
+
 func TestOverridesAreKeyedByTheCanonicalIDAndKeepOtherProviders(t *testing.T) {
 	m := newMgmtRig(t)
 	m.ok(t, "PUT", "/api/providers/cc/overrides", `{"headers":{"X-One":"1"}}`, 200)
@@ -414,4 +441,29 @@ func (m *mgmtRig) pointRegistryAt(t *testing.T, id, url string) {
 		t.Fatal(err)
 	}
 	m.pc.Registry = reg
+}
+
+func TestAMaskedValueSentBackNeverReplacesAStoredSecret(t *testing.T) {
+	m := newMgmtRig(t)
+	id := connID(t, m.ok(t, "POST", "/api/providers", `{"provider":"opendesign-go","apiKey":"k","name":"a","providerSpecificData":{"opendesignControlKey":"vela_ctrl_REAL","opendesignWorkspaceId":"ws-1"}}`, 201))
+	m.ok(t, "PUT", "/api/providers/"+id, `{"providerSpecificData":{"opendesignControlKey":"***","opendesignWorkspaceId":"ws-2"}}`, 200)
+	c, _, _ := m.st.Connections().Get(context.Background(), id)
+	raw, _ := c.Doc().GetRaw("providerSpecificData")
+	if gjson.Get(raw, "opendesignControlKey").String() != "vela_ctrl_REAL" {
+		t.Fatalf("a masked value overwrote the secret: %s", raw)
+	}
+	if gjson.Get(raw, "opendesignWorkspaceId").String() != "ws-2" {
+		t.Fatalf("the rest of the update was dropped: %s", raw)
+	}
+	m.ok(t, "PUT", "/api/providers/"+id, `{"providerSpecificData":{"opendesignControlKey":"vela_ctrl_NEW"}}`, 200)
+	c, _, _ = m.st.Connections().Get(context.Background(), id)
+	raw, _ = c.Doc().GetRaw("providerSpecificData")
+	if gjson.Get(raw, "opendesignControlKey").String() != "vela_ctrl_NEW" {
+		t.Fatalf("a real new value was refused: %s", raw)
+	}
+	for _, path := range []string{"/api/providers", "/api/providers/" + id} {
+		if _, _, body := m.call("GET", path, "", true); strings.Contains(body, "vela_ctrl_") {
+			t.Fatalf("%s shows the control key: %s", path, body)
+		}
+	}
 }

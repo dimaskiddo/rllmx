@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"rllmx/app/llm/translate"
+	"slices"
 	"strings"
 
 	"github.com/tidwall/gjson"
@@ -469,7 +470,7 @@ func geminiGenerationConfig(r *translate.Request, c *translate.Ctx) translate.Ob
 			cfg["thinkingBudget"] = th.Budget
 		case "level":
 			if c.Caps.ThinkingFormat == "gemini-level" {
-				cfg["thinkingLevel"] = strings.ToUpper(th.Level)
+				cfg["thinkingLevel"] = strings.ToUpper(geminiLevel(th.Level, c.Levels))
 			} else {
 				cfg["thinkingBudget"] = c.Budget(th.Level)
 			}
@@ -551,4 +552,31 @@ func (GeminiCodec) WriteResponse(r *translate.Response, c *translate.Ctx) ([]byt
 		"usageMetadata": u, "modelVersion": r.Model, "responseId": r.ID,
 	}
 	return json.Marshal(translate.WithExtra(o, r.Extra))
+}
+
+// geminiLevel clamps a requested thinking level into the set the model serves,
+// because Gemini answers a level outside it with a 400. xhigh stays where it is
+// served and otherwise falls to the highest level below it; max is not a Gemini
+// level and reads as the highest the model has; a level below the floor rises to
+// it. With no set known the level is sent as it came.
+func geminiLevel(level string, served []string) string {
+	level = strings.ToLower(strings.TrimSpace(level))
+	served = slices.DeleteFunc(slices.Clone(served), func(l string) bool { return l == "none" })
+	if len(served) == 0 || slices.Contains(served, level) {
+		return level
+	}
+	order := []string{"minimal", "low", "medium", "high", "xhigh"}
+	if level == "max" {
+		return served[len(served)-1]
+	}
+	at := slices.Index(order, level)
+	if at < 0 {
+		return served[0]
+	}
+	for i := at; i >= 0; i-- {
+		if slices.Contains(served, order[i]) {
+			return order[i]
+		}
+	}
+	return served[0]
 }

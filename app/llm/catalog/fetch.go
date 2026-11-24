@@ -50,7 +50,12 @@ func kiroFetcher(e upstream.Entry, client *http.Client) Fetcher {
 		if profile != "" {
 			url += "&profileArn=" + neturl.QueryEscape(profile)
 		}
-		raw, err := readGet(ctx, client, url, token, map[string]string{"x-amzn-kiro-agent-mode": "vibe"})
+		extra := upstream.KiroIdentity(upstream.KiroSeed{
+			ClientID: accountValue(conn, "clientId"), RefreshToken: accountValue(conn, "refreshToken"),
+			ProfileARN: profile, AccessToken: token,
+		}, upstream.KiroRuntime)
+		extra["x-amzn-kiro-agent-mode"] = "vibe"
+		raw, err := readGet(ctx, client, url, token, extra)
 		if err != nil {
 			return nil, err
 		}

@@ -24,9 +24,9 @@ const PROVIDER_ICONS = {
   "opencode-zen": "opencode",
 };
 
-// NO_ICON lists the providers with no mark in the reference either; they keep
-// the initials tile instead of requesting a file that is not there.
-const NO_ICON = ["local-fetch", "runcrate", "synthetic"];
+// NO_ICON lists the providers with no mark file here; they keep the initials
+// tile instead of requesting a file that is not there.
+const NO_ICON = ["local-fetch", "runcrate", "synthetic", "opendesign-go", "deeprelay", "qwencloud"];
 
 // errorTag names the latest failure of a connection in the few words a card
 // shows. The store keeps a status code and a message, nothing richer.
@@ -121,8 +121,10 @@ window.Alpine.data("providersPage", () => Object.assign({
     await this.load();
   },
 
+  // load shows "Loading" only the first time. A later load, after a save or a
+  // switch, swaps the data under what is already on screen instead of blanking
+  // the page and losing the reader's place.
   async load() {
-    this.loading = true;
     this.error = "";
     try {
       const [catalog, providers, nodes] = await Promise.all([

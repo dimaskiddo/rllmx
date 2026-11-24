@@ -71,12 +71,30 @@
   },
   "rules": [
     {
+      "pattern": "*gemini-4-neon*",
+      "levels": ["low", "medium", "high", "xhigh"]
+    },
+    {
+      "pattern": "*gemini-4-hydrogen*",
+      "levels": ["low", "medium", "high", "xhigh"]
+    },
+    {
       "pattern": "*gemini-4*",
       "levels": [
         "low",
         "medium",
         "high"
       ]
+    },
+    {
+      "provider": "antigravity",
+      "pattern": "*claude*sonnet-5-5*",
+      "levels": ["low", "medium", "high", "max"]
+    },
+    {
+      "provider": "antigravity",
+      "pattern": "*claude*opus-5-5*",
+      "levels": ["low", "medium", "high", "max"]
     },
     {
       "pattern": "*claude*4.6*",

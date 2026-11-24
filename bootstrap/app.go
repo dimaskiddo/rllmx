@@ -13,6 +13,7 @@ import (
 	"github.com/goravel/framework/foundation"
 
 	"rllmx/app/access/identity"
+	"rllmx/app/access/quota"
 	"rllmx/app/access/saml"
 	"rllmx/app/access/sso"
 	"rllmx/app/facades"
@@ -69,7 +70,7 @@ func declareRoutes(version, commit string) {
 	base.Auth = controllers.NewAuthController(h.Auth, h.Trust)
 	base.OIDC = oidcController(h)
 	base.SAML = samlController(h)
-	base.Providers = &controllers.ProvidersController{Registry: h.Registry, OAuth: h.OAuth, DB: db, Checker: h.Checker, Refresher: h.Refresher, Enqueue: h.Probes.Enqueue, Probe: h.Probes.Prober}
+	base.Providers = &controllers.ProvidersController{Registry: h.Registry, OAuth: h.OAuth, DB: db, Checker: h.Checker, Refresher: h.Refresher, Enqueue: h.Probes.Enqueue, Probe: h.Probes.Prober, ClaudeCLI: h.ClaudeCLI}
 	base.Nodes = &controllers.NodesController{Registry: h.Registry, DB: db, Checker: h.Checker, Changed: h.Snapshot.Invalidate}
 	base.OAuth = &controllers.OAuthController{Service: h.OAuth, Auth: h.Auth, Server: h.Settings}
 	base.Pages = &controllers.PagesController{Files: web.Static}
@@ -91,12 +92,13 @@ func declareRoutes(version, commit string) {
 // model lists.
 func clientRoutes(base *routes.Base, h *providers.HTTP, db func() *repository.Store) {
 	media := providers.NewMediaSource(facades.App())
-	base.Chat = &controllers.ChatController{Pipe: h.Pipe.Get, Log: facades.Log()}
+	base.Chat = &controllers.ChatController{Pipe: h.Pipe.Get, Log: facades.Log(), Standing: clientStanding(h)}
 	base.Media = &controllers.MediaController{
 		EmbeddingsPipe: media.Get, ImagesPipe: media.Get, SpeechPipe: media.Get,
 		TranscribePipe: media.Get, VoicesPipe: media.Get, VideosPipe: media.Get,
 		SearchPipe: media.Get, FetchPipe: media.Get, Log: facades.Log(),
 	}
+	base.ClientUsage = &controllers.ClientUsageController{Standing: clientStanding(h)}
 	base.Models = &controllers.ModelsController{
 		Catalog: providers.NewCatalogSource(facades.App()).Get, Probe: h.Probes.Prober, Log: facades.Log(),
 		Registry: h.Registry, Caps: h.Capabilities, DB: db, Changed: h.Snapshot.Invalidate,
@@ -106,6 +108,14 @@ func clientRoutes(base *routes.Base, h *providers.HTTP, db func() *repository.St
 			}
 			return h.CatalogSync
 		},
+	}
+}
+
+// clientStanding reads a key's budget standing over the same analytics store and
+// writer the budget check uses, so what a client is told is what would refuse it.
+func clientStanding(h *providers.HTTP) func(context.Context, string) (quota.Standings, error) {
+	return func(ctx context.Context, keyID string) (quota.Standings, error) {
+		return providers.Budget(h.Limits, providers.DataOf(facades.App()).Runner).Standing(ctx, keyID)
 	}
 }
 
@@ -178,6 +188,7 @@ func keysController(h *providers.HTTP, db func() *repository.Store) *controllers
 	cfg := facades.Config()
 	return &controllers.KeysController{
 		DB: db, Quota: h.Limits, Codec: identity.NewKeys(cfg.GetString("auth.api_key_secret")),
+		Budget:  providers.Budget(h.Limits, providers.DataOf(facades.App()).Runner),
 		Machine: identity.NewMachine(cfg.GetString("auth.machine_id_salt")),
 		Dir:     cfg.GetString("app.data_dir"),
 		Users:   h.Auth.Users,

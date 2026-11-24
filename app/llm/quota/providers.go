@@ -63,6 +63,9 @@ var fetchers = map[string]fetcher{
 	"ollama":            {auth: authKey, run: readOllama},
 	"vercel-ai-gateway": {auth: authKey, run: readVercel},
 	"commandcode":       {auth: authKey, run: readCommandCode},
+	"synthetic":         {auth: authKey, run: readSynthetic},
+	"deeprelay":         {auth: authKey, run: readDeepRelay},
+	"opendesign-go":     {auth: authKey, run: readOpenDesign},
 }
 
 // Serves reports whether a reading can be asked for this provider and auth type.

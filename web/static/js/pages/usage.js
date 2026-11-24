@@ -129,7 +129,12 @@ window.Alpine.data("usagePage", () => Object.assign({
   setPeriod(event) {
     this.period = event.target.value;
     this.syncURL();
-    this.load().then(() => this.$nextTick(() => this.drawAll()));
+    this.load().then(() => {
+      if (this.tab === "logs") {
+        this.loadLogs();
+      }
+      this.$nextTick(() => this.drawAll());
+    });
   },
 
   setTab(value) {
@@ -176,18 +181,35 @@ window.Alpine.data("usagePage", () => Object.assign({
     }
   },
 
+  // rows is the table for the chosen grouping. The server keeps one key entry
+  // per model and provider, and the table shows only the key, so entries naming
+  // the same key are summed into a single row.
   rows() {
     const table = this.stats[this.group] || {};
-    const rows = Object.entries(table).map(([key, entry]) => ({
-      key: key,
-      name: entry.accountName || entry.keyName || entry.endpoint || entry.rawModel || key,
-      detail: entry.provider || entry.apiKeyMasked || "",
-      requests: entry.requests || 0,
-      promptTokens: entry.promptTokens || 0,
-      cachedTokens: entry.cachedTokens || 0,
-      completionTokens: entry.completionTokens || 0,
-      cost: entry.cost || 0,
-    }));
+    const merged = new Map();
+    for (const [key, entry] of Object.entries(table)) {
+      const id = this.group === "byApiKey" && entry.apiKeyKey ? "key:" + entry.apiKeyKey : key;
+      let row = merged.get(id);
+      if (!row) {
+        row = {
+          key: id,
+          name: entry.accountName || entry.keyName || entry.endpoint || entry.rawModel || key,
+          detail: entry.provider || entry.apiKeyMasked || "",
+          requests: 0,
+          promptTokens: 0,
+          cachedTokens: 0,
+          completionTokens: 0,
+          cost: 0,
+        };
+        merged.set(id, row);
+      }
+      row.requests += entry.requests || 0;
+      row.promptTokens += entry.promptTokens || 0;
+      row.cachedTokens += entry.cachedTokens || 0;
+      row.completionTokens += entry.completionTokens || 0;
+      row.cost += entry.cost || 0;
+    }
+    const rows = Array.from(merged.values());
     for (const row of rows) {
       row.total = row.promptTokens + row.completionTokens;
     }
@@ -336,8 +358,8 @@ window.Alpine.data("usagePage", () => Object.assign({
 
   async loadLogs() {
     try {
-      const rows = await api("/api/usage/logs");
-      this.logLines = (rows || []).map(parseLog).reverse();
+      const rows = await api("/api/usage/logs?period=" + encodeURIComponent(this.period));
+      this.logLines = (rows || []).map(parseLog);
     } catch (err) {
       this.error = err.message;
     }

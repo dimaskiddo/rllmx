@@ -121,23 +121,96 @@ func (d Draft) checkPrompt(hook string, hasRules bool) error {
 	return nil
 }
 
-// Create writes a new custom skill folder. An id the embedded set already uses,
-// the catalog folder, or an existing folder is refused.
-func Create(dir string, d Draft) error {
+// Create writes a new custom skill folder and answers the id it used. A draft
+// with no id is named after its title; an id the embedded set already uses, the
+// catalog folder, or an existing folder is refused.
+func Create(dir string, d Draft) (string, error) {
 	id := strings.TrimSpace(d.ID)
+	if id == "" {
+		var err error
+		if id, err = freeID(dir, d.Name); err != nil {
+			return "", err
+		}
+	}
 	if !reID.MatchString(id) {
-		return fmt.Errorf("%w: id must match %s", ErrInvalid, reID)
+		return "", fmt.Errorf("%w: id must match %s", ErrInvalid, reID)
 	}
 	target, err := skillDir(dir, id)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if _, err := os.Lstat(target); err == nil {
-		return ErrExists
+		return "", ErrExists
 	} else if !errors.Is(err, fs.ErrNotExist) {
-		return err
+		return "", err
 	}
-	return writeSkill(dir, target, id, d, nil)
+	return id, writeSkill(dir, target, id, d, nil)
+}
+
+// freeID names a new skill after its title, adding a number until the id is
+// unused. Callers hold the Studio's write lock, so two creates cannot race here.
+func freeID(dir, name string) (string, error) {
+	base := idFromName(name)
+	for n := 0; n < 100; n++ {
+		id := base
+		if n > 0 {
+			id = fmt.Sprintf("%s-%d", base, n)
+		}
+		taken, err := idTaken(dir, id)
+		if err != nil {
+			return "", err
+		}
+		if !taken {
+			return id, nil
+		}
+	}
+	return "", ErrExists
+}
+
+// idFromName turns a title into a candidate id: letters and digits kept, a space
+// or a dash between words, every other symbol dropped.
+func idFromName(name string) string {
+	var b strings.Builder
+	b.Grow(len(name))
+	dash := false
+	for _, r := range strings.ToLower(name) {
+		switch {
+		case r >= 'a' && r <= 'z' || r >= '0' && r <= '9':
+			b.WriteRune(r)
+			dash = false
+		case r == ' ' || r == '-' || r == '_' || r == '\t' || r == '\n':
+			if b.Len() > 0 && !dash {
+				b.WriteByte('-')
+				dash = true
+			}
+		}
+	}
+	// The text is ASCII, so four characters below the 64-byte limit leave room for
+	// a suffix.
+	id := strings.TrimRight(text.CutRunes(strings.Trim(b.String(), "-"), 60), "-")
+	if id == "" {
+		return "skill"
+	}
+	return id
+}
+
+// idTaken reports an id another skill already holds, including an imported one
+// whose folder is nested under the catalog folder.
+func idTaken(dir, id string) (bool, error) {
+	if id == CatalogDir {
+		return true, nil
+	}
+	if _, err := fs.Stat(Builtin(), path.Join("builtin", id)); err == nil {
+		return true, nil
+	}
+	for _, p := range []string{filepath.Join(dir, id), filepath.Join(dir, CatalogDir, id)} {
+		if _, err := os.Lstat(p); err == nil {
+			return true, nil
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return false, err
+		}
+	}
+	return false, nil
 }
 
 // Update replaces a custom skill's files. A folder this router did not write is

@@ -42,6 +42,23 @@ func TestAUserRoundTripsThroughItsTable(t *testing.T) {
 	}
 }
 
+func TestTheAdminNameIsReserved(t *testing.T) {
+	r, _ := newUsers(t)
+	ctx := context.Background()
+	for _, name := range []string{"admin", "Admin"} {
+		if err := r.Put(ctx, User{ID: "u" + name, Username: name, Hash: "h"}); !errors.Is(err, ErrUserTaken) {
+			t.Fatalf("%s: %v, want ErrUserTaken", name, err)
+		}
+	}
+	r.Admin = "Operator"
+	if err := r.Put(ctx, User{ID: "u2", Username: "admin", Hash: "h"}); err != nil {
+		t.Fatalf("the configured name left the default free: %v", err)
+	}
+	if err := r.Put(ctx, User{ID: "u3", Username: "operator", Hash: "h"}); !errors.Is(err, ErrUserTaken) {
+		t.Fatalf("the configured admin name was taken: %v", err)
+	}
+}
+
 func TestAUsernameAndAnEmailAreUnique(t *testing.T) {
 	r, _ := newUsers(t)
 	ctx := context.Background()

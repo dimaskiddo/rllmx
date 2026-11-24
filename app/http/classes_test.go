@@ -114,3 +114,19 @@ func TestUnroutedClass(t *testing.T) {
 		}
 	}
 }
+
+// A client tool asks its provider how much it has used, and it carries an API
+// key, not a dashboard cookie. Those paths are the client API's even when they
+// sit under /api, so they get the key check, CORS and the client body cap.
+func TestAProviderUsagePathIsAClientRouteAndADashboardOneIsNot(t *testing.T) {
+	for _, p := range []string{"/api/tags", "/api/oauth/usage", "/v1/organizations/org-1/usage", "/v1/usage"} {
+		if !IsClientAPI(p) {
+			t.Errorf("%s is not a client route", p)
+		}
+	}
+	for _, p := range []string{"/api/oauth/usage/x", "/api/oauth/status", "/api/oauth/claude/authorize", "/api/keys", "/api/usage/stats"} {
+		if IsClientAPI(p) {
+			t.Errorf("%s was taken for a client route", p)
+		}
+	}
+}

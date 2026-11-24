@@ -3,11 +3,9 @@ package pipeline
 import (
 	"context"
 	"net/http"
-	"strings"
 	"testing"
 
 	"rllmx/app/platform/ratelimit"
-	"rllmx/app/store/analytics"
 	"rllmx/tests"
 )
 
@@ -59,27 +57,5 @@ func TestARefusedPaceAnswersWithoutSending(t *testing.T) {
 	}
 	if last := r.last(); last.Status != http.StatusServiceUnavailable || last.ErrorClass != "capacity" {
 		t.Fatalf("row = %d %q, want a capacity refusal", last.Status, last.ErrorClass)
-	}
-}
-
-func TestTheAnswerLineNamesTheFeaturesThatActed(t *testing.T) {
-	line := answerLine(analytics.Record{
-		RequestID: "rid-7", Provider: "claude", Model: "claude-opus-5-5", ConnectionID: "c1",
-		Attempt: 2, Status: 200, LatencyMs: 840, Savers: "html,headroom", Skills: "ponytail",
-	})
-	for _, want := range []string{"answer ", "id=rid-7", "provider=claude", "model=claude-opus-5-5",
-		"conn=c1", "attempt=2", "status=200", "ms=840", "savers=html,headroom", "skills=ponytail"} {
-		if !strings.Contains(line, want) {
-			t.Errorf("the line lacks %q: %s", want, line)
-		}
-	}
-}
-
-func TestOnlyAFeatureChangeEarnsTheAnswerLine(t *testing.T) {
-	if answerLogged(analytics.Record{Status: 200}) {
-		t.Fatal("a plain request earned a feature line")
-	}
-	if !answerLogged(analytics.Record{Savers: "html"}) || !answerLogged(analytics.Record{Skills: "ponytail"}) {
-		t.Fatal("a request a saver or a skill changed did not earn its line")
 	}
 }

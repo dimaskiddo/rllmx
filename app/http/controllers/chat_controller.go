@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"context"
 	"io"
 	nethttp "net/http"
 	"strconv"
@@ -9,6 +10,8 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 	"github.com/goravel/framework/contracts/log"
 
+	"rllmx/app/access/identity"
+	"rllmx/app/access/quota"
 	"rllmx/app/gateway/pipeline"
 	apphttp "rllmx/app/http"
 	"rllmx/app/http/middleware"
@@ -23,6 +26,10 @@ type ChatController struct {
 	// stores are not open.
 	Pipe func() (*pipeline.Pipeline, error)
 	Log  log.Log
+	// Standing reads a key's budget standing so its answer can carry the
+	// rate-limit headers a Claude client watches. Nil, or a read that fails,
+	// leaves them off: they are a courtesy, never a reason to refuse.
+	Standing func(ctx context.Context, keyID string) (quota.Standings, error)
 }
 
 // Serve answers a chat call in whatever format its path names: OpenAI, Claude,
@@ -51,6 +58,7 @@ func (c *ChatController) Serve(ctx contractshttp.Context) contractshttp.Response
 		return nil
 	}
 
+	c.rateLimitHeaders(ctx, caller)
 	opts := stream.Options{WriteTimeout: stream.DefaultWriteTimeout, Log: c.Log}
 	open := func() (stream.Client, error) { return stream.NewSSE(stream.WriterOf(ctx), opts) }
 	if f, _ := translate.Detect(r.URL.Path); f == translate.FormatOllama {
@@ -67,6 +75,26 @@ func (c *ChatController) Serve(ctx contractshttp.Context) contractshttp.Response
 	}
 	writeAnswer(stream.WriterOf(ctx), out)
 	return nil
+}
+
+// rateLimitHeaders puts the key's standing on the response before the pipeline
+// runs, because a stream commits its headers with its first frame. A key with no
+// budget gets none: there is nothing true to say.
+func (c *ChatController) rateLimitHeaders(ctx contractshttp.Context, caller identity.Caller) {
+	if c.Standing == nil || caller.ID == "" || caller.Anonymous {
+		return
+	}
+	s, err := c.Standing(ctx.Request().Origin().Context(), caller.ID)
+	if err != nil || (!s.Day.Limited && !s.Month.Limited && !s.Total.Limited) {
+		return
+	}
+	tight := s.Day
+	if s.Month.Percent > tight.Percent {
+		tight = s.Month
+	}
+	for name, vals := range failure.RateLimitHeaders(tight.Percent >= 100, tight.ResetsAt) {
+		ctx.Response().Header(name, vals[0])
+	}
 }
 
 // writeAnswer sends a buffered answer through the writer behind the driver's

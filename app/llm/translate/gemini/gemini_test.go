@@ -458,3 +458,32 @@ func FuzzCleanGeminiSchema(f *testing.F) {
 		}
 	})
 }
+
+// A model that takes a level the client did not ask for by that name must still
+// get one it accepts: Gemini rejects a level outside its set with a 400. xhigh
+// survives where the model serves it; elsewhere it falls to the highest below,
+// and a level no Gemini model has (max) is high.
+func TestAGeminiLevelIsClampedToWhatTheModelServes(t *testing.T) {
+	for name, tc := range map[string]struct {
+		level  string
+		levels []string
+		want   string
+	}{
+		"xhigh kept where served":       {"xhigh", []string{"low", "medium", "high", "xhigh"}, "XHIGH"},
+		"xhigh falls to high":           {"xhigh", []string{"low", "medium", "high"}, "HIGH"},
+		"max is high for gemini":        {"max", []string{"low", "medium", "high"}, "HIGH"},
+		"max is xhigh where xhigh is":   {"max", []string{"low", "medium", "high", "xhigh"}, "XHIGH"},
+		"minimal rises to the floor":    {"minimal", []string{"low", "medium", "high"}, "LOW"},
+		"a served level is untouched":   {"medium", []string{"low", "medium", "high"}, "MEDIUM"},
+		"no set known leaves it as was": {"high", nil, "HIGH"},
+	} {
+		c := gctx()
+		c.Caps.ThinkingFormat = "gemini-level"
+		c.Levels = tc.levels
+		r := &translate.Request{Model: "m", Messages: []translate.Message{user("x")}, Thinking: translate.Thinking{Mode: "level", Level: tc.level}}
+		th := geminiOut(t, r, c)["generationConfig"].(map[string]any)["thinkingConfig"].(map[string]any)
+		if th["thinkingLevel"] != tc.want {
+			t.Errorf("%s: %v, want %s", name, th["thinkingLevel"], tc.want)
+		}
+	}
+}

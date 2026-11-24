@@ -255,3 +255,39 @@ func TestNamesListsCarriedSkillsOnce(t *testing.T) {
 		t.Fatalf("an idle skill set named %q", got)
 	}
 }
+
+// A skill whose text lives outside its folder takes the replacement, and an
+// empty replacement says nothing at all.
+func TestReplaceSuppliesASkillPrompt(t *testing.T) {
+	reg := installed(t, map[string]string{
+		"memory/manifest.json": `{"id":"memory","name":"Memory","description":"notes","hook":"system-prompt",` +
+			`"default_enabled":true,"routing_mode":"always"}`,
+		"memory/prompt.txt": "PROTOCOL. Use the notes.",
+	})
+	o := Options{Replace: func(id string) (string, bool) {
+		if id != "memory" {
+			return "", false
+		}
+		return "MEMORY NOTES", true
+	}}
+	r := ask("hello")
+	Apply(reg, r, o)
+	body := systemText(r)
+	if !strings.Contains(body, "MEMORY NOTES") || strings.Contains(body, "PROTOCOL") {
+		t.Fatalf("body %q", body)
+	}
+
+	empty := Options{Replace: func(id string) (string, bool) { return "", id == "memory" }}
+	r = ask("hello")
+	st := Apply(reg, r, empty)
+	if body := systemText(r); body != "" || len(st.Skills) != 0 {
+		t.Fatalf("an empty replacement injected %q %v", body, st.Skills)
+	}
+}
+
+func TestTheStatsSayHowEachSkillWasChosen(t *testing.T) {
+	st := Apply(standard(t), ask("please refactor this, keep it simple"), Options{})
+	if st.Via["terse"] != "always" || st.Via["simple"] != routerLocal {
+		t.Fatalf("via %v", st.Via)
+	}
+}

@@ -16,8 +16,8 @@ func customDraft() Draft {
 
 func TestCreateWritesACustomSkill(t *testing.T) {
 	dir := t.TempDir()
-	if err := Create(dir, customDraft()); err != nil {
-		t.Fatal(err)
+	if id, err := Create(dir, customDraft()); err != nil || id != "mine" {
+		t.Fatalf("id %q err %v", id, err)
 	}
 	m, prompt, err := LoadDir(filepath.Join(dir, "mine"))
 	if err != nil || prompt != "CUSTOM PROMPT" || m.Source != "custom" || !Editable(m) {
@@ -26,8 +26,35 @@ func TestCreateWritesACustomSkill(t *testing.T) {
 	if r := NewRegistry(dir, nil); len(r.List()) != 1 || r.Problems() != nil {
 		t.Fatalf("list %+v problems %v", r.List(), r.Problems())
 	}
-	if err := Create(dir, customDraft()); !errors.Is(err, ErrExists) {
+	if _, err := Create(dir, customDraft()); !errors.Is(err, ErrExists) {
 		t.Fatalf("a second create: %v", err)
+	}
+}
+
+// A skill added from the dashboard takes its id from the name, so the form asks
+// for no id and a repeated name never overwrites the first skill.
+func TestCreateNamesASkillFromItsName(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{
+		"ecc-imported/foo/manifest.json": `{"id":"foo","name":"Foo","description":"d","hook":"system-prompt","source":"ecc"}`,
+		"ecc-imported/foo/prompt.md":     "text",
+	})
+	for _, c := range []struct{ name, want string }{
+		{"My Skill!", "my-skill"},
+		{"My Skill!", "my-skill-1"},
+		{"Commit Lint", "commit-lint-1"},
+		{"C++ / Go", "c-go"},
+		{"日本", "skill"},
+		{"foo", "foo-1"},
+		{"  spaced   out  ", "spaced-out"},
+	} {
+		d := customDraft()
+		d.ID = ""
+		d.Name = c.name
+		id, err := Create(dir, d)
+		if err != nil || id != c.want {
+			t.Errorf("%q: id %q err %v (want %q)", c.name, id, err, c.want)
+		}
 	}
 }
 
@@ -40,17 +67,17 @@ func TestCreateRefusesWhereItMayNotWrite(t *testing.T) {
 	for name, id := range map[string]string{
 		"parent path": "../escape",
 		"catalog":     CatalogDir,
-		"built-in":    "caveman-style",
+		"built-in":    "commit-lint",
 		"upper case":  "Mine",
 	} {
 		d := customDraft()
 		d.ID = id
-		if err := Create(dir, d); !errors.Is(err, ErrInvalid) {
+		if _, err := Create(dir, d); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
-	if err := Create(dir, Draft{}); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("an empty id: %v", err)
+	if id, err := Create(dir, Draft{}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("a draft with no id and no name: %q %v", id, err)
 	}
 }
 
@@ -77,7 +104,7 @@ func TestDraftChecksTheHookAndPrompt(t *testing.T) {
 	} {
 		d := customDraft()
 		c.mut(&d)
-		err := Create(t.TempDir(), d)
+		_, err := Create(t.TempDir(), d)
 		if err == nil || !strings.Contains(err.Error(), c.bad) {
 			t.Errorf("%s: %v (want %q)", name, err, c.bad)
 		}
@@ -88,7 +115,7 @@ func TestAHookSkillNeedsOnlyItsRules(t *testing.T) {
 	dir := t.TempDir()
 	d := Draft{ID: "router", Name: "Router", Description: "routes", Hook: "pre-route",
 		Rules: []byte(`[{"stage":"pre-route","when":{"modelRegex":"^fast-"},"then":{"rerouteModel":"slow"}}]`)}
-	if err := Create(dir, d); err != nil {
+	if _, err := Create(dir, d); err != nil {
 		t.Fatal(err)
 	}
 	r := NewRegistry(dir, nil)
@@ -102,7 +129,7 @@ func TestAHookSkillNeedsOnlyItsRules(t *testing.T) {
 
 func TestUpdateRewritesOnlyACustomFolder(t *testing.T) {
 	dir := t.TempDir()
-	if err := Create(dir, customDraft()); err != nil {
+	if _, err := Create(dir, customDraft()); err != nil {
 		t.Fatal(err)
 	}
 	d := customDraft()
@@ -137,7 +164,7 @@ func TestUpdateRewritesOnlyACustomFolder(t *testing.T) {
 	if err := Update(dir, "missing", named("missing")); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing: %v", err)
 	}
-	if err := Update(dir, "caveman-style", named("caveman-style")); !errors.Is(err, ErrInvalid) {
+	if err := Update(dir, "commit-lint", named("commit-lint")); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("built-in: %v", err)
 	}
 	if err := Update(dir, "mine", Draft{ID: "other", Name: "X", Description: "d", Prompt: "p"}); !errors.Is(err, ErrInvalid) {
@@ -149,7 +176,7 @@ func TestUpdateRemovesFilesTheDraftDrops(t *testing.T) {
 	dir := t.TempDir()
 	d := Draft{ID: "swap", Name: "Swap", Description: "d", Hook: "pre-request",
 		Rules: []byte(`[{"stage":"pre-request","when":{"modelRegex":"x"},"then":{"injectPrompt":"p"}}]`)}
-	if err := Create(dir, d); err != nil {
+	if _, err := Create(dir, d); err != nil {
 		t.Fatal(err)
 	}
 	d2 := Draft{ID: "swap", Name: "Swap", Description: "d", Hook: "system-prompt", Prompt: "now a prompt"}
@@ -166,7 +193,7 @@ func TestUpdateRemovesFilesTheDraftDrops(t *testing.T) {
 
 func TestDeleteRefusesWhatItDidNotWrite(t *testing.T) {
 	dir := t.TempDir()
-	if err := Create(dir, customDraft()); err != nil {
+	if _, err := Create(dir, customDraft()); err != nil {
 		t.Fatal(err)
 	}
 	writeFiles(t, dir, map[string]string{
@@ -217,11 +244,35 @@ func TestDraftTriggersAndKeywordsAreKept(t *testing.T) {
 	d := customDraft()
 	d.Triggers = []string{"one", "two"}
 	d.Keywords = []string{"three"}
-	if err := Create(dir, d); err != nil {
+	if _, err := Create(dir, d); err != nil {
 		t.Fatal(err)
 	}
 	m, _, err := LoadDir(filepath.Join(dir, "mine"))
 	if err != nil || !slices.Equal(m.Triggers, []string{"one", "two"}) || !slices.Equal(m.Keywords, []string{"three"}) {
 		t.Fatalf("m %+v err %v", m, err)
+	}
+}
+
+// A skill written from the Studio keeps the activation mode and the terms that
+// decide when it fires.
+func TestACustomSkillKeepsItsModeAndTerms(t *testing.T) {
+	dir := t.TempDir()
+	d := customDraft()
+	d.RoutingMode = "always"
+	d.RoutingThreshold = 0.4
+	d.Triggers = []string{"write a commit", "pesan commit"}
+	d.Keywords = []string{"commit", "subject"}
+	if _, err := Create(dir, d); err != nil {
+		t.Fatal(err)
+	}
+	m, _, err := LoadDir(filepath.Join(dir, "mine"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Mode() != "always" || m.Threshold() != 0.4 {
+		t.Fatalf("mode %q threshold %v", m.Mode(), m.Threshold())
+	}
+	if !slices.Equal(m.Triggers, d.Triggers) || !slices.Equal(m.Keywords, d.Keywords) {
+		t.Fatalf("triggers %v keywords %v", m.Triggers, m.Keywords)
 	}
 }

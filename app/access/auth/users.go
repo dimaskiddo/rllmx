@@ -23,6 +23,19 @@ const (
 // maxUsername is the longest username CleanUser accepts, in bytes.
 const maxUsername = 64
 
+// DefaultAdminName is the username the administrator signs in with when
+// AUTH_ADMIN_USERNAME is unset.
+const DefaultAdminName = "admin"
+
+// AdminName reports the administrator's username: the configured value when it
+// is not blank, else the built-in default.
+func AdminName(configured string) string {
+	if n := strings.TrimSpace(configured); n != "" {
+		return n
+	}
+	return DefaultAdminName
+}
+
 // DefaultMaxUsers bounds the user list when no limit is configured. The server
 // reads AUTH_MAX_USERS into the repository at wiring time.
 const DefaultMaxUsers = 200
@@ -53,6 +66,8 @@ type User struct {
 type UserRepo struct {
 	db    func() *repository.Store
 	limit int
+	// Admin is AUTH_ADMIN_USERNAME. A stored user never takes that name.
+	Admin string
 }
 
 // NewUserRepo builds the repository over the configuration database. A limit
@@ -116,6 +131,9 @@ func (r *UserRepo) Put(ctx context.Context, u User) error {
 	name, email, err := CleanUser(u.Username, u.Email)
 	if err != nil {
 		return err
+	}
+	if strings.EqualFold(name, AdminName(r.Admin)) {
+		return ErrUserTaken
 	}
 	if u.Hash == "" || u.ID == "" {
 		return ErrUserHash

@@ -3,7 +3,7 @@
     <h1 class="rl-page-title" x-t="providers.title"></h1>
   </div>
   <div class="rl-toolbar">
-    <input class="form-control form-control-sm" type="search" x-bind:value="search" x-on:input="setView('search', $event)" x-bind:placeholder="label('providers.search')" x-bind:aria-label="label('providers.search')">
+    <input class="form-control form-control-sm" type="search" x-bind:value="search" x-on:input.debounce.250ms="setView('search', $event)" x-bind:placeholder="label('providers.search')" x-bind:aria-label="label('providers.search')">
     <select class="form-select form-select-sm" x-bind:value="filter" x-on:change="setView('filter', $event)" x-bind:aria-label="label('providers.status')">
       <option value="all" x-t="providers.all"></option>
       <option value="active" x-t="providers.activeOnly"></option>

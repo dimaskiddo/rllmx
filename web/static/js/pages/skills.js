@@ -29,10 +29,11 @@ window.Alpine.data("skillsPage", () => Object.assign({
   skills: [],
   problems: [],
   settings: {},
+  globalOn: true,
   combos: [],
   search: "",
   hook: "all",
-  sync: { source: "", tag: "main", force: false, busy: false, result: "", error: "" },
+  sync: { force: false, busy: false, result: "", error: "" },
   plan: planForm({}),
   studio: null,
 
@@ -48,6 +49,7 @@ window.Alpine.data("skillsPage", () => Object.assign({
       this.skills = list.skills || [];
       this.problems = list.problems || [];
       this.settings = settings;
+      this.globalOn = settings.globalSkillsEnabled !== false;
       this.plan = planForm(settings);
       this.combos = combos.combos || [];
     } catch (err) {
@@ -65,9 +67,14 @@ window.Alpine.data("skillsPage", () => Object.assign({
     return t("skills.hook." + value);
   },
 
+  // visible lists what this page owns. The watermark remover has its own card on
+  // the Token Saver page, so it is not offered twice.
   visible() {
     const q = this.search.trim().toLowerCase();
     return this.skills.filter((skill) => {
+      if (skill.id === "watermarks-remover") {
+        return false;
+      }
       if (this.hook !== "all" && skill.hook !== this.hook) {
         return false;
       }
@@ -76,6 +83,38 @@ window.Alpine.data("skillsPage", () => Object.assign({
       }
       return (skill.name + " " + skill.id + " " + (skill.description || "")).toLowerCase().indexOf(q) >= 0;
     });
+  },
+
+  // groups splits the visible skills by what they are: a built-in prompt, a hook
+  // rule, an imported catalog entry or an operator's own skill.
+  groups() {
+    const buckets = [
+      { key: "prompt", rows: [] },
+      { key: "rules", rows: [] },
+      { key: "ecc", rows: [] },
+      { key: "custom", rows: [] },
+    ];
+    for (const skill of this.visible()) {
+      let bucket = buckets[0];
+      if (skill.source === "custom") {
+        bucket = buckets[3];
+      } else if (skill.source === "ecc") {
+        bucket = buckets[2];
+      } else if (skill.hook === "pre-route" || skill.hook === "pre-request") {
+        bucket = buckets[1];
+      }
+      bucket.rows.push(skill);
+    }
+    return buckets.filter((bucket) => bucket.rows.length > 0);
+  },
+
+  async toggleGlobal(event) {
+    const box = event.target;
+    if (await this.patch({ globalSkillsEnabled: box.checked })) {
+      this.globalOn = box.checked;
+    } else {
+      box.checked = !box.checked;
+    }
   },
 
   setSearch(event) {
@@ -152,14 +191,6 @@ window.Alpine.data("skillsPage", () => Object.assign({
     skill.values = Object.assign({}, skill.values, { [field.key]: value });
   },
 
-  source(skill) {
-    return skill.source === "custom" ? t("skills.custom") : skill.source || "";
-  },
-
-  setSync(path, event) {
-    setPath(this.sync, path, event.target.value);
-  },
-
   setSyncForce(event) {
     this.sync.force = event.target.checked;
   },
@@ -169,8 +200,8 @@ window.Alpine.data("skillsPage", () => Object.assign({
     this.sync.result = "";
     this.sync.busy = true;
     try {
-      const answer = await api("/api/skills/sync", { method: "POST", body: { source: this.sync.source.trim(), tag: this.sync.tag.trim(), force: this.sync.force } });
-      this.sync.result = answer.total + " / " + answer.updated + " / " + answer.skipped;
+      const answer = await api("/api/skills/sync", { method: "POST", body: { force: this.sync.force } });
+      this.sync.result = t("skills.syncedCount").replace("{n}", answer.total);
       await this.load();
       toast().success(t("skills.synced"));
     } catch (err) {

@@ -285,19 +285,21 @@ func (s *Store) LastSeen(ctx context.Context, since time.Time, keys []string) (m
 	return out, nil
 }
 
-// Recent returns the newest request rows, at most maxRecent.
-func (s *Store) Recent(ctx context.Context, limit int, keys []string) ([]Request, error) {
-	return s.recent(ctx, limit, "", keys)
+// Recent returns the newest request rows at or after from, at most limit. A
+// zero from keeps every row the store holds. Newest is by time, not by id: an
+// import gives old history higher ids than the live rows around it.
+func (s *Store) Recent(ctx context.Context, from time.Time, limit int, keys []string) ([]Request, error) {
+	return s.recent(ctx, from, limit, "", keys)
 }
 
 // RecentServed returns the newest rows that used tokens, at most limit, for a
 // list that would otherwise read many rows to keep a few.
 func (s *Store) RecentServed(ctx context.Context, limit int, keys []string) ([]Request, error) {
-	return s.recent(ctx, limit, `"promptTokens" + "completionTokens" > 0`, keys)
+	return s.recent(ctx, time.Time{}, limit, `"promptTokens" + "completionTokens" > 0`, keys)
 }
 
 // recent runs the one query both readers share; cond is a constant condition.
-func (s *Store) recent(ctx context.Context, limit int, cond string, keys []string) ([]Request, error) {
+func (s *Store) recent(ctx context.Context, from time.Time, limit int, cond string, keys []string) ([]Request, error) {
 	if limit <= 0 || limit > maxRecent {
 		limit = maxRecent
 	}
@@ -305,14 +307,20 @@ func (s *Store) recent(ctx context.Context, limit int, cond string, keys []strin
 	if !usable {
 		return []Request{}, nil
 	}
+	conds := make([]string, 0, 3)
+	if !from.IsZero() {
+		conds = append(conds, `"ts" >= ?`)
+		args = append([]any{from.UnixMilli()}, args...)
+	}
+	if cond != "" {
+		conds = append(conds, cond)
+	}
+	if clause != "" {
+		conds = append(conds, strings.TrimPrefix(clause, " AND "))
+	}
 	where := ""
-	switch {
-	case cond != "" && clause != "":
-		where = ` WHERE ` + cond + clause
-	case cond != "":
-		where = ` WHERE ` + cond
-	case clause != "":
-		where = ` WHERE ` + strings.TrimPrefix(clause, " AND ")
+	if len(conds) > 0 {
+		where = ` WHERE ` + strings.Join(conds, " AND ")
 	}
 	var rows []struct {
 		TS           int64  `db:"ts"`
@@ -328,7 +336,7 @@ func (s *Store) recent(ctx context.Context, limit int, cond string, keys []strin
 		Skills       string `db:"skills"`
 	}
 	err := s.db.WithContext(ctx).Select(&rows, s.q(`SELECT "ts","provider","model","connectionId","promptTokens",`+
-		`"completionTokens","cachedTokens","status","errorClass","savers","skills" FROM "requests"`+where+` ORDER BY "id" DESC LIMIT ?`),
+		`"completionTokens","cachedTokens","status","errorClass","savers","skills" FROM "requests"`+where+` ORDER BY "ts" DESC, "id" DESC LIMIT ?`),
 		append(args, limit)...)
 	if err != nil {
 		return nil, err

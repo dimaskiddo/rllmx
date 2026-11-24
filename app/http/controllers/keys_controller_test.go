@@ -3,12 +3,14 @@ package controllers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	nethttp "net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
 	goravelgin "github.com/goravel/gin"
@@ -19,6 +21,7 @@ import (
 	apphttp "rllmx/app/http"
 	"rllmx/app/http/middleware"
 	"rllmx/app/platform/cache"
+	"rllmx/app/store/analytics"
 	"rllmx/app/store/repository"
 	"rllmx/tests"
 	"rllmx/tests/store"
@@ -50,6 +53,7 @@ type keysRig struct {
 	resolver *auth.Keys
 	changed  int
 	users    *auth.Users
+	keys     *KeysController
 }
 
 func newKeysRig(t *testing.T, guardAuth apphttp.Authenticator) *keysRig {
@@ -82,6 +86,7 @@ func newKeysRig(t *testing.T, guardAuth apphttp.Authenticator) *keysRig {
 	g.Handle(r, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/keys", c.List)
 	g.Handle(r, apphttp.ClassAlwaysProtected, nethttp.MethodPost, "/api/keys", c.Create)
 	g.Handle(r, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/keys/{id}", c.Show)
+	g.Handle(r, apphttp.ClassAlwaysProtected, nethttp.MethodPost, "/api/keys/{id}/reveal", c.Reveal)
 	g.Handle(r, apphttp.ClassAlwaysProtected, nethttp.MethodPut, "/api/keys/{id}", c.Update)
 	g.Handle(r, apphttp.ClassAlwaysProtected, nethttp.MethodDelete, "/api/keys/{id}", c.Delete)
 	g.Handle(r, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/users", uc.List)
@@ -89,6 +94,7 @@ func newKeysRig(t *testing.T, guardAuth apphttp.Authenticator) *keysRig {
 	g.Handle(r, apphttp.ClassAlwaysProtected, nethttp.MethodPut, "/api/users/{id}", uc.Update)
 	g.Handle(r, apphttp.ClassAlwaysProtected, nethttp.MethodDelete, "/api/users/{id}", uc.Delete)
 	rig.route = r
+	rig.keys = c
 	return rig
 }
 
@@ -212,18 +218,28 @@ func TestOnlyTheRevealAnswersAWholeKey(t *testing.T) {
 	rig := newKeysRig(t, signedSession{})
 	id, key := rig.create(t, "one")
 	rec := rig.call(t, nethttp.MethodGet, "/api/keys/"+id, "", keysLocalPeer)
-	if rec.Code != nethttp.StatusOK || !strings.Contains(rec.Body.String(), key) {
-		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	if rec.Code != nethttp.StatusOK || strings.Contains(rec.Body.String(), key) || !strings.Contains(rec.Body.String(), "…") {
+		t.Fatalf("a plain read must be masked: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := rig.call(t, nethttp.MethodGet, "/api/keys/does-not-exist", "", keysLocalPeer); rec.Code != nethttp.StatusNotFound {
+	rec = rig.call(t, nethttp.MethodPost, "/api/keys/"+id+"/reveal", "", keysLocalPeer)
+	if rec.Code != nethttp.StatusOK || !strings.Contains(rec.Body.String(), key) {
+		t.Fatalf("the reveal: %d %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("a revealed key must not be cached: %q", got)
+	}
+	if rec := rig.call(t, nethttp.MethodPost, "/api/keys/does-not-exist/reveal", "", keysLocalPeer); rec.Code != nethttp.StatusNotFound {
 		t.Fatalf("an unknown id: %d", rec.Code)
+	}
+	if rec := rig.call(t, nethttp.MethodGet, "/api/keys/"+id+"/reveal", "", keysLocalPeer); rec.Code == nethttp.StatusOK {
+		t.Fatalf("the reveal answered a GET: %s", rec.Body.String())
 	}
 }
 
 func TestNoKeyRouteAnswersWithoutASessionOrFromAStranger(t *testing.T) {
 	// No session at all: ClassAlwaysProtected refuses even when requireLogin is off.
 	rig := newKeysRig(t, nil)
-	for _, rt := range [][2]string{{"GET", "/api/keys"}, {"POST", "/api/keys"}, {"GET", "/api/keys/x"}, {"PUT", "/api/keys/x"}, {"DELETE", "/api/keys/x"}} {
+	for _, rt := range [][2]string{{"GET", "/api/keys"}, {"POST", "/api/keys"}, {"GET", "/api/keys/x"}, {"POST", "/api/keys/x/reveal"}, {"PUT", "/api/keys/x"}, {"DELETE", "/api/keys/x"}} {
 		if rec := rig.call(t, rt[0], rt[1], "{}", keysLocalPeer); rec.Code != nethttp.StatusUnauthorized {
 			t.Errorf("%s %s: %d", rt[0], rt[1], rec.Code)
 		}
@@ -498,23 +514,71 @@ func TestAStandardUserSeesAndPausesOnlyTheirOwnKeys(t *testing.T) {
 	if rec := rig.call(t, nethttp.MethodGet, "/api/keys/"+other.ID, "", keysLocalPeer); rec.Code != nethttp.StatusNotFound {
 		t.Fatalf("another user's key answered %d", rec.Code)
 	}
-	if rec := rig.call(t, nethttp.MethodPut, "/api/keys/"+other.ID, `{"isActive":false}`, keysLocalPeer); rec.Code != nethttp.StatusNotFound {
-		t.Fatalf("pausing another user's key answered %d", rec.Code)
+	if rec := rig.call(t, nethttp.MethodPost, "/api/keys/"+other.ID+"/reveal", "", keysLocalPeer); rec.Code != nethttp.StatusNotFound {
+		t.Fatalf("revealing another user's key answered %d", rec.Code)
 	}
-	if rec := rig.call(t, nethttp.MethodPut, "/api/keys/"+mine.ID, `{"isActive":false}`, keysLocalPeer); rec.Code != nethttp.StatusOK {
-		t.Fatalf("pausing their own key answered %d: %s", rec.Code, rec.Body.String())
+	if rec := rig.call(t, nethttp.MethodPost, "/api/keys/"+mine.ID+"/reveal", "", keysLocalPeer); rec.Code != nethttp.StatusOK || !strings.Contains(rec.Body.String(), "sk-live-aaaaaaaaaaaaaaaa") {
+		t.Fatalf("revealing their own key: %d %s", rec.Code, rec.Body.String())
 	}
-	if row, _, _ := rig.sq.APIKeys().GetByID(t.Context(), mine.ID); row.IsActive {
-		t.Fatal("the key did not pause")
+	if rec := rig.call(t, nethttp.MethodPut, "/api/keys/"+other.ID, `{"name":"taken"}`, keysLocalPeer); rec.Code != nethttp.StatusNotFound {
+		t.Fatalf("renaming another user's key answered %d", rec.Code)
 	}
-	if rec := rig.call(t, nethttp.MethodPut, "/api/keys/"+mine.ID, `{"name":"renamed"}`, keysLocalPeer); rec.Code != nethttp.StatusForbidden {
-		t.Fatalf("a rename by a user answered %d", rec.Code)
+	if rec := rig.call(t, nethttp.MethodPut, "/api/keys/"+mine.ID, `{"name":"renamed"}`, keysLocalPeer); rec.Code != nethttp.StatusOK {
+		t.Fatalf("renaming their own key answered %d: %s", rec.Code, rec.Body.String())
+	}
+	for _, body := range []string{`{"isActive":false}`, `{"quota":{"tokens":{"day":10}}}`, `{"access":{"restricted":true,"allow":[]}}`, `{"responseCache":true}`, `{"owner":"u1"}`, `{"name":"again","isActive":false}`} {
+		if rec := rig.call(t, nethttp.MethodPut, "/api/keys/"+mine.ID, body, keysLocalPeer); rec.Code != nethttp.StatusForbidden {
+			t.Fatalf("a user sent %s and got %d", body, rec.Code)
+		}
+	}
+	if row, _, _ := rig.sq.APIKeys().GetByID(t.Context(), mine.ID); !row.IsActive || row.Name != "renamed" {
+		t.Fatalf("a refused field reached the row: %+v", row)
 	}
 	if rec := rig.call(t, nethttp.MethodPost, "/api/keys", `{"name":"new"}`, keysLocalPeer); rec.Code != nethttp.StatusForbidden {
 		t.Fatalf("a user created a key: %d", rec.Code)
 	}
 	if rec := rig.call(t, nethttp.MethodGet, "/api/users", "", keysLocalPeer); rec.Code != nethttp.StatusForbidden {
 		t.Fatalf("a user listed the accounts: %d", rec.Code)
+	}
+}
+
+func TestAKeyWithABudgetShowsWhatItSpent(t *testing.T) {
+	rig := newKeysRig(t, signedSession{})
+	rig.keys.Budget = &quota.Quota{Usage: func(context.Context, string, time.Time) (analytics.Totals, error) {
+		return analytics.Totals{Requests: 2, Tokens: 40, Cost: 0.25}, nil
+	}}
+	id, _ := rig.create(t, "metered")
+	if rec := rig.call(t, nethttp.MethodPut, "/api/keys/"+id, `{"quota":{"tokens":{"day":100}}}`, keysLocalPeer); rec.Code != nethttp.StatusOK {
+		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+	list := rig.call(t, nethttp.MethodGet, "/api/keys", "", keysLocalPeer)
+	if list.Code != nethttp.StatusOK {
+		t.Fatalf("%d %s", list.Code, list.Body.String())
+	}
+	want := `"spend":{"day":{"requests":2,"tokens":40,"cost":0.25},"month":{"requests":2,"tokens":40,"cost":0.25},"total":{"requests":2,"tokens":40,"cost":0.25}}`
+	if !strings.Contains(list.Body.String(), want) {
+		t.Fatalf("the meter is missing: %s", list.Body.String())
+	}
+
+	rig.keys.Budget = &quota.Quota{Usage: func(context.Context, string, time.Time) (analytics.Totals, error) {
+		return analytics.Totals{}, errors.New("down")
+	}}
+	list = rig.call(t, nethttp.MethodGet, "/api/keys", "", keysLocalPeer)
+	if list.Code != nethttp.StatusOK || strings.Contains(list.Body.String(), "spend") {
+		t.Fatalf("a failed read broke the list: %d %s", list.Code, list.Body.String())
+	}
+}
+
+func TestAKeyWithoutABudgetHasNoMeter(t *testing.T) {
+	rig := newKeysRig(t, signedSession{})
+	rig.keys.Budget = &quota.Quota{Usage: func(context.Context, string, time.Time) (analytics.Totals, error) {
+		t.Fatal("a key with no budget asked the usage store")
+		return analytics.Totals{}, nil
+	}}
+	rig.create(t, "plain")
+	list := rig.call(t, nethttp.MethodGet, "/api/keys", "", keysLocalPeer)
+	if strings.Contains(list.Body.String(), "spend") {
+		t.Fatalf("a key with no budget carries a meter: %s", list.Body.String())
 	}
 }
 
@@ -545,6 +609,19 @@ func TestCreatingAUserChecksTheNameAndPassword(t *testing.T) {
 	list := rig.call(t, nethttp.MethodGet, "/api/users", "", keysLocalPeer)
 	if strings.Contains(list.Body.String(), "hash") {
 		t.Fatalf("the user list carries a hash: %s", list.Body.String())
+	}
+}
+
+// An account single sign-on provisioned is marked, so the page can say why no
+// password is known.
+func TestTheUserListMarksAProvisionedAccount(t *testing.T) {
+	rig := newKeysRig(t, signedSession{})
+	if err := rig.users.Put(t.Context(), auth.User{ID: "u2", Username: "ops", Hash: "h", Provisioned: true}); err != nil {
+		t.Fatal(err)
+	}
+	list := rig.call(t, nethttp.MethodGet, "/api/users", "", keysLocalPeer)
+	if list.Code != nethttp.StatusOK || !strings.Contains(list.Body.String(), `"provisioned":true`) {
+		t.Fatalf("%d %s", list.Code, list.Body.String())
 	}
 }
 
@@ -603,5 +680,46 @@ func TestTheUserListFailsWhenTheAssignmentsCannotBeRead(t *testing.T) {
 	rec := rig.call(t, nethttp.MethodGet, "/api/users", "", keysLocalPeer)
 	if rec.Code == nethttp.StatusOK {
 		t.Fatalf("an unreadable user table answered 200: %s", rec.Body.String())
+	}
+}
+
+// asUser stands in for the guard: it records a standard user's session and lets
+// the handler run, so the handler's own ownership check is what answers.
+type asUser struct{ uid string }
+
+func (asUser) Signature() string { return "test:as-user" }
+func (m asUser) Handle(ctx contractshttp.Context) {
+	apphttp.WithSession(ctx, auth.Session{Role: auth.RoleUser, UserID: m.uid})
+	ctx.Request().Next()
+}
+
+func TestOnlyTheAdminDeletesAKeyEvenWithoutTheGuard(t *testing.T) {
+	rig := newKeysRig(t, signedSession{})
+	seedUser(t, rig, "u1", "Dimas")
+	mine, err := rig.sq.APIKeys().Create(t.Context(), "mine", "", "sk-live-aaaaaaaaaaaaaaaa")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := rig.sq.APIKeys().Create(t.Context(), "other", "", "sk-live-bbbbbbbbbbbbbbbb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rig.users.SetOwner(t.Context(), mine.ID, "u1"); err != nil {
+		t.Fatal(err)
+	}
+	r := tests.NewRoute(t)
+	r.SetGlobalMiddleware([]contractshttp.Middleware{asUser{uid: "u1"}})
+	r.Delete("/api/keys/{id}", rig.keys.Delete)
+
+	for _, id := range []string{other.ID, mine.ID} {
+		req := httptest.NewRequest(nethttp.MethodDelete, "/api/keys/"+id, nil)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		if rec.Code != nethttp.StatusForbidden {
+			t.Fatalf("a standard user's delete of %s answered %d", id, rec.Code)
+		}
+		if _, found, _ := rig.sq.APIKeys().GetByID(t.Context(), id); !found {
+			t.Fatalf("a standard user deleted key %s", id)
+		}
 	}
 }

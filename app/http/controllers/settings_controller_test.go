@@ -490,7 +490,7 @@ func TestTheConsoleLogListsClearsAndStreams(t *testing.T) {
 	if err != nil || !strings.Contains(first, `"type":"init"`) || !strings.Contains(first, "first line") {
 		t.Fatalf("first frame %q (%v)", first, err)
 	}
-	b.Add("warn", time.Now(), "second line")
+	b.Add("warning", time.Now(), "second line")
 	seen := false
 	for i := 0; i < 40 && !seen; i++ {
 		line, err := br.ReadString('\n')
@@ -622,5 +622,84 @@ func TestTheViewShowsTheStrategyTheRouterUses(t *testing.T) {
 	code, out, raw := m.call(nethttp.MethodGet, "/api/settings", "", true)
 	if code != 200 || out["fallbackStrategy"] != "fill-first" {
 		t.Fatalf("%d %s", code, raw)
+	}
+}
+
+// A log line the logger writes must reach the page while the stream is open,
+// through the compression wrapper the server puts around every handler: held in
+// its buffer, the page would show nothing until a whole kilobyte had built up.
+func TestAConsoleLineReachesTheBrowserThroughTheCompressionWrapper(t *testing.T) {
+	m := newMgmtRig(t)
+	b := logbook.New(8)
+	m.logsRoutes(&LogsController{Book: b, every: 10 * time.Millisecond, beat: time.Minute})
+
+	srv := httptest.NewServer(apphttp.Compress(true, m.route))
+	defer srv.Close()
+	req, err := nethttp.NewRequest(nethttp.MethodGet, srv.URL+"/api/translator/console-logs/stream", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.AddCookie(&nethttp.Cookie{Name: auth.CookieName, Value: m.cookie})
+	req.Header.Set("Accept-Encoding", "gzip, br")
+	resp, err := srv.Client().Transport.RoundTrip(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.Header.Get("Content-Encoding") != "" {
+		t.Fatalf("a stream was encoded: %q", resp.Header.Get("Content-Encoding"))
+	}
+
+	got := make(chan string, 1)
+	go func() {
+		br := bufio.NewReader(resp.Body)
+		for {
+			line, err := br.ReadString('\n')
+			if err != nil {
+				return
+			}
+			if strings.Contains(line, "live line") {
+				got <- line
+				return
+			}
+		}
+	}()
+	time.Sleep(50 * time.Millisecond)
+	b.Add("info", time.Now(), "live line")
+	select {
+	case <-got:
+	case <-time.After(2 * time.Second):
+		t.Fatal("a small frame was held back instead of reaching the browser")
+	}
+}
+
+// The page says "using the default password" when anyone could sign in with a
+// public one: no hash stored, or a hash of a default. A password someone chose
+// is not that, even though a hash is stored.
+func TestTheSettingsViewSaysWhetherThePasswordIsADefault(t *testing.T) {
+	m := newMgmtRig(t)
+	m.settingsRoutes(&SettingsController{DB: func() *repository.Store { return m.st.Store }, Auth: m.auth})
+	ctx := context.Background()
+	read := func() map[string]any {
+		_, out, raw := m.call(nethttp.MethodGet, "/api/settings", "", true)
+		if _, ok := out["defaultPassword"]; !ok {
+			t.Fatalf("the view has no defaultPassword: %s", raw)
+		}
+		return out
+	}
+	if out := read(); out["defaultPassword"] != true || out["hasPassword"] != false {
+		t.Fatalf("no password stored: %v", out)
+	}
+	if err := m.st.Store.Settings().SetPasswordHash(ctx, "hashed:"+auth.DefaultPassword); err != nil {
+		t.Fatal(err)
+	}
+	if out := read(); out["defaultPassword"] != true || out["hasPassword"] != true {
+		t.Fatalf("a hash of the default: %v", out)
+	}
+	if err := m.st.Store.Settings().SetPasswordHash(ctx, "hashed:a-password-someone-chose"); err != nil {
+		t.Fatal(err)
+	}
+	if out := read(); out["defaultPassword"] != false || out["hasPassword"] != true {
+		t.Fatalf("a chosen password: %v", out)
 	}
 }

@@ -91,7 +91,7 @@ func buildMedia(_ context.Context, app foundation.Application) (*gatewaymedia.Pi
 		Credentials: rotatedCredential{conns: store.Connections()},
 		Voices:      voice.List,
 		Usage:       writer,
-		Budget:      budget(h.Limits, runner),
+		Budget:      Budget(h.Limits, runner),
 		Log:         log,
 		Now:         time.Now,
 		Network:     network.Options{ConnectTimeout: h.Upstream.ConnectTimeout, Allow: h.Upstream.Allow, Curves: h.Upstream.Curves},

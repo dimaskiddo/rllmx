@@ -8,6 +8,7 @@ import (
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 
+	"rllmx/app/llm/upstream"
 	"rllmx/app/store/document"
 )
 
@@ -139,6 +140,7 @@ func Refresh(ctx context.Context, c *oauth.TokenClient, f oauth.Flow, refreshTok
 	body, _ := sjson.SetBytes([]byte(`{"grantType":"refresh_token"}`), "clientId", clientID)
 	body, _ = sjson.SetBytes(body, "clientSecret", clientSecret)
 	body, _ = sjson.SetBytes(body, "refreshToken", refreshToken)
+	h = oauth.WithIdentity(h, upstream.KiroIdentity(upstream.KiroSeed{ClientID: clientID, RefreshToken: refreshToken}, upstream.KiroRuntime))
 	status, raw, err := c.PostJSON(ctx, f.TokenURL, string(body), h)
 	if err != nil {
 		return oauth.Tokens{}, err

@@ -11,8 +11,9 @@
 | MiniMax lease broker | Deferred | Reads another desktop app's data; revisit later |
 | Legacy `db.json`/`usage.json` import | Out | Only 9router databases that already migrated are supported |
 | Cloud sync | Out | Removed from the reference as well |
-| Install commands stored in skills, self-updater, autostart, Hermes manager, devin-cli, headroom installer | Out | Spawn processes; only the `git clone` behind the `app/git` filter gate may |
+| Install commands stored in skills, self-updater, autostart, the Hermes process manager and installer, devin-cli, headroom installer | Out | Spawn processes; only the `git clone` behind the `app/git` filter gate may |
 | System tray, TUI | Out | Not a server concern |
+| The reference's "REA allow" saver (drops the system-prompt paragraphs that carry an assistant's refusal and dual-use guidance) | Out | It removes safety guidance a client or an operator wrote into the prompt, which is not a token saving |
 
 Package status lives in `ROADMAP.md`, feature status in the parity tables.
 

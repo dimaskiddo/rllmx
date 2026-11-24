@@ -22,8 +22,10 @@ import (
 // every route here needs a dashboard session, and only the create and the reveal
 // answer a full value.
 type KeysController struct {
-	DB      func() *repository.Store
-	Quota   *quota.Limits
+	DB    func() *repository.Store
+	Quota *quota.Limits
+	// Budget reads what a key spent against its budget. Nil leaves the meters out.
+	Budget  *quota.Quota
 	Codec   identity.Keys
 	Machine identity.Machine
 	Changed func()
@@ -45,9 +47,12 @@ type keyView struct {
 	CreatedAt string     `json:"createdAt"`
 	Access    accessView `json:"access"`
 	// Quota is the key's budget; absent when it has none.
-	Quota      *quota.Limit `json:"quota,omitempty"`
-	Unreadable bool         `json:"unreadable,omitempty"`
-	MachineID  string       `json:"machineId,omitempty"`
+	Quota *quota.Limit `json:"quota,omitempty"`
+	// Spend is what the key used in each budget window; absent when it has no
+	// budget and when the read failed.
+	Spend      map[string]spendView `json:"spend,omitempty"`
+	Unreadable bool                 `json:"unreadable,omitempty"`
+	MachineID  string               `json:"machineId,omitempty"`
 	// ResponseCache is this key's switch for the answer cache.
 	ResponseCache bool `json:"responseCache"`
 	// Owner is the standard user the key belongs to; absent when nobody's.
@@ -58,6 +63,13 @@ type keyView struct {
 type accessView struct {
 	Restricted bool     `json:"restricted"`
 	Allow      []string `json:"allow"`
+}
+
+// spendView is one budget window's use, for the dashboard's meter.
+type spendView struct {
+	Requests int64   `json:"requests"`
+	Tokens   int64   `json:"tokens"`
+	Cost     float64 `json:"cost"`
 }
 
 // masked is the view of one stored key for a list or an update, with its budget
@@ -150,6 +162,31 @@ func (c *KeysController) ownerMap(rc context.Context) (map[string]string, error)
 	return c.Users.Owners(rc)
 }
 
+// fillSpend adds each budgeted key's use. A failed read leaves that key's meter
+// out rather than failing the list; the budget itself is still enforced.
+func (c *KeysController) fillSpend(rc context.Context, keys []keyView) {
+	if c.Budget == nil {
+		return
+	}
+	for i := range keys {
+		if keys[i].Quota == nil {
+			continue
+		}
+		used, err := c.Budget.Used(rc, keys[i].ID)
+		if err != nil {
+			if c.Log != nil {
+				c.Log.Warningf("keys: reading a budget's use failed: id=%s", keys[i].ID)
+			}
+			continue
+		}
+		spend := make(map[string]spendView, len(used))
+		for window, t := range used {
+			spend[window] = spendView{Requests: t.Requests, Tokens: t.Tokens, Cost: t.Cost}
+		}
+		keys[i].Spend = spend
+	}
+}
+
 // List answers GET /api/keys: every key, oldest first, masked.
 func (c *KeysController) List(ctx contractshttp.Context) contractshttp.Response {
 	st := c.store()
@@ -185,13 +222,26 @@ func (c *KeysController) List(ctx contractshttp.Context) contractshttp.Response 
 		}
 		out = append(out, masked(k, budgetOf(all, k.ID), cached[k.ID], owners[k.ID]))
 	}
+	c.fillSpend(rc, out)
 	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"keys": out})
 }
 
-// Show answers GET /api/keys/{id}: one key, and the only answer besides create
-// that carries its full value. The reveal is logged with the key's id, never the
-// value.
+// Show answers GET /api/keys/{id}: one key, masked like the list. A GET is a
+// plain navigation the browser sends with its cookie, so it never carries the
+// value; Reveal does.
 func (c *KeysController) Show(ctx contractshttp.Context) contractshttp.Response {
+	return c.view(ctx, false)
+}
+
+// Reveal answers POST /api/keys/{id}/reveal: the one answer besides create that
+// carries a key's full value. It is a write-class call, so the same-origin gate
+// covers it, and it is logged with the key's id, never the value.
+func (c *KeysController) Reveal(ctx contractshttp.Context) contractshttp.Response {
+	ctx.Response().Header("Cache-Control", "no-store")
+	return c.view(ctx, true)
+}
+
+func (c *KeysController) view(ctx contractshttp.Context, full bool) contractshttp.Response {
 	set, out3, ok := c.owned(ctx)
 	if !ok {
 		return out3
@@ -204,11 +254,13 @@ func (c *KeysController) Show(ctx contractshttp.Context) contractshttp.Response 
 		return flat(ctx, nethttp.StatusNotFound, "Key not found")
 	}
 	rc := ctx.Request().Origin().Context()
-	if c.Log != nil {
-		c.Log.Infof("keys: a key was revealed: id=%s key=%s", k.ID, auth.MaskKey(k.Key))
-	}
-	if k.Unreadable {
-		return flat(ctx, nethttp.StatusInternalServerError, "This key's stored value cannot be read")
+	if full {
+		if c.Log != nil {
+			c.Log.Infof("keys: a key was revealed: id=%s key=%s", k.ID, auth.MaskKey(k.Key))
+		}
+		if k.Unreadable {
+			return flat(ctx, nethttp.StatusInternalServerError, "This key's stored value cannot be read")
+		}
 	}
 	all, out2, ok := c.limits(ctx)
 	if !ok {
@@ -218,7 +270,13 @@ func (c *KeysController) Show(ctx contractshttp.Context) contractshttp.Response 
 	if err != nil {
 		return storageDown(ctx)
 	}
-	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"key": revealed(k, budgetOf(all, k.ID), cacheOn(c.store(), rc, k.ID), owners[k.ID])})
+	build := masked
+	if full {
+		build = revealed
+	}
+	one := []keyView{build(k, budgetOf(all, k.ID), cacheOn(c.store(), rc, k.ID), owners[k.ID])}
+	c.fillSpend(rc, one)
+	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"key": one[0]})
 }
 
 // Create answers POST /api/keys: a fresh key for this machine, answered once.
@@ -300,9 +358,10 @@ func (c *KeysController) Update(ctx contractshttp.Context) contractshttp.Respons
 		if !set[id] {
 			return flat(ctx, nethttp.StatusNotFound, "Key not found")
 		}
-		// Pausing and resuming is all a standard user may change.
-		if b.Name != nil || len(b.Access) > 0 || len(b.Quota) > 0 || b.ResponseCache != nil || b.Owner != nil || b.IsActive == nil {
-			return flat(ctx, nethttp.StatusForbidden, "A standard user may only pause or resume a key")
+		// A standard user renames their key and nothing else: pausing it, its
+		// budget, allow-list, cache switch and owner belong to the admin.
+		if b.IsActive != nil || len(b.Access) > 0 || len(b.Quota) > 0 || b.ResponseCache != nil || b.Owner != nil || b.Name == nil {
+			return flat(ctx, nethttp.StatusForbidden, "A standard user may only rename a key")
 		}
 	}
 	patch := repository.APIKeyPatch{}
@@ -410,6 +469,11 @@ func setCacheSwitch(ctx context.Context, st *repository.Store, id string, on boo
 
 // Delete answers DELETE /api/keys/{id}.
 func (c *KeysController) Delete(ctx contractshttp.Context) contractshttp.Response {
+	// The guard already keeps a standard user off this route; the handler holds
+	// the same line so a routing mistake cannot hand them a key's deletion.
+	if who, ok := apphttp.SessionFrom(ctx); ok && who.Role == auth.RoleUser {
+		return flat(ctx, nethttp.StatusForbidden, "Only the administrator can delete a key")
+	}
 	st := c.store()
 	if st == nil {
 		return storageDown(ctx)

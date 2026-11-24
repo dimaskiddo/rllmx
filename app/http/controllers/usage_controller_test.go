@@ -3,6 +3,8 @@ package controllers
 import (
 	"bufio"
 	"context"
+	"errors"
+	"fmt"
 	nethttp "net/http"
 	"net/http/httptest"
 	"strings"
@@ -18,6 +20,7 @@ import (
 	"rllmx/app/llm/upstream"
 	"rllmx/app/store/analytics"
 	"rllmx/app/store/repository"
+	"rllmx/tests"
 )
 
 // usageFake is the analytics store as the controller reads it.
@@ -31,6 +34,8 @@ type usageFake struct {
 	lastFrom  time.Time
 	lastHours bool
 	lastKeys  []string
+	// lastRecent is the start the logs reader asked for.
+	lastRecent time.Time
 }
 
 func (f *usageFake) Sums(_ context.Context, from time.Time, hourly bool, keys []string) ([]analytics.Sum, error) {
@@ -47,7 +52,8 @@ func (f *usageFake) LastSeen(context.Context, time.Time, []string) (map[analytic
 	return f.seen, f.err
 }
 
-func (f *usageFake) Recent(context.Context, int, []string) ([]analytics.Request, error) {
+func (f *usageFake) Recent(_ context.Context, from time.Time, _ int, _ []string) ([]analytics.Request, error) {
+	f.lastRecent = from
 	return f.recent, f.err
 }
 
@@ -169,6 +175,12 @@ func TestUsageStatsNameKeysWithoutEverHoldingOne(t *testing.T) {
 	}
 
 	model := gjson.Get(raw, `byModel.gpt-4o\ \(openai\)`)
+	if node := gjson.Get(raw, "byProvider.cc.name").String(); node != "Claude Code" {
+		t.Errorf("the chart names a node id %q, want its node name", node)
+	}
+	if reg := gjson.Get(raw, "byProvider.openai.name").String(); reg != display {
+		t.Errorf("byProvider.openai.name = %q, want %q", reg, display)
+	}
 	if model.Get("requests").Int() != 3 || model.Get("provider").String() != display || model.Get("rawModel").String() != "gpt-4o" {
 		t.Fatalf("byModel %s", model.Raw)
 	}
@@ -302,7 +314,7 @@ func TestUsageChartsLayOutHoursAndLocalDays(t *testing.T) {
 
 func TestAnUnknownPeriodIsRefusedOnEveryRoute(t *testing.T) {
 	r := newUsageRig(t)
-	for _, path := range []string{"/api/usage/stats?period=nope", "/api/usage/chart?period=nope", "/api/usage/active-providers?period=nope"} {
+	for _, path := range []string{"/api/usage/stats?period=nope", "/api/usage/chart?period=nope", "/api/usage/active-providers?period=nope", "/api/usage/logs?period=nope"} {
 		code, out, raw := r.m.call("GET", path, "", true)
 		if code != 400 || out["error"] != "Invalid period" {
 			t.Fatalf("%s: %d %s", path, code, raw)
@@ -327,8 +339,24 @@ func TestUsageLogsAreOneLinePerRow(t *testing.T) {
 	if got := lines[0].String(); got != "17-11-2026 16:05:06 | gpt-4o | OPENAI | work | 12 | 7 | ok" {
 		t.Fatalf("first line %q", got)
 	}
-	if got := lines[1].String(); got != "17-11-2026 16:06:00 | - | CC | - | 1 | 0 | 502" {
+	if got := lines[1].String(); got != "17-11-2026 16:06:00 | - | Claude Code | - | 1 | 0 | 502" {
 		t.Fatalf("second line %q", got)
+	}
+}
+
+// TestTheLogsStartSevenDaysBack covers the default the page relies on: the
+// reader is handed a start, not every row the store holds.
+func TestTheLogsStartSevenDaysBack(t *testing.T) {
+	r := newUsageRig(t)
+	if code, _, raw := r.m.call("GET", "/api/usage/logs", "", true); code != 200 {
+		t.Fatalf("%d %s", code, raw)
+	}
+	want := time.Date(usageNow.Year(), usageNow.Month(), usageNow.Day()-6, 0, 0, 0, 0, r.loc)
+	if !r.f.lastRecent.Equal(want) {
+		t.Fatalf("the logs start %v, want %v", r.f.lastRecent, want)
+	}
+	if code, _, raw := r.m.call("GET", "/api/usage/logs?period=all", "", true); code != 200 || !r.f.lastRecent.IsZero() {
+		t.Fatalf("%d %v %s", code, r.f.lastRecent, raw)
 	}
 }
 
@@ -435,5 +463,23 @@ func TestTheUsageStreamSendsTheLiveListOnChange(t *testing.T) {
 	}
 	if !sent {
 		t.Fatal("a batch did not trigger a frame")
+	}
+}
+
+func TestACanceledReadIsNotLoggedAsAFailureButARealOneIs(t *testing.T) {
+	r := newUsageRig(t)
+	logs := &tests.Log{}
+	r.c.Log = logs
+
+	r.f.err = fmt.Errorf("query: %w", context.Canceled)
+	r.m.call("GET", "/api/usage/logs", "", true)
+	if lines := logs.Lines(); len(lines) != 0 {
+		t.Fatalf("a request the client abandoned was logged: %v", lines)
+	}
+
+	r.f.err = errors.New("disk is full")
+	r.m.call("GET", "/api/usage/logs", "", true)
+	if lines := logs.Lines(); len(lines) != 1 || !strings.Contains(lines[0], "disk is full") {
+		t.Fatalf("a real failure was not logged once: %v", lines)
 	}
 }

@@ -217,8 +217,8 @@ func typeTools(tools []claudeTool) []claudeTool {
 func splitSystem(msgs []translate.Message) (system []string, rest []translate.Message) {
 	for _, m := range msgs {
 		if m.Role == translate.RoleSystem {
-			if t := strings.TrimSpace(m.Text()); t != "" {
-				system = append(system, m.Text())
+			if t := strings.TrimSpace(stripBilling(m.Text())); t != "" {
+				system = append(system, stripBilling(m.Text()))
 			}
 			continue
 		}

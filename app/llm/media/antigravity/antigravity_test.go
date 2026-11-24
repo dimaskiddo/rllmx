@@ -13,7 +13,7 @@ import (
 func antigravityEntry() upstream.Entry {
 	return upstream.Entry{
 		ID:        "antigravity",
-		Transport: upstream.Transport{BaseURL: "https://daily-cloudcode-pa.googleapis.com/v1internal", Headers: map[string]string{"User-Agent": "antigravity/hub/2.24.0 darwin/arm64"}},
+		Transport: upstream.Transport{BaseURL: "https://daily-cloudcode-pa.googleapis.com/v1internal", Headers: map[string]string{"User-Agent": "antigravity/hub/2.33.0 darwin/arm64"}},
 	}
 }
 

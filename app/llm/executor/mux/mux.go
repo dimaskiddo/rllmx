@@ -22,6 +22,7 @@ import (
 	"rllmx/app/llm/executor/zed"
 	"rllmx/app/llm/upstream"
 	"rllmx/app/platform/cache"
+	"rllmx/app/platform/settings"
 )
 
 // ErrUnknownExecutor means a provider names an executor nobody registered. The
@@ -58,6 +59,9 @@ type Options struct {
 	// OpenCodeClient is the client the free lane goes through; its TLS offer is
 	// part of that lane's gate. Nil takes the shared client.
 	OpenCodeClient *http.Client
+	// KiroCreateResponse is when a Kiro request uses its Responses transport;
+	// empty is auto.
+	KiroCreateResponse settings.KiroCreateResponse
 }
 
 // New builds a Mux around the default executor, with the specialized ones
@@ -81,7 +85,7 @@ func New(d *executor.Default, o Options) *Mux {
 
 		upstream.ExecutorBedrock:    &aws.Bedrock{Default: d},
 		upstream.ExecutorBedrockXAI: &aws.Bedrock{Default: d, XAI: true},
-		upstream.ExecutorKiro:       &aws.Kiro{Default: d},
+		upstream.ExecutorKiro:       &aws.Kiro{Default: d, CreateResponse: o.KiroCreateResponse},
 
 		upstream.ExecutorOllamaLocal:     &openai.OllamaLocal{Default: d},
 		upstream.ExecutorXiaomiTokenPlan: &xiaomi.XiaomiTokenPlan{Default: d},
@@ -117,6 +121,9 @@ func (m *Mux) Execute(ctx context.Context, req executor.Request) (executor.Respo
 	e, ok := m.byName[name]
 	if !ok {
 		return executor.Response{}, ErrUnknownExecutor
+	}
+	if req.LongDecode {
+		return executor.Continue(ctx, e, req, executor.MaxHops)
 	}
 	return e.Execute(ctx, req)
 }

@@ -38,6 +38,7 @@ type Field struct {
 	LegacyKey string          `json:"legacy_key,omitempty"`
 	Min       *float64        `json:"min,omitempty"`
 	Max       *float64        `json:"max,omitempty"`
+	Step      *float64        `json:"step,omitempty"`
 	Options   []Option        `json:"options,omitempty"`
 }
 
@@ -84,6 +85,11 @@ func checkFields(fields []Field) []string {
 		}
 		if repository.IsSecretSetting(f.LegacyKey) {
 			add("config key %q has legacy_key %q, which holds a credential", f.Key, f.LegacyKey)
+		}
+		if f.Step != nil {
+			if *f.Step <= 0 || f.Min == nil || f.Max == nil || *f.Step > *f.Max-*f.Min {
+				add("config key %q has step %v, which is not between zero and its range", f.Key, *f.Step)
+			}
 		}
 		if len(f.Label) > maxFieldLabel || text.HasControl(f.Label) {
 			add("config key %q has a label over %d bytes or with control characters", f.Key, maxFieldLabel)

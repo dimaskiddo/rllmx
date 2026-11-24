@@ -67,8 +67,13 @@ type Authenticator struct {
 	// administrator. A listed address is the admin; every other address the
 	// provider authenticated is a standard user.
 	SSOAdmin func(email string, exactOnly bool) bool
+	// AdminName is AUTH_ADMIN_USERNAME. Empty means the built-in name.
+	AdminName string
 	// ClientAddr names the caller for the key limiter. Nil means the socket peer.
 	ClientAddr func(r *nethttp.Request) string
+	// SessionTTL is AUTH_SESSION_TTL: how long a session lasts. Zero means the
+	// built-in 24 hours.
+	SessionTTL time.Duration
 	Now        func() time.Time
 }
 
@@ -299,6 +304,11 @@ func ssoUsername(email, id string, disambiguate bool) string {
 	return name[:end] + "~" + tail
 }
 
+// Admin reports the username the administrator signs in with.
+func (a *Authenticator) Admin() string {
+	return AdminName(a.AdminName)
+}
+
 // Issue signs a session for the admin, who just proved the operator's password.
 // secure comes from the request: TLS here, or a trusted proxy that said so.
 func (a *Authenticator) Issue(ctx context.Context, method, email, name string, secure bool) (contractshttp.Cookie, bool) {
@@ -322,12 +332,16 @@ func (a *Authenticator) IssueUser(ctx context.Context, u User, method string, se
 }
 
 func (a *Authenticator) issue(claims Claims, secure bool) (contractshttp.Cookie, bool) {
-	token, err := Sign(a.Secret(), claims)
+	ttl := a.SessionTTL
+	if ttl <= 0 {
+		ttl = SessionTTL
+	}
+	token, err := Sign(a.Secret(), claims, ttl)
 	if err != nil {
 		return contractshttp.Cookie{}, false
 	}
 	return contractshttp.Cookie{
-		Name: CookieName, Value: token, Path: "/", MaxAge: int(SessionTTL.Seconds()),
+		Name: CookieName, Value: token, Path: "/", MaxAge: int(ttl.Seconds()),
 		Secure: a.ForceTLS || secure, HttpOnly: true, SameSite: "lax",
 	}, true
 }

@@ -319,20 +319,30 @@ func comboName(raw string) (string, string) {
 
 // comboModels checks a member list of at least min and at most the stored
 // maximum.
+// comboModels checks a combo's model list and drops repeats, keeping the first:
+// the dashboard keys its editor by model, and a pasted list often repeats one.
 func comboModels(in []string, min int) ([]string, string) {
-	if len(in) < min || len(in) > comboModelsMax {
+	if len(in) > comboModelsMax {
 		if min == 0 {
 			return nil, "A combo can have at most 50 models"
 		}
 		return nil, "A combo needs 1 to 50 models"
 	}
 	models := make([]string, 0, len(in))
+	seen := make(map[string]bool, len(in))
 	for _, m := range in {
 		m = strings.TrimSpace(m)
 		if m == "" || len(m) > comboModelBytes || text.HasControl(m) {
 			return nil, "Invalid model in the combo"
 		}
+		if seen[m] {
+			continue
+		}
+		seen[m] = true
 		models = append(models, m)
+	}
+	if len(models) < min {
+		return nil, "A combo needs 1 to 50 models"
 	}
 	return models, ""
 }

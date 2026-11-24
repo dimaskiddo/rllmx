@@ -27,6 +27,10 @@ type Ctx struct {
 	Model string
 	// Caps is the capability row for Provider and Model.
 	Caps upstream.Capability
+	// Levels is the thinking levels the model serves, lowest first. A writer
+	// clamps a level it was asked for into this set; nil means unknown and the
+	// level goes out as it came.
+	Levels []string
 	// Entry is the registry entry of the provider; may be zero for a node.
 	Entry upstream.Entry
 	// Thinking is the request's thinking decision after the name suffix, the

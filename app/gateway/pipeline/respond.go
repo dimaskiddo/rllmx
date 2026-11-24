@@ -15,6 +15,7 @@ import (
 	"rllmx/app/llm/translate"
 	"rllmx/app/llm/upstream"
 	"rllmx/app/platform/file"
+	"rllmx/app/platform/text"
 )
 
 // errNotOpen is what an error frame gets before the client's stream exists, so
@@ -154,6 +155,9 @@ func (c *call) deliver(ctx context.Context, ans *translate.Response) (Output, *a
 	if err != nil {
 		return c.internal(ctx, err), nil
 	}
+	if c.stripInvisible(ctx) {
+		body = text.StripInvisible(body)
+	}
 	c.setUsage(ans.Usage)
 	c.accept(ctx)
 	h := http.Header{}
@@ -199,9 +203,13 @@ func (c *call) relay(ctx context.Context, resp executor.Response, src stream.Sou
 		return c.internal(ctx, errors.New("no way to open a stream")), nil
 	}
 	lc := &lazyClient{open: c.open}
+	var client stream.Client = lc
+	if c.stripInvisible(ctx) {
+		client = stripClient{Client: lc}
+	}
 	res := stream.Run(ctx, stream.Job{
 		Body: resp.Body, Source: src, UpstreamFormat: c.dest.format, ClientFormat: c.format, Ctx: c.tctx,
-		Client: lc, Timers: c.timers(), RequestBytes: len(c.body), Buffer: true, Now: c.p.d.Now,
+		Client: client, Timers: c.timers(), RequestBytes: len(c.body), Buffer: true, Now: c.p.d.Now,
 		Rewrite:              c.restoreEvent(),
 		ReasoningAliasFields: c.dest.entry.Transport.Quirks.ReasoningAliasFields,
 	})
@@ -235,6 +243,29 @@ func (c *call) relay(ctx context.Context, resp executor.Response, src stream.Sou
 		c.accept(ctx)
 	}
 	return Output{Status: http.StatusOK, Streamed: true}, nil
+}
+
+// stripClient removes the invisible characters a watermark uses from every frame
+// and raw write on its way out.
+type stripClient struct{ Client stream.Client }
+
+func (s stripClient) Frame(f translate.Frame) error {
+	f.Data = text.StripInvisible(f.Data)
+	return s.Client.Frame(f)
+}
+
+func (s stripClient) Raw(b []byte) error {
+	return s.Client.Raw(text.StripInvisible(b))
+}
+
+// stripInvisible is the watermark remover's answer half. A settings read that
+// fails leaves the answer as it came.
+func (c *call) stripInvisible(ctx context.Context) bool {
+	if c.p == nil || c.p.d.Settings == nil {
+		return false
+	}
+	doc, err := c.p.d.Settings.Effective(ctx)
+	return err == nil && doc.Bool("watermarkStripEnabled", false)
 }
 
 // lazyClient opens the client's stream on the first frame. An error frame the
@@ -313,6 +344,9 @@ func (c *call) forwardCompact(ctx context.Context, resp executor.Response) (Outp
 	}
 	if len(raw) == 0 || err != nil || !gjson.ValidBytes(raw) {
 		return c.fail(http.StatusBadGateway, "upstream_5xx", "The upstream sent no usable answer"), emptyAnswer
+	}
+	if c.stripInvisible(ctx) {
+		raw = text.StripInvisible(raw)
 	}
 	up, _ := translate.Lookup(c.dest.format)
 	usage := stream.Estimate(len(c.body), len(raw))

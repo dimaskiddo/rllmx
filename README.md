@@ -27,14 +27,14 @@ Design and parity: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/PARITY
 
 ## ✨ Why Router-LLM?
 
-*   **🔌 One Endpoint:** `/v1/chat/completions`, `/v1/messages`, `/v1/responses`, Gemini `/v1beta` plus `/v1/models`, embeddings, images and audio on one port; Claude Code, Codex and OpenAI SDKs work as-is. ✅
-*   **🔁 Format Translation:** OpenAI Chat hub; Claude, Gemini, Responses, Kiro, Cursor and Ollama both ways, streaming. ✅
-*   **🧩 Combos:** Ordered list, rotation, router-model pick, judge-merged panel. ⏳
+*   **🔌 One Endpoint:** `/v1/chat/completions`, `/v1/messages`, `/v1/responses`, Gemini `/v1beta` plus `/v1/models`, embeddings, images and audio on one port; Claude Code, Codex and OpenAI SDKs work as-is.
+*   **🔁 Format Translation:** OpenAI Chat hub; Claude, Gemini, Responses, Kiro, Cursor and Ollama both ways, streaming.
+*   **🧩 Combos:** Ordered list, rotation, router-model pick, judge-merged panel, a vision and audio adapter for a model that cannot read the turn.
 *   **♻️ Account Rotation & Cooldown:** Many accounts per provider, fill-first or sticky round-robin, per-model locks, exponential backoff on 429.
 *   **🔑 OAuth & Tokens:** Claude Code, Codex, GitHub Copilot, Gemini CLI, Kiro; refresh before expiry, on 401, in background.
-*   **🖼️ Media:** Embeddings, images, speech, transcription, voice lists, video, web search, page fetch, and the web providers chatgpt-web, uc-web and veoaifree-web. ✅
-*   **✂️ Token Savers & Skills:** RTK tool-output filters, two built-in prompt styles, custom prompt, optional Headroom sidecar, Skills Studio declarative rules (no code). ⏳
-*   **🩺 Health Aware:** Latency and success tracking, circuit breaker, model probes, ranked combo suggestions. ⏳
+*   **🖼️ Media:** Embeddings, images, speech, transcription, voice lists, video, web search, page fetch, and the web providers chatgpt-web, uc-web and veoaifree-web.
+*   **✂️ Token Savers & Skills:** RTK tool-output filters, two built-in prompt styles, custom prompt, optional Headroom sidecar, a watermark remover that also strips invisible characters from answers, and a skill registry with memory, commit and design skills; Skills Studio writes declarative rules (no code).
+*   **🩺 Health Aware:** Latency and success tracking, circuit breaker, model probes, ranked combo suggestions.
 *   **🗂️ Drop-In Database:** 9router SQLite schema for providers, keys, combos; SQLite default, PostgreSQL optional, credentials sealed.
 *   **📈 Usage Analytics:** Metadata-only row per request (key, model, tokens, cost, latency) in a separate store; no bodies, no prompts.
 *   **⚡ Cache:** In-process default, Redis optional; requests survive Redis loss.
@@ -127,8 +127,8 @@ make build   # binary in dist/rllmx; go run . starts it from source, ./artisan l
 | `rllmx artisan auth:mode` | Choose how the dashboard is signed into (`password`, `oidc`, `saml`, `sso` or `both`) and, in the same run, set the OIDC issuer and client id; the client secret is a hidden prompt. The password form stays on until the chosen SSO is configured. |
 | `rllmx artisan db:backup\|check\|vacuum` | Back up SQLite, verify integrity and schema, explicit full vacuum (asks y/N). |
 | `rllmx artisan db:migrate` | Create or update the database schema without starting the server; stop the server first, and run the import once this succeeds. |
-| `rllmx artisan db:import-analytics [--from <file>] [--drop-old]` | Move usage history from a 9router database into the analytics store; source defaults to this data directory's database, rerun adds nothing, totals verified against the source. `--drop-old` then removes `usageHistory`, `usageDaily`, `requestDetails`: needs a terminal and a typed `DROP`, refuses while any row is unreadable, writes `db/backups/before-drop-*` first. |
 | `rllmx artisan db:import-config --from <path>` | Seed an empty SQLite or PostgreSQL database from a 9router database: providers, keys, nodes, combos, aliases and the settings a new deployment needs, one transaction. `--dry-run` shows the plan, writes nothing; `--yes` skips the prompt; `--with-sso` also copies the login policy. Usage, the dashboard password and the old deployment's proxy, tunnel, observability settings stay behind. |
+| `rllmx artisan db:import-analytics --from <file> [--drop-old]` | Move usage history from a 9router database into the analytics store; source defaults to this data directory's database, rerun adds nothing, totals verified against the source. `--drop-old` then removes `usageHistory`, `usageDaily`, `requestDetails`: needs a terminal and a typed `DROP`, refuses while any row is unreadable, writes `db/backups/before-drop-*` first. |
 | `rllmx artisan db:export-plain` | Database copy with every credential in plain text, for going back to 9router. Asks for the dashboard password. |
 
 Local database only. `keys` and `password`: hidden input, never flags or environment variables. No password for `db` commands except `db:export-plain` (plain-text credentials); data-changing ones confirm. Providers and remote administration: dashboard.

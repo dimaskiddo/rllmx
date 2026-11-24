@@ -21,6 +21,8 @@ const (
 	maxIdleTimeout       = time.Hour
 	minShutdownGrace     = time.Second
 	maxShutdownGrace     = 10 * time.Minute
+	minSessionTTL        = 5 * time.Minute
+	maxSessionTTL        = 30 * 24 * time.Hour
 )
 
 // Server is the validated view of the listener and guard settings. The values
@@ -54,6 +56,8 @@ type Server struct {
 	H2C bool
 	// MaxUsers caps the standard-user list, however a row was created.
 	MaxUsers int
+	// SessionTTL is how long a dashboard session lasts.
+	SessionTTL time.Duration
 }
 
 // LoadServer reads and checks the server settings. Errors name the variable and
@@ -90,6 +94,9 @@ func LoadServer(cfg config.Config) (*Server, error) {
 		return nil, err
 	}
 	if s.ShutdownGrace, err = duration(cfg, "http.server.shutdown_grace", "HTTP_SERVER_SHUTDOWN_GRACE", minShutdownGrace, maxShutdownGrace); err != nil {
+		return nil, err
+	}
+	if s.SessionTTL, err = duration(cfg, "auth.session_ttl", "AUTH_SESSION_TTL", minSessionTTL, maxSessionTTL); err != nil {
 		return nil, err
 	}
 	if s.TrustedProxies, err = parseProxies(cfg.GetString("http.guard.trusted_proxies")); err != nil {

@@ -147,6 +147,12 @@ window.Alpine.data("providerPage", () => Object.assign({
     return this.entry ? this.entry.login : null;
   },
 
+  // controlKeyField is true for the one provider whose quota needs a second
+  // credential beside the key the chat path sends.
+  controlKeyField() {
+    return !this.node && this.id === "opendesign-go";
+  },
+
   canAddKey() {
     if (this.node) {
       return true;

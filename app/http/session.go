@@ -57,10 +57,15 @@ func roleAllows(role, method, path string) bool {
 	if userRoutes[method+" "+path] {
 		return true
 	}
-	// One key, read or switched on and off. Ownership is checked by the handler.
+	// One key, read, switched on and off, or revealed. Ownership is checked by
+	// the handler.
 	switch method {
 	case nethttp.MethodGet, nethttp.MethodPut:
 		return oneSegmentAfter(path, "/api/keys/")
+	case nethttp.MethodPost:
+		rest, ok := strings.CutPrefix(path, "/api/keys/")
+		id, found := strings.CutSuffix(rest, "/reveal")
+		return ok && found && id != "" && !strings.Contains(id, "/")
 	}
 	return false
 }

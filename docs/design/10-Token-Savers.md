@@ -12,8 +12,8 @@ Every step fails open: a missing setting, a filter that cannot shorten the text,
 |---|---|---|
 | RTK | `rtkEnabled` (on) | Compacts the text of successful tool results in place: git diff/log/status, grep, find, ls, tree, search lists, build output, line-numbered dumps, duplicate logs, long unstructured blobs |
 | Headroom | `headroomEnabled`, `headroomUrl`, `headroomCompressUserMessages`, `headroomTimeoutMs` | Sends tool output, and user text when allowed, to the operator's compression sidecar at `<url>/v1/compress` |
-| Caveman | `cavemanEnabled`, `cavemanLevel`, `cavemanRoutingMode` | Appends a terse-answer instruction to the system prompt |
-| Ponytail | `ponytailEnabled`, `ponytailLevel`, `ponytailRoutingMode` | Appends a minimal-code instruction to the system prompt |
+| Caveman | `cavemanEnabled`, `cavemanLevel`, `cavemanRoutingMode` | Appends a terse-answer instruction to the system prompt; the card carries the reference's own name and description |
+| Ponytail | `ponytailEnabled`, `ponytailLevel`, `ponytailRoutingMode` | Appends a minimal-code instruction to the system prompt; the card carries the reference's own name and description |
 | Custom prompt | `customPromptEnabled`, `customPrompt` | Appends the operator's own text, independent of the two above |
 | PXPIPE | `pxpipe*` | Deferred |
 | Sliding-window trim | `tokenSaverEnabled`, `tokenSaverBudget` | Stored and imported, no behavior (D9) |
@@ -44,7 +44,7 @@ The proxy strips hop-by-hop headers, does not forward `Host`, follows no redirec
 
 ## Dashboard
 
-`/dashboard/token-saver` writes `rtkEnabled`, `headroomEnabled`, `headroomUrl`, `headroomCompressUserMessages`, `headroomTimeoutMs`, the four `caveman*` and `ponytail*` keys, and `customPromptEnabled` with `customPrompt`. The level buttons offer lite, full and ultra; a stored `wenyan*` level shows as ultra outside a Chinese locale, and the sidecar's process controls are not offered here (D398).
+`/dashboard/token-saver` writes `rtkEnabled`, `headroomEnabled`, `headroomUrl`, `headroomCompressUserMessages`, `headroomTimeoutMs`, the four `caveman*` and `ponytail*` keys, and `customPromptEnabled` with `customPrompt`. The cards stack in one column, because each body appears and hides and a two-column grid leaves a short card beside a tall one. The level buttons offer lite, full and ultra; a stored `wenyan*` level shows as ultra outside a Chinese locale, and the sidecar's process controls are not offered here (D398).
 
 ## Parity: Token Savers
 
@@ -53,6 +53,7 @@ The proxy strips hop-by-hop headers, does not forward `Host`, follows no redirec
 | RTK filters (12) | `open-sse/rtk/filters/*` | `saver/rtk` | done |
 | Detection and the smaller-only rule | `open-sse/rtk/autodetect.js`, `applyFilter.js` | `saver/rtk` | done |
 | The two built-in prompt styles, level and activation mode | the reference's `rtk` prompt files, the extended fork's skill manifests | `saver/caveman`, `saver/ponytail`, `saver/prompt` | done |
+| Watermark Remover: the skill's prompt (smart or always) and the strip of invisible characters from every answer | `skills/watermarks-remover`, none for the strip | `app/gateway/skill`, `app/platform/text`, `app/gateway/pipeline` | done (the prompt is the extended fork's own text; the strip is D428) |
 | Custom prompt | `open-sse/rtk/customPrompt.js` | `saver`, `saver/prompt` | done |
 | Headroom client | `open-sse/rtk/headroom.js` | `saver/headroom` | done |
 | `/api/headroom/status`, `/api/headroom/proxy` | `src/app/api/headroom/{status,proxy}` | `app/http/controllers` | done |
@@ -78,6 +79,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 134 | Kept as entered (spaces trimmed) | Providers with trailing slash validate |
 | 9 | Dropped; `tokenSaverEnabled`, `tokenSaverBudget` kept and imported with no behavior | Dead in the reference (scope cut) |
 | 395 | `cavemanRoutingMode` and `ponytailRoutingMode` are honored | The extended fork ships the option in its manifests but injects from the enable flags alone, so its "Smart" label does nothing |
+| 428 | Watermark Remover also strips the invisible characters from a delivered answer, raw UTF-8 and `\uXXXX` escapes, streaming included | The reference only asks the model not to emit them; asking is not a guarantee, and a client that copies the answer carries the mark either way |
 | 396 | Retired: the level texts are the reference's own, kept verbatim | The maintainer directed using the reference texts directly; each package names its source, and an edit tracks the reference |
 | 397 | Headroom is sent tool output and, when allowed, user text; the system prompt is never sent | A compression proxy that rewrites the operator's instructions can change behavior in ways no setting explains |
 | 398 | No sidecar install, start, stop, restart, port detection, extras or update | Process management is out of scope (`design doc 22`); the operator runs the sidecar |

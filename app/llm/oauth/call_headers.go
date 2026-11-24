@@ -19,6 +19,15 @@ func WithEntry(h map[string]string, k, v string) map[string]string {
 	return out
 }
 
+// WithIdentity returns h with an identity laid over it: a header the provider
+// asks for by name replaces one the flow's data file set, and h is left as it was.
+func WithIdentity(h, identity map[string]string) map[string]string {
+	out := make(map[string]string, len(h)+len(identity))
+	maps.Copy(out, h)
+	maps.Copy(out, identity)
+	return out
+}
+
 // CallHeaders are the headers the router sends to a provider while logging in,
 // renewing a token and running a hook. The device id placeholder is filled from
 // the account; with none it is left out rather than sent as text.

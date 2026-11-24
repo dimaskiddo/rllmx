@@ -162,7 +162,10 @@ type call struct {
 	cacheOpts cacheSettings
 
 	requested string
-	client    string
+	// asked is the model name the client sent, kept for the log: a combo or a
+	// rule replaces requested as the request is routed.
+	asked  string
+	client string
 	// cloakedNames maps the tools the last attempt renamed back to the client's
 	// names; the passthrough stream restores them from it.
 	cloakedNames map[string]string

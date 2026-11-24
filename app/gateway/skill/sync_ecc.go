@@ -24,6 +24,13 @@ const (
 	catalogDepth   = 3
 )
 
+// ECCSource and ECCBranch are the official catalog the dashboard syncs. The
+// reference fixes the same address, so the page asks for neither.
+const (
+	ECCSource = "https://github.com/affaan-m/everything-claude-code.git"
+	ECCBranch = "main"
+)
+
 // ECCSyncResult reports what one catalog sync did.
 type ECCSyncResult struct {
 	Total   int

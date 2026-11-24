@@ -9,31 +9,14 @@ import { toast } from "/static/js/ui/toast.js";
 import { formatMethods } from "/static/js/ui/format.js";
 import { setPath } from "/static/js/ui/fields.js";
 import { fieldMethods } from "/static/js/ui/fields.js";
+import { loadModelChoices } from "./model-choices.js";
 
-// liveModels is every provider/model a request could reach now: the models of a
-// provider that has an active connection, spelled the way a client types them.
-// A registry list already holds its custom models; a node's come from the custom
-// list, under the node's id.
-export function liveModels(models, custom, catalog, connections) {
-  const live = new Set(connections.filter((c) => c.isActive !== false).map((c) => c.provider));
-  const owners = new Set();
-  const known = new Set();
-  for (const p of catalog) {
-    known.add(p.id);
-    if (live.has(p.id)) {
-      owners.add(p.id);
-      if (p.alias) {
-        owners.add(p.alias);
-      }
-    }
-  }
-  const out = models.filter((m) => owners.has(m.provider)).map((m) => m.fullModel);
-  for (const m of custom) {
-    if (live.has(m.providerAlias) && !known.has(m.providerAlias)) {
-      out.push(m.providerAlias + "/" + m.id);
-    }
-  }
-  return out;
+function budgetWindowKey(window) {
+  return { day: "keys.perDay", month: "keys.perMonth", total: "keys.allTime" }[window];
+}
+
+function budgetAmount(kind, value) {
+  return kind === "cost" ? "$" + Number(value).toFixed(2) : Number(value).toLocaleString();
 }
 
 function emptyBudget() {
@@ -54,7 +37,6 @@ window.Alpine.data("endpointPage", () => Object.assign({
   create: { name: "", owner: "", error: "", busy: false },
   created: null,
   edit: null,
-  userForm: null,
   choices: [],
 
 
@@ -62,9 +44,11 @@ window.Alpine.data("endpointPage", () => Object.assign({
     return this.role !== "user";
   },
 
-  userName(id) {
+  // ownerText is the address the owner signs in with, or their username when
+  // they have none, so a key always says whose it is.
+  ownerText(id) {
     const found = this.users.find((u) => u.id === id);
-    return found ? found.username : t("users.ownerNone");
+    return found ? found.email || found.username : t("users.ownerNone");
   },
 
   async init() {
@@ -82,15 +66,10 @@ window.Alpine.data("endpointPage", () => Object.assign({
         return;
       }
 
-      const [settings, aliases, combos, models, custom, catalog, providers, users] = await Promise.all([
+      const [settings, users, choices] = await Promise.all([
         api("/api/settings"),
-        api("/api/models/alias").catch(() => ({ aliases: {} })),
-        api("/api/combos").catch(() => ({ combos: [] })),
-        api("/api/models").catch(() => ({ models: [] })),
-        api("/api/models/custom").catch(() => ({ models: [] })),
-        api("/api/providers/catalog").catch(() => ({ providers: [] })),
-        api("/api/providers").catch(() => ({ connections: [] })),
         api("/api/users").catch(() => ({ users: [] })),
+        loadModelChoices(),
       ]);
       this.settings = {
         requireApiKey: settings.requireApiKey === true,
@@ -98,9 +77,7 @@ window.Alpine.data("endpointPage", () => Object.assign({
         hasPassword: settings.hasPassword === true,
       };
       this.users = users.users || [];
-      const names = Object.keys(aliases.aliases || {}).concat((combos.combos || []).map((c) => c.name));
-      const live = liveModels(models.models || [], custom.models || [], catalog.providers || [], providers.connections || []);
-      this.choices = Array.from(new Set(names.concat(live))).sort();
+      this.choices = choices;
     } catch (err) {
       this.error = err.message;
     } finally {
@@ -126,6 +103,38 @@ window.Alpine.data("endpointPage", () => Object.assign({
     }
   },
 
+  // budgetMeters is one row per limited amount and window: what is left of the
+  // budget, from 100% for a key that has spent nothing.
+  budgetMeters(key) {
+    const limit = key.quota || {};
+    const spend = key.spend || {};
+    const out = [];
+    for (const kind of ["requests", "tokens", "cost"]) {
+      const amounts = limit[kind] || {};
+      for (const window of ["day", "month", "total"]) {
+        const cap = Number(amounts[window]);
+        if (!(cap > 0)) {
+          continue;
+        }
+        const used = Number((spend[window] || {})[kind] || 0);
+        const percent = Math.max(0, Math.min(100, ((cap - used) / cap) * 100));
+        out.push({
+          key: kind + "." + window,
+          label: t("keys." + kind) + " · " + t(budgetWindowKey(window)),
+          percent: percent,
+          level: this.meterLevel(percent),
+          text: budgetAmount(kind, used) + " / " + budgetAmount(kind, cap),
+        });
+      }
+    }
+    return out;
+  },
+
+  // limited is a key with a budget window spent to zero.
+  limited(key) {
+    return this.budgetMeters(key).some((meter) => meter.percent <= 0);
+  },
+
   keyText(key) {
     return this.revealed[key.id] || key.key;
   },
@@ -138,7 +147,7 @@ window.Alpine.data("endpointPage", () => Object.assign({
       return;
     }
     try {
-      const full = await api("/api/keys/" + encodeURIComponent(key.id));
+      const full = await api("/api/keys/" + encodeURIComponent(key.id) + "/reveal", { method: "POST" });
       this.revealed = Object.assign({}, this.revealed, { [key.id]: full.key.key });
     } catch (err) {
       toast().error(err.message);
@@ -151,7 +160,7 @@ window.Alpine.data("endpointPage", () => Object.assign({
     let value = this.revealed[key.id] || "";
     if (!value) {
       try {
-        const full = await api("/api/keys/" + encodeURIComponent(key.id));
+        const full = await api("/api/keys/" + encodeURIComponent(key.id) + "/reveal", { method: "POST" });
         value = full.key.key;
       } catch (err) {
         toast().error(err.message);
@@ -325,14 +334,17 @@ window.Alpine.data("endpointPage", () => Object.assign({
   async saveEdit() {
     this.edit.error = "";
     this.edit.busy = true;
-    const body = {
-      name: this.edit.name,
-      owner: this.edit.owner,
-      isActive: this.edit.isActive,
-      responseCache: this.edit.responseCache,
-      access: { restricted: this.edit.restricted, allow: this.edit.allow },
-      quota: this.quotaFromBudget(),
-    };
+    // A standard user may only rename: the server refuses the other fields.
+    const body = this.isAdmin()
+      ? {
+        name: this.edit.name,
+        owner: this.edit.owner,
+        isActive: this.edit.isActive,
+        responseCache: this.edit.responseCache,
+        access: { restricted: this.edit.restricted, allow: this.edit.allow },
+        quota: this.quotaFromBudget(),
+      }
+      : { name: this.edit.name };
     try {
       await api("/api/keys/" + encodeURIComponent(this.edit.id), { method: "PUT", body: body });
       this.closeEdit();
@@ -345,63 +357,4 @@ window.Alpine.data("endpointPage", () => Object.assign({
     }
   },
 
-  openUser(user) {
-    this.userForm = {
-      id: user ? user.id : "",
-      name: user ? user.username : "",
-      email: user ? user.email || "" : "",
-      password: "",
-      error: "",
-      busy: false,
-    };
-    this.$refs.userDlg.showModal();
-    this.$refs.userName.focus();
-  },
-
-  closeUser() {
-    this.$refs.userDlg.close();
-    this.userForm = null;
-  },
-
-  setUser(field, event) {
-    this.userForm[field] = event.target.value;
-  },
-
-  async saveUser() {
-    const form = this.userForm;
-    form.error = "";
-    form.busy = true;
-    try {
-      const body = { name: form.name, email: form.email };
-      if (form.password !== "") {
-        body.password = form.password;
-      }
-      if (form.id) {
-        await api("/api/users/" + encodeURIComponent(form.id), { method: "PUT", body: body });
-      } else {
-        await api("/api/users", { method: "POST", body: body });
-      }
-      this.closeUser();
-      await this.load();
-      toast().success(t("users.saved"));
-    } catch (err) {
-      form.error = err.message;
-    } finally {
-      form.busy = false;
-    }
-  },
-
-  async removeUser(user) {
-    const yes = await ask({ title: t("users.deleteTitle"), message: t("users.deleteBody"), confirm: t("common.delete") });
-    if (!yes) {
-      return;
-    }
-    try {
-      await api("/api/users/" + encodeURIComponent(user.id), { method: "DELETE" });
-      await this.load();
-      toast().success(t("users.deleted"));
-    } catch (err) {
-      toast().error(err.message);
-    }
-  },
 }, formatMethods, fieldMethods));

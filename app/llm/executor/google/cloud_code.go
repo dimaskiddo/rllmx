@@ -90,6 +90,18 @@ func (c *CloudCode) Execute(ctx context.Context, req executor.Request) (executor
 		return resp, err
 	}
 	raw := executor.FailedBody(resp)
+	if c.Antigravity && promptRejected(resp.Status, raw) && !image {
+		if moved, ok := moveSystem(req.Body); ok {
+			req.Body = moved
+			if resp, err = c.attempt(ctx, req); err != nil || resp.Status < http.StatusBadRequest {
+				return resp, err
+			}
+			raw = executor.FailedBody(resp)
+		}
+	}
+	if c.Antigravity && promptRejected(resp.Status, raw) {
+		return executor.ReplyWith(resp, http.StatusBadRequest, []byte(refusedPrompt), "application/json"), nil
+	}
 	if out, ok := c.limited(resp.Status, resp.Header, raw); ok {
 		return executor.ReplyWith(resp, resp.Status, out, "application/json"), nil
 	}
@@ -112,6 +124,9 @@ func (c *CloudCode) attempt(ctx context.Context, req executor.Request) (executor
 			return resp, err
 		}
 		raw := executor.FailedBody(resp)
+		if promptRejected(resp.Status, raw) {
+			return executor.ReplyWith(resp, resp.Status, raw, ""), nil
+		}
 		delay, ok := antigravityDelay(resp.Header, raw, resp.Status, tries, c.now())
 		if !ok {
 			return executor.ReplyWith(resp, resp.Status, raw, ""), nil
@@ -121,6 +136,71 @@ func (c *CloudCode) attempt(ctx context.Context, req executor.Request) (executor
 			return executor.Response{}, werr
 		}
 	}
+}
+
+// exhaustedText is the only text of a refusal Antigravity gives a prompt it
+// does not accept. A real quota error carries details with a reset time.
+const exhaustedText = "Resource has been exhausted (e.g. check quota)"
+
+// refusedPrompt is what the client reads when a prompt is refused after its
+// system text was moved: a request-scoped 400, so no account is locked for it.
+const refusedPrompt = `{"error":{"code":400,"status":"INVALID_ARGUMENT","message":"Antigravity refused this request. Its backend answered with an empty exhausted-resource error, which is not your quota: it refuses prompts that carry certain third-party agent text."}}`
+
+// promptRejected reports the detail-free 429 Antigravity answers a refused
+// prompt with. The same body is refused the same way every time, so waiting or
+// locking the account cannot help.
+func promptRejected(status int, raw []byte) bool {
+	if status != http.StatusTooManyRequests || !gjson.ValidBytes(raw) {
+		return false
+	}
+	e := gjson.GetBytes(raw, "error")
+	if e.Get("status").String() != "RESOURCE_EXHAUSTED" {
+		return false
+	}
+	if strings.TrimSuffix(strings.TrimSpace(e.Get("message").String()), ".") != exhaustedText {
+		return false
+	}
+	d := e.Get("details")
+	return !d.Exists() || d.Type == gjson.Null || (d.IsArray() && len(d.Array()) == 0)
+}
+
+// moveSystem puts the envelope's system text at the front of the first user
+// turn. Antigravity fingerprints systemInstruction only: the same text in a user
+// turn passes. It reports false when there is no text to move. The input is not
+// changed.
+func moveSystem(body []byte) ([]byte, bool) {
+	if !gjson.ValidBytes(body) {
+		return nil, false
+	}
+	var moved []string
+	for _, p := range gjson.GetBytes(body, "request.systemInstruction.parts").Array() {
+		if t := p.Get("text"); t.Type == gjson.String && strings.TrimSpace(t.String()) != "" {
+			part, _ := sjson.SetBytes([]byte(`{}`), "text", t.String())
+			moved = append(moved, string(part))
+		}
+	}
+	if len(moved) == 0 {
+		return nil, false
+	}
+	out, _ := sjson.DeleteBytes(body, "request.systemInstruction")
+	contents := gjson.GetBytes(out, "request.contents").Array()
+	lead := strings.Join(moved, ",")
+	if len(contents) > 0 && contents[0].Get("role").String() == "user" {
+		rest := strings.TrimSuffix(strings.TrimPrefix(contents[0].Get("parts").Raw, "["), "]")
+		parts := "[" + lead + "]"
+		if strings.TrimSpace(rest) != "" {
+			parts = "[" + lead + "," + rest + "]"
+		}
+		out, _ = sjson.SetRawBytes(out, "request.contents.0.parts", []byte(parts))
+		return out, true
+	}
+	turn := `{"role":"user","parts":[` + lead + `]}`
+	all := "[" + turn
+	for _, c := range contents {
+		all += "," + c.Raw
+	}
+	out, _ = sjson.SetRawBytes(out, "request.contents", []byte(all+"]"))
+	return out, true
 }
 
 func antigravityRetryable(status int) bool {

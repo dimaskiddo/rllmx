@@ -153,3 +153,17 @@ func TestAcceptRefusesANameOrListAComboCannotCarry(t *testing.T) {
 		}
 	}
 }
+
+// A pasted list can repeat a model; the stored list keeps the first of each.
+func TestAComboDropsARepeatedModel(t *testing.T) {
+	got, msg := comboModels([]string{" a/b ", "c/d", "a/b"}, 1)
+	if msg != "" || len(got) != 2 || got[0] != "a/b" || got[1] != "c/d" {
+		t.Fatalf("%v %q", got, msg)
+	}
+	if _, msg := comboModels(nil, 1); msg == "" {
+		t.Fatal("an empty list was accepted")
+	}
+	if _, msg := comboModels([]string{"a\nb"}, 1); msg == "" {
+		t.Fatal("a controlled model was accepted")
+	}
+}

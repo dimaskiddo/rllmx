@@ -8,6 +8,9 @@ import { toast } from "/static/js/ui/toast.js";
 import { mergeConnection, psdBody, psdRows, renumber } from "./provider-status.js";
 
 const nodeKeys = ["prefix", "apiType", "baseUrl", "nodeName"];
+// controlKey is the provider data field the OpenDesign quota reading needs; it
+// has its own password input, so the generic field editor never lists it.
+const controlKey = "opendesignControlKey";
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -185,7 +188,7 @@ export const connectionMethods = {
 
   openAddKey() {
     this.add = {
-      name: "", key: "", defaultModel: "", priority: "1", region: "",
+      name: "", key: "", defaultModel: "", priority: "1", region: "", controlKey: "",
       psd: [], check: null, checking: false, busy: false, error: "",
     };
     this.$refs.addDlg.showModal();
@@ -200,12 +203,14 @@ export const connectionMethods = {
   // typed secret is dropped on the dialog's own close event.
   forgetAdd() {
     this.add.key = "";
+    this.add.controlKey = "";
     this.add.check = null;
   },
 
   forgetEdit() {
     if (this.edit) {
       this.edit.apiKey = "";
+      this.edit.controlKey = "";
     }
   },
 
@@ -243,6 +248,9 @@ export const connectionMethods = {
     const psd = psdBody(this.add.psd);
     if (this.add.region !== "") {
       psd.region = this.add.region;
+    }
+    if (this.controlKeyField() && this.add.controlKey.trim() !== "") {
+      psd[controlKey] = this.add.controlKey.trim();
     }
     if (Object.keys(psd).length > 0) {
       body.providerSpecificData = psd;
@@ -324,9 +332,11 @@ export const connectionMethods = {
       globalPriority: conn.globalPriority === undefined || conn.globalPriority === null ? "" : String(conn.globalPriority),
       defaultModel: conn.defaultModel || "",
       apiKey: "",
+      controlKey: "",
+      hasControlKey: !!(conn.providerSpecificData && conn.providerSpecificData[controlKey]),
       isActive: conn.isActive !== false,
       region: this.region(conn.providerSpecificData),
-      psd: psdRows(conn.providerSpecificData, this.node ? nodeKeys : []),
+      psd: psdRows(conn.providerSpecificData, (this.node ? nodeKeys : []).concat([controlKey])),
       psdKeys: [],
       error: "",
       busy: false,
@@ -368,6 +378,9 @@ export const connectionMethods = {
     };
     if (this.edit.apiKey !== "") {
       body.apiKey = this.edit.apiKey;
+    }
+    if (this.controlKeyField() && this.edit.controlKey.trim() !== "") {
+      body.providerSpecificData[controlKey] = this.edit.controlKey.trim();
     }
     if (this.entry && this.entry.regions && this.entry.regions.length > 0) {
       body.providerSpecificData.region = this.edit.region === "" ? null : this.edit.region;

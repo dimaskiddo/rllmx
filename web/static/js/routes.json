@@ -10,5 +10,6 @@
   { "path": "/dashboard/skills", "page": "skills" },
   { "path": "/dashboard/token-saver", "page": "token-saver" },
   { "path": "/dashboard/pricing", "page": "pricing" },
+  { "path": "/dashboard/users", "page": "users" },
   { "path": "/dashboard/settings", "page": "settings" }
 ]

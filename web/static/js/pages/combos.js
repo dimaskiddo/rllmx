@@ -9,6 +9,7 @@ import { formatMethods } from "/static/js/ui/format.js";
 import { setPath } from "/static/js/ui/fields.js";
 import { modelEditorMethods } from "./combo-models.js";
 import { fieldMethods } from "/static/js/ui/fields.js";
+import { loadModelChoices } from "./model-choices.js";
 
 const emptyWeights = { reliability: 0.4, latency: 0.3, cost: 0.2, quality: 0.1 };
 
@@ -24,7 +25,10 @@ window.Alpine.data("combosPage", () => Object.assign({
   loading: true,
   error: "",
   combos: [],
-  aliases: [],
+  choices: [],
+  capsBy: {},
+  adapter: null,
+  adapterAdd: { vision: "", audioInput: "" },
   strategies: {},
   globalStrategy: "fallback",
   search: "",
@@ -37,17 +41,33 @@ window.Alpine.data("combosPage", () => Object.assign({
     await this.load();
   },
 
+  // load shows "Loading" only the first time. A later load, after a save or a
+  // switch, swaps the data under what is already on screen instead of blanking
+  // the page and losing the reader's place.
   async load() {
-    this.loading = true;
     this.error = "";
     try {
-      const [combos, aliases, settings] = await Promise.all([
+      const [combos, settings, models, choices] = await Promise.all([
         api("/api/combos"),
-        api("/api/models/alias"),
         api("/api/settings"),
+        api("/api/models").catch(() => ({ models: [] })),
+        loadModelChoices(),
       ]);
+      const capsBy = {};
+      for (const m of models.models || []) {
+        if (!m.caps) {
+          continue;
+        }
+        for (const key of [m.fullModel, m.routedModel, m.alias, m.provider + "/" + m.model]) {
+          if (key && !capsBy[key]) {
+            capsBy[key] = m.caps;
+          }
+        }
+      }
+      this.capsBy = capsBy;
       this.combos = combos.combos || [];
-      this.aliases = Object.keys(aliases.aliases || {});
+      this.choices = choices;
+      this.adapter = this.adapterFrom(settings.capacityAdapter);
       this.strategies = settings.comboStrategies || {};
       this.globalStrategy = settings.comboStrategy || "fallback";
     } catch (err) {
@@ -63,6 +83,121 @@ window.Alpine.data("combosPage", () => Object.assign({
       return this.combos;
     }
     return this.combos.filter((c) => c.name.toLowerCase().indexOf(q) >= 0 || c.models.some((m) => m.toLowerCase().indexOf(q) >= 0));
+  },
+
+  // adapterFrom reads the stored capacity adapter into the two blocks this page
+  // offers. The other kinds it accepts stay as stored and are not edited here.
+  adapterFrom(raw) {
+    const out = { vision: { enabled: false, roundRobin: false, models: [] }, audioInput: { enabled: false, roundRobin: false, models: [] } };
+    for (const kind of Object.keys(out)) {
+      const entry = raw && raw[kind];
+      if (!entry) {
+        continue;
+      }
+      out[kind].enabled = entry.enabled === true;
+      out[kind].roundRobin = entry.roundRobin === true;
+      out[kind].models = Array.isArray(entry.models) ? entry.models.slice() : [];
+    }
+    return out;
+  },
+
+  adapterName(kind) {
+    return kind === "vision" ? t("models.vision") : t("models.audio");
+  },
+
+  adapterBlock(kind) {
+    return this.adapter ? this.adapter[kind] : { enabled: false, roundRobin: false, models: [] };
+  },
+
+  // commitAdapter saves the whole row. A refused save puts the page back to what
+  // the store holds.
+  async commitAdapter(before) {
+    const body = {};
+    for (const kind of Object.keys(this.adapter)) {
+      const block = this.adapter[kind];
+      if (!block.enabled && block.models.length === 0) {
+        continue;
+      }
+      body[kind] = { enabled: block.enabled, roundRobin: block.roundRobin, models: block.models };
+    }
+    try {
+      await patchSettings({ capacityAdapter: body });
+    } catch (err) {
+      this.adapter = before;
+      toast().error(err.message);
+    }
+  },
+
+  async toggleAdapter(kind, key, event) {
+    const before = JSON.parse(JSON.stringify(this.adapter));
+    this.adapter = Object.assign({}, this.adapter, {
+      [kind]: Object.assign({}, this.adapter[kind], { [key]: event.target.checked }),
+    });
+    await this.commitAdapter(before);
+  },
+
+  setAdapterAdd(kind, event) {
+    this.adapterAdd = Object.assign({}, this.adapterAdd, { [kind]: event.target.value });
+  },
+
+  async addAdapterModel(kind) {
+    const value = (this.adapterAdd[kind] || "").trim();
+    if (!value || this.adapter[kind].models.indexOf(value) >= 0) {
+      return;
+    }
+    const before = JSON.parse(JSON.stringify(this.adapter));
+    this.adapter = Object.assign({}, this.adapter, {
+      [kind]: Object.assign({}, this.adapter[kind], { models: this.adapter[kind].models.concat([value]) }),
+    });
+    this.adapterAdd = Object.assign({}, this.adapterAdd, { [kind]: "" });
+    await this.commitAdapter(before);
+  },
+
+  async removeAdapterModel(kind, index) {
+    const before = JSON.parse(JSON.stringify(this.adapter));
+    const models = this.adapter[kind].models.slice();
+    models.splice(index, 1);
+    this.adapter = Object.assign({}, this.adapter, { [kind]: Object.assign({}, this.adapter[kind], { models: models }) });
+    await this.commitAdapter(before);
+  },
+
+  async moveAdapterModel(kind, index, delta) {
+    const models = this.adapter[kind].models.slice();
+    const to = index + delta;
+    if (to < 0 || to >= models.length) {
+      return;
+    }
+    const before = JSON.parse(JSON.stringify(this.adapter));
+    const moved = models.splice(index, 1)[0];
+    models.splice(to, 0, moved);
+    this.adapter = Object.assign({}, this.adapter, { [kind]: Object.assign({}, this.adapter[kind], { models: models }) });
+    await this.commitAdapter(before);
+  },
+
+  // capsOf is the member's declared capabilities; a name the model list does not
+  // know is plain text until it does.
+  capsOf(member) {
+    return this.capsBy[member] || null;
+  },
+
+  // comboCaps is the union of its members: a combo reads a picture when one of
+  // them does.
+  comboCaps(combo) {
+    const out = { vision: false, reasoning: false, audio: false };
+    for (const member of combo.models || []) {
+      const caps = this.capsBy[member];
+      if (!caps) {
+        continue;
+      }
+      out.vision = out.vision || caps.vision === true;
+      out.reasoning = out.reasoning || caps.reasoning === true;
+      out.audio = out.audio || caps.audio === true;
+    }
+    return out;
+  },
+
+  async copyName(combo) {
+    await copy(combo.name, null);
   },
 
   modelsPreview(combo) {
@@ -127,6 +262,7 @@ window.Alpine.data("combosPage", () => Object.assign({
   async saveStrategies(next) {
     try {
       const settings = await patchSettings({ comboStrategies: next });
+      this.adapter = this.adapterFrom(settings.capacityAdapter);
       this.strategies = settings.comboStrategies || {};
       this.globalStrategy = settings.comboStrategy || "fallback";
       return true;

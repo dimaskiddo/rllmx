@@ -1,0 +1,21 @@
+{
+  "id": "hermes-toolkit",
+  "name": "Hermes Agent Memory & Toolkit",
+  "description": "Injects the notes a local Hermes Agent keeps, so a session starts with what it already knows.",
+  "category": "memory",
+  "hook": "system-prompt",
+  "default_enabled": false,
+  "routing_mode": "always",
+  "version": "1.0.0",
+  "config_schema": [
+    {
+      "key": "char_limit",
+      "type": "slider",
+      "label": "Memory character limit",
+      "min": 500,
+      "max": 5000,
+      "step": 100,
+      "default": 2200
+    }
+  ]
+}

@@ -107,3 +107,74 @@ func EscapePath(name string) string {
 	}
 	return b.String()
 }
+
+// IsInvisible reports a character an AI provenance watermark uses: a zero-width
+// space, joiner or word joiner, the BOM, a soft hyphen, or a bidi control.
+func IsInvisible(r rune) bool {
+	switch {
+	case r == 0x00ad, r == 0x200b, r == 0x200c, r == 0x200d, r == 0x2060, r == 0xfeff:
+		return true
+	case r >= 0x202a && r <= 0x202e:
+		return true
+	case r >= 0x2066 && r <= 0x2069:
+		return true
+	}
+	return false
+}
+
+// StripInvisible removes the invisible characters above from a body, as raw
+// UTF-8 and as the JSON \uXXXX escapes a wire body carries. An escaped backslash
+// that merely spells one of those escapes is text a reader can see, so it stays.
+// The answer is the input itself when nothing was removed.
+func StripInvisible(b []byte) []byte {
+	out := b[:0]
+	changed := false
+	for i := 0; i < len(b); {
+		if b[i] == '\\' && i+1 < len(b) {
+			if b[i+1] == '\\' {
+				out = append(out, b[i], b[i+1])
+				i += 2
+				continue
+			}
+			if size, ok := escapedInvisible(b[i:]); ok {
+				i += size
+				changed = true
+				continue
+			}
+		}
+		r, size := utf8.DecodeRune(b[i:])
+		if r != utf8.RuneError && IsInvisible(r) {
+			i += size
+			changed = true
+			continue
+		}
+		out = append(out, b[i:i+size]...)
+		i += size
+	}
+	if !changed {
+		return b
+	}
+	return out
+}
+
+// escapedInvisible reads a \uXXXX escape of four hex digits at the start of b
+// and reports its size when the character it names is invisible.
+func escapedInvisible(b []byte) (int, bool) {
+	if len(b) < 6 || b[0] != '\\' || b[1] != 'u' {
+		return 0, false
+	}
+	var r rune
+	for _, c := range b[2:6] {
+		switch {
+		case c >= '0' && c <= '9':
+			r = r*16 + rune(c-'0')
+		case c >= 'a' && c <= 'f':
+			r = r*16 + rune(c-'a'+10)
+		case c >= 'A' && c <= 'F':
+			r = r*16 + rune(c-'A'+10)
+		default:
+			return 0, false
+		}
+	}
+	return 6, IsInvisible(r)
+}

@@ -37,9 +37,10 @@ Status words: **built** (implemented and tested), **partial** (some behavior mis
 | Format translation, streaming, usage and finish reasons | built |
 | Executors for the shipped providers | built |
 | Combos and routing strategies (fallback, round-robin, smart, fusion) | built |
+| Vision and audio adapter: a per-capability fallback pool tried when no target model can read the turn | built |
 | Response cache | built |
-| Token savers (tool-output compaction, Headroom sidecar, built-in and custom prompts) | built |
-| Skills registry, local and catalog routers, catalog sync | built |
+| Token savers (tool-output compaction, Headroom sidecar, built-in and custom prompts, watermark remover with an invisible-character strip) | built |
+| Skills registry, local and catalog routers, catalog sync (one button for the official ECC catalog, with a count), the memory skill reading a local agent's notes, and one switch that stops every skill | built |
 | Skills Studio, declarative rule hooks, config fields and the session cache | built |
 | Auto plan: the heuristic and smart classifier, the planning combo, the plan turn and the code-combo switch | built |
 
@@ -69,19 +70,30 @@ Status words: **built** (implemented and tested), **partial** (some behavior mis
 | Area | Status |
 |---|---|
 | Login and callback page | built |
-| Dashboard shell, router, theme and locale switch, English and Indonesian | built |
-| Endpoint and API keys page (base URL, key guard, keys, access list, budgets, response cache) | built |
-| Dashboard roles: an admin, and standard users who see only their assigned keys and those keys' usage; the users card and the key owner select | built |
-| Dashboard part 2: combos with auto-suggest, usage with charts and a live topology, quota, console log, settings and single sign-on, pricing, skills Studio, auto plan, token savers | built |
+| Dashboard shell, router, theme and locale switch, English and Indonesian, a sidebar that is a drawer on a phone and a remembered rail on a desktop | built |
+| Endpoint and API keys page (base URL, key guard, keys, access list, budgets with their spend, response cache) | built |
+| Dashboard roles: an admin, and standard users who see only their assigned keys and those keys' usage; the Users page and the key owner select | built |
+| Dashboard part 2: combos with auto-suggest and the vision/audio adapter, usage with charts and a live topology, quota, console log, settings and single sign-on, pricing, skills Studio, auto plan, token savers | built |
+| Dashboard sign-in: `AUTH_ADMIN_USERNAME` (default `admin`) is the administrator's name, required at sign-in and reserved from every user | built |
 | Single sign-on roles: `AUTH_SSO_ADMIN` names the admins, any other account the provider authenticates is provisioned as a standard user (first password set from that session), `AUTH_MAX_USERS` caps the list; an address taken from an editable claim (`preferred_username`) never signs in as a standard user | built |
 | Web stack (Alpine.js, Tabler CSS, Lucide, Chart.js, Sortable.js: all vendored and pinned) and the `/static` route | built |
 | Dashboard management API (settings, keys, models and aliases, custom and disabled models, availability, pricing, combos and presets, console log) | built |
 | Usage API (stats, chart, history, logs, providers, active providers, live feed) | built |
 | Quota API (per-connection readings, `providers/client`, the two refill routes) | built; quota auto-ping planned |
-| Usage and quota pages | built |
+| Usage and quota pages: period-bounded, newest-first logs, provider names in the chart and the topology | built |
 | Provider pages (list, detail, every login flow, custom endpoints, models, header overrides) | built |
 | Outbound pacing per connection, so a burst is queued instead of reaching a provider as an anomaly | built |
 | Dashboard review so far: sign-in and reorder fixes, polling and secret handling, contrast and accessibility, provider aliases and icons, tooltips and list rhythm, red confirmed deletes | built |
+| Provider header overrides pre-filled from the provider's own headers, saving only what changed | built |
+| Live feeds send each frame at once, with one status line per response | built |
+| A key is shown masked and revealed on request; the dashboard session lifetime is `AUTH_SESSION_TTL` | built |
+| A client tool's "how much have I used" is answered from the key's budget, and a key with a budget carries rate-limit headers | built |
+| Every request logs its route, its savers and skills, and its close; a cancelled read is not logged as a fault | built |
+| Console log as a live terminal (level colour, filter, copy, follow the tail) | built |
+| Usage breakdown groups an API key into one row; compact chart axes | built |
+| Provider and model catalog sync with 9router 0.5.123 (Kiro, Antigravity, GPT 6.2, Kimi K3.1 and others) | built |
+| Kiro's Responses transport (`UPSTREAM_KIRO_CREATE_RESPONSE`), Gemini 4 Hydrogen long decode, a refused Antigravity prompt sent once more with its system text in the first turn | built |
+| OpenDesign Go, DeepRelay and QwenCloud providers; Synthetic, DeepRelay and OpenDesign Go usage readers; a per-lane thinking shape | built |
 
 ---
 

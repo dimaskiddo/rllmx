@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"rllmx/app/store/repository"
@@ -112,7 +113,7 @@ func TestATokenForAnUnknownUserIsNotASession(t *testing.T) {
 	addStandardUser(t, a, "u1", "Dimas", "")
 	token, err := Sign([]byte("0123456789abcdef0123456789abcdef"), Claims{
 		Authenticated: true, Method: MethodPassword, UID: "nope", PV: PV([]byte("0123456789abcdef0123456789abcdef"), "h", "0"),
-	})
+	}, SessionTTL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,5 +257,33 @@ func TestAShortenedAddressNameIsValidUTF8(t *testing.T) {
 	name := ssoUsername(long, "0123456789abcdef", false)
 	if !utf8.ValidString(name) || len(name) > maxUsername {
 		t.Fatalf("%q (%d bytes)", name, len(name))
+	}
+}
+
+func TestTheSessionLastsAsLongAsTheConfiguredLifetime(t *testing.T) {
+	a, _ := newUserAuth(t)
+	a.SessionTTL = 10 * time.Minute
+	cookie, ok := a.Issue(context.Background(), MethodPassword, "", "", false)
+	if !ok {
+		t.Fatal("no session")
+	}
+	if cookie.MaxAge != 600 {
+		t.Fatalf("the cookie lives %ds, want 600", cookie.MaxAge)
+	}
+	secret := []byte("0123456789abcdef0123456789abcdef")
+	claims, ok := Verify(secret, cookie.Value, time.Now())
+	if !ok || claims.Exp-claims.Iat != 600 {
+		t.Fatalf("the token spans %ds", claims.Exp-claims.Iat)
+	}
+	if _, ok := Verify(secret, cookie.Value, time.Now().Add(10*time.Minute+2*Leeway)); ok {
+		t.Fatal("a token verified past its configured lifetime")
+	}
+}
+
+func TestAnUnsetLifetimeIsTheDefault(t *testing.T) {
+	a, _ := newUserAuth(t)
+	cookie, ok := a.Issue(context.Background(), MethodPassword, "", "", false)
+	if !ok || cookie.MaxAge != int(SessionTTL.Seconds()) {
+		t.Fatalf("%v %d", ok, cookie.MaxAge)
 	}
 }

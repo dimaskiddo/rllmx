@@ -569,3 +569,25 @@ func TestAToolResultAlwaysCarriesIsError(t *testing.T) {
 		t.Fatalf("read: %+v", hub.Messages)
 	}
 }
+
+// Claude Code leads its system prompt with a billing line meant for Anthropic's
+// own gateway. A client that reaches this router in OpenAI form passes it on as
+// system text, and an upstream that is not Anthropic's would read it as prompt.
+func TestTheBillingLineIsDroppedFromASystemMessageWrittenToClaude(t *testing.T) {
+	req := &translate.Request{Model: "m", Messages: []translate.Message{
+		{Role: translate.RoleSystem, Content: translate.TextPart("x-anthropic-billing-header: cc_version=2.1;\nBe brief.")},
+		{Role: translate.RoleSystem, Content: translate.TextPart("X-Anthropic-Billing-Header: cc=1;")},
+		{Role: translate.RoleUser, Content: translate.TextPart("hi")},
+	}}
+	out, err := ClaudeCodec{}.WriteRequest(req, cctx())
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := string(out)
+	if strings.Contains(strings.ToLower(raw), "billing-header") {
+		t.Fatalf("the billing line reached the upstream: %s", raw)
+	}
+	if !strings.Contains(raw, "Be brief.") {
+		t.Fatalf("the real prompt was lost with it: %s", raw)
+	}
+}

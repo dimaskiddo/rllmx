@@ -1,6 +1,7 @@
 package text
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -157,4 +158,56 @@ func TestAControlCharacterIsAnyC0DelOrC1(t *testing.T) {
 			t.Errorf("HasControl(%q) = %v, want %v", in, got, want)
 		}
 	}
+}
+
+func TestStripInvisibleRemovesEveryWatermarkCharacter(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"plain text", "plain text"},
+		{"a" + string(rune(0x200b)) + "b", "ab"},
+		{"a" + string(rune(0x200c)) + string(rune(0x200d)) + "b", "ab"},
+		{"a" + string(rune(0x2060)) + "b", "ab"},
+		{"a" + string(rune(0xfeff)) + "b", "ab"},
+		{"soft" + string(rune(0x00ad)) + "hyphen", "softhyphen"},
+		{"rtl" + string(rune(0x202e)) + "evil", "rtlevil"},
+		{"iso" + string(rune(0x2066)) + "late" + string(rune(0x2069)), "isolate"},
+		{`{"t":"a\u200bb"}`, `{"t":"ab"}`},
+		{`{"t":"\ufeffx\u2069"}`, `{"t":"x"}`},
+		{`{"t":"a\\u200bb"}`, `{"t":"a\\u200bb"}`},
+		{`{"t":"\\\u200b"}`, `{"t":"\\"}`},
+		{`{"t":"\u00e9 and \u200b"}`, `{"t":"\u00e9 and "}`},
+	}
+	for _, tc := range cases {
+		got := string(StripInvisible([]byte(tc.in)))
+		if got != tc.want {
+			t.Errorf("StripInvisible(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+// The input slice is handed back untouched when there was nothing to remove, so
+// a response with no mark is forwarded byte for byte.
+func TestStripInvisibleAllocatesNothingForACleanBody(t *testing.T) {
+	in := []byte(`{"t":"clean"}`)
+	out := StripInvisible(in)
+	if &out[0] != &in[0] {
+		t.Fatal("a clean body was copied")
+	}
+}
+
+func FuzzStripInvisible(f *testing.F) {
+	f.Add([]byte(`{"t":"ab"}`))
+	f.Add([]byte(`{"t":"a\\u200bb"}`))
+	f.Add([]byte("a" + string(rune(0x200b)) + "b"))
+	f.Fuzz(func(t *testing.T, b []byte) {
+		out := StripInvisible(b)
+		if !json.Valid(b) {
+			return
+		}
+		if !json.Valid(out) {
+			t.Fatalf("a JSON body stopped being JSON: %q", out)
+		}
+		if strings.ContainsFunc(string(out), IsInvisible) {
+			t.Fatalf("an invisible character survived: %q", out)
+		}
+	})
 }

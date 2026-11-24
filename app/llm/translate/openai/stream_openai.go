@@ -47,8 +47,10 @@ func (r *openAIReader) Read(_ string, data []byte) []translate.Chunk {
 	choice := g.Get("choices.0")
 	if choice.Exists() {
 		d := choice.Get("delta")
-		ch.Text = d.Get("content").String()
-		ch.Reasoning = StreamReasoning(d)
+		ch.Text, ch.Reasoning = streamContent(d)
+		if r := StreamReasoning(d); r != "" {
+			ch.Reasoning = r
+		}
 		for _, tc := range d.Get("tool_calls").Array() {
 			ch.ToolCalls = append(ch.ToolCalls, r.toolCall(tc))
 		}
@@ -354,4 +356,30 @@ func (w *openAIWriter) Close() []translate.Frame {
 		out = append(out, f)
 	}
 	return append(out, translate.Frame{Data: []byte("[DONE]"), Done: true})
+}
+
+// streamContent reads a delta's content: a string as it is, or a list of parts
+// as the visible text and the thinking a provider such as Mistral streams
+// beside it. A part of any other kind carries neither.
+func streamContent(d gjson.Result) (text, thinking string) {
+	c := d.Get("content")
+	if !c.IsArray() {
+		return c.String(), ""
+	}
+	var t, k strings.Builder
+	for _, part := range c.Array() {
+		switch part.Get("type").String() {
+		case "text":
+			t.WriteString(part.Get("text").String())
+		case "thinking":
+			if inner := part.Get("thinking"); inner.IsArray() {
+				for _, p := range inner.Array() {
+					k.WriteString(p.Get("text").String())
+				}
+			} else {
+				k.WriteString(inner.String())
+			}
+		}
+	}
+	return t.String(), k.String()
 }

@@ -205,6 +205,7 @@ func (c *call) send(ctx context.Context, conn repository.Connection, key string)
 		Renamed: c.renamed(p), Timeout: c.dest.entry.Transport.Timeout(),
 	}
 	req.Spec, _ = c.p.d.Registry.Model(c.dest.provider, c.dest.model)
+	req.LongDecode = c.p.d.Caps.For(c.dest.provider, c.dest.model).LongDecode
 	switch c.dest.entry.Executor {
 	case upstream.ExecutorCodex:
 		req.Levels = c.p.d.Caps.Levels(c.dest.provider, c.dest.model, req.Spec.Levels)

@@ -1,0 +1,44 @@
+{
+  "id": "taste-skill",
+  "name": "Taste Skill",
+  "description": "Frontend design taste and anti-slop UI standards: rich aesthetics, eight UI states, curated palettes.",
+  "category": "writing",
+  "hook": "system-prompt",
+  "default_enabled": false,
+  "routable": true,
+  "routing_mode": "smart",
+  "routing_threshold": 0.35,
+  "triggers": [
+    "design a page",
+    "make it look good",
+    "frontend design",
+    "ui design"
+  ],
+  "keywords": [
+    "design",
+    "frontend",
+    "ui",
+    "palette",
+    "layout",
+    "component"
+  ],
+  "version": "1.0.0",
+  "config_schema": [
+    {
+      "key": "design_variance",
+      "type": "slider",
+      "label": "Design Variance",
+      "min": 1,
+      "max": 10,
+      "default": 5
+    },
+    {
+      "key": "motion_intensity",
+      "type": "slider",
+      "label": "Motion Intensity",
+      "min": 1,
+      "max": 10,
+      "default": 5
+    }
+  ]
+}

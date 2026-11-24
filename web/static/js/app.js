@@ -14,6 +14,8 @@ Alpine.data("shell", () => Object.assign({
   theme: document.documentElement.getAttribute("data-bs-theme") || "light",
   locale: locale(),
   menu: false,
+  navOpen: false,
+  rail: document.documentElement.getAttribute("data-rl-nav") === "rail",
   role: "user",
   userName: "",
   needsPassword: false,
@@ -23,6 +25,7 @@ Alpine.data("shell", () => Object.assign({
     this.role = who.role;
     this.userName = who.user;
     this.needsPassword = who.needsPassword;
+    this.$watch("$store.route.nav", () => this.closeNav());
   },
   isAdmin() {
     return this.role !== "user";
@@ -32,6 +35,32 @@ Alpine.data("shell", () => Object.assign({
   },
   toggleMenu() {
     this.menu = !this.menu;
+  },
+  // One button: a drawer on a phone, a rail on a wider screen.
+  toggleNav() {
+    if (window.matchMedia("(max-width: 767.98px)").matches) {
+      this.navOpen = !this.navOpen;
+      return;
+    }
+    this.rail = !this.rail;
+    document.documentElement.setAttribute("data-rl-nav", this.rail ? "rail" : "full");
+    try {
+      localStorage.setItem("rl-nav", this.rail ? "rail" : "full");
+    } catch (err) {
+      // A browser that refuses storage still gets the switch for this page.
+    }
+  },
+  closeNav() {
+    this.navOpen = false;
+  },
+  navClass() {
+    return this.navOpen ? "rl-nav-open" : "";
+  },
+  navExpanded() {
+    if (window.matchMedia("(max-width: 767.98px)").matches) {
+      return this.navOpen ? "true" : "false";
+    }
+    return this.rail ? "false" : "true";
   },
   closeMenu() {
     this.menu = false;
@@ -91,6 +120,7 @@ Alpine.data("shell", () => Object.assign({
       });
       this.closePassword();
       toast().success(t("password.changed"));
+      window.dispatchEvent(new Event("rl-password-changed"));
     } catch (err) {
       this.pw.error = err.message;
     } finally {

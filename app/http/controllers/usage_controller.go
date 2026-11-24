@@ -40,7 +40,7 @@ type UsageReader interface {
 	Sums(ctx context.Context, from time.Time, hourly bool, keys []string) ([]analytics.Sum, error)
 	Buckets(ctx context.Context, from time.Time, hourly bool, keys []string) ([]analytics.Bucket, error)
 	LastSeen(ctx context.Context, since time.Time, keys []string) (map[analytics.Dims]time.Time, error)
-	Recent(ctx context.Context, limit int, keys []string) ([]analytics.Request, error)
+	Recent(ctx context.Context, from time.Time, limit int, keys []string) ([]analytics.Request, error)
 	RecentServed(ctx context.Context, limit int, keys []string) ([]analytics.Request, error)
 	Providers(ctx context.Context, keys []string) ([]string, error)
 }
@@ -66,6 +66,13 @@ type UsageController struct {
 	Loc         *time.Location
 	Now         func() time.Time
 	every, beat time.Duration
+}
+
+type usageProviderEntry struct {
+	usageTotals
+	// Name is what the chart and the topology print; the map key stays the id
+	// a provider page is reached by.
+	Name string `json:"name,omitempty"`
 }
 
 // usageTotals is the counter set every usage map entry carries.
@@ -139,7 +146,7 @@ type usageStats struct {
 	TotalCompletionTokens int64                         `json:"totalCompletionTokens"`
 	TotalCachedTokens     int64                         `json:"totalCachedTokens"`
 	TotalCost             float64                       `json:"totalCost"`
-	ByProvider            map[string]usageTotals        `json:"byProvider"`
+	ByProvider            map[string]usageProviderEntry `json:"byProvider"`
 	ByModel               map[string]usageModelEntry    `json:"byModel"`
 	ByAccount             map[string]usageAccountEntry  `json:"byAccount"`
 	ByAPIKey              map[string]usageKeyEntry      `json:"byApiKey"`
@@ -235,7 +242,9 @@ func requestedPeriod(ctx contractshttp.Context, fallback string) string {
 }
 
 func (c *UsageController) failed(ctx contractshttp.Context, route string, msg string, err error) contractshttp.Response {
-	if c.Log != nil && err != nil {
+	// A client that navigated away or reloaded abandons its poll; that is not a
+	// fault of ours and a page that polls would fill the log with it.
+	if c.Log != nil && err != nil && !errors.Is(err, context.Canceled) {
 		c.Log.Warningf("usage: %s: %v", route, err)
 	}
 	return flat(ctx, nethttp.StatusInternalServerError, msg)
@@ -294,15 +303,20 @@ func (c *UsageController) Logs(ctx contractshttp.Context) contractshttp.Response
 	if !ok {
 		return out3
 	}
+	w, ok := c.window(requestedPeriod(ctx, "7d"))
+	if !ok {
+		return flat(ctx, nethttp.StatusBadRequest, "Invalid period")
+	}
 	rc := ctx.Request().Origin().Context()
-	rows, err := st.Recent(rc, usageLogRows, keys)
+	rows, err := st.Recent(rc, w.from, usageLogRows, keys)
 	if err != nil {
 		return c.failed(ctx, "logs", "Failed to fetch logs", err)
 	}
 	accounts := c.accountNames(rc)
+	nodes := nodeNames(rc, c.store())
 	lines := make([]string, 0, len(rows))
 	for _, r := range rows {
-		lines = append(lines, usageLogLine(r, accounts[r.ConnectionID], c.loc()))
+		lines = append(lines, usageLogLine(r, logProvider(r.Provider, nodes), accounts[r.ConnectionID], c.loc()))
 	}
 	return ctx.Response().Json(nethttp.StatusOK, lines)
 }
@@ -363,7 +377,7 @@ func (c *UsageController) build(ctx context.Context, w usageWindow, keys []strin
 	names := usageNames{accounts: accounts, keys: c.keyNames(ctx)}
 
 	out := usageStats{
-		ByProvider:     map[string]usageTotals{},
+		ByProvider:     map[string]usageProviderEntry{},
 		ByModel:        map[string]usageModelEntry{},
 		ByAccount:      map[string]usageAccountEntry{},
 		ByAPIKey:       map[string]usageKeyEntry{},
@@ -411,6 +425,7 @@ func (u *usageStats) add(s analytics.Sum, n usageNames, stamp string) {
 
 	v := u.ByProvider[s.Provider]
 	v.add(t)
+	v.Name = provider
 	u.ByProvider[s.Provider] = v
 	u.TotalRequests += t.Requests
 	u.TotalPromptTokens += t.PromptTokens
@@ -663,6 +678,15 @@ func (c *UsageController) providerName(raw string, nodes map[string]string) stri
 	return raw
 }
 
+// logProvider is the provider a log line names: a provider node by its own
+// name, and a registry provider by the id the reference upper-cases.
+func logProvider(raw string, nodes map[string]string) string {
+	if name := strings.TrimSpace(nodes[raw]); name != "" {
+		return name
+	}
+	return strings.ToUpper(raw)
+}
+
 // usageStatus is the recent list's word for a finished request.
 func usageStatus(r analytics.Request) string {
 	if r.Status < 400 {
@@ -674,14 +698,14 @@ func usageStatus(r analytics.Request) string {
 	return strconv.FormatInt(r.Status, 10)
 }
 
-func usageLogLine(r analytics.Request, account string, loc *time.Location) string {
+func usageLogLine(r analytics.Request, provider, account string, loc *time.Location) string {
 	status := "ok"
 	if r.Status >= 400 {
 		status = strconv.FormatInt(r.Status, 10)
 	}
 	line := fmt.Sprintf("%s | %s | %s | %s | %d | %d | %s",
 		r.Time.In(loc).Format("02-01-2006 15:04:05"),
-		usageField(r.Model), usageField(strings.ToUpper(r.Provider)), usageField(account),
+		usageField(r.Model), usageField(provider), usageField(account),
 		r.Prompt, r.Completion, status)
 	// Two trailing fields, each present only when something acted, in the
 	// reference's order: the skills, then the token savers.

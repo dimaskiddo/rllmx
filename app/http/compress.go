@@ -192,12 +192,21 @@ type compressWriter struct {
 // connection below this writer.
 func (c *compressWriter) Unwrap() nethttp.ResponseWriter { return c.ResponseWriter }
 
-// Flush means the caller is streaming. Gin calls its own Flush for a stream
-// handler, and choosing pass-through here keeps a frame from waiting in the
-// buffer that a lower flush could not send.
+// Flush means the caller is streaming. The status and whatever is held go out
+// as they are, with no length, and every later byte passes through: a frame
+// cannot wait for a threshold that a live answer never reaches.
 func (c *compressWriter) Flush() {
-	if c.st == pending && c.buf.Len() > 0 {
-		c.send(c.buf.Bytes())
+	if c.st == pending {
+		if c.code == 0 {
+			c.code = nethttp.StatusOK
+			c.markVary()
+		}
+		c.st = passThrough
+		c.ResponseWriter.WriteHeader(c.code)
+		if c.buf.Len() > 0 {
+			_, _ = c.ResponseWriter.Write(c.buf.Bytes())
+			c.buf.Reset()
+		}
 	}
 	if f, ok := c.ResponseWriter.(nethttp.Flusher); ok {
 		f.Flush()
@@ -210,10 +219,11 @@ func (c *compressWriter) FlushError() error {
 	return nil
 }
 
-// WriteHeader records the status instead of sending it: the decision needs the
-// headers the handler set, which are final only at the first Write or at the
-// end of the handler. An informational status is sent at once and does not
-// become the final one.
+// WriteHeader records the status, and for a response that will never be
+// encoded it sends it at once: a stream flushes through the writer below this
+// one, which sends the status itself, so waiting until the first Write would
+// both hold the frame back and send the status a second time. An informational
+// status is sent at once and does not become the final one.
 func (c *compressWriter) WriteHeader(code int) {
 	if code >= 100 && code < 200 && code != nethttp.StatusSwitchingProtocols {
 		c.ResponseWriter.WriteHeader(code)
@@ -222,7 +232,18 @@ func (c *compressWriter) WriteHeader(code int) {
 	if c.code == 0 {
 		c.code = code
 		c.markVary()
+		c.settle()
 	}
+}
+
+// settle sends the status now when no byte of this response can be encoded.
+// A compressible answer keeps waiting for the bytes that decide.
+func (c *compressWriter) settle() {
+	if c.enc != "" && c.eligible() {
+		return
+	}
+	c.st = passThrough
+	c.ResponseWriter.WriteHeader(c.code)
 }
 
 // markVary adds Accept-Encoding to Vary on a response a client could have got
@@ -250,6 +271,7 @@ func (c *compressWriter) Write(p []byte) (int, error) {
 	if c.code == 0 {
 		c.code = nethttp.StatusOK
 		c.markVary()
+		c.settle()
 	}
 	switch c.st {
 	case passThrough:
@@ -293,10 +315,20 @@ func (c *compressWriter) decide() error {
 	return nil
 }
 
-// worthCompressing applies the status, encoding and type rules. It adds Vary on
-// every compressible response, compressed or not, so a cache keeps the two
-// forms apart.
+// worthCompressing applies the status, encoding and type rules, adding Vary so
+// a cache keeps the two forms of a compressible answer apart.
 func (c *compressWriter) worthCompressing() bool {
+	if !c.eligible() {
+		return false
+	}
+	addVary(c.Header())
+	return true
+}
+
+// eligible reports a response whose type and status a client could receive
+// encoded: everything but a bodyless status, an answer another layer encoded
+// or transformed, and a type never worth compressing.
+func (c *compressWriter) eligible() bool {
 	h := c.Header()
 	switch {
 	case c.code < 200, c.code == nethttp.StatusNoContent, c.code == nethttp.StatusNotModified:
@@ -310,7 +342,6 @@ func (c *compressWriter) worthCompressing() bool {
 	case !compressible(h.Get("Content-Type")):
 		return false
 	}
-	addVary(h)
 	return true
 }
 

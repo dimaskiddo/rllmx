@@ -17,10 +17,6 @@
     "region": "us-east-1",
     "retry": {
       "429": { "attempts": 0 }
-    },
-    "headers": {
-      "User-Agent": "AWS-SDK-JS/3.0.0 kiro-ide/1.0.0",
-      "X-Amz-User-Agent": "aws-sdk-js/3.0.0 kiro-ide/1.0.0"
     }
   },
   "oauth": {

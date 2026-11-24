@@ -168,13 +168,7 @@ window.Alpine.data("quotaPage", () => Object.assign({
   },
 
   level(row) {
-    if (row.unlimited) {
-      return "";
-    }
-    if (row.percent < 30) {
-      return "low";
-    }
-    return row.percent < 70 ? "mid" : "";
+    return row.unlimited ? "" : this.meterLevel(row.percent);
   },
 
   amount(row) {

@@ -10,7 +10,12 @@ import { setPath } from "/static/js/ui/fields.js";
 const studioHooks = ["system-prompt", "pre-route", "pre-request"];
 
 function emptyStudio() {
-  return { mode: "create", id: "", name: "", description: "", hook: "system-prompt", prompt: "", rules: [], error: "", busy: false, idTouched: false };
+  return { mode: "create", id: "", name: "", description: "", hook: "system-prompt", prompt: "", rules: [], routing: "smart", triggers: "", keywords: "", error: "", busy: false };
+}
+
+// terms splits a comma-separated field into the list the manifest holds.
+function terms(value) {
+  return value.split(",").map((item) => item.trim()).filter(Boolean);
 }
 
 function emptyRule() {
@@ -39,7 +44,9 @@ export const studioMethods = {
     studio.name = skill.name;
     studio.description = skill.description || "";
     studio.hook = studioHooks.indexOf(skill.hook) >= 0 ? skill.hook : "system-prompt";
-    studio.idTouched = true;
+    studio.routing = skill.routing_mode === "always" ? "always" : "smart";
+    studio.triggers = (skill.triggers || []).join(", ");
+    studio.keywords = (skill.keywords || []).join(", ");
     this.$refs.studio.showModal();
     try {
       const item = await api("/api/skills/" + encodeURIComponent(skill.id));
@@ -69,22 +76,14 @@ export const studioMethods = {
 
   setStudioField(path, event) {
     setPath(this.studio, path, event.target.value);
-    if (path === "name" && !this.studio.idTouched) {
-      this.studio.id = this.slug(event.target.value);
-    }
-  },
-
-  setStudioID(event) {
-    this.studio.idTouched = true;
-    this.studio.id = this.slug(event.target.value);
-  },
-
-  slug(value) {
-    return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64);
   },
 
   setHook(value) {
     this.studio.hook = value;
+  },
+
+  setRouting(event) {
+    this.studio.routing = event.target.value;
   },
 
   studioRules() {
@@ -110,7 +109,6 @@ export const studioMethods = {
   draftBody() {
     const s = this.studio;
     const body = {
-      id: s.id,
       name: s.name.trim(),
       description: s.description.trim(),
       hook: s.hook,
@@ -119,6 +117,10 @@ export const studioMethods = {
     };
     if (s.hook === "system-prompt") {
       body.prompt_template = s.prompt;
+      body.routable = true;
+      body.routing_mode = s.routing;
+      body.triggers = terms(s.triggers);
+      body.keywords = terms(s.keywords);
     } else if (s.rules.length > 0) {
       body.rules = {
         rules: s.rules.map((rule) => ({
@@ -140,7 +142,7 @@ export const studioMethods = {
   async saveStudio() {
     const s = this.studio;
     s.error = "";
-    if (s.id === "" || s.name.trim() === "") {
+    if (s.name.trim() === "") {
       s.error = t("skills.studioNeedsName");
       return;
     }

@@ -138,3 +138,40 @@ func TestHandlerDoesNotChangeTheCallersEntry(t *testing.T) {
 		t.Fatal("the caller's entry was rewritten in place: another handler would see the change")
 	}
 }
+
+func TestAQueryThatTheClientAbandonedIsNotLogged(t *testing.T) {
+	gone, cancel := context.WithCancel(context.Background())
+	cancel()
+	inner := &tests.Handler{}
+	h := NewHandler(inner)
+	var teed int
+	h.Tee(func(log.Entry) { teed++ })
+
+	canceled := newEntry(func(e *tests.Entry) {
+		e.LevelV, e.Ctx = log.LevelError, gone
+		e.MessageV = "[0.057ms] [rows:-] SELECT 1\tcontext canceled"
+	})
+	if err := h.Handle(canceled); err != nil {
+		t.Fatal(err)
+	}
+	if len(inner.Entries) != 0 || teed != 0 {
+		t.Fatalf("an abandoned query reached the log: %d entries, %d teed", len(inner.Entries), teed)
+	}
+
+	for name, e := range map[string]tests.Entry{
+		"a live context with the same words": newEntry(func(e *tests.Entry) {
+			e.LevelV, e.Ctx, e.MessageV = log.LevelError, context.Background(), "SELECT 1\tcontext canceled"
+		}),
+		"a canceled context and another error": newEntry(func(e *tests.Entry) {
+			e.LevelV, e.Ctx, e.MessageV = log.LevelError, gone, "SELECT 1\tdisk is full"
+		}),
+	} {
+		before := len(inner.Entries)
+		if err := h.Handle(e); err != nil {
+			t.Fatal(err)
+		}
+		if len(inner.Entries) != before+1 {
+			t.Errorf("%s was dropped", name)
+		}
+	}
+}

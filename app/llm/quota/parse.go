@@ -15,6 +15,9 @@ const maxBuckets = 256
 var importantModels = map[string]bool{
 	"gemini-4-argon-high": true, "gemini-4-argon-medium": true, "gemini-4-argon-low": true,
 	"gemini-4-carbon-high": true, "gemini-4-carbon-medium": true, "gemini-4-carbon-low": true,
+	"gemini-4-hydrogen-xhigh": true, "gemini-4-hydrogen-high": true, "gemini-4-hydrogen-medium": true, "gemini-4-hydrogen-low": true,
+	"gemini-4-neon-xhigh": true, "gemini-4-neon-high": true, "gemini-4-neon-medium": true, "gemini-4-neon-low": true,
+	"claude-sonnet-5-5-max": true, "claude-opus-5-5-max": true,
 	"gemini-3.8-flash-high": true, "gemini-3.8-flash-medium": true, "gemini-3.8-flash-low": true,
 	"gemini-3.7-flash-high": true, "gemini-3.7-flash-medium": true, "gemini-3.7-flash-low": true,
 	"gemini-3.6-flash-high": true, "gemini-3.6-flash-medium": true, "gemini-3.6-flash-low": true,

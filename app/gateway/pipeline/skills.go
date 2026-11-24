@@ -13,6 +13,7 @@ import (
 	"github.com/tidwall/gjson"
 
 	"rllmx/app/gateway/conversation"
+	"rllmx/app/gateway/hermes"
 	"rllmx/app/gateway/plan"
 	"rllmx/app/gateway/skill"
 	"rllmx/app/platform/text"
@@ -46,6 +47,19 @@ func (c *call) internalHeader() http.Header {
 	return h
 }
 
+// skillsOff reports the operator's global switch. Every place a skill could act
+// reads it: empty options would still leave a manifest's default in force.
+func (c *call) skillsOff(ctx context.Context) bool {
+	if c.p == nil || c.p.d.Settings == nil {
+		return false
+	}
+	doc, err := c.p.d.Settings.Effective(ctx)
+	if err != nil {
+		return false
+	}
+	return !doc.Bool("globalSkillsEnabled", true)
+}
+
 // skillOptions reads the registry switches for this request. A nil registry, a
 // missing settings reader or a failed read runs no skill.
 func (c *call) skillOptions(ctx context.Context) skill.Options {
@@ -59,9 +73,13 @@ func (c *call) skillOptions(ctx context.Context) skill.Options {
 	if err != nil {
 		return skill.Options{}
 	}
+	if !doc.Bool("globalSkillsEnabled", true) {
+		return skill.Options{}
+	}
 	_, prior, notice := c.sessionInfo()
 	setting, legacy := skill.Readers(doc.GetRaw)
 	o := skill.Options{
+		Replace: c.hermesBlock(doc),
 		Setting: setting,
 		Legacy:  legacy,
 		Value:   func(key string) (string, bool) { return configValue(doc, key) },
@@ -77,6 +95,30 @@ func (c *call) skillOptions(ctx context.Context) skill.Options {
 		o.Setting = func(string) skill.Setting { return skill.Setting{HasEnabled: true, Enabled: false} }
 	}
 	return o
+}
+
+// hermesBlock is the memory the agent skill injects in place of its prompt. It
+// reads once per request and answers nothing when the agent has no notes, so a
+// skill switched on with an empty store says nothing.
+func (c *call) hermesBlock(doc document.Doc) func(string) (string, bool) {
+	if c.p == nil || c.p.d.Hermes == nil || c.headerOff(hermes.Bypass) {
+		return nil
+	}
+	limit := int(doc.Int("hermes-toolkit_char_limit", 0))
+	notes := c.p.d.Hermes.Block(limit)
+	protocol := c.p.d.Skills.Prompt("hermes-toolkit")
+	return func(id string) (string, bool) {
+		if id != "hermes-toolkit" {
+			return "", false
+		}
+		if notes == "" {
+			return "", true
+		}
+		if protocol == "" {
+			return notes, true
+		}
+		return protocol + "\n\n" + notes, true
+	}
 }
 
 // configValue reads one config_schema value as the prompt renders it: a string
@@ -108,6 +150,11 @@ func (c *call) applySkills(ctx context.Context) {
 	// would still leave every "always" skill to its manifest, so the routers are
 	// skipped outright.
 	if c.skillsBypassed() {
+		return
+	}
+	// Empty options do not switch a skill off, so the global switch is checked
+	// here as well as in skillOptions.
+	if c.skillsOff(ctx) {
 		return
 	}
 	st := skill.Apply(c.p.d.Skills, c.req, c.skillOptions(ctx))

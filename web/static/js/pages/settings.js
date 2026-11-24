@@ -40,8 +40,9 @@ window.Alpine.data("settingsPage", () => Object.assign({
     this.load();
   },
 
+  // load shows "Loading" only the first time, so a re-read after a save swaps
+  // the data under the page instead of blanking it.
   async load() {
-    this.loading = true;
     this.error = "";
     try {
       this.apply(await api("/api/settings"));

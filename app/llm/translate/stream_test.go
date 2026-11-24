@@ -408,3 +408,28 @@ func FuzzStreamReaders(f *testing.F) {
 		}
 	})
 }
+
+// Alibaba's token plan reports the whole input before cache accounting in its
+// first event and the true prompt, cache included, in a later one that carries
+// the cache counts. Merged by maximum the inflated first figure wins, and the
+// cached tokens are billed twice: once inside it and once as cache.
+func TestALaterReportThatCarriesTheCacheReplacesTheInflatedPrompt(t *testing.T) {
+	got := MergeUsage(
+		Usage{Prompt: 1000, Completion: 1},
+		Usage{Prompt: 900, Completion: 9, Cached: 800, CacheWrite: 100},
+	)
+	if got.Prompt != 900 || got.Cached != 800 || got.CacheWrite != 100 || got.Completion != 9 {
+		t.Fatalf("%+v", got)
+	}
+}
+
+func TestMergeKeepsTheLargerFigureWhenTheEarlierReportAlreadyCarriedACache(t *testing.T) {
+	got := MergeUsage(Usage{Prompt: 20, Cached: 5}, Usage{Prompt: 15, Cached: 5})
+	if got.Prompt != 20 {
+		t.Fatalf("%+v", got)
+	}
+	got = MergeUsage(Usage{Prompt: 10, Completion: 1}, Usage{Prompt: 12, Completion: 9})
+	if got.Prompt != 12 || got.Completion != 9 {
+		t.Fatalf("neither carried a cache: %+v", got)
+	}
+}

@@ -15,7 +15,8 @@ import (
 )
 
 const (
-	// SessionTTL is how long a dashboard session lasts: 24 hours.
+	// SessionTTL is how long a dashboard session lasts unless AUTH_SESSION_TTL says
+	// otherwise: 24 hours.
 	SessionTTL = 24 * time.Hour
 	// Issuer goes in every token. It is the reference's name, kept so a cookie
 	// from an earlier install still validates.
@@ -49,14 +50,15 @@ type header struct {
 	Typ string `json:"typ"`
 }
 
-// Sign returns the HS256 token for claims, filling Iss, Iat and Exp. The method
-// is fixed: a token whose alg says anything else is refused on the way back.
-func Sign(secret []byte, c Claims) (string, error) {
+// Sign returns the HS256 token for claims, filling Iss, Iat and Exp, which is
+// ttl after now. The method is fixed: a token whose alg says anything else is
+// refused on the way back.
+func Sign(secret []byte, c Claims, ttl time.Duration) (string, error) {
 	if len(secret) == 0 {
 		return "", errors.New("auth: no session secret")
 	}
 	c.Iss = Issuer
-	c.Exp = time.Now().Add(SessionTTL).Unix()
+	c.Exp = time.Now().Add(ttl).Unix()
 	c.Iat = time.Now().Unix()
 
 	head, err := json.Marshal(header{Alg: "HS256", Typ: "JWT"})

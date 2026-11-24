@@ -27,9 +27,11 @@ func (c Class) valid() bool { return c >= ClassPublic && c <= ClassPage }
 // IsClientAPI reports whether a path belongs to the client API, which gets CORS,
 // the client body cap and no page headers. `/api/tags` is Ollama's model list,
 // so it is a client route even though the reference puts it under the dashboard.
+// `/api/oauth/usage` is the one a Claude client asks how much of its plan is
+// used: it carries an API key, not a dashboard cookie.
 func IsClientAPI(p string) bool {
 	return p == "/v1" || strings.HasPrefix(p, "/v1/") || p == "/v1beta" ||
-		strings.HasPrefix(p, "/v1beta/") || p == "/api/tags"
+		strings.HasPrefix(p, "/v1beta/") || p == "/api/tags" || p == "/api/oauth/usage"
 }
 
 // IsDashboardAPI reports whether a path belongs to the dashboard JSON API, whose

@@ -54,6 +54,9 @@ type ProvidersController struct {
 	// Probe tests a connection's models through the pipeline; nil leaves the
 	// model-test route unavailable.
 	Probe func() (*probe.Prober, error)
+	// ClaudeCLI carries the claude-cli version a Claude login sends; the default
+	// headers the page offers are rewritten to it so they match the request.
+	ClaudeCLI *upstream.ClaudeCLI
 
 	// catalog is built on the first request and kept: the registry is read once
 	// at start and the client ids never change while the process runs.
@@ -579,7 +582,12 @@ func (c *ProvidersController) Overrides(ctx contractshttp.Context) contractshttp
 	if raw, found := set.GetRaw("providerOverrides"); found {
 		headers = upstream.HeaderOverrides(raw, canonical)
 	}
-	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"headers": headers, "builtinHeaders": map[string]string{}})
+	builtin := map[string]string{}
+	if e, ok := c.Registry.ByID(canonical); ok {
+		builtin = e.BuiltinHeaders()
+		c.ClaudeCLI.Rewrite(builtin)
+	}
+	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"headers": headers, "builtinHeaders": builtin})
 }
 
 // SetOverrides answers PUT /api/providers/{id}/overrides.
@@ -727,7 +735,8 @@ func jsonDepth(r gjson.Result) int {
 }
 
 // splitPSD turns an update's providerSpecificData into keys to set and keys to
-// remove; a null value removes.
+// remove; a null value removes. The mask a view shows in place of a credential
+// is never a value: a client that sends it back leaves the stored one alone.
 func splitPSD(raw json.RawMessage) (set map[string]string, remove []string, msg string) {
 	if _, bad := cleanPSD(raw); bad != "" {
 		return nil, nil, bad
@@ -740,7 +749,7 @@ func splitPSD(raw json.RawMessage) (set map[string]string, remove []string, msg 
 	r.ForEach(func(k, v gjson.Result) bool {
 		if v.Type == gjson.Null {
 			remove = append(remove, k.String())
-		} else {
+		} else if v.String() != maskedValue {
 			set[k.String()] = v.Raw
 		}
 		return true

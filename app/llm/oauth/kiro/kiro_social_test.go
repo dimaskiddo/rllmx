@@ -197,7 +197,7 @@ func mustQuery(t *testing.T, raw string) url.Values {
 }
 
 // recorder is a TLS server that keeps the bodies it receives.
-type seenCall struct{ Path, Body string }
+type seenCall struct{ Path, Body, UserAgent, AmzUserAgent string }
 
 type recorder struct {
 	mu   sync.Mutex
@@ -210,7 +210,7 @@ func (r *recorder) serve(t *testing.T, status int, body string) *httptest.Server
 		raw := make([]byte, 4096)
 		n, _ := req.Body.Read(raw)
 		r.mu.Lock()
-		r.seen = append(r.seen, seenCall{Path: req.URL.Path, Body: string(raw[:n])})
+		r.seen = append(r.seen, seenCall{Path: req.URL.Path, Body: string(raw[:n]), UserAgent: req.Header.Get("User-Agent"), AmzUserAgent: req.Header.Get("X-Amz-User-Agent")})
 		r.mu.Unlock()
 		w.WriteHeader(status)
 		_, _ = w.Write([]byte(body))
@@ -225,4 +225,35 @@ func connectionWith(provider, psd string) repository.Connection {
 
 func renamedFlow(svc *oauth.Service, id string) (oauth.Flow, error) {
 	return oauth.FlowFor(svc.Registry, func(string) string { return "" }, nil, id)
+}
+
+// Kiro refuses an identity older than its current IDE, and the renewal is a call
+// like any other: it carries the same identity, from the token being spent, so
+// the account keeps one machine id across inference, renewal and usage reads.
+func TestAKiroRenewalPresentsTheIDEIdentityOfTheAccountBeingRenewed(t *testing.T) {
+	for name, renew := range map[string]func(context.Context, *oauth.TokenClient, oauth.Flow, string, map[string]string) (oauth.Tokens, error){
+		"social": SocialRefresh,
+		"device": Refresh,
+	} {
+		rec := &recorder{}
+		srv := rec.serve(t, 200, `{"accessToken":"AT2","refreshToken":"RT","expiresIn":3600}`)
+		c := &oauth.TokenClient{HTTP: login.Reroute(srv), Dialects: kiroTable}
+		f := oauth.Flow{ClientID: "cid", ClientSecret: "secret"}
+		f.TokenURL = "https://oidc.us-east-1.amazonaws.com/token"
+		if _, err := renew(context.Background(), c, f, "RT", nil); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		rec.mu.Lock()
+		got := rec.seen
+		rec.mu.Unlock()
+		if len(got) != 1 {
+			t.Fatalf("%s: %d calls", name, len(got))
+		}
+		if !strings.Contains(got[0].UserAgent, "KiroIDE-"+upstream.KiroIDEVersion+"-") || !strings.HasPrefix(got[0].AmzUserAgent, "aws-sdk-js/1.0.0 KiroIDE-") {
+			t.Errorf("%s: identity %q / %q", name, got[0].UserAgent, got[0].AmzUserAgent)
+		}
+		if strings.Contains(got[0].UserAgent+got[0].AmzUserAgent, "RT") && strings.Contains(got[0].UserAgent, "RT,") {
+			t.Errorf("%s: the refresh token is in a header", name)
+		}
+	}
 }

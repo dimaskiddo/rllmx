@@ -116,7 +116,7 @@ func (t *Transport) validate(executor, authHeader string, mediaOnly bool) error 
 }
 
 // thinkingFormats are the shapes a provider may fix for all its models.
-var thinkingFormats = map[string]bool{"openai": true, "claude-adaptive": true, "claude-budget": true, "zai": true, "kimi": true, "nous": true, "deepseek": true, "tokenrouter": true}
+var thinkingFormats = map[string]bool{"openai": true, "claude-adaptive": true, "claude-budget": true, "zai": true, "qwen": true, "kimi": true, "nous": true, "deepseek": true, "tokenrouter": true}
 
 // maxLanes bounds the endpoints one provider may name: one per wire format.
 const maxLanes = 4
@@ -161,6 +161,9 @@ func (t *Transport) validateLanes() error {
 		if l.URLSuffix != "" && (!strings.HasPrefix(l.URLSuffix, "?") || len(l.URLSuffix) > 64 ||
 			strings.ContainsFunc(l.URLSuffix, func(r rune) bool { return r <= ' ' || r == '#' || r == 0x7f })) {
 			return errors.New("a transport lane urlSuffix must be a short query string")
+		}
+		if l.ThinkingFormat != "" && !thinkingFormats[l.ThinkingFormat] {
+			return errors.New("a transport lane thinkingFormat is unknown")
 		}
 		authHeader := ""
 		if l.Auth != nil {

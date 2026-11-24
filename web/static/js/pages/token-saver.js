@@ -6,11 +6,16 @@ import { toast } from "/static/js/ui/toast.js";
 import { formatMethods } from "/static/js/ui/format.js";
 
 const levels = ["lite", "full", "ultra"];
+const watermarkSkill = "watermarks-remover";
 
 window.Alpine.data("tokenSaverPage", () => Object.assign({
   loading: true,
   error: "",
   settings: {},
+  // skill is the watermark remover's own switch. PATCH /api/settings answers with
+  // the settings view, which has no field for a skill, so it is read from the
+  // skills list and re-read after each write.
+  skill: { enabled: false, mode: "always" },
 
   init() {
     this.load();
@@ -21,11 +26,48 @@ window.Alpine.data("tokenSaverPage", () => Object.assign({
     this.error = "";
     try {
       this.settings = await api("/api/settings");
+      await this.loadSkill();
     } catch (err) {
       this.error = err.message;
     } finally {
       this.loading = false;
     }
+  },
+
+  async loadSkill() {
+    try {
+      const listing = await api("/api/skills");
+      const found = (listing.skills || []).find((item) => item.id === watermarkSkill);
+      this.skill = found ? { enabled: found.enabled === true, mode: found.mode || "always" } : this.skill;
+    } catch (err) {
+      this.error = err.message;
+    }
+  },
+
+  // setSkillBool and setSkillEnum write the remover's own key, then read the
+  // switch back so the page shows what was stored, not what was typed.
+  async setSkillBool(event) {
+    const box = event.target;
+    if (!(await this.patchSkill({ [watermarkSkill + "Enabled"]: box.checked }))) {
+      box.checked = !box.checked;
+    }
+  },
+
+  async setSkillMode(event) {
+    if (!(await this.patchSkill({ [watermarkSkill + "RoutingMode"]: event.target.value }))) {
+      event.target.value = this.skill.mode;
+    }
+  },
+
+  async patchSkill(body) {
+    try {
+      await patchSettings(body);
+    } catch (err) {
+      toast().error(err.message);
+      return false;
+    }
+    await this.loadSkill();
+    return true;
   },
 
   bool(key) {
@@ -78,8 +120,12 @@ window.Alpine.data("tokenSaverPage", () => Object.assign({
     }
   },
 
-  setLevel(key, value) {
-    this.patch({ [key]: value });
+  // setLevelFrom saves the chosen level and puts the select back on the stored
+  // one when the save is refused.
+  async setLevelFrom(key, event) {
+    if (!(await this.patch({ [key]: event.target.value }))) {
+      event.target.value = this.displayLevel(key);
+    }
   },
 
   async setText(key, event) {

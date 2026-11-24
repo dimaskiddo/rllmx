@@ -43,14 +43,14 @@ No code reads rows marked *planned* yet, so setting one in `.env` fails startup 
 |---|---|
 | Server | `APP_PORT` (20128), `APP_HOST` (127.0.0.1), `HTTP_SERVER_READ_HEADER_TIMEOUT` (10s, 1s to 5m), `HTTP_SERVER_IDLE_TIMEOUT` (120s, 1s to 1h), `HTTP_SERVER_SHUTDOWN_GRACE` (30s, 1s to 10m; a second signal exits at once), `HTTP_COMPRESSION` (true; Brotli or gzip, D327), `HTTP_H2C` (false; HTTP/2 on the plain listener), `SERVER_MAX_BODY_MB` (128), `SERVER_TRUST_LOOPBACK` (true), `SERVER_TRUSTED_PROXIES` (empty: loopback only; addresses or CIDRs whose `X-Forwarded-For` and `X-Forwarded-Proto` are believed), `APP_URL` (empty; `http(s)://host[:port]`, no userinfo, path or query, http only for loopback; base for OAuth, OIDC and SAML callbacks) |
 | Data | `DATA_DIR` (`storage/app`) |
-| Auth | `JWT_SECRET` (generated into `jwt-secret`), `AUTH_INITIAL_PASSWORD`, `AUTH_API_KEY_SECRET`, `AUTH_MACHINE_ID_SALT`, `AUTH_COOKIE_SECURE` (false), `AUTH_REFUSE_DEFAULT_PASSWORD` (false), `AUTH_SSO_ADMIN` (empty: nobody is admin through SSO; exact addresses or `@domain`), `AUTH_MAX_USERS` (200; the standard-user cap, 1 to 100000) |
+| Auth | `JWT_SECRET` (generated into `jwt-secret`), `AUTH_ADMIN_USERNAME` (`admin`; the name the administrator signs in with, any other name is a standard user), `AUTH_INITIAL_PASSWORD`, `AUTH_API_KEY_SECRET`, `AUTH_MACHINE_ID_SALT`, `AUTH_COOKIE_SECURE` (false), `AUTH_REFUSE_DEFAULT_PASSWORD` (false), `AUTH_SSO_ADMIN` (empty: nobody is admin through SSO; exact addresses or `@domain`), `AUTH_MAX_USERS` (200; the standard-user cap, 1 to 100000), `AUTH_SESSION_TTL` (24h; how long a dashboard sign-in lasts, 5m to 720h, a Go duration) |
 | Database | `DB_CONNECTION` (`sqlite` by default, or `postgres`), `DB_DATABASE` (the SQLite file, empty: `DATA_DIR/db/data.sqlite`; the PostgreSQL database), `DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_SCHEMA` (`public`), `DB_SSLMODE` (`require`; PostgreSQL only), `DB_ENCRYPTION_SECRET` (required) |
 | Analytics | `DB_DATABASE_ANALYTICS` (empty: `DATA_DIR/db/analytics.sqlite`, or the schema `rllmx_analytics` on PostgreSQL), `ANALYTICS_RETENTION_DAYS` (90) |
 | Cache | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_DB` (empty `REDIS_HOST`: the memory store only) |
 | Response cache | `CACHE_RESPONSE_MAX_ENTRIES` (1000, 1 to 100000), `CACHE_RESPONSE_MAX_MB` (64, 1 to 4096): the in-process bound; ignored when `REDIS_HOST` is set |
 | Logging | `LOG_CHANNEL` (`single`; `daily` or `stack` also), `LOG_OUTPUT` (`both`; also `file` or `stdout`), `LOG_LEVEL` (info). The file, the formatter (`text` or `json`) and the retention days are keys of the channel in `config/logging.go` (`storage/logs/rllmx.log`), not variables. `stdout` writes the same line the file would carry to the standard output, behind the same redactor; an unknown value fails the start |
 | Streams | `STREAM_STALL_TIMEOUT` (360s, 5s to 1h), `STREAM_FIRST_CHUNK_TIMEOUT` (200s, 5s to 1h), `STREAM_USAGE_WAIT` (3s, 100ms to 30s; how long a finished turn waits for a late usage report), all read; `STREAM_EMPTY_PEEK_DEADLINE` (45s, 1s to 10m) (planned,) |
-| Upstream | `UPSTREAM_CONNECT_TIMEOUT` (60s, 1s to 10m), `UPSTREAM_ALLOW_PRIVATE` (empty: public targets only; host names, addresses or CIDRs; link-local and the cloud metadata addresses are refused even when listed), `UPSTREAM_TLS_CURVE` (`x25519` offers only that group, `default` offers the standard list; anything else fails the start), `UPSTREAM_CLAUDE_CLI_VERSION` (empty: the latest published Claude Code, read from npm every six hours, never below the build's floor; a value is `x.y.z` and turns the lookup off), and the outbound pace `UPSTREAM_RATE_LIMIT_RPM` (60; `0` off), `UPSTREAM_RATE_LIMIT_BURST` (10, at least 1) and `UPSTREAM_RATE_LIMIT_MAX_WAIT` (30s, `0` unbounded), built |
+| Upstream | `UPSTREAM_CONNECT_TIMEOUT` (60s, 1s to 10m), `UPSTREAM_ALLOW_PRIVATE` (empty: public targets only; host names, addresses or CIDRs; link-local and the cloud metadata addresses are refused even when listed), `UPSTREAM_TLS_CURVE` (`x25519` offers only that group, `default` offers the standard list; anything else fails the start), `UPSTREAM_CLAUDE_CLI_VERSION` (empty: the latest published Claude Code, read from npm every six hours, never below the build's floor; a value is `x.y.z` and turns the lookup off), `UPSTREAM_KIRO_CREATE_RESPONSE` (`auto`: Kiro's Responses transport answers only after the IDE transport's enrolment rate-limit; `always`; `off`; anything else fails the start), and the outbound pace `UPSTREAM_RATE_LIMIT_RPM` (60; `0` off), `UPSTREAM_RATE_LIMIT_BURST` (10, at least 1) and `UPSTREAM_RATE_LIMIT_MAX_WAIT` (30s, `0` unbounded), built |
 | OAuth login | `OAUTH_CALLBACK_HOST` (127.0.0.1): an IP address, the bind address of the fixed-port login listener |
 | OAuth refresh | `OAUTH_BACKGROUND_REFRESH` (true) and `OAUTH_REFRESH_DELAY` (1500ms, 0s to 1m, pause between accounts), built. `OAUTH_REFRESH_GOOGLE_DELAY` (12s, 0s to 1m, the pause after an account of a provider that sets `slowRefresh`, plus 0 to 4 s of jitter), built |
 | Media | `MEDIA_VIDEO_TIMEOUT` (120s, 5s to 10m; one video create or poll), built. `MEDIA_SEARXNG_URL` (empty; an http or https address with a host), built |
@@ -70,7 +70,7 @@ No code reads rows marked *planned* yet, so setting one in `.env` fails startup 
 
 Everything the dashboard edits lives in `settings.data` with the reference's defaults. Keys this version does not use are kept. The defaults list is in `this design doc, Settings Keys`.
 
-Two pages write the same allow list: `/dashboard/endpoint` (key guard, response cache, users) and, from 4.3, `/dashboard/settings` (login, single sign-on, routing), `/dashboard/token-saver` and the skills and auto-plan cards. Every write goes through the same `PATCH /api/settings` validation, so no page can store a key another page refuses.
+Two pages write the same allow list: `/dashboard/endpoint` (key guard, response cache) and, from 4.3, `/dashboard/settings` (login, single sign-on, routing), `/dashboard/token-saver`, `/dashboard/users` (accounts, not settings) and the skills and auto-plan cards. Every write goes through the same `PATCH /api/settings` validation, so no page can store a key another page refuses.
 
 ---
 
@@ -85,7 +85,7 @@ The status column is the v1 target, not the build state: behavior lands later. U
 | `requireLogin`, `requireApiKey`, `authMode`, `ssoType`, `oidc*`, `saml*`, `password` | honored |
 | `stickyRoundRobinLimit`, `providerStrategies`, `fallbackStrategy` | honored: each `providerStrategies[name]` is the bare strategy word or an object holding `fallbackStrategy` and `stickyRoundRobinLimit` (1-100); the word is `fill-first` or `round-robin`; an entry's other keys are kept as written |
 | `comboStrategy`, `comboStickyRoundRobinLimit`, `comboStrategies` | honored: the combo routing reads them through the same 5 s settings cache (`design doc 4`). A `comboStrategies[name]` entry carries `fallbackStrategy`, and for a smart or fusion combo `smartPolicy`, `sessionSticky`, `confidenceThreshold`, `routerModel`, `judgeModel` and `fusionTuning` (`minPanel`, `stragglerGraceMs`, `panelHardTimeoutMs`); none of those has a top-level form |
-| `capacityAdapter` | stored: the pool is not built (`D337`) |
+| `capacityAdapter` | honored: a pool per capability (`vision`, `audioInput`, plus `pdf` and `videoInput`), with its enabled and round-robin switches and its ordered models, prepended when no declared member meets the need (`design doc 3`) |
 | `providerThinking` | stored; read by no code yet |
 | `quotaVisibility` | stored; the quota page reads it (`design doc 18`) |
 | `providerOverrides` | honored: read and written by the override routes; applied to an upstream call by the executors |
@@ -95,7 +95,8 @@ The status column is the v1 target, not the build state: behavior lands later. U
 | `ccFilterNaming` | honored (answers the Claude CLI topic-naming probe locally; absent = off; dashboard toggle with the settings API) |
 | `autoPlanEnabled`, `autoPlanMode` (`auto`/`manual`), `autoPlanComboId`, `autoCodeComboId` (128 bytes), `autoPlanComplexityThreshold` (1-10), `autoPlanSmartClassify`, `autoPlanMaxTokens` (200-4000), `autoPlanTimeoutMs` (1000-60000), `autoPlanShowInResponse` (extended) | honored: the auto plan hook reads them (design doc 11); PATCH validates each against its bound, and an unknown combo id falls back to the automatic pick rather than a 400 |
 | `<skillId>Enabled`, `<skillId>RoutingMode`, `ecc_auto_skill_router*` (extended) | honored; the per-skill keys are accepted for the manifest's id alphabet by the settings API |
-| `skillSources` | honored: the https allowlist a `skills:sync` clone or `/api/skills/sync` may use; empty refuses every clone |
+| `skillSources` | honored: the https allowlist a `skills:sync` clone or `/api/skills/sync` may use; empty refuses every clone, and the official catalog the dashboard's button names is always allowed |
+| `globalSkillsEnabled` | honored: false stops every skill and every rule hook, and leaves the response-cache key empty (`design doc 11`, D433) |
 | `<skillId>_<field>`, or the field's `legacy_key` | a skill's `config_schema` value; PATCH checks it against that field's type, options and range (design doc 11) |
 | `enableObservability`, `observabilityMaxRecords`, `observabilityBatchSize`, `observabilityFlushIntervalMs`, `observabilityMaxJsonSize` | stored (usage always recorded, metadata only) |
 | `outboundProxyEnabled`, `outboundProxyUrl`, `outboundNoProxy` | out (no default, never read; a value in an imported row is kept as stored and skipped by `db:import-config`) |
@@ -125,6 +126,7 @@ The status column is the v1 target, not the build state: behavior lands later. U
 | `STREAM_FIRST_CHUNK_TIMEOUT_MS` | `STREAM_FIRST_CHUNK_TIMEOUT` | duration |
 | `EMPTY_PEEK_DEADLINE_MS` | `STREAM_EMPTY_PEEK_DEADLINE` | not built: no provider needs its own peek deadline (design doc 9) |
 | `FETCH_CONNECT_TIMEOUT_MS` | `UPSTREAM_CONNECT_TIMEOUT` | duration |
+| `NINEROUTER_KIRO_CREATE_RESPONSE`, `KIRO_CREATE_RESPONSE` | `UPSTREAM_KIRO_CREATE_RESPONSE` | same three values; the group names the outbound transport it changes, and a bad value stops the start (D444) |
 | `NINEROUTER_TLS_ECDH_CURVE` | `UPSTREAM_TLS_CURVE` | same intent; this program's own name and only two values |
 | `CLAUDE_CLI_VERSION` | `UPSTREAM_CLAUDE_CLI_VERSION` | same intent; the group names the outbound identity it changes |
 | `FETCH_KEEPALIVE_TIMEOUT_MS` | — | not read: the Go pool's idle timeout is fixed and a dropped socket costs one replay |
@@ -158,7 +160,7 @@ The status column is the v1 target, not the build state: behavior lands later. U
 ---
 ### 3. New Variables
 
-No reference counterpart: `HTTP_SERVER_READ_HEADER_TIMEOUT`, `HTTP_SERVER_IDLE_TIMEOUT`, `HTTP_SERVER_SHUTDOWN_GRACE`, `SERVER_MAX_BODY_MB`, `SERVER_TRUST_LOOPBACK`, `SERVER_TRUSTED_PROXIES`, `AUTH_SSO_ADMIN`, `AUTH_MAX_USERS`, `UPSTREAM_ALLOW_PRIVATE`, `DB_CONNECTION`, `DB_DATABASE`, `DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_SCHEMA`, `DB_ENCRYPTION_SECRET`, `LOG_CHANNEL`, `LOG_OUTPUT`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_DB`, `DB_DATABASE_ANALYTICS`, `DB_SSLMODE`, `ANALYTICS_RETENTION_DAYS`. Framework-owned `APP_KEY` (32 characters) and `APP_URL` (public gateway address, for OIDC and SAML) as Goravel defines them; `APP_NAME`, `APP_ENV`, `APP_DEBUG` too, no product meaning.
+No reference counterpart: `HTTP_SERVER_READ_HEADER_TIMEOUT`, `HTTP_SERVER_IDLE_TIMEOUT`, `HTTP_SERVER_SHUTDOWN_GRACE`, `SERVER_MAX_BODY_MB`, `SERVER_TRUST_LOOPBACK`, `SERVER_TRUSTED_PROXIES`, `AUTH_ADMIN_USERNAME`, `AUTH_SSO_ADMIN`, `AUTH_MAX_USERS`, `AUTH_SESSION_TTL`, `UPSTREAM_ALLOW_PRIVATE`, `DB_CONNECTION`, `DB_DATABASE`, `DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_SCHEMA`, `DB_ENCRYPTION_SECRET`, `LOG_CHANNEL`, `LOG_OUTPUT`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_DB`, `DB_DATABASE_ANALYTICS`, `DB_SSLMODE`, `ANALYTICS_RETENTION_DAYS`. Framework-owned `APP_KEY` (32 characters) and `APP_URL` (public gateway address, for OIDC and SAML) as Goravel defines them; `APP_NAME`, `APP_ENV`, `APP_DEBUG` too, no product meaning.
 
 ---
 

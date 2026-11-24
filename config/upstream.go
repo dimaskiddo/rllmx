@@ -28,5 +28,9 @@ func init() {
 		// latest published @anthropic-ai/claude-code from npm every six hours; a
 		// value pins it and turns the lookup off.
 		"claude_cli_version": config.Env("UPSTREAM_CLAUDE_CLI_VERSION", ""),
+		// When a Kiro request uses the Responses transport: auto falls back to it
+		// after the rate-limit answer the IDE transport gives enrolled accounts,
+		// always uses it for every request, off never does.
+		"kiro_create_response": config.Env("UPSTREAM_KIRO_CREATE_RESPONSE", "auto"),
 	})
 }

@@ -44,11 +44,15 @@ type Custom struct {
 
 // Stats is what one request's savers did, for the redacting log line.
 type Stats struct {
-	Saved    int
-	Filters  []string
-	Prompts  []string
-	Headroom bool
-	Note     string
+	Saved   int
+	Filters []string
+	Prompts []string
+	// Levels names the level each injected prompt ran at, as "caveman=full".
+	Levels []string
+	// CustomChars is the length of the injected custom prompt, never its text.
+	CustomChars int
+	Headroom    bool
+	Note        string
 }
 
 // Changed reports whether anything was rewritten.
@@ -120,8 +124,9 @@ func Apply(ctx context.Context, comp *Compressor, r *translate.Request, o Option
 	applyPrompt(r, o.Caveman, caveman.Level, cavemanTopic, query, "caveman", &st)
 	applyPrompt(r, o.Ponytail, ponytail.Level, ponytailTopic, query, "ponytail", &st)
 	if o.Custom.Enabled {
-		if r.AppendSystem(strings.TrimSpace(o.Custom.Text)) {
+		if text := strings.TrimSpace(o.Custom.Text); r.AppendSystem(text) {
 			st.Prompts = append(st.Prompts, "custom")
+			st.CustomChars = len(text)
 		}
 	}
 	return st
@@ -166,5 +171,6 @@ func applyPrompt(r *translate.Request, p Prompt, level func(string) string, t pr
 	}
 	if r.AppendSystem(text) {
 		st.Prompts = append(st.Prompts, label)
+		st.Levels = append(st.Levels, label+"="+p.Level)
 	}
 }

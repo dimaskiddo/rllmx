@@ -46,10 +46,10 @@ func NewAuthController(a *auth.Authenticator, trust apphttp.Trust) *AuthControll
 	return c
 }
 
-// Login answers POST /api/auth/login. An empty username is the admin; any other
-// name is a standard user, checked against that user's own password. Every
-// attempt is counted before the password is compared, so parallel guesses
-// cannot all see the old count.
+// Login answers POST /api/auth/login. The configured admin name signs in with
+// the operator's password; any other name is a standard user, checked against
+// that user's own password. Every attempt is counted before the password is
+// compared, so parallel guesses cannot all see the old count.
 func (c *AuthController) Login(ctx contractshttp.Context) contractshttp.Response {
 	r := ctx.Request().Origin()
 	var body struct {
@@ -69,10 +69,18 @@ func (c *AuthController) Login(ctx contractshttp.Context) contractshttp.Response
 		return tooMany(ctx, wait)
 	}
 
-	if name := strings.TrimSpace(body.Username); name != "" {
-		return c.loginUser(ctx, r, name, body.Password, key)
+	name := strings.TrimSpace(body.Username)
+	if name == "" {
+		return flat(ctx, http.StatusBadRequest, "A username is required")
 	}
+	if strings.EqualFold(name, c.Auth.Admin()) {
+		return c.loginAdmin(ctx, r, body.Password, key)
+	}
+	return c.loginUser(ctx, r, name, body.Password, key)
+}
 
+// loginAdmin checks the operator's password and issues the admin session.
+func (c *AuthController) loginAdmin(ctx contractshttp.Context, r *http.Request, password, key string) contractshttp.Response {
 	local := apphttp.IsLocalRequest(r, c.Auth.TrustLoopback)
 	st := c.Auth.Store.Get(r.Context())
 	if !local && st.Password == "" && c.Auth.Pass.WellKnown(st.Password) {
@@ -84,7 +92,7 @@ func (c *AuthController) Login(ctx contractshttp.Context) contractshttp.Response
 		})
 	}
 
-	ok, busy := c.compare(r, body.Password)
+	ok, busy := c.compare(r, password)
 	if busy {
 		return flat(ctx, statusLocked, "The server is busy; try again")
 	}
@@ -182,6 +190,10 @@ func (c *AuthController) Status(ctx contractshttp.Context) contractshttp.Respons
 		"saml":           mode.SAML,
 		"oidcLoginLabel": st.OIDCLoginLabel,
 		"samlLoginLabel": st.SAMLLoginLabel,
+	}
+	// The password session carries no name of its own; show the one it signed in with.
+	if session && who.Admin() && who.Name == "" {
+		out["user"] = c.Auth.Admin()
 	}
 	if who.Role == auth.RoleUser {
 		if u, ok := c.Auth.Users.Get(r.Context(), who.UserID); ok && u.Provisioned {

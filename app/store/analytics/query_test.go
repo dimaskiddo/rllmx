@@ -196,7 +196,7 @@ func TestLastSeenGivesTheNewestRequestTime(t *testing.T) {
 func TestRecentIsNewestFirstAndCapped(t *testing.T) {
 	s := newStore(t)
 	_, dayB, _ := usageRows(t, s)
-	rows, err := s.Recent(context.Background(), 2, nil)
+	rows, err := s.Recent(context.Background(), time.Time{}, 2, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,6 +205,37 @@ func TestRecentIsNewestFirstAndCapped(t *testing.T) {
 	}
 	if rows[0].Time != dayB.Add(2*time.Hour) {
 		t.Fatalf("time %v", rows[0].Time)
+	}
+}
+
+// TestRecentKeepsTheWindowAndReadsTheNewestTimeFirst covers the two ways the
+// list can lie: rows older than the window, and an imported row whose id is
+// higher than a live row written before it.
+func TestRecentKeepsTheWindowAndReadsTheNewestTimeFirst(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+	mk := func(ts time.Time, model string) Record {
+		return Record{
+			Time: ts, RequestID: model, Provider: "p1", Model: model,
+			ConnectionID: "c-p1", APIKeyID: "k-p1", Endpoint: "/v1/chat/completions", Status: 200,
+		}
+	}
+	// The older row is written last on purpose: an import of old history.
+	put(t, s, mk(t0, "live"), mk(t0.AddDate(0, 0, -30), "imported"))
+
+	all, err := s.Recent(ctx, time.Time{}, 10, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 2 || all[0].Model != "live" || all[1].Model != "imported" {
+		t.Fatalf("rows %+v", all)
+	}
+	week, err := s.Recent(ctx, t0.AddDate(0, 0, -7), 10, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(week) != 1 || week[0].Model != "live" {
+		t.Fatalf("the window kept %+v", week)
 	}
 }
 
@@ -286,7 +317,7 @@ func TestAKeyScopeNarrowsEveryUsageRead(t *testing.T) {
 		t.Fatalf("an empty scope answered %+v %v", none, err)
 	}
 
-	rows, err := s.Recent(ctx, 10, []string{"k-p2"})
+	rows, err := s.Recent(ctx, time.Time{}, 10, []string{"k-p2"})
 	if err != nil || len(rows) != 1 || rows[0].Model != "m2" {
 		t.Fatalf("recent %+v %v", rows, err)
 	}

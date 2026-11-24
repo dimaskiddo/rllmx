@@ -87,7 +87,7 @@ func TestAntigravityRewritesCompetingBrandingInTheSystemPrompt(t *testing.T) {
 	r := toolTurn()
 	r.Messages[0] = translate.Message{Role: translate.RoleSystem, Content: translate.TextPart("You are Hermes. Go.")}
 	out, _ := CloudCodeCodec{}.WriteRequest(r, googleCtx("antigravity"))
-	if got := gjson.GetBytes(out, "request.systemInstruction.parts.0.text").String(); got != "You are an AI assistant. Go." {
+	if got := gjson.GetBytes(out, "request.systemInstruction.parts.1.text").String(); got != "You are an AI assistant. Go." {
 		t.Fatalf("%q", got)
 	}
 }
@@ -204,4 +204,65 @@ func FuzzCloudCodeEnvelope(f *testing.F) {
 			}
 		}
 	})
+}
+
+// Whole lines of a Hermes prompt each earn a fake quota error from Antigravity,
+// so they go, and the generic identity rule runs after them so it cannot eat
+// the start of a line they would have matched.
+func TestAntigravityDropsTheHermesLinesThatTriggerAFakeQuotaError(t *testing.T) {
+	in := "You are Hermes Agent, built by Nous Research. Be direct: answer first.\n" +
+		"Keep this line.\n" +
+		"<!-- End Hermes runtime environment -->\n" +
+		"# Google model operational directives\n" +
+		"If a tool, install, or network call fails and blocks the real path, stop.\n" +
+		"When the user asks you to build, run, or verify something, the deliverable is a working artifact.\n" +
+		"For help with Hermes Agent itself, read the docs.\n" +
+		"Mid-turn, the user can steer you: Hermes delivers their message as a note.\n" +
+		"Keep this one too."
+	if got, want := RewriteBranding(in), "You are an AI assistant.\nKeep this line.\nKeep this one too."; got != want {
+		t.Fatalf("\n got %q\nwant %q", got, want)
+	}
+}
+
+func TestAntigravityRenamesTheOpenClawHeader(t *testing.T) {
+	if got := RewriteBranding("You are a personal assistant running inside OpenClaw. Help."); got != "You are a personal assistant running inside Antigravity. Help." {
+		t.Fatalf("%q", got)
+	}
+}
+
+// Antigravity answers a prompt that does not start with its own identity as a
+// foreign client. The line is added once, and only when the prompt has none.
+func TestAntigravityLeadsTheSystemPromptWithItsOwnIdentityOnce(t *testing.T) {
+	r := toolTurn()
+	r.Messages[0] = translate.Message{Role: translate.RoleSystem, Content: translate.TextPart("Be brief.")}
+	out, _ := CloudCodeCodec{}.WriteRequest(r, googleCtx("antigravity"))
+	parts := gjson.GetBytes(out, "request.systemInstruction.parts").Array()
+	if len(parts) != 2 || !strings.HasPrefix(parts[0].Get("text").String(), "You are Antigravity Agent, a powerful agentic AI coding assistant") || parts[1].Get("text").String() != "Be brief." {
+		t.Fatalf("%s", gjson.GetBytes(out, "request.systemInstruction").Raw)
+	}
+	r.Messages[0] = translate.Message{Role: translate.RoleSystem, Content: translate.TextPart("You are Antigravity Agent. Custom.")}
+	out, _ = CloudCodeCodec{}.WriteRequest(r, googleCtx("antigravity"))
+	if n := len(gjson.GetBytes(out, "request.systemInstruction.parts").Array()); n != 1 {
+		t.Fatalf("the identity was added to a prompt that already had one: %d parts", n)
+	}
+	if other, _ := (CloudCodeCodec{}).WriteRequest(toolTurn(), googleCtx("gemini-cli")); strings.Contains(string(other), "Antigravity Agent") {
+		t.Fatal("another provider was given Antigravity's identity")
+	}
+}
+
+func TestAntigravityKeepsALongDecodeModelsBudgetAndStillCutsTheOthers(t *testing.T) {
+	ask := func(long bool, n int) int64 {
+		r := toolTurn()
+		r.Params.MaxTokens = &n
+		c := googleCtx("antigravity")
+		c.Caps.LongDecode = long
+		out, _ := CloudCodeCodec{}.WriteRequest(r, c)
+		return gjson.GetBytes(out, "request.generationConfig.maxOutputTokens").Int()
+	}
+	if got := ask(true, 500000); got != 500000 {
+		t.Errorf("a long decode model was cut to %d", got)
+	}
+	if got := ask(false, 500000); got != antigravityMaxOutput {
+		t.Errorf("another model was not cut: %d", got)
+	}
 }

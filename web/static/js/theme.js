@@ -11,4 +11,13 @@
     theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   }
   document.documentElement.setAttribute("data-bs-theme", theme);
+  // The rail width also lands before the first paint, so the sidebar never
+  // jumps wider once the scripts run.
+  var nav = null;
+  try {
+    nav = localStorage.getItem("rl-nav");
+  } catch (e) {
+    nav = null;
+  }
+  document.documentElement.setAttribute("data-rl-nav", nav === "rail" ? "rail" : "full");
 })();

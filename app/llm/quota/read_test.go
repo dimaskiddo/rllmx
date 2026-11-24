@@ -466,8 +466,8 @@ func TestTheAntigravitySnapshotBecomesRows(t *testing.T) {
 	if got := out.Quotas["Gemini-4-argon-high"]; got.Used != 50 {
 		t.Fatalf("model row %+v", got)
 	}
-	if versionOf("antigravity/hub/2.24.0 darwin/arm64") != "2.24.0" {
-		t.Fatalf("version %q", versionOf("antigravity/hub/2.24.0 darwin/arm64"))
+	if versionOf("antigravity/hub/2.33.0 darwin/arm64") != "2.33.0" {
+		t.Fatalf("version %q", versionOf("antigravity/hub/2.33.0 darwin/arm64"))
 	}
 }
 

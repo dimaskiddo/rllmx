@@ -14,13 +14,17 @@ func AdjustMaxTokens(r *Request, c upstream.Capability) {
 		return
 	}
 	n := *p
-	if c.MaxOutput > 0 && n > c.MaxOutput {
-		n = c.MaxOutput
+	ceiling := c.MaxOutput
+	if c.LongDecode {
+		ceiling = upstream.LongDecodeCeiling
+	}
+	if ceiling > 0 && n > ceiling {
+		n = ceiling
 	}
 	if r.Thinking.Mode == "budget" && r.Thinking.Budget > 0 && n <= r.Thinking.Budget {
 		n = r.Thinking.Budget + minThinkingHeadroom
-		if c.MaxOutput > 0 && n > c.MaxOutput {
-			n = c.MaxOutput
+		if ceiling > 0 && n > ceiling {
+			n = ceiling
 		}
 	}
 	*p = n

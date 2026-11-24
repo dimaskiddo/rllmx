@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"testing/fstest"
 )
 
 func caps(t *testing.T) *Capabilities {
@@ -216,5 +217,154 @@ func TestACapabilityErrorRepeatsNoTableContent(t *testing.T) {
 	_, err := NewCapabilities([]byte(`{"models":{"m":{"`+secret+`":1}}}`), []byte(thinkingJSON), []byte(visionJSON), []byte(`{"rules":[]}`), reg)
 	if err == nil || strings.Contains(err.Error(), secret) {
 		t.Fatalf("%v", err)
+	}
+}
+
+// What an operator declares for a custom model reaches the lookup, so a vision
+// or reasoning model of their own sorts and adapts as one.
+func TestADeclaredCustomModelCarriesItsCapabilities(t *testing.T) {
+	c := caps(t)
+	const provider, model = "my-endpoint", "my-model"
+	if c.For(provider, model).Vision {
+		t.Fatal("the fixture is already a vision model")
+	}
+	c.SetCustom(map[string]Capability{
+		provider + "/" + model: {Vision: true, Reasoning: true},
+		"other/model":          {Vision: true},
+	})
+	got := c.For(provider, model)
+	if !got.Vision || !got.Reasoning {
+		t.Fatalf("%+v", got)
+	}
+	if c.For(provider, "another-model").Vision {
+		t.Fatal("another model took the declaration")
+	}
+}
+
+// Neon and Hydrogen take a fourth level above high, and Antigravity's Claude 5.5
+// takes max, so the picker offers them and a request for one is not turned into
+// something else. Argon and Carbon stay at three.
+func TestTheNewAntigravityTiersOfferTheirOwnLevels(t *testing.T) {
+	c := caps(t)
+	for model, want := range map[string][]string{
+		"gemini-4-neon-high":     {"low", "medium", "high", "xhigh"},
+		"gemini-4-hydrogen":      {"low", "medium", "high", "xhigh"},
+		"gemini-4-carbon":        {"low", "medium", "high"},
+		"claude-opus-5-5-max":    {"low", "medium", "high", "max"},
+		"claude-sonnet-5-5-high": {"low", "medium", "high", "max"},
+	} {
+		if got := c.Levels("antigravity", model, nil); !slices.Equal(got, want) {
+			t.Errorf("%s offers %v, want %v", model, got, want)
+		}
+	}
+	if got := c.Levels("anthropic", "claude-opus-5-5", nil); slices.Equal(got, []string{"low", "medium", "high", "max"}) {
+		t.Errorf("the Antigravity-only rule reached the Anthropic API: %v", got)
+	}
+}
+
+func TestKimiK31IsAMillionTokenReasoningModelThatCannotSwitchThinkingOff(t *testing.T) {
+	c := caps(t)
+	for _, model := range []string{"k3.1-pro", "k3.1-pro-highspeed"} {
+		cp := c.For("kimi", model)
+		if !cp.Reasoning || cp.ThinkingCanOff || cp.ThinkingFormat != "kimi" || cp.ContextWindow != 1048576 || cp.MaxOutput != 131072 || !cp.Vision {
+			t.Errorf("%s: %+v", model, cp)
+		}
+	}
+}
+
+func TestTheNewCatalogRowsCarryTheirLimits(t *testing.T) {
+	c := caps(t)
+	if cp := c.For("nvidia", "nvidia/nemotron-3-ultra-550b-a55b"); !cp.Tools || cp.ContextWindow != 1000000 || cp.MaxOutput != 8192 {
+		t.Errorf("nemotron 3 ultra: %+v", cp)
+	}
+	for _, model := range []string{"mistral-large-latest", "mistral-large-4", "mistral-large-4-0"} {
+		if cp := c.For("mistral", model); cp.ContextWindow != 1048576 || !cp.Vision {
+			t.Errorf("%s: %+v", model, cp)
+		}
+	}
+	for _, model := range []string{"claude-opus-5-5-max", "claude-sonnet-5-5-max"} {
+		if cp := c.For("antigravity", model); cp.MaxOutput != 128000 || cp.ContextWindow != 1000000 || cp.ThinkingFormat != "claude-adaptive" {
+			t.Errorf("%s: %+v", model, cp)
+		}
+	}
+	if cp := c.For("anthropic", "claude-opus-5-5"); cp.MaxOutput != 64000 {
+		t.Errorf("the base Opus 5.5 limit moved: %+v", cp)
+	}
+}
+
+func TestOnlyHydrogenReadsALongDecodeAndOnlyThereDoesTheCeilingMove(t *testing.T) {
+	c := caps(t)
+	for _, tc := range []struct {
+		provider, model string
+		long            bool
+	}{
+		{"gemini", "gemini-4-hydrogen", true},
+		{"antigravity", "gemini-4-hydrogen-high", true},
+		{"antigravity", "gemini-4-hydrogen", true},
+		{"gemini", "gemini-4-argon", false},
+		{"antigravity", "gemini-4-carbon", false},
+		{"gemini", "gemini-3.8-flash", false},
+		{"openai", "gpt-6", false},
+	} {
+		got := c.For(tc.provider, tc.model)
+		if got.LongDecode != tc.long {
+			t.Errorf("%s/%s: longDecode %v", tc.provider, tc.model, got.LongDecode)
+		}
+		if got.MaxOutput != 65536 && tc.long {
+			t.Errorf("%s/%s: one hop returns at most 64K, got %d", tc.provider, tc.model, got.MaxOutput)
+		}
+	}
+	if got := c.For("gemini", "gemini-4-hydrogen"); !got.Reasoning || got.ThinkingFormat != "gemini-level" || got.ThinkingCanOff {
+		t.Errorf("the family's own rules were lost behind the longer row: %+v", got)
+	}
+}
+
+func TestQwenModelsAreAskedToThinkTheQwenWay(t *testing.T) {
+	c := caps(t)
+	for _, tc := range []struct{ provider, model string }{
+		{"qwencloud", "qwen4-max"}, {"qwencloud", "qwen3.8-flash"}, {"qwencloud", "qwen3.7-plus"},
+		{"qwencloud", "qwen3.6-flash"}, {"alitp-intl", "qwen3.7-max"}, {"alicode", "qwen3-coder-plus"},
+		{"alicode-intl", "qwen3.5-plus"}, {"alims-intl", "qwen3-max"}, {"openrouter", "qwen/qwen3-235b-a22b"},
+		{"openai", "qwen2.5-vl-72b"}, {"openai", "qwen3-omni-flash"},
+	} {
+		got := c.For(tc.provider, tc.model)
+		if got.ThinkingFormat != "qwen" || !got.Reasoning {
+			t.Errorf("%s/%s: %+v", tc.provider, tc.model, got)
+		}
+	}
+	if got := c.For("openai", "qwq-32b"); got.ThinkingFormat != "qwen" || got.ThinkingCanOff {
+		t.Errorf("qwq always thinks: %+v", got)
+	}
+	if got := c.For("openai", "qwen3-max"); !got.Vision || got.ContextWindow != 1000000 || got.MaxOutput != 65536 {
+		t.Errorf("a more specific row did not win over the family one: %+v", got)
+	}
+	if got := c.For("qwencloud", "deepseek-v4-pro-0813"); got.ThinkingFormat != "deepseek" {
+		t.Errorf("a row of another family on the same provider changed: %+v", got)
+	}
+	if got := c.For("qwencloud", "qwen4-max"); got.MaxOutput != 393216 || got.ContextWindow != 1000000 {
+		t.Errorf("the provider row's limits were lost: %+v", got)
+	}
+	if got := c.For("openai", "gpt-4o"); got.ThinkingFormat == "qwen" {
+		t.Errorf("another family was given the shape: %+v", got)
+	}
+	if got := c.For("openai", "qwen3-vl-plus"); !got.Vision || got.ThinkingFormat != "qwen" {
+		t.Errorf("a Qwen vision model: %+v", got)
+	}
+}
+
+func TestTheQwenLevelsAreTheBaseSet(t *testing.T) {
+	c := caps(t)
+	if got := c.Levels("qwencloud", "qwen4-max", nil); !slices.Equal(got, []string{"none", "low", "medium", "high"}) {
+		t.Errorf("qwen4-max: %v", got)
+	}
+	if got := c.Levels("alitp-intl", "qwen3.7-max", nil); !slices.Equal(got, []string{"none", "low", "medium", "high"}) {
+		t.Errorf("qwen3.7-max: %v", got)
+	}
+}
+
+func TestAProviderMayNameTheQwenShapeForAllItsModels(t *testing.T) {
+	ok := `{"id":"a","category":"apikey","transport":{"baseUrl":"https://x.example/v1/chat","thinkingFormat":"qwen"},"models":[]}`
+	if _, err := Load(fstest.MapFS{"data/a.json": file(ok)}, "data"); err != nil {
+		t.Fatalf("the shape the writer reads was refused: %v", err)
 	}
 }

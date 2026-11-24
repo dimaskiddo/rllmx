@@ -84,9 +84,9 @@ flowchart TD
 | Session identity | `utils/sessionManager.js` | `app/gateway/conversation` | done (client-named id by reference priority, else opening assistant text, else per connection, two-hour life; `Bound` keyed hash; the pipeline reads it, once an account is chosen: the Claude user id and session header, and a keyed hash for Codex's `session_id`; continuity store) |
 | Bypass (warmup, title) | `utils/bypassHandler.js` | `app/gateway/pipeline` | done |
 | Capability detection (current-turn needs: vision, pdf, audio, video) | `services/combo.js` (`detectRequiredCapabilities`) | `app/llm/translate` | done (`DetectNeeds`, `Needs.Met`; the combo order reads them) |
-| Capacity adapter (fallback pools per capability) | `services/capacityAdapter.js` | `app/gateway` | out (the per-capability pool, D337) |
+| Capacity adapter (fallback pools per capability) | `services/capacityAdapter.js` | `app/gateway/combo`, `app/gateway/pipeline` | done (D337 retired; the reference's history trim for an adapter model is not built) |
 | Model resolution, aliases, nodes, inference | `services/model.js`, `sse/services/model.js` | `app/llm/routing` | done (resolver, snapshot; D80-81) |
-| Combos: fallback, round-robin, smart (System One), fusion | `services/combo.js`, `services/systemoneRouter.js` | `app/gateway` | done (D335 to D338; the per-capability pool stays out, D337) |
+| Combos: fallback, round-robin, smart (System One), fusion | `services/combo.js`, `services/systemoneRouter.js` | `app/gateway` | done (D335 to D338) |
 | Empty-stream failover | `services/emptyFailover.js` | `app/llm/stream` | done |
 | Request-scoped 4xx combo advance | `services/combo.js` | `app/gateway` | done |
 | Account selection and strategies | `sse/services/auth.js` | `app/gateway/account` | done |
@@ -109,6 +109,8 @@ flowchart TD
 
 ## Remaining work
 **The engine, every chat route, the model catalog and the response cache are built.**
+
+**What a request logs (D439).** At Info, one route line per attempt after the savers and skills ran (`POST <asked> → <provider>/<model> · FMT a→b · STREAM|JSON · N MSG · [N TOOL] · [THINK level] · [COMBO "name"] · ACC <connection> · try N`), one feature line when anything acted (`RTK n`, `CAVEMAN level`, `PONYTAIL level`, `CUSTOMPROMPT nc`, `HEADROOM`, `SKILL id(how)`), and one closing line (`id=… DONE ms · TTFT ms · IN n (CACHE ↻n) · OUT n · status`). Ids, levels and counts only, never prompt text, an address or a key. The lines in `skills.go`, `savers.go`, `rules.go` and `plan.go` stay at Debug.
 
 - [x] Parse, resolve, target format, the account loop, the per-account core, the usage row on every path
 - [x] Request-scoped 4xx handling, per-format error bodies, HTML upstream error cleanup (a 2xx HTML page or non-stream type on a streaming call is a 502, D149)
@@ -137,6 +139,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 220 | Locks clear only after the answer is accepted: a non-empty body that parsed, or a stream that delivered an event. A page, an empty body or a broken stream clears nothing and locks nothing (reference clears on the status line) | An upstream that returns 200 with junk does not heal an account |
 | 221 | A non-stream upstream body has a total time cap (10 minutes); the reference has none | A server that sends headers and then goes quiet cannot hold a request for ever |
 | 223 | A bypass reply is a typed response written by the client's own codec, and a prefill `{` matches plain string content too. The reference builds an OpenAI reply by hand and translates it: Claude non-stream came back with empty content and no stop reason, Claude streams ended with `[DONE]`, OpenAI streams carried a stray `data: null`, and a missing `stream` meant a stream | The reply is well formed in every client format and a missing `stream` is false (D191) |
+| 439 | Every request leaves a route line (what the client asked for, the provider and model it went to, the formats, stream or JSON, message and tool counts, the thinking level, the combo and the account), a feature line when a saver or a skill acted (RTK count, the Caveman and Ponytail levels, the custom prompt length, each skill and how it was chosen) and a closing line (time, first token, tokens in with the cache read, tokens out, status). No prompt text, address or key is ever in one, and a client's model name is cut and stripped before it is printed. The reference prints its lines for the same facts but has no skill line. **(built)** | The log is the only place an operator sees which combo and which skill a request used, and the usage page cannot show a level that is not stored |
 
 ---
 

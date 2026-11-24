@@ -243,6 +243,9 @@ type Lane struct {
 	URLSuffix string            `json:"urlSuffix,omitempty"`
 	Headers   map[string]string `json:"headers,omitempty"`
 	Auth      *Auth             `json:"auth,omitempty"`
+	// ThinkingFormat is how a model is asked to think on this lane, for a
+	// provider whose lanes read different shapes. It beats the provider's own.
+	ThinkingFormat string `json:"thinkingFormat,omitempty"`
 }
 
 // Retry is an in-place retry rule: Attempts more tries, each after DelayMs.

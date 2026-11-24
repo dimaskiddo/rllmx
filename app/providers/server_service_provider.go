@@ -25,6 +25,7 @@ import (
 	"rllmx/app/access/sso"
 	"rllmx/app/gateway/combo"
 	"rllmx/app/gateway/health"
+	"rllmx/app/gateway/hermes"
 	"rllmx/app/gateway/skill"
 	apphttp "rllmx/app/http"
 	"rllmx/app/http/controllers"
@@ -118,6 +119,8 @@ type HTTP struct {
 	// it and the dashboard writes it, so a change made there is seen by the next
 	// request.
 	Skills *skill.Registry
+	// Hermes reads the memory a local agent keeps, for the skill that injects it.
+	Hermes *hermes.Reader
 }
 
 // HTTPOf returns the bound HTTP pieces. A missing binding means the provider is
@@ -204,6 +207,10 @@ func buildHTTP(app foundation.Application) (*HTTP, error) {
 		return nil, err
 	}
 	trust := apphttp.NewTrust(s.TrustedProxies)
+	adminName := auth.AdminName(cfg.GetString("auth.admin_username"))
+	if _, _, err := auth.CleanUser(adminName, ""); err != nil {
+		return nil, fmt.Errorf("providers: AUTH_ADMIN_USERNAME: %w", err)
+	}
 	a := newAuthenticator(app, cfg, db, secret, s, trust)
 	login, refresher, minter, google, hosted, freebuff := newLogin(app, registry, rest.oauth, upstreamCfg)
 	pipe := NewPipelineSource(app)
@@ -293,7 +300,11 @@ func newAuthenticator(app foundation.Application, cfg config.Config, db func() *
 	}
 	a.SSOAdmin = sso.ParseAdmins(cfg.GetString("auth.sso_admin")).IsAdmin
 	a.ClientAddr = trust.ClientAddr
-	a.Users = auth.NewUsers(auth.NewUserRepo(db, s.MaxUsers))
+	a.SessionTTL = s.SessionTTL
+	a.AdminName = auth.AdminName(cfg.GetString("auth.admin_username"))
+	users := auth.NewUserRepo(db, s.MaxUsers)
+	users.Admin = a.AdminName
+	a.Users = auth.NewUsers(users)
 	return a
 }
 
@@ -306,6 +317,7 @@ func wireCatalogSync(h *HTTP, app foundation.Application, cfg config.Config) err
 		return err
 	}
 	h.Skills = skill.NewRegistry(filepath.Join(dataDir, "skills"), skill.Builtin())
+	h.Hermes = &hermes.Reader{Home: cfg.GetString("hermes.home")}
 	h.CatalogSync = newCatalogSync(h.Capabilities, dataDir, func() *http.Client {
 		return network.NewClient(network.Options{
 			ConnectTimeout: h.Upstream.ConnectTimeout, MaxRedirects: 3, Allow: h.Upstream.Allow,

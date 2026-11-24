@@ -199,3 +199,17 @@ func TestIsSecretSettingNamesEveryCredentialKey(t *testing.T) {
 		}
 	}
 }
+
+func TestTheOpenDesignControlKeyIsSealedWithTheConnection(t *testing.T) {
+	box := tests.Box(t, tests.DBSecret)
+	sealed, err := sealFields(box, `{"providerSpecificData":{"opendesignControlKey":"vela_ctrl_SECRET","opendesignWorkspaceId":"ws-1"}}`, "", connSecretPaths, connAAD("c"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(sealed, "vela_ctrl_SECRET") {
+		t.Fatalf("the control key was stored in the clear: %s", sealed)
+	}
+	if !strings.Contains(sealed, "ws-1") {
+		t.Fatalf("a workspace id is not a secret and must stay readable: %s", sealed)
+	}
+}

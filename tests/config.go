@@ -49,6 +49,7 @@ func ServerValues() map[string]any {
 		"http.server.read_header_timeout": "10s",
 		"http.server.idle_timeout":        "120s",
 		"http.server.shutdown_grace":      "30s",
+		"auth.session_ttl":                "24h",
 		"http.compression":                true,
 		"http.h2c":                        false,
 		"http.drivers.gin.header_limit":   64,

@@ -246,3 +246,75 @@ func TestAStoredBudgetThatCannotBeReadFailsClosed(t *testing.T) {
 		t.Fatal("a corrupt budget was read as no budget")
 	}
 }
+
+// standing runs one reading with a stored usage that depends on the window asked.
+func standing(t *testing.T, budget Limit, perWindow map[time.Time]analytics.Totals) Standings {
+	t.Helper()
+	q := &Quota{
+		Limits: source{"k": budget},
+		Usage: func(_ context.Context, _ string, since time.Time) (analytics.Totals, error) {
+			return perWindow[since], nil
+		},
+		Now: func() time.Time { return now },
+	}
+	s, err := q.Standing(context.Background(), "k")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+func TestTheStandingIsTheLargestShareOfAnyLimitedType(t *testing.T) {
+	dayStart := time.Date(2026, 3, 14, 0, 0, 0, 0, time.UTC)
+	budget := Limit{Requests: amounts(100, 0, 0), Tokens: amounts(1000, 0, 0), Cost: amounts(10, 0, 0)}
+	s := standing(t, budget, map[time.Time]analytics.Totals{
+		dayStart: {Requests: 10, Tokens: 750, Cost: 1},
+	})
+	if !s.Day.Limited || s.Day.Percent != 75 {
+		t.Fatalf("the tightest type is tokens at 75%%, got %+v", s.Day)
+	}
+	if want := time.Date(2026, 3, 15, 0, 0, 0, 0, time.UTC); !s.Day.ResetsAt.Equal(want) {
+		t.Fatalf("the day resets at midnight: %v", s.Day.ResetsAt)
+	}
+}
+
+func TestAWindowWithNoLimitIsZeroAndStillSaysWhenItResets(t *testing.T) {
+	s := standing(t, Limit{Requests: amounts(100, 0, 0)}, nil)
+	if s.Month.Limited || s.Month.Percent != 0 {
+		t.Fatalf("an unlimited month reads %+v", s.Month)
+	}
+	if want := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC); !s.Month.ResetsAt.Equal(want) {
+		t.Fatalf("the month resets on the first: %v", s.Month.ResetsAt)
+	}
+	if !s.Total.ResetsAt.IsZero() {
+		t.Fatalf("all time never resets: %v", s.Total.ResetsAt)
+	}
+}
+
+func TestAStandingNeverReadsOverAHundredAndAKeyWithoutABudgetReadsZero(t *testing.T) {
+	over := standing(t, Limit{Requests: amounts(10, 0, 0)}, map[time.Time]analytics.Totals{
+		time.Date(2026, 3, 14, 0, 0, 0, 0, time.UTC): {Requests: 55},
+	})
+	if over.Day.Percent != 100 {
+		t.Fatalf("spend past the limit reads %v", over.Day.Percent)
+	}
+	q := &Quota{Limits: source{}, Usage: func(context.Context, string, time.Time) (analytics.Totals, error) {
+		t.Fatal("a key with no budget cost a usage query")
+		return analytics.Totals{}, nil
+	}, Now: func() time.Time { return now }}
+	s, err := q.Standing(context.Background(), "nobody")
+	if err != nil || s.Day.Limited || s.Day.Percent != 0 || s.Day.ResetsAt.IsZero() {
+		t.Fatalf("%+v %v", s, err)
+	}
+}
+
+func TestAFailedReadFailsTheStanding(t *testing.T) {
+	q := &Quota{
+		Limits: brokenSource{err: errors.New("down")},
+		Usage:  func(context.Context, string, time.Time) (analytics.Totals, error) { return analytics.Totals{}, nil },
+		Now:    func() time.Time { return now },
+	}
+	if _, err := q.Standing(context.Background(), "k"); err == nil {
+		t.Fatal("a store that cannot answer was read as an empty budget")
+	}
+}

@@ -23,11 +23,12 @@ type UsersController struct {
 
 // userView is one account as the dashboard reads it: never the hash.
 type userView struct {
-	ID        string   `json:"id"`
-	Username  string   `json:"username"`
-	Email     string   `json:"email,omitempty"`
-	CreatedAt string   `json:"createdAt"`
-	Keys      []string `json:"keys"`
+	ID          string   `json:"id"`
+	Username    string   `json:"username"`
+	Email       string   `json:"email,omitempty"`
+	CreatedAt   string   `json:"createdAt"`
+	Keys        []string `json:"keys"`
+	Provisioned bool     `json:"provisioned"`
 }
 
 func (c *UsersController) storeDown(ctx contractshttp.Context) contractshttp.Response {
@@ -53,7 +54,7 @@ func (c *UsersController) List(ctx contractshttp.Context) contractshttp.Response
 	}
 	out := make([]userView, 0, len(users))
 	for _, u := range users {
-		view := userView{ID: u.ID, Username: u.Username, Email: u.Email, CreatedAt: u.CreatedAt, Keys: []string{}}
+		view := userView{ID: u.ID, Username: u.Username, Email: u.Email, CreatedAt: u.CreatedAt, Keys: []string{}, Provisioned: u.Provisioned}
 		for key, id := range owners {
 			if id == u.ID {
 				view.Keys = append(view.Keys, key)
@@ -139,7 +140,7 @@ func (c *UsersController) Update(ctx contractshttp.Context) contractshttp.Respon
 	if err := c.Users.Put(rc, u); err != nil {
 		return userRefused(ctx, err)
 	}
-	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"user": userView{ID: u.ID, Username: u.Username, Email: u.Email}})
+	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"user": userView{ID: u.ID, Username: u.Username, Email: u.Email, Provisioned: u.Provisioned}})
 }
 
 // Delete answers DELETE /api/users/{id}. The keys stay; the assignments go.

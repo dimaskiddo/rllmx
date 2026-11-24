@@ -365,3 +365,26 @@ func TestPrepareAppliesTheConcernsTogether(t *testing.T) {
 		t.Errorf("tool calls: %+v", r.Messages[1:])
 	}
 }
+
+func TestALongDecodeModelKeepsTheBudgetItAskedForUpToOneMillion(t *testing.T) {
+	ptr := func(n int) *int { return &n }
+	c := upstream.Capability{MaxOutput: 65536, LongDecode: true}
+	for ask, want := range map[int]int{500000: 500000, 1048576: 1048576, 5000000: 1048576, 65536: 65536} {
+		r := &Request{Params: Params{MaxTokens: ptr(ask)}}
+		AdjustMaxTokens(r, c)
+		if *r.Params.MaxTokens != want {
+			t.Errorf("ask %d: %d, want %d", ask, *r.Params.MaxTokens, want)
+		}
+	}
+	r := &Request{Params: Params{MaxTokens: ptr(500000)}}
+	AdjustMaxTokens(r, upstream.Capability{MaxOutput: 65536})
+	if *r.Params.MaxTokens != 65536 {
+		t.Errorf("a model without a long decode kept %d", *r.Params.MaxTokens)
+	}
+}
+
+func TestAContinuationFinishIsATruncationIfOneEverLeaks(t *testing.T) {
+	if got := FinishFromGemini("CONTINUATION"); got != "length" {
+		t.Errorf("%q", got)
+	}
+}

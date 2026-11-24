@@ -1,16 +1,20 @@
 package http
 
 import (
+	"bytes"
 	"compress/gzip"
 	"crypto/rand"
 	"encoding/hex"
 	"io"
+	"log"
 	nethttp "net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"rllmx/app/llm/stream"
 )
 
 // answer serves one response with the given headers and body.
@@ -251,6 +255,70 @@ func TestAStreamIsFlushedFrameByFrameAndNeverEncoded(t *testing.T) {
 	}
 	if !strings.Contains(got, "data: one") {
 		t.Fatalf("the first frame did not arrive before the handler finished: %q", got)
+	}
+}
+
+// TestAStreamThroughTheSinkSendsEachFrameAndOneStatus drives a real stream, so
+// the flush the sink makes through the connection below this writer meets a
+// status line that has already gone out. A second one is net/http's
+// "superfluous response.WriteHeader", and a frame held in the buffer until the
+// threshold would miss the flush that was meant to carry it.
+func TestAStreamThroughTheSinkSendsEachFrameAndOneStatus(t *testing.T) {
+	release := make(chan struct{})
+	h := Compress(true, nethttp.HandlerFunc(func(w nethttp.ResponseWriter, r *nethttp.Request) {
+		s, err := stream.NewSSE(w, stream.Options{})
+		if err != nil {
+			t.Errorf("stream: %v", err)
+			return
+		}
+		if err := s.Event("tick", "one"); err != nil {
+			t.Errorf("event: %v", err)
+			return
+		}
+		<-release
+	}))
+	var logged bytes.Buffer
+	srv := httptest.NewUnstartedServer(h)
+	srv.Config.ErrorLog = log.New(&logged, "", 0)
+	srv.Start()
+	defer srv.Close()
+	// The handler must be released on every path, including a Fatal here.
+	defer func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	}()
+
+	req, _ := nethttp.NewRequest("GET", srv.URL, nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	res, err := nethttp.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if got := res.Header.Get("Content-Encoding"); got != "" {
+		t.Fatalf("a stream was encoded: %q", got)
+	}
+	line := make([]byte, 64)
+	frames := make(chan string, 1)
+	go func() {
+		n, _ := res.Body.Read(line)
+		frames <- string(line[:n])
+	}()
+	select {
+	case frame := <-frames:
+		if !strings.Contains(frame, "data: one") {
+			t.Fatalf("the first frame: %q", frame)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the first frame was held past the flush the sink made")
+	}
+	close(release)
+	_, _ = io.Copy(io.Discard, res.Body)
+	if strings.Contains(logged.String(), "superfluous") {
+		t.Fatalf("the status line went out twice: %s", logged.String())
 	}
 }
 

@@ -318,6 +318,17 @@ func WriteOpenAIThinking(o translate.Obj, th translate.Thinking, c *translate.Ct
 			o["reasoning_effort"] = zaiLevel(level)
 		}
 		return
+	case "qwen":
+		// A switch and a token budget; off is the switch alone.
+		if none {
+			o["enable_thinking"] = false
+			return
+		}
+		o["enable_thinking"] = true
+		if b := qwenBudget(th, c, caps); b > 0 {
+			o["thinking_budget"] = b
+		}
+		return
 	case "kimi":
 		if none {
 			o["thinking"] = translate.Obj{"type": "disabled"}
@@ -362,6 +373,31 @@ func compatEffort(level string) string {
 		return level
 	}
 	return ""
+}
+
+// qwenBudget is the token budget a Qwen request carries: the asked one, or the
+// level's, held to the range the model reads. Auto and a level the table does
+// not know carry none, and the model picks its own.
+func qwenBudget(th translate.Thinking, c *translate.Ctx, caps upstream.Capability) int {
+	b := 0
+	switch th.Mode {
+	case "budget":
+		b = th.Budget
+	case "level":
+		if c != nil {
+			b = c.Budget(th.Level)
+		}
+	}
+	if b <= 0 {
+		return 0
+	}
+	if caps.ThinkingMax > 0 && b > caps.ThinkingMax {
+		b = caps.ThinkingMax
+	}
+	if caps.ThinkingMin > 0 && b < caps.ThinkingMin {
+		b = caps.ThinkingMin
+	}
+	return b
 }
 
 // zaiLevel maps a level to the three Z.ai reads: low, high and max.

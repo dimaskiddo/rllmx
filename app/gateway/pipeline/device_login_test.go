@@ -7,6 +7,7 @@ import (
 	"github.com/tidwall/gjson"
 
 	"rllmx/app/llm/oauth"
+	"rllmx/app/llm/upstream"
 	"rllmx/app/store/repository"
 	"rllmx/tests"
 )
@@ -193,5 +194,38 @@ func TestAKeyOnALaneProviderIsPresentedAsTheLaneSays(t *testing.T) {
 	c := r.up.Calls()[0]
 	if c.Path != "/v1/chat/completions" || auth(c) != "Bearer sk-1" || c.Header.Get("x-api-key") != "" {
 		t.Fatalf("%s %v", c.Path, c.Header)
+	}
+}
+
+func TestALaneThinkingShapeReplacesTheModelsOnlyOnThatLane(t *testing.T) {
+	caps := upstream.Capability{Reasoning: true, ThinkingFormat: "openai"}
+	if got := onLane(caps, nil); got.ThinkingFormat != "openai" {
+		t.Errorf("no lane changed the shape: %q", got.ThinkingFormat)
+	}
+	if got := onLane(caps, &upstream.Lane{}); got.ThinkingFormat != "openai" {
+		t.Errorf("a lane with no shape changed it: %q", got.ThinkingFormat)
+	}
+	if got := onLane(caps, &upstream.Lane{ThinkingFormat: "claude-adaptive"}); got.ThinkingFormat != "claude-adaptive" {
+		t.Errorf("the lane's shape was not used: %q", got.ThinkingFormat)
+	}
+	if caps.ThinkingFormat != "openai" {
+		t.Error("the caller's capabilities were changed")
+	}
+}
+
+func TestAQwenShapedProviderIsAskedToThinkItsOwnWayOnEachLane(t *testing.T) {
+	ask := func(path, body string) []byte {
+		r := newRig(t, tests.Reply{ContentType: "application/json", Body: okJSON})
+		r.accountConn("qwn", "sk-1", "")
+		r.run(path, body)
+		return r.up.Calls()[0].Body
+	}
+	chat := ask("/v1/chat/completions", `{"model":"qwn/qm","reasoning_effort":"high","messages":[{"role":"user","content":"hi"}]}`)
+	if !gjson.GetBytes(chat, "enable_thinking").Bool() || gjson.GetBytes(chat, "reasoning_effort").Exists() {
+		t.Errorf("the chat lane was not asked in the provider's shape: %s", chat)
+	}
+	off := ask("/v1/chat/completions", `{"model":"qwn/qm","reasoning_effort":"none","messages":[{"role":"user","content":"hi"}]}`)
+	if v := gjson.GetBytes(off, "enable_thinking"); !v.Exists() || v.Bool() {
+		t.Errorf("off was not the switch alone: %s", off)
 	}
 }

@@ -1,0 +1,24 @@
+{
+  "id": "human-commit",
+  "name": "Human Commit Message",
+  "description": "Commit messages in the human format: file, type, short subject.",
+  "category": "workflow",
+  "hook": "system-prompt",
+  "default_enabled": false,
+  "routable": true,
+  "routing_mode": "smart",
+  "routing_threshold": 0.3,
+  "triggers": [
+    "commit message",
+    "git commit",
+    "write a commit",
+    "pesan commit"
+  ],
+  "keywords": [
+    "commit",
+    "message",
+    "subject",
+    "type"
+  ],
+  "version": "1.0.0"
+}

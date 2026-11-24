@@ -89,6 +89,48 @@ func TestTheStudioCreatesReadsUpdatesAndDeletes(t *testing.T) {
 	}
 }
 
+// A create from the dashboard sends no id: the server names the skill after its
+// title and answers the id it used.
+func TestTheStudioNamesASkillAfterItsTitle(t *testing.T) {
+	m := newMgmtRig(t)
+	seededSettings(t, m)
+	dir := t.TempDir()
+	reg := skill.NewRegistry(filepath.Join(dir, "skills"), skill.Builtin())
+	c := &SkillsController{DB: func() *repository.Store { return m.st.Store }, Reg: reg, Dir: dir}
+	studioRoutes(m, c)
+
+	body := `{"name":"My Skill!","description":"d","hook":"system-prompt","prompt_template":"p"}`
+	code, out, raw := m.call(nethttp.MethodPost, "/api/skills", body, true)
+	if code != 201 || out["id"] != "my-skill" {
+		t.Fatalf("create: %d %s", code, raw)
+	}
+	if code, _, raw := m.call(nethttp.MethodPost, "/api/skills", body, true); code != 201 {
+		t.Fatalf("second create: %d %s", code, raw)
+	}
+	if code, out, raw := m.call(nethttp.MethodGet, "/api/skills/my-skill-1", "", true); code != 200 || out["name"] != "My Skill!" {
+		t.Fatalf("read back: %d %s", code, raw)
+	}
+}
+
+// A sync from the dashboard names no repository: it takes the official catalog
+// and its branch, and an explicit one is kept as sent.
+func TestASyncWithNoSourceTakesTheOfficialCatalog(t *testing.T) {
+	for _, c := range []struct {
+		body syncBody
+		src  string
+		ref  string
+	}{
+		{syncBody{}, skill.ECCSource, skill.ECCBranch},
+		{syncBody{Source: "https://example.test/c.git", Tag: "dev"}, "https://example.test/c.git", "dev"},
+		{syncBody{Source: "  ", Tag: " "}, skill.ECCSource, skill.ECCBranch},
+	} {
+		source, ref := syncTarget(c.body)
+		if source != c.src || ref != c.ref {
+			t.Errorf("%+v: %q %q, want %q %q", c.body, source, ref, c.src, c.ref)
+		}
+	}
+}
+
 func TestTheStudioRefusesWhatItMayNotWrite(t *testing.T) {
 	m := newMgmtRig(t)
 	seededSettings(t, m)
@@ -114,7 +156,7 @@ func TestTheStudioRefusesWhatItMayNotWrite(t *testing.T) {
 		code               int
 	}{
 		"traversal id":   {nethttp.MethodPost, "/api/skills", `{"id":"../escape",` + base + `}`, 400},
-		"built-in id":    {nethttp.MethodPut, "/api/skills/caveman-style", `{"id":"caveman-style",` + base + `}`, 400},
+		"built-in id":    {nethttp.MethodPut, "/api/skills/commit-lint", `{"id":"commit-lint",` + base + `}`, 400},
 		"hook script":    {nethttp.MethodPost, "/api/skills", `{"id":"x",` + base + `,"hook_script":"process.exit(1)"}`, 400},
 		"install":        {nethttp.MethodPost, "/api/skills", `{"id":"x",` + base + `,"install_command":"npm i"}`, 400},
 		"source":         {nethttp.MethodPost, "/api/skills", `{"id":"x",` + base + `,"source":"ecc"}`, 400},
@@ -236,5 +278,37 @@ func TestTheSkillsListCarriesTheStoredConfigValues(t *testing.T) {
 	}
 	if _, set := values["untouched"]; set {
 		t.Fatalf("a field nobody set carries a value: %v", values)
+	}
+}
+
+// A skill's own switch is written through PATCH /api/settings, which answers
+// with the settings view; the view has no field for it. The Token Saver page
+// therefore reads it from the skills list, and this is the round trip it makes.
+func TestASkillSwitchWrittenThroughSettingsIsReadBackFromTheSkillsList(t *testing.T) {
+	m := newMgmtRig(t)
+	seededSettings(t, m)
+	reg := skillRegistry(t)
+	db := func() *repository.Store { return m.st.Store }
+	m.settingsRoutes(&SettingsController{DB: db, Auth: m.auth, Skills: reg})
+	skillsRoutes(m, &SkillsController{DB: db, Reg: reg, Dir: t.TempDir()})
+
+	read := func() map[string]any {
+		_, out, raw := m.call(nethttp.MethodGet, "/api/skills", "", true)
+		for _, item := range out["skills"].([]any) {
+			if row := item.(map[string]any); row["id"] == "simple" {
+				return row
+			}
+		}
+		t.Fatalf("no simple skill in %s", raw)
+		return nil
+	}
+	if got := read(); got["enabled"] != true || got["mode"] != "smart" {
+		t.Fatalf("before %v", got)
+	}
+	if code, _, raw := m.call(nethttp.MethodPatch, "/api/settings", `{"simpleEnabled":false,"simpleRoutingMode":"always"}`, true); code != 200 {
+		t.Fatalf("%d %s", code, raw)
+	}
+	if got := read(); got["enabled"] != false || got["mode"] != "always" {
+		t.Fatalf("a switch the settings route accepted did not reach the skills list: %v", got)
 	}
 }

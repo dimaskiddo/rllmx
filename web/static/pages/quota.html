@@ -6,10 +6,10 @@
   <p class="rl-error" x-show="error" x-text="error"></p>
 
   <div class="rl-toolbar">
-    <select class="form-select form-select-sm" x-bind:aria-label="label('quota.provider')" x-bind:value="provider" x-on:change="setProvider($event)">
-      <option value="all" x-t="quota.allProviders"></option>
+    <select class="form-select form-select-sm" x-bind:aria-label="label('quota.provider')" x-on:change="setProvider($event)">
+      <option value="all" x-bind:selected="provider === 'all'" x-t="quota.allProviders"></option>
       <template x-for="name in providerOptions" x-bind:key="name">
-        <option x-bind:value="name" x-text="name"></option>
+        <option x-bind:value="name" x-bind:selected="provider === name" x-text="name"></option>
       </template>
     </select>
     <select class="form-select form-select-sm" x-bind:aria-label="label('quota.status')" x-bind:value="accountStatus" x-on:change="setStatus($event)">
@@ -25,7 +25,7 @@
     </select>
     <div class="form-check form-switch rl-switch">
       <input class="form-check-input" type="checkbox" id="quota-auto" role="switch" x-bind:checked="autoRefresh" x-on:change="toggleAuto($event)">
-      <label class="form-check-label" for="quota-auto" x-text="label('quota.autoRefresh') + ' (' + countdown + 's)'"></label>
+      <label class="form-check-label rl-tabular" for="quota-auto" x-text="label('quota.autoRefresh') + ' (' + countdown + 's)'"></label>
     </div>
     <button type="button" class="btn btn-sm" x-on:click="refreshAll()"><span class="rl-icon" x-icon="refresh-cw"></span><span x-t="quota.refreshAll"></span></button>
   </div>
@@ -33,6 +33,7 @@
   <p class="text-secondary" x-show="loading" x-t="common.loading"></p>
   <p class="rl-hint" x-show="!loading && connections.length === 0" x-t="quota.empty"></p>
 
+  <div class="rl-columns">
   <template x-for="conn in connections" x-bind:key="conn.id">
     <section class="card">
       <div class="card-header rl-card-head">
@@ -41,7 +42,7 @@
           <button type="button" class="btn btn-sm btn-ghost" x-on:click="read(conn, true)" x-tip="quota.refresh"><span class="rl-icon" x-icon="refresh-cw"></span><span class="visually-hidden" x-t="quota.refresh"></span></button>
           <button type="button" class="btn btn-sm btn-ghost" x-show="conn.isActive === true" x-on:click="toggleActive(conn)" x-tip="quota.deactivate"><span class="rl-icon" x-icon="pause"></span><span class="visually-hidden" x-t="quota.deactivate"></span></button>
           <button type="button" class="btn btn-sm btn-ghost" x-show="conn.isActive !== true" x-on:click="toggleActive(conn)" x-tip="quota.activate"><span class="rl-icon" x-icon="play"></span><span class="visually-hidden" x-t="quota.activate"></span></button>
-          <button type="button" class="btn btn-sm btn-ghost-danger" x-show="canReset(conn)" x-bind:disabled="resetting[conn.id] === true" x-on:click="reset(conn)" x-tip="quota.reset"><span class="rl-icon" x-icon="gauge"></span><span x-text="resetCredits(conn)"></span><span class="visually-hidden" x-t="quota.reset"></span></button>
+          <button type="button" class="btn btn-sm btn-outline-danger" x-show="canReset(conn)" x-bind:disabled="resetting[conn.id] === true" x-on:click="reset(conn)" x-tip="quota.reset"><span class="rl-icon" x-icon="gauge"></span><span x-text="resetCredits(conn)"></span><span class="visually-hidden" x-t="quota.reset"></span></button>
         </div>
       </div>
       <div class="card-body">
@@ -84,6 +85,7 @@
       </div>
     </section>
   </template>
+  </div>
 
   <div class="rl-toolbar" x-show="pagination.totalPages > 1">
     <button type="button" class="btn btn-sm" x-bind:disabled="pagination.page <= 1" x-on:click="turnClientPage(-1)" x-t="quota.prev"></button>

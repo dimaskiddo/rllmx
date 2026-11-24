@@ -48,15 +48,17 @@ function match(pattern, path) {
 
 // navRoots are the sidebar entries, so a page marks its own entry current.
 const navRoots = [
+  "/dashboard/endpoint",
   "/dashboard/providers",
   "/dashboard/combos",
+  "/dashboard/token-saver",
+  "/dashboard/skills",
   "/dashboard/usage",
   "/dashboard/quota",
-  "/dashboard/console-log",
-  "/dashboard/skills",
-  "/dashboard/token-saver",
   "/dashboard/pricing",
+  "/dashboard/users",
   "/dashboard/settings",
+  "/dashboard/console-log",
 ];
 
 function navFor(path) {

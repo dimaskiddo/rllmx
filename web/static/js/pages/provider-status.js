@@ -84,7 +84,10 @@ export function psdBody(rows, editable) {
 // modelRow reads one row of the registry list. That list names the model in
 // `model`; the custom list says `id`, and the two must not be mixed up.
 export function modelRow(m) {
-  return { id: m.model, name: m.name || "", source: m.source || "builtin", type: m.kind || "" };
+  return {
+    id: m.model, name: m.name || "", source: m.source || "builtin", type: m.kind || "",
+    full: m.fullModel || "", caps: m.caps || null,
+  };
 }
 
 // sortModels lists the built-in models first and the custom ones after them,

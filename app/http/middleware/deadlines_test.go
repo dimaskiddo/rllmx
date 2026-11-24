@@ -4,6 +4,7 @@ import (
 	"io"
 	nethttp "net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -96,5 +97,87 @@ func TestDeadlinesDoNotBoundALongDashboardCall(t *testing.T) {
 		if n != int64(len(bulk)) {
 			t.Fatalf("%s: the client read %d of %d bytes", path, n, len(bulk))
 		}
+	}
+}
+
+// TestABodylessDashboardReadIsNotCanceledByTheReadDeadline guards the request
+// context of a GET: net/http watches the socket for a hangup while the handler
+// runs, and a read deadline that expires on that watch cancels the context.
+func TestABodylessDashboardReadIsNotCanceledByTheReadDeadline(t *testing.T) {
+	canceled := make(chan error, 1)
+	r := newRoute(t, &Deadlines{APIRead: 30 * time.Millisecond})
+	r.Get("/api/usage/logs", func(ctx contractshttp.Context) contractshttp.Response {
+		time.Sleep(120 * time.Millisecond)
+		canceled <- ctx.Request().Origin().Context().Err()
+		return ctx.Response().String(nethttp.StatusOK, "ok")
+	})
+
+	srv := httptest.NewServer(nethttp.HandlerFunc(r.ServeHTTP))
+	defer srv.Close()
+	resp, err := srv.Client().Get(srv.URL + "/api/usage/logs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	select {
+	case got := <-canceled:
+		if got != nil {
+			t.Fatalf("the request context was canceled while the handler ran: %v", got)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the handler never finished")
+	}
+}
+
+func TestAnUploadIsNotCanceledByTheReadDeadlineOnceItsBodyIsRead(t *testing.T) {
+	canceled := make(chan error, 1)
+	r := newRoute(t, &Deadlines{APIRead: 30 * time.Millisecond})
+	r.Post("/api/providers/x/test-models", func(ctx contractshttp.Context) contractshttp.Response {
+		_, _ = io.Copy(io.Discard, ctx.Request().Origin().Body)
+		time.Sleep(120 * time.Millisecond)
+		canceled <- ctx.Request().Origin().Context().Err()
+		return ctx.Response().String(nethttp.StatusOK, "ok")
+	})
+
+	srv := httptest.NewServer(nethttp.HandlerFunc(r.ServeHTTP))
+	defer srv.Close()
+	resp, err := srv.Client().Post(srv.URL+"/api/providers/x/test-models", "application/json", strings.NewReader(`{"a":1}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if got := <-canceled; got != nil {
+		t.Fatalf("the request context was canceled after the body was read: %v", got)
+	}
+}
+
+func TestAStalledUploadStillHitsTheReadDeadline(t *testing.T) {
+	r := newRoute(t, &Deadlines{APIRead: 50 * time.Millisecond})
+	done := make(chan error, 1)
+	r.Post("/api/providers", func(ctx contractshttp.Context) contractshttp.Response {
+		_, err := io.Copy(io.Discard, ctx.Request().Origin().Body)
+		done <- err
+		return ctx.Response().String(nethttp.StatusOK, "ok")
+	})
+
+	srv := httptest.NewServer(nethttp.HandlerFunc(r.ServeHTTP))
+	defer srv.Close()
+	pr, pw := io.Pipe()
+	go func() {
+		_, _ = pw.Write([]byte("{"))
+		time.Sleep(400 * time.Millisecond)
+		pw.Close()
+	}()
+	req, _ := nethttp.NewRequest(nethttp.MethodPost, srv.URL+"/api/providers", pr)
+	if resp, err := srv.Client().Do(req); err == nil {
+		resp.Body.Close()
+	}
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("a body that stalled past the deadline was read to the end")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the handler never finished")
 	}
 }

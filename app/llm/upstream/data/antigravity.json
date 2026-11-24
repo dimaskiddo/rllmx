@@ -10,7 +10,7 @@
     "baseUrl": "https://daily-cloudcode-pa.googleapis.com/v1internal",
     "format": "gemini-cli",
     "headers": {
-      "User-Agent": "antigravity/hub/2.24.0 darwin/arm64"
+      "User-Agent": "antigravity/hub/2.33.0 darwin/arm64"
     }
   },
   "oauth": {
@@ -41,7 +41,7 @@
       "quotaSummary": "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
     },
     "callHeaders": {
-      "User-Agent": "antigravity/hub/2.24.0 darwin/arm64",
+      "User-Agent": "antigravity/hub/2.33.0 darwin/arm64",
       "x-request-source": "local"
     },
     "refresh": {
@@ -50,6 +50,31 @@
     }
   },
   "models": [
+    {
+      "id": "gemini-4-hydrogen-xhigh",
+      "name": "Gemini 4 Hydrogen (XHigh)",
+      "upstreamId": "gemini-4-hydrogen-xhigh(xhigh)"
+    },
+    {
+      "id": "gemini-4-hydrogen-high",
+      "name": "Gemini 4 Hydrogen (High)",
+      "upstreamId": "gemini-4-hydrogen-high(high)"
+    },
+    {
+      "id": "gemini-4-hydrogen-medium",
+      "name": "Gemini 4 Hydrogen (Medium)",
+      "upstreamId": "gemini-4-hydrogen-medium(medium)"
+    },
+    {
+      "id": "gemini-4-hydrogen-low",
+      "name": "Gemini 4 Hydrogen (Low)",
+      "upstreamId": "gemini-4-hydrogen-low(low)"
+    },
+    {
+      "id": "gemini-4-hydrogen",
+      "name": "Gemini 4 Hydrogen",
+      "upstreamId": "gemini-4-hydrogen-high(high)"
+    },
     {
       "id": "gemini-4-carbon-high",
       "name": "Gemini 4 Carbon (High)",
@@ -68,7 +93,7 @@
     {
       "id": "gemini-4-carbon",
       "name": "Gemini 4 Carbon",
-      "upstreamId": "gemini-4-carbon-medium(medium)"
+      "upstreamId": "gemini-4-carbon-high(high)"
     },
     {
       "id": "gemini-4-argon-high",
@@ -84,6 +109,36 @@
       "id": "gemini-4-argon-low",
       "name": "Gemini 4 Argon (Low)",
       "upstreamId": "gemini-4-argon-low(low)"
+    },
+    {
+      "id": "gemini-4-argon",
+      "name": "Gemini 4 Argon",
+      "upstreamId": "gemini-4-argon-high(high)"
+    },
+    {
+      "id": "gemini-4-neon-xhigh",
+      "name": "Gemini 4 Neon (XHigh)",
+      "upstreamId": "gemini-4-neon-xhigh(xhigh)"
+    },
+    {
+      "id": "gemini-4-neon-high",
+      "name": "Gemini 4 Neon (High)",
+      "upstreamId": "gemini-4-neon-high(high)"
+    },
+    {
+      "id": "gemini-4-neon-medium",
+      "name": "Gemini 4 Neon (Medium)",
+      "upstreamId": "gemini-4-neon-medium(medium)"
+    },
+    {
+      "id": "gemini-4-neon-low",
+      "name": "Gemini 4 Neon (Low)",
+      "upstreamId": "gemini-4-neon-low(low)"
+    },
+    {
+      "id": "gemini-4-neon",
+      "name": "Gemini 4 Neon",
+      "upstreamId": "gemini-4-neon-high(high)"
     },
     {
       "id": "gemini-3.8-flash-high",
@@ -151,6 +206,11 @@
       "upstreamId": "gemini-3.1-pro-low(low)"
     },
     {
+      "id": "claude-sonnet-5-5-max",
+      "name": "Claude Sonnet 5.5 (Max)",
+      "upstreamId": "claude-sonnet-5-5-max(max)"
+    },
+    {
       "id": "claude-sonnet-5-5-high",
       "name": "Claude Sonnet 5.5 (High)",
       "upstreamId": "claude-sonnet-5-5-high(high)"
@@ -168,7 +228,12 @@
     {
       "id": "claude-sonnet-5-5",
       "name": "Claude Sonnet 5.5 (Thinking)",
-      "upstreamId": "claude-sonnet-5-5-high(high)"
+      "upstreamId": "claude-sonnet-5-5-medium(medium)"
+    },
+    {
+      "id": "claude-opus-5-5-max",
+      "name": "Claude Opus 5.5 (Max)",
+      "upstreamId": "claude-opus-5-5-max(max)"
     },
     {
       "id": "claude-opus-5-5-high",
@@ -188,7 +253,7 @@
     {
       "id": "claude-opus-5-5",
       "name": "Claude Opus 5.5 (Thinking)",
-      "upstreamId": "claude-opus-5-5-high(high)"
+      "upstreamId": "claude-opus-5-5-medium(medium)"
     },
     {
       "id": "claude-sonnet-4-6",

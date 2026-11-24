@@ -7,6 +7,9 @@ import (
 func init() {
 	config := facades.Config()
 	config.Add("auth", map[string]any{
+		// The username the administrator signs in with. Any other name is a
+		// standard user, so no account may take this one.
+		"admin_username": config.Env("AUTH_ADMIN_USERNAME", "admin"),
 		// The dashboard password accepted while no hash is stored. Empty means
 		// the built-in default; a remote login on a public default is refused
 		// until the password is changed.
@@ -28,5 +31,7 @@ func init() {
 		"sso_admin": config.Env("AUTH_SSO_ADMIN", ""),
 		// The most standard users the list may hold, provisioned or created.
 		"max_users": config.Env("AUTH_MAX_USERS", 200),
+		// How long a dashboard session lasts before the next sign-in.
+		"session_ttl": config.Env("AUTH_SESSION_TTL", "24h"),
 	})
 }

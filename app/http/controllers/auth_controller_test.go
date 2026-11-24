@@ -145,7 +145,7 @@ func TestTheAuthRoutesAreClassified(t *testing.T) {
 
 func TestLoginAcceptsTheInitialPasswordLocally(t *testing.T) {
 	r := newAuthRig(t)
-	rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"password":"123456"}`, nil)
+	rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"admin","password":"123456"}`, nil)
 	if rec.Code != nethttp.StatusOK || !strings.Contains(rec.Body.String(), `"success":true`) {
 		t.Fatalf("%d %s", rec.Code, rec.Body.String())
 	}
@@ -155,9 +155,35 @@ func TestLoginAcceptsTheInitialPasswordLocally(t *testing.T) {
 	}
 }
 
+func TestTheAdminNameIsRequiredAndAnswersEitherCase(t *testing.T) {
+	r := newAuthRig(t)
+	if rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"password":"123456"}`, nil); rec.Code != nethttp.StatusBadRequest {
+		t.Fatalf("no username answered %d, want 400", rec.Code)
+	}
+	if rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"username":" Admin ","password":"123456"}`, nil); rec.Code != nethttp.StatusOK {
+		t.Fatalf("the admin name in another case answered %d", rec.Code)
+	}
+}
+
+func TestTheConfiguredAdminNameIsTheOneThatSignsIn(t *testing.T) {
+	r := newAuthRig(t)
+	r.auth.AdminName = "Operator"
+	if rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"admin","password":"123456"}`, nil); rec.Code != nethttp.StatusUnauthorized {
+		t.Fatalf("the built-in name still signed in: %d", rec.Code)
+	}
+	rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"Operator","password":"123456"}`, nil)
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("the configured name answered %d", rec.Code)
+	}
+	status := r.call(nethttp.MethodGet, "/api/auth/status", "", cookieHeader(rec))
+	if !strings.Contains(status.Body.String(), `"user":"Operator"`) {
+		t.Fatalf("status %q does not name the admin", status.Body.String())
+	}
+}
+
 func TestARemoteLoginOnAPublicDefaultGetsNoSession(t *testing.T) {
 	r := newAuthRig(t)
-	rec := r.callAs(nethttp.MethodPost, "/api/auth/login", `{"password":"123456"}`, nil, remotePeer, remoteHost)
+	rec := r.callAs(nethttp.MethodPost, "/api/auth/login", `{"username":"admin","password":"123456"}`, nil, remotePeer, remoteHost)
 	if rec.Code != nethttp.StatusForbidden || !strings.Contains(rec.Body.String(), `"mustChangePassword":true`) {
 		t.Fatalf("%d %s", rec.Code, rec.Body.String())
 	}
@@ -169,15 +195,15 @@ func TestARemoteLoginOnAPublicDefaultGetsNoSession(t *testing.T) {
 func TestFiveWrongPasswordsLockTheAddressAndACorrectOneWaitsToo(t *testing.T) {
 	r := newAuthRig(t)
 	for i := 1; i < auth.FreeAttempts; i++ {
-		if rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"password":"wrong"}`, nil); rec.Code != nethttp.StatusUnauthorized {
+		if rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"admin","password":"wrong"}`, nil); rec.Code != nethttp.StatusUnauthorized {
 			t.Fatalf("attempt %d = %d", i, rec.Code)
 		}
 	}
-	rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"password":"wrong"}`, nil)
+	rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"admin","password":"wrong"}`, nil)
 	if rec.Code != nethttp.StatusTooManyRequests || rec.Header().Get("Retry-After") == "" {
 		t.Fatalf("the fifth wrong password: %d retry=%q", rec.Code, rec.Header().Get("Retry-After"))
 	}
-	if rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"password":"123456"}`, nil); rec.Code != nethttp.StatusTooManyRequests {
+	if rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"admin","password":"123456"}`, nil); rec.Code != nethttp.StatusTooManyRequests {
 		t.Fatalf("a correct password got through a lock: %d", rec.Code)
 	}
 }
@@ -185,13 +211,13 @@ func TestFiveWrongPasswordsLockTheAddressAndACorrectOneWaitsToo(t *testing.T) {
 func TestASuccessClearsTheFailureCount(t *testing.T) {
 	r := newAuthRig(t)
 	for range auth.FreeAttempts - 1 {
-		r.call(nethttp.MethodPost, "/api/auth/login", `{"password":"wrong"}`, nil)
+		r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"admin","password":"wrong"}`, nil)
 	}
-	if rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"password":"123456"}`, nil); rec.Code != nethttp.StatusOK {
+	if rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"admin","password":"123456"}`, nil); rec.Code != nethttp.StatusOK {
 		t.Fatalf("a correct password before the lock: %d", rec.Code)
 	}
 	for i := 1; i < auth.FreeAttempts; i++ {
-		if rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"password":"wrong"}`, nil); rec.Code != nethttp.StatusUnauthorized {
+		if rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"admin","password":"wrong"}`, nil); rec.Code != nethttp.StatusUnauthorized {
 			t.Fatalf("attempt %d after a success = %d: the history was not cleared", i, rec.Code)
 		}
 	}
@@ -199,7 +225,7 @@ func TestASuccessClearsTheFailureCount(t *testing.T) {
 
 func TestTheSessionWorksAndLogoutEverywhereEndsIt(t *testing.T) {
 	r := newAuthRig(t)
-	hdr := cookieHeader(r.call(nethttp.MethodPost, "/api/auth/login", `{"password":"123456"}`, nil))
+	hdr := cookieHeader(r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"admin","password":"123456"}`, nil))
 	if hdr == nil {
 		t.Fatal("no session cookie")
 	}
@@ -217,8 +243,8 @@ func TestTheSessionWorksAndLogoutEverywhereEndsIt(t *testing.T) {
 
 func TestLogoutWithoutAFlagLeavesOtherSessionsAlone(t *testing.T) {
 	r := newAuthRig(t)
-	hdr := cookieHeader(r.call(nethttp.MethodPost, "/api/auth/login", `{"password":"123456"}`, nil))
-	other := cookieHeader(r.call(nethttp.MethodPost, "/api/auth/login", `{"password":"123456"}`, nil))
+	hdr := cookieHeader(r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"admin","password":"123456"}`, nil))
+	other := cookieHeader(r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"admin","password":"123456"}`, nil))
 	r.call(nethttp.MethodPost, "/api/auth/logout", `{}`, hdr)
 	if rec := r.call(nethttp.MethodGet, "/api/auth/status", "", other); !strings.Contains(rec.Body.String(), `"authenticated":true`) {
 		t.Fatal("a plain logout ended another session")
@@ -227,7 +253,7 @@ func TestLogoutWithoutAFlagLeavesOtherSessionsAlone(t *testing.T) {
 
 func TestChangingThePasswordEndsEverySession(t *testing.T) {
 	r := newAuthRig(t)
-	old := cookieHeader(r.call(nethttp.MethodPost, "/api/auth/login", `{"password":"123456"}`, nil))
+	old := cookieHeader(r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"admin","password":"123456"}`, nil))
 	if rec := r.call(nethttp.MethodPost, "/api/auth/change-password",
 		`{"currentPassword":"123456","newPassword":"a-much-better-passphrase"}`, old); rec.Code != nethttp.StatusOK {
 		t.Fatalf("change %d %s", rec.Code, rec.Body.String())
@@ -235,14 +261,14 @@ func TestChangingThePasswordEndsEverySession(t *testing.T) {
 	if rec := r.call(nethttp.MethodGet, "/api/auth/status", "", old); !strings.Contains(rec.Body.String(), `"authenticated":false`) {
 		t.Fatalf("the old session survives a password change: %q", rec.Body.String())
 	}
-	if rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"password":"a-much-better-passphrase"}`, nil); rec.Code != nethttp.StatusOK {
+	if rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"admin","password":"a-much-better-passphrase"}`, nil); rec.Code != nethttp.StatusOK {
 		t.Fatalf("the new password was refused: %d", rec.Code)
 	}
 }
 
 func TestChangingThePasswordJudgesTheNewOne(t *testing.T) {
 	r := newAuthRig(t)
-	hdr := cookieHeader(r.call(nethttp.MethodPost, "/api/auth/login", `{"password":"123456"}`, nil))
+	hdr := cookieHeader(r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"admin","password":"123456"}`, nil))
 	for _, bad := range []string{"123456", "change-me", "short"} {
 		rec := r.call(nethttp.MethodPost, "/api/auth/change-password",
 			`{"currentPassword":"123456","newPassword":"`+bad+`"}`, hdr)
@@ -254,7 +280,7 @@ func TestChangingThePasswordJudgesTheNewOne(t *testing.T) {
 
 func TestChangingThePasswordNeedsTheCurrentOne(t *testing.T) {
 	r := newAuthRig(t)
-	hdr := cookieHeader(r.call(nethttp.MethodPost, "/api/auth/login", `{"password":"123456"}`, nil))
+	hdr := cookieHeader(r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"admin","password":"123456"}`, nil))
 	rec := r.call(nethttp.MethodPost, "/api/auth/change-password",
 		`{"currentPassword":"wrong","newPassword":"a-much-better-passphrase"}`, hdr)
 	if rec.Code != nethttp.StatusUnauthorized {
@@ -311,7 +337,7 @@ func TestACrossSitePasswordChangeIsRefusedBeforeTheRoute(t *testing.T) {
 
 func TestTheLoginRouteNeedsNoKeyAndLeaksNoPassword(t *testing.T) {
 	r := newAuthRig(t)
-	rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"password":"wrong"}`, nil)
+	rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"admin","password":"wrong"}`, nil)
 	if strings.Contains(rec.Body.String(), "wrong") || strings.Contains(rec.Body.String(), "123456") {
 		t.Fatalf("the answer repeats a password: %q", rec.Body.String())
 	}
@@ -379,7 +405,7 @@ func TestAUserChangesTheirOwnPasswordAndOnlyTheirSessionsEnd(t *testing.T) {
 		t.Fatalf("the new session does not work: %s", status.Body.String())
 	}
 	// The admin password is untouched.
-	if rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"password":"123456"}`, nil); rec.Code != nethttp.StatusOK {
+	if rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"admin","password":"123456"}`, nil); rec.Code != nethttp.StatusOK {
 		t.Fatalf("the admin login broke: %d", rec.Code)
 	}
 	if rec := r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"dimas","password":"user-pass-1"}`, nil); rec.Code != nethttp.StatusUnauthorized {
@@ -389,7 +415,7 @@ func TestAUserChangesTheirOwnPasswordAndOnlyTheirSessionsEnd(t *testing.T) {
 
 func TestTheAdminStatusNamesTheAdminRole(t *testing.T) {
 	r := newAuthRig(t)
-	hdr := cookieHeader(r.call(nethttp.MethodPost, "/api/auth/login", `{"password":"123456"}`, nil))
+	hdr := cookieHeader(r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"admin","password":"123456"}`, nil))
 	status := r.call(nethttp.MethodGet, "/api/auth/status", "", hdr)
 	if !strings.Contains(status.Body.String(), `"role":"admin"`) {
 		t.Fatalf("status %q", status.Body.String())
@@ -450,7 +476,7 @@ func TestAProvisionedUserSetsTheFirstPasswordWithoutTheCurrentOne(t *testing.T) 
 
 func TestAStandardUsersLogoutEverywhereLeavesTheAdminSignedIn(t *testing.T) {
 	r := newAuthRig(t)
-	admin := cookieHeader(r.call(nethttp.MethodPost, "/api/auth/login", `{"password":"123456"}`, nil))
+	admin := cookieHeader(r.call(nethttp.MethodPost, "/api/auth/login", `{"username":"admin","password":"123456"}`, nil))
 	if admin == nil {
 		t.Fatal("no admin cookie")
 	}

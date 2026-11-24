@@ -1,13 +1,19 @@
 package aws
 
 import (
+	"bytes"
+	"cmp"
 	"context"
+	"net/http"
 	"regexp"
 	"slices"
 	"strings"
 
+	"github.com/tidwall/gjson"
+
 	"rllmx/app/llm/executor"
 	"rllmx/app/llm/upstream"
+	"rllmx/app/platform/settings"
 	"rllmx/app/store/dialect"
 )
 
@@ -32,6 +38,9 @@ var kiroRegion = regexp.MustCompile(`([a-z]+)\.[a-z0-9-]+\.amazonaws\.com`)
 // credential is not served here.
 type Kiro struct {
 	Default *executor.Default
+	// CreateResponse is when the Responses transport is used; the zero value is
+	// the default, auto.
+	CreateResponse settings.KiroCreateResponse
 }
 
 // Execute sends one call.
@@ -43,6 +52,10 @@ func (k *Kiro) Execute(ctx context.Context, req executor.Request) (executor.Resp
 	profile := ""
 	if req.Account != nil {
 		profile = strings.TrimSpace(req.Account("profileArn"))
+	}
+	mode, conversation := k.mode(req), gjson.GetBytes(req.Body, "conversationState").Exists()
+	if mode == settings.KiroAlways && conversation {
+		return k.createResponse(ctx, req, auth, profile)
 	}
 	hosts := kiroHosts(req.Entry, auth.method, kiroRegionOf(req))
 	var resp executor.Response
@@ -59,17 +72,60 @@ func (k *Kiro) Execute(ctx context.Context, req executor.Request) (executor.Resp
 		// credential, so its answer says nothing about the next one.
 		executor.Drain(resp.Body)
 	}
+	if err == nil && resp.Status == http.StatusTooManyRequests && conversation && mode == settings.KiroAuto {
+		raw := executor.FailedBody(resp)
+		if bytes.Contains(raw, []byte(rateExceeded)) {
+			return k.createResponse(ctx, req, auth, profile)
+		}
+		resp = executor.ReplyWith(resp, resp.Status, raw, "")
+	}
 	if err != nil || resp.Status < 200 || resp.Status > 299 || !req.Stream {
 		return resp, err
 	}
 	return k.inspect(ctx, req, resp, auth, profile)
 }
 
+// mode is when the Responses transport applies to this request: the
+// deployment's setting, unless the account turned it off.
+func (k *Kiro) mode(req executor.Request) settings.KiroCreateResponse {
+	if req.Account != nil && strings.EqualFold(strings.TrimSpace(req.Account("kiroCreateResponse")), "off") {
+		return settings.KiroOff
+	}
+	return cmp.Or(k.CreateResponse, settings.KiroAuto)
+}
+
+// createResponse sends the conversation to the Responses transport and hands the
+// answer back in the events the Kiro codec reads. That transport admits one
+// request at a time, so a rate-limit answer is waited out once. Its stream is
+// relayed as it comes: there is no gate and no repair re-ask here.
+func (k *Kiro) createResponse(ctx context.Context, req executor.Request, auth kiroAuth, profile string) (executor.Response, error) {
+	req.URL = createResponseURL(kiroRegionOf(req))
+	req.Body = buildCreateResponse(req.Body, req.Model, profile)
+	req.Stream, req.NoRedirect = true, true
+	req.Auth = &upstream.Auth{Headers: createResponseHeaders(auth, profile)}
+	resp, err := k.Default.Execute(ctx, req)
+	if err == nil && resp.Status == http.StatusTooManyRequests {
+		executor.Drain(resp.Body)
+		if werr := executor.Wait(ctx, createResponseWait, k.Default.Sleep); werr != nil {
+			return executor.Response{}, werr
+		}
+		resp, err = k.Default.Execute(ctx, req)
+	}
+	if err != nil || resp.Status < 200 || resp.Status > 299 {
+		return resp, err
+	}
+	resp.Body = adaptResponses(resp.Body)
+	resp.Header = executor.StreamHeader(resp.Header)
+	resp.Header.Del("Content-Length")
+	resp.Header.Del("Content-Encoding")
+	return resp, nil
+}
+
 // send makes one call on one host.
 func (k *Kiro) send(ctx context.Context, req executor.Request, host string, auth kiroAuth, profile string) (executor.Response, error) {
 	req.URL = host + kiroPath
 	req.NoRedirect = true
-	req.Auth = &upstream.Auth{Headers: kiroHeaders(host, auth, profile)}
+	req.Auth = &upstream.Auth{Headers: kiroHeaders(host, auth, profile, kiroSeed(req, auth))}
 	return k.Default.Execute(ctx, req)
 }
 
@@ -210,10 +266,29 @@ func kiroRegional(u, region string) string {
 	return kiroRegion.ReplaceAllString(u, "${1}."+region+".amazonaws.com")
 }
 
+// kiroSeed is what tells this account apart from another, read the way the
+// identity wants it: its sign-in client, then its refresh token.
+func kiroSeed(req executor.Request, auth kiroAuth) upstream.KiroSeed {
+	field := func(name string) string {
+		if req.Account == nil {
+			return ""
+		}
+		return strings.TrimSpace(req.Account(name))
+	}
+	seed := upstream.KiroSeed{ClientID: field("clientId"), RefreshToken: field("refreshToken"), ProfileARN: field("profileArn")}
+	if auth.method == "api_key" {
+		seed.APIKey = auth.token
+	} else {
+		seed.AccessToken = auth.token
+	}
+	return seed
+}
+
 // kiroHeaders are the identity headers of the client the account belongs to. A
 // data file's own headers are merged underneath, so none of them is lost.
-func kiroHeaders(host string, auth kiroAuth, profile string) map[string]string {
-	h := map[string]string{
+func kiroHeaders(host string, auth kiroAuth, profile string, seed upstream.KiroSeed) map[string]string {
+	h := upstream.KiroIdentity(seed, upstream.KiroStreaming)
+	for name, v := range map[string]string{
 		"Accept":                          "application/vnd.amazon.eventstream",
 		"Amz-Sdk-Request":                 "attempt=1; max=3",
 		"Amz-Sdk-Invocation-Id":           dialect.NewID(),
@@ -221,6 +296,8 @@ func kiroHeaders(host string, auth kiroAuth, profile string) map[string]string {
 		"x-amzn-codewhisperer-machine-id": "kiro-desktop",
 		"Authorization":                   "Bearer " + auth.token,
 		"x-amz-sso-bearer":                auth.token,
+	} {
+		h[name] = v
 	}
 	if strings.Contains(host, "://codewhisperer.") {
 		h["X-Amz-Target"] = kiroTarget

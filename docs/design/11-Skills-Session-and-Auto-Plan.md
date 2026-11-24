@@ -18,7 +18,7 @@ Bounds: manifest 32 KiB, prompt 64 KiB, id `^[a-z0-9][a-z0-9_-]{0,63}$`, name 12
 
 `install_command`, `update_command`, `uninstall_command` and `hook.js` are read only to be reported as unsupported. Nothing in a skill folder is executed.
 
-The core prompts are the reference's own where it has a skill: caveman, ponytail, watermarks-remover, human-handwritten (our `prose-humanizer`) and commit-lint. Each built-in folder names its source, and an edit tracks it. `code-humanizer` has no reference counterpart and keeps this router's own text.
+The core prompts are the reference's own where it has a skill: caveman, ponytail, watermarks-remover, human-handwritten (our `prose-humanizer`), commit-lint, human-commit and taste-skill. Caveman and ponytail are the Token Saver's own prompts, so they carry no skill of their own (404 retired). Each built-in folder names its source, and an edit tracks it. `code-humanizer` has no reference counterpart and keeps this router's own text.
 
 ### Packages
 
@@ -41,19 +41,19 @@ The matched skills are stored on the usage row as ids only (`skills`), never the
 
 ### Catalog Sync (`skills:sync`, `/api/skills/sync`)
 
-Two entry points, both admin actions: `rllmx artisan skills:sync --source <folder|https-url> [--tag main] [--force]` and `POST /api/skills/sync`. The route accepts only an https source on the `skillSources` allowlist; a local folder is the command line's business. Never at start-up, from a client request or from a skill's content.
+Two entry points, both admin actions: `rllmx artisan skills:sync --source <folder|https-url> [--tag main] [--force]` and `POST /api/skills/sync`. A body that names no source takes the official catalog (`skill.ECCSource`, branch `skill.ECCBranch`), which the route always adds to the git allowlist; a source it does name must be https and on the `skillSources` allowlist. A local folder is the command line's business. Never at start-up, from a client request or from a skill's content.
 
 A remote source is cloned through `app/git`; when git is missing or refuses, the GitHub tarball is fetched over the guarded client. The clone is bounded at 60 s and 64 MiB, checked while it runs (divergence 403), is made beside the skills folder, and follows no redirect.
 
 A skill folder is read through a root, so a link out of it is refused (divergence 420), and a catalog skill never replaces another of the same id (divergence 423). One sync runs at a time; the route answers 503 when one is in flight.
 
-The sync reads only `SKILL.md` text: YAML frontmatter with `name` and `description`, then the body. It writes our own `manifest.json`, `prompt.md` and `_index.json` into `DATA_DIR/skills/ecc-imported/<id>/`. A destination whose manifest no longer says `source: ecc` belongs to the operator and is skipped unless `--force`. The source is operator-named; no catalog is bundled or hardcoded (divergence 402).
+The sync reads only `SKILL.md` text: YAML frontmatter with `name` and `description`, then the body. It writes our own `manifest.json`, `prompt.md` and `_index.json` into `DATA_DIR/skills/ecc-imported/<id>/`. A destination whose manifest no longer says `source: ecc` belongs to the operator and is skipped unless `--force`. The CLI names its own source; the dashboard's button takes the official catalog, as the reference's does (D402).
 
 `db:import-config --skills-from <folder|https-url>` copies whole skill folders, manifest and prompt, into `DATA_DIR/skills/`. It skips an invalid folder with a warning and reports the ignored files.
 
 ### Config Fields
 
-A manifest may declare `config_schema` fields: `key`, `type` (`enum`, `text`, `number`, `slider`, `toggle`), `label`, `default`, `legacy_key`, `min`, `max` and `options`. The value lives in the settings row under `legacy_key`, else `<id>_<key>`.
+A manifest may declare `config_schema` fields: `key`, `type` (`enum`, `text`, `number`, `slider`, `toggle`), `label`, `default`, `legacy_key`, `min`, `max`, `step` and `options`. The value lives in the settings row under `legacy_key`, else `<id>_<key>`. A slider's `step` is bounded by its range and the dashboard shows the value and both ends.
 
 The default key carries the id, so two skills naming a field `level` do not share a value. `PATCH /api/settings` validates each value against its field: an enum option, a number within its range, a switch, or up to 256 printable bytes of text.
 
@@ -88,13 +88,13 @@ Headers are merged over the operator's overrides at send time and filtered again
 
 `GET /api/skills/{id}`, `POST /api/skills`, `PUT` and `DELETE /api/skills/{id}` create, read, edit and remove a custom skill. Writes are serialised. Only a folder whose manifest says `source: custom` may be rewritten or deleted; the embedded core set and the catalog's imports are read-only. A generated body that names `hook_script`, an install command or `source` is refused with 400.
 
-The id must match the manifest's alphabet, must not be the catalog folder or an embedded id, and the target must be a real directory, never a symlink. An update removes a `prompt.txt` or `rules.json` the new body drops, so no stale file keeps running (divergence 411).
+The id is derived from the name: lower case, letters and digits kept, a space or a dash between words, every other symbol dropped, and a numeric suffix when the result is taken by the embedded set, the catalog folder or a folder already there. The dashboard's form asks for the name alone. An explicit id from another client is still checked: it must match the manifest's alphabet, must not be the catalog folder or an embedded id, and the target must be a real directory, never a symlink. An update removes a `prompt.txt` or `rules.json` the new body drops, so no stale file keeps running (divergence 411).
 
 ### Dashboard
 
 `GET /api/skills` lists every installed skill with its effective switch, mode and unsupported files, plus the folders that were skipped. It never returns prompt text.
 
-`/dashboard/skills` lists them with the switch, the routing mode and one control per `config_schema` field, and marks a folder this build cannot rewrite. The Studio dialog loads `GET /api/skills/{id}`, writes a prompt for a `system-prompt` skill or rule rows for the two request hooks, and never sends a script or an install command. The catalog sync is its own card, and the auto-plan card writes the eight `autoPlan*` keys with the plan reader's own bounds.
+`/dashboard/skills` groups the installed skills (prompt skills, hook rules, imported catalog, the operator's own), each with its switch, the routing mode and one control per `config_schema` field, and marks a folder this build cannot rewrite. A switch in the list header turns every skill off at once (D433): it stops the local and catalog routers and the rule hooks, and the response-cache key is empty while it is off. The Studio dialog loads `GET /api/skills/{id}`, writes a prompt for a `system-prompt` skill or rule rows for the two request hooks, and never sends a script or an install command. The catalog sync card is one button plus the replace switch, and says how many skills it counted. The auto-plan card keeps its switch in the header and writes the eight `autoPlan*` keys with the plan reader's own bounds.
 
 ### Session Id (`app/gateway/conversation/`, built)
 
@@ -185,7 +185,8 @@ An error at any step fails open. Bypass: `x-9router-auto-plan: off`. The outcome
 | Auto Plan-Then-Code | `src/lib/autoPlanRouter.js` | `app/gateway/plan` | done (3.4) |
 | Setup wizard | `src/app/setup/page.js` | `web` | todo |
 | Proxy-pool fitness | `open-sse/services/proxyPoolFitness.js`, `proxyPoolFitnessRepo.js` | none | out (no proxies) |
-| Hermes plugin (memory injection, process manager) | `src/lib/plugins/hermes/*` | none | out |
+| Hermes Agent memory (MEMORY.md and USER.md injected by the `hermes-toolkit` skill, `HERMES_HOME`, bypass header `x-9router-hermes-memory`) | `src/lib/plugins/hermes/memory.js` | `app/gateway/hermes`, `app/gateway/skill` | done (read and inject; auto-save by LLM extraction is not built) |
+| Hermes process manager, installer and Telegram bridge | `src/lib/plugins/hermes/{process,install,telegram}.js` | none | out |
 | Native autostart | `src/lib/autostart.js` | none | out |
 | Self-updater, update check | `src/lib/updater`, `updateCheck.js` | none | out |
 | Headroom auto-setup, watchdog | `src/lib/headroom/*` | none | out |
@@ -219,7 +220,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 401 | A skill's switch and mode live in the settings row (`<id>Enabled`, `<id>RoutingMode`); the manifest only supplies the default | A dashboard toggle never rewrites an imported folder, so `skills:sync` keeps a clean diff and `--force` stays meaningful |
 | 402 | The catalog sync takes an operator-named, allowlisted source; nothing is bundled or hardcoded | The reference pins an outside repository in a script; ours cannot fetch a catalog the operator did not name |
 | 403 | The clone and the tarball are bounded at 64 MiB, checked while the clone runs and cut off | A repository cannot fill the data directory before an admin notices |
-| 404 | The embedded style skills use the ids `caveman-style` and `ponytail-style` | The saver already owns `cavemanEnabled` and `ponytailEnabled`; separate ids keep the two switches from turning each other on |
+| 404 | **Retired.** The duplicate `caveman-style` and `ponytail-style` skills are gone: the Token Saver owns both prompts, so a skill of the same text would only give a second switch for one behavior | The saver's own switch is the only one an operator has to think about |
 | 405 | The Studio writes only a folder whose manifest says `source: custom`; the id is checked server-side and a symlink is refused | The reference passes an unvalidated id into `path.join` and `fs.rm -r`, so `../..` deletes and writes outside the skills folder |
 | 406 | A config value's default settings key is `<id>_<key>`, with `legacy_key` honored | The reference stores a bare `key`, so two skills declaring `level` read and write one value |
 | 407 | A rule may match only a header the pipeline already keeps in a request | The reference's hook context is undocumented; ours cannot read a header the pipeline itself dropped |
@@ -239,6 +240,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 422 | A skill is recorded in the conversation when the turn is answered, not when its body is built | A failed turn that the client retries would otherwise get a reminder for a prompt no model read |
 | 423 | The catalog folder fills only ids nothing else holds | The reference lets a later folder replace an earlier one by listing order, so an import could replace a skill the operator wrote |
 | 424 | Every internal call (the plan, its question and the smart router's) carries every bypass switch and no session id | A call this router makes for itself must not run a skill, a saver or a rule, or mark the conversation |
+| 433 | One switch turns every skill off: it stops the local and catalog routers and the rule hooks, and leaves the response-cache key empty | An operator needs one emergency switch; per-skill toggles would mean hunting each row while a prompt runs |
 
 ---
 

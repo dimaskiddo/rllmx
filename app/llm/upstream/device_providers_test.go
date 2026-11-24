@@ -45,7 +45,7 @@ func TestTheDeviceLoginsOf110dDeclareWhatTheyNeed(t *testing.T) {
 
 func TestTheNewProvidersListTheirModelsAndFormats(t *testing.T) {
 	reg, _ := Default()
-	want := map[string]int{"kimi": 10, "muse": 5, "nous": 8, "kilocode": 8}
+	want := map[string]int{"kimi": 12, "muse": 5, "nous": 8, "kilocode": 8}
 	for id, n := range want {
 		e, ok := reg.ByID(id)
 		if !ok || len(e.Models) != n {
@@ -267,7 +267,7 @@ func TestTheGoogleFilesDeclareWhatTheyNeed(t *testing.T) {
 		login            bool
 	}{
 		"gemini-cli":     {ExecutorGeminiCLI, FormatCloudCode, 7, true},
-		"antigravity":    {ExecutorAntigravity, FormatCloudCode, 32, true},
+		"antigravity":    {ExecutorAntigravity, FormatCloudCode, 45, true},
 		"vertex":         {ExecutorVertex, FormatVertex, 9, false},
 		"vertex-partner": {ExecutorVertexPartner, FormatOpenAI, 4, false},
 	} {

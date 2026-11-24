@@ -194,6 +194,22 @@ func QuotaHeaders(requests, tokens, cost float64, reset time.Duration) http.Head
 	return h
 }
 
+// RateLimitHeaders are the unified rate-limit headers a Claude client reads to
+// decide whether to keep going: the status, and the moment the window resets as
+// Unix seconds. A zero reset, an all-time budget, names none.
+func RateLimitHeaders(spent bool, resetsAt time.Time) http.Header {
+	h := http.Header{}
+	status := "allowed"
+	if spent {
+		status = "rejected"
+	}
+	h.Set("Anthropic-Ratelimit-Unified-Status", status)
+	if !resetsAt.IsZero() {
+		h.Set("Anthropic-Ratelimit-Unified-Reset", strconv.FormatInt(resetsAt.Unix(), 10))
+	}
+	return h
+}
+
 // render turns one entry into the format's envelope.
 func render(f Format, status int, msg string, e entry) []byte {
 	m := message(f, status, msg, e)

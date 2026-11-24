@@ -40,7 +40,7 @@ export const modelMethods = {
       const custom = await api("/api/models/custom");
       const mine = (custom.models || []).filter((m) => m.providerAlias === this.owner());
       if (!this.entry) {
-        this.models.items = mine.map((m) => ({ id: m.id, name: m.name || "", source: "custom", type: m.type }));
+        this.models.items = mine.map((m) => ({ id: m.id, name: m.name || "", source: "custom", type: m.type, full: m.providerAlias + "/" + m.id, caps: m.caps || null }));
         this.models.disabled = [];
         return;
       }
@@ -83,6 +83,12 @@ export const modelMethods = {
       delete next[target];
     }
     this.models.byTarget = next;
+  },
+
+  // aliasOrFull is what a client types to reach the model: its alias when it
+  // has one, else provider/model.
+  aliasOrFull(model) {
+    return this.aliasFor(model.id) || this.modelFull(model.id);
   },
 
   aliasFor(id) {

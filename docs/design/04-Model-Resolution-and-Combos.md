@@ -2,7 +2,7 @@
 
 **Status:** partial
 
-Built: `app/llm/routing` (the resolver, the 5 s snapshot and the suffix grammar below) and `app/gateway/combo` (policy, order, rotation, sticky choice), called by `app/gateway/pipeline`. Built: the connection, node and override routes in the Parity table below. `app/gateway` also holds the pipeline, the catalog, the conversation store, prefetch and account selection; the per-capacity pool is out (D337); four provider routes remain open, named in the Parity table.
+Built: `app/llm/routing` (the resolver, the 5 s snapshot and the suffix grammar below) and `app/gateway/combo` (policy, order, rotation, sticky choice), called by `app/gateway/pipeline`. Built: the connection, node and override routes in the Parity table below. `app/gateway` also holds the pipeline, the catalog, the conversation store, prefetch and account selection; the capacity adapter is built (D337 retired); four provider routes remain open, named in the Parity table.
 
 ### Resolution (`Resolver.Resolve`, built)
 
@@ -63,7 +63,7 @@ sequenceDiagram
     C-->>P: 503 with retryAfter when all failed
 ```
 
-- Members are reordered so capable models come first when the request needs vision, pdf, audio or video, in three tiers: members meeting every need, members meeting the hard needs, then the rest. The declared order holds inside a tier, and the order a strategy produces is the order the loop tries. The **capacity adapter** pool is not built: a request never gains a model the operator did not name in the combo (`D337`).
+- Members are reordered so capable models come first when the request needs vision, pdf, audio or video, in three tiers: members meeting every need, members meeting the hard needs, then the rest. The declared order holds inside a tier, and the order a strategy produces is the order the loop tries. The **capacity adapter** pool is prepended when no declared member meets the need (`combo.AdaptersFor`, `call.adapterOrder`; D337 retired): the pool's models that meet it go first, rotating when the pool asks, with a model the key may not use filtered out and the reference default used for an enabled empty pool.
 - A member may name another combo. `Expand` follows it in place with a visited set and a depth limit of 3, so a cycle is `ErrComboCycle` and a deeper chain `ErrComboDepth`, both a 400 before any account is tried (`D336`). A member that does not resolve is skipped; a combo with nothing reachable is `ErrComboEmpty`, also a 400.
 - Any failure of a member moves the walk to the next one, and a request-scoped 4xx never locks an account. A 502, 503 or 504 with a cooldown of at most 5 s is waited out; a longer one ends the search with that answer (`D388`).
 - An empty answer (zero content, or an SSE stream that opened and produced nothing) counts as a failure for every member but the last, where it is returned as it stands. A stream that opened to the client is never retried.
@@ -80,7 +80,7 @@ sequenceDiagram
 | Endpoint | Package | Status |
 |---|---|---|
 | `/api/providers` (list, create), `/api/providers/{id}` (get, update, delete) | `app/http/controllers` | done |
-| `/api/providers/{id}/overrides` | `app/http/controllers` | done (; D147; `builtinHeaders` empty until) |
+| `/api/providers/{id}/overrides` | `app/http/controllers` | done (D147; `builtinHeaders` is the provider's own set, merged in send order and stripped of the computed beta list, the internal keys and the credentials; the identity defaults are rewritten to the live claude-cli version) |
 | `GET /v1/models`, `/v1/models/info`, `/v1/models/{id}`, `GET /v1beta/models` | `app/gateway/catalog`, `app/http/controllers` | done (`/v1/models` also carries `thinking_levels` for a reasoning model) |
 | `GET /api/tags` (Ollama's model list) | `app/gateway/catalog`, `app/http/controllers` | done (the caller's own catalog, so a restricted key sees its allow list) |
 | `/api/providers/{id}/test`, `/api/providers/validate` | `app/http/controllers` | partial, open: cookie-media probes (API-key, node and registry probes built; an OAuth account of a provider with a login is checked without a call to the provider (renew when due, then look for a held token); AWS, cookie, special probes and pasted tokens answer "test not supported yet" (D95-99, D215)) |
@@ -103,7 +103,7 @@ sequenceDiagram
 ---
 
 ## Remaining work
-**Routing, the combos and their management routes are built, the capability overlay included. The per-capability capacity pool is out (D337).**
+**Routing, the combos and their management routes are built, the capability overlay and the capacity adapter included.**
 
 - [x] `app/llm/routing`: model string to combo, alias, node or provider; `Resolver`, `Snapshot`, `Reserved` for node prefixes
 - [x] Registry loader and seed data for nine providers; the other ids arrive with their executor (`design doc 8`)
@@ -111,7 +111,7 @@ sequenceDiagram
 - [x] `passthroughModels` on the 23 providers the reference marks (CommandCode, the opencode family, kimchi, bedrock, zed, openrouter and the rest): the flag raises a provider's model listing; an id its list does not name already reached the executor, so chat behaviour is unchanged
 - [x] Combo expansion, sticky round-robin, per-combo strategies
 - [x] Empty-stream failover and the request-scoped 4xx combo advance
-- [x] Capacity adapter: the per-capability pool is out (D337)
+- [x] Capacity adapter: the per-capability fallback pool, prepended when no declared member meets the need (D337 retired)
 - [x] Provider-connection, provider-node and override routes
 - [x] The `Checker` and its four routes (`/test`, `/validate`, node `/validate`, `/models`)
 - [x] `/api/combos*` — CRUD, presets and the suggestion routes (`design doc 4`, D356, D358)
@@ -136,7 +136,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 213 | An update takes a fixed field list only: a client cannot set `testStatus`, `lastError*`, `errorCode`, `backoffLevel`, a lock, a token or a node connection's copied fields. Only the server writes health, and the `Checker` records test outcomes. Toggling `isActive` does not clear a cooldown | A dashboard form cannot hide a real cooldown or poison an account (improvement) |
 | 335 | A combo request writes **one** usage row, naming the combo in `comboName` and the member that answered in `provider`/`model`/`connectionId`; the reference writes a row per member tried. **Built** | This router's analytics, quota and D306 all assume one row per request; a member's spend is visible through the row that answered |
 | 336 | A combo member may name another combo, expanded with a visited set and a depth limit of 3; the reference nests with no guard. **Built** | A cycle is a 400 at the combo, never a stack overflow |
-| 337 | The capacity adapter's per-capability pool is not built; ordering only reorders the members the operator named. **Built** | A request never gains a model the combo did not name |
+| 337 | **Retired.** The capacity adapter's per-capability pool is built (`settings.capacityAdapter`): a pool model is tried in front only when none of the declared ones can read the turn, and a request never gains a model the operator did not name outright | The pool is the operator's, and the declared order stays behind it |
 | 350 | `/api/tags` is Ollama's list shape over the caller's real catalog, on the client class with an API key; a digest is the SHA-256 of the id and the family is the provider **(built)** | The reference answers a fixed fake list behind the dashboard, where no Ollama client can reach it |
 | 352 | The alias map is written in one direction, alias to target, and an alias another model holds is a 409. Both routes that write it share one rule **(built)** | The reference's `/api/models` PUT stores model to alias while `/api/models/alias` stores alias to model, so its two routes disagree; it also lets a second model take an alias silently |
 | 353 | `GET /api/models` lists the registry with custom models in and disabled out, and answers the alias that points at each model. Node models stay on `/api/providers/{id}/models` **(built)** | The reference reads its alias map backwards, so the `alias` field is nearly always the bare id, and a list route there mixes in rows the catalog does not resolve |

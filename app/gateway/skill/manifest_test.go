@@ -227,9 +227,33 @@ func TestManifestModeAndThreshold(t *testing.T) {
 	}
 }
 
+// A slider's step is bounded by its range; a bad one is refused with the field's
+// key named.
+func TestASliderStepIsChecked(t *testing.T) {
+	min, max := 1.0, 10.0
+	zero, tooBig, fine := 0.0, 11.0, 2.0
+	for name, c := range map[string]struct {
+		step *float64
+		bad  bool
+	}{
+		"fits":    {&fine, false},
+		"zero":    {&zero, true},
+		"too big": {&tooBig, true},
+		"none":    {nil, false},
+	} {
+		problems := checkFields([]Field{{Key: "level", Type: "slider", Min: &min, Max: &max, Step: c.step}})
+		if (len(problems) > 0) != c.bad {
+			t.Errorf("%s: %v", name, problems)
+		}
+	}
+	if problems := checkFields([]Field{{Key: "level", Type: "slider", Step: &fine}}); len(problems) == 0 {
+		t.Error("a step with no range was accepted")
+	}
+}
+
 func TestTheEmbeddedCoreSkillsLoad(t *testing.T) {
 	r := NewRegistry("", Builtin())
-	want := []string{"caveman-style", "code-humanizer", "commit-lint", "ponytail-style", "prose-humanizer", "watermarks-remover"}
+	want := []string{"code-humanizer", "commit-lint", "hermes-toolkit", "human-commit", "prose-humanizer", "taste-skill", "watermarks-remover"}
 	list := r.List()
 	if len(list) != len(want) {
 		t.Fatalf("list %+v", list)
@@ -240,6 +264,13 @@ func TestTheEmbeddedCoreSkillsLoad(t *testing.T) {
 		}
 		if m.Hook != "system-prompt" {
 			t.Errorf("%s hook %q", m.ID, m.Hook)
+		}
+		// The memory skill injects on every request and carries no routing terms.
+		if m.ID == "hermes-toolkit" {
+			if m.Mode() != "always" {
+				t.Errorf("%s mode %q", m.ID, m.Mode())
+			}
+			continue
 		}
 		if !m.Routable || (m.Mode() != "smart" && m.Mode() != "always") {
 			t.Errorf("%s is not routable", m.ID)

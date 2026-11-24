@@ -183,3 +183,18 @@ func TestNamesListsTheSaversThatActed(t *testing.T) {
 		t.Fatalf("an idle saver named %q", got)
 	}
 }
+
+func TestTheStatsNameTheLevelEachPromptRanAtAndTheCustomLength(t *testing.T) {
+	r := requestWith(translate.Message{Role: translate.RoleUser, Content: translate.TextPart("hello")})
+	st := Apply(context.Background(), nil, r, Options{
+		Caveman:  Prompt{Enabled: true, Level: "lite", Mode: "always"},
+		Ponytail: Prompt{Enabled: true, Level: "ultra", Mode: "always"},
+		Custom:   Custom{Enabled: true, Text: "  be brief  "},
+	})
+	if got := strings.Join(st.Levels, ","); got != "caveman=lite,ponytail=ultra" {
+		t.Fatalf("levels %q", got)
+	}
+	if st.CustomChars != len("be brief") {
+		t.Fatalf("custom length %d", st.CustomChars)
+	}
+}

@@ -20,8 +20,7 @@
       <p class="text-secondary" x-show="!ready" x-t="login.checking"></p>
       <form x-show="ready && form" x-on:submit.prevent="submit()">
         <label class="form-label" for="username" x-t="login.username"></label>
-        <input class="form-control" id="username" type="text" autocomplete="username" x-bind:value="username" x-on:input="setUsername($event)">
-        <p class="rl-hint" x-t="login.usernameHint"></p>
+        <input class="form-control" id="username" type="text" autocomplete="username" required x-bind:value="username" x-on:input="setUsername($event)">
         <label class="form-label" for="password" x-t="login.password"></label>
         <input class="form-control" id="password" type="password" autocomplete="current-password" autofocus required x-bind:value="password" x-on:input="setPassword($event)">
         <p class="rl-error" x-show="error" x-text="error"></p>

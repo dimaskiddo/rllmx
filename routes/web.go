@@ -32,6 +32,9 @@ type Base struct {
 	Models *controllers.ModelsController
 	// Media serves the non-chat endpoints; nil leaves their routes out.
 	Media *controllers.MediaController
+	// ClientUsage answers a client tool's "how much have I used" from the key's
+	// own budget; nil leaves its routes out.
+	ClientUsage *controllers.ClientUsageController
 	// OAuth is the account login handler; nil leaves its routes out.
 	OAuth *controllers.OAuthController
 	// Pages serves the callback page and the static files; nil leaves them out.
@@ -116,6 +119,7 @@ func webAccess(router route.Route, guard *apphttp.Guard, base Base) {
 		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/keys", k.List)
 		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodPost, "/api/keys", k.Create)
 		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/keys/{id}", k.Show)
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodPost, "/api/keys/{id}/reveal", k.Reveal)
 		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodPut, "/api/keys/{id}", k.Update)
 		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodDelete, "/api/keys/{id}", k.Delete)
 	}
@@ -166,6 +170,12 @@ func webClient(router route.Route, guard *apphttp.Guard, base Base) {
 			guard.Handle(router, apphttp.ClassLLM, nethttp.MethodPost, path, c.Serve)
 		}
 		guard.Handle(router, apphttp.ClassLLM, nethttp.MethodPost, "/v1/messages/count_tokens", c.CountTokens)
+	}
+
+	if u := base.ClientUsage; u != nil {
+		guard.Handle(router, apphttp.ClassLLM, nethttp.MethodGet, "/api/oauth/usage", u.Claude)
+		guard.Handle(router, apphttp.ClassLLM, nethttp.MethodGet, "/v1/organizations/{org}/usage", u.Claude)
+		guard.Handle(router, apphttp.ClassLLM, nethttp.MethodGet, "/v1/usage", u.OpenCode)
 	}
 
 	if m := base.Media; m != nil {

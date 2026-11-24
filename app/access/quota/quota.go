@@ -323,6 +323,90 @@ func (q *Quota) Check(ctx context.Context, keyID string) (Refusal, error) {
 	return Refusal{}, nil
 }
 
+// Standing is how much of one window's budget a key has spent.
+type Standing struct {
+	// Limited is false when no budget limits this window.
+	Limited bool
+	// Percent is the largest share spent of any limited type, from 0 to 100.
+	Percent float64
+	// ResetsAt is when the window begins again; zero for all time.
+	ResetsAt time.Time
+}
+
+// Standings is a key's standing in each budget window.
+type Standings struct {
+	Day, Month, Total Standing
+}
+
+// Standing reads how far a key is into each of its budget windows, for a client
+// that asks how much it has left. A key with no budget reads zero everywhere
+// and costs no usage query. A read failure is returned, never read as zero.
+func (q *Quota) Standing(ctx context.Context, keyID string) (Standings, error) {
+	now := q.now()
+	out := Standings{
+		Day:   Standing{ResetsAt: windowEnd("day", now)},
+		Month: Standing{ResetsAt: windowEnd("month", now)},
+	}
+	if keyID == "" || q.Limits == nil || q.Usage == nil {
+		return out, nil
+	}
+	limits, err := q.Limits.All(ctx)
+	if err != nil {
+		return Standings{}, err
+	}
+	limit, ok := limits[keyID]
+	if !ok {
+		return out, nil
+	}
+	for window, into := range map[string]*Standing{"day": &out.Day, "month": &out.Month, "total": &out.Total} {
+		share := func(name string, got float64) {
+			if amount := limit.amounts(name).get(window); amount > 0 {
+				into.Limited = true
+				into.Percent = max(into.Percent, min(100, got/amount*100))
+			}
+		}
+		if !limit.windowLimited(window) {
+			continue
+		}
+		used, err := q.used(ctx, keyID, window, now)
+		if err != nil {
+			return Standings{}, err
+		}
+		share("requests", float64(used.Requests))
+		share("tokens", float64(used.Tokens))
+		share("cost", used.Cost)
+	}
+	return out, nil
+}
+
+// windowLimited reports whether any type is limited in a window.
+func (l Limit) windowLimited(window string) bool {
+	return l.amounts("requests").get(window) > 0 || l.amounts("tokens").get(window) > 0 || l.amounts("cost").get(window) > 0
+}
+
+// windowEnd is when a window next begins; zero for all time.
+func windowEnd(window string, now time.Time) time.Time {
+	if d := untilWindowEnd(window, now); d > 0 {
+		return now.Add(d)
+	}
+	return time.Time{}
+}
+
+// Used is the key's spend in every budget window, spent and still queued, for
+// the dashboard's read-out. The windows are the ones Check enforces.
+func (q *Quota) Used(ctx context.Context, keyID string) (map[string]analytics.Totals, error) {
+	out := make(map[string]analytics.Totals, len(windows))
+	now := q.now()
+	for _, window := range windows {
+		got, err := q.used(ctx, keyID, window, now)
+		if err != nil {
+			return nil, err
+		}
+		out[window] = got
+	}
+	return out, nil
+}
+
 // used is the key's spend in one window: what the store recorded plus what is
 // still queued, so a burst inside one flush is counted.
 func (q *Quota) used(ctx context.Context, keyID, window string, now time.Time) (analytics.Totals, error) {

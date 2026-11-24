@@ -12,9 +12,9 @@
   </div>
 
   <div class="rl-toolbar">
-    <input class="form-control form-control-sm" type="search" x-bind:placeholder="label('pricing.search')" x-bind:aria-label="label('pricing.search')" x-bind:value="search" x-on:input="setSearch($event)">
+    <input class="form-control form-control-sm" type="search" x-bind:placeholder="label('pricing.search')" x-bind:aria-label="label('pricing.search')" x-bind:value="search" x-on:input.debounce.250ms="setSearch($event)">
     <button type="button" class="btn btn-sm btn-primary" x-bind:disabled="busy === true || dirtyCount() === 0" x-on:click="save()" x-t="common.save"></button>
-    <button type="button" class="btn btn-sm btn-ghost-danger" x-bind:disabled="busy === true" x-on:click="reset()"><span class="rl-icon" x-icon="trash"></span><span x-t="pricing.reset"></span></button>
+    <button type="button" class="btn btn-sm btn-outline-danger" x-bind:disabled="busy === true" x-on:click="reset()"><span class="rl-icon" x-icon="trash"></span><span x-t="pricing.reset"></span></button>
   </div>
 
   <p class="text-secondary" x-show="loading" x-t="common.loading"></p>

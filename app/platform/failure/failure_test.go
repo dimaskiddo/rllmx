@@ -461,3 +461,18 @@ func TestQuotaHeadersCarryWhatIsLeftAndWhenItResets(t *testing.T) {
 		t.Fatalf("a part second rounded to %q", h.Get("Retry-After"))
 	}
 }
+
+func TestTheRateLimitHeadersSayAllowedUntilTheBudgetIsSpent(t *testing.T) {
+	reset := time.Date(2026, 3, 15, 0, 0, 0, 0, time.UTC)
+	open := RateLimitHeaders(false, reset)
+	if open.Get("Anthropic-Ratelimit-Unified-Status") != "allowed" || open.Get("Anthropic-Ratelimit-Unified-Reset") != "1773532800" {
+		t.Fatalf("%v", open)
+	}
+	spent := RateLimitHeaders(true, reset)
+	if spent.Get("Anthropic-Ratelimit-Unified-Status") != "rejected" {
+		t.Fatalf("%v", spent)
+	}
+	if none := RateLimitHeaders(false, time.Time{}); none.Get("Anthropic-Ratelimit-Unified-Reset") != "" {
+		t.Fatalf("a budget that never resets named a reset: %v", none)
+	}
+}

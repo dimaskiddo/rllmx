@@ -20,7 +20,7 @@
       <div class="rl-inline">
         <button type="button" class="btn btn-sm" x-on:click="openAddKey()"><span class="rl-icon" x-icon="plus"></span><span x-t="provider.addKey"></span></button>
         <button type="button" class="btn btn-sm" x-on:click="openNode()"><span class="rl-icon" x-icon="pencil"></span><span x-t="common.edit"></span></button>
-        <button type="button" class="btn btn-sm btn-ghost-danger" x-on:click="deleteNode()"><span class="rl-icon" x-icon="trash"></span><span x-t="common.delete"></span></button>
+        <button type="button" class="btn btn-sm btn-outline-danger" x-on:click="deleteNode()"><span class="rl-icon" x-icon="trash"></span><span x-t="common.delete"></span></button>
       </div>
     </div>
     <div class="card-body">
@@ -55,7 +55,7 @@
       <div class="rl-inline">
         <button type="button" class="btn btn-sm" x-show="connections.length > 0 && !testRun" x-on:click="testSelected()"><span class="rl-icon" x-icon="activity"></span><span x-t="provider.testOneByOne"></span></button>
         <button type="button" class="btn btn-sm" x-show="testRun && testRun.on" x-on:click="stopTesting()"><span x-t="provider.stop"></span></button>
-        <button type="button" class="btn btn-sm btn-ghost-danger" x-show="selected.length > 0" x-on:click="removeSelected()"><span class="rl-icon" x-icon="trash"></span><span x-t="provider.deleteSelected"></span></button>
+        <button type="button" class="btn btn-sm btn-outline-danger" x-show="selected.length > 0" x-on:click="removeSelected()"><span class="rl-icon" x-icon="trash"></span><span x-t="provider.deleteSelected"></span></button>
         <button type="button" class="btn btn-sm btn-primary" x-show="canAddKey()" x-on:click="openAddKey()"><span class="rl-icon" x-icon="plus"></span><span x-t="provider.addKey"></span></button>
         <button type="button" class="btn btn-sm" x-show="loginOffer() && loginOffer().enabled && loginOffer().flow !== 'import'" x-on:click="openLogin('oauth')"><span class="rl-icon" x-icon="log-in"></span><span x-t="provider.addLogin"></span></button>
         <button type="button" class="btn btn-sm" x-show="loginOffer() && !loginOffer().enabled && loginOffer().flow !== 'import'" x-bind:disabled="true"><span class="rl-icon" x-icon="log-in"></span><span x-t="provider.loginDisabled"></span></button>
@@ -127,11 +127,13 @@
                 <span class="badge" x-show="model.source === 'custom'" x-t="models.custom"></span>
                 <span class="badge" x-show="model.source !== 'custom'" x-t="models.builtin"></span>
                 <span class="badge badge-ok" x-show="testFor(model.id) && testFor(model.id).ok" x-t="models.reachable"></span>
+                <span class="rl-cap" x-show="model.caps && model.caps.vision" x-tip="models.vision"><span class="rl-icon" x-icon="eye"></span><span class="visually-hidden" x-t="models.vision"></span></span><span class="rl-cap" x-show="model.caps && model.caps.reasoning" x-tip="models.reasoning"><span class="rl-icon" x-icon="brain"></span><span class="visually-hidden" x-t="models.reasoning"></span></span><span class="rl-cap" x-show="model.caps && model.caps.audio" x-tip="models.audio"><span class="rl-icon" x-icon="audio-lines"></span><span class="visually-hidden" x-t="models.audio"></span></span>
               </div>
               <p class="rl-hint" x-text="subtext(model)"></p>
               <p class="rl-error" x-show="testFor(model.id) && testFor(model.id).error" x-text="testFor(model.id) ? testFor(model.id).error : ''"></p>
             </div>
             <div class="rl-list-actions">
+              <button type="button" class="btn btn-sm btn-ghost" x-on:click="copyText(aliasOrFull(model))" x-tip="models.copy"><span class="rl-icon" x-icon="copy"></span><span class="visually-hidden" x-t="models.copy"></span></button>
               <button type="button" class="btn btn-sm btn-ghost" x-bind:disabled="testFor(model.id) && testFor(model.id).busy" x-on:click="testModel(model.id)" x-tip="models.test"><span class="rl-icon" x-icon="activity"></span><span class="visually-hidden" x-t="models.test"></span></button>
               <button type="button" class="btn btn-sm btn-ghost" x-show="!node" x-on:click="openAlias(model.id)" x-tip="models.alias"><span class="rl-icon" x-icon="pencil"></span><span class="visually-hidden" x-t="models.alias"></span></button>
               <button type="button" class="btn btn-sm btn-ghost" x-show="!node" x-on:click="disableModel(model.id)" x-bind:disabled="busy('disable:' + model.id)" x-tip="models.disable"><span class="rl-icon" x-icon="pause"></span><span class="visually-hidden" x-t="models.disable"></span></button>
@@ -154,15 +156,20 @@
   <section class="card" x-show="!loading && !notFound">
     <div class="card-header rl-card-head">
       <h2 class="rl-card-title" x-t="overrides.title"></h2>
-      <button type="button" class="btn btn-sm btn-primary" x-bind:disabled="overrides.busy" x-on:click="saveOverrides()"><span x-t="common.save"></span></button>
+      <div class="rl-inline">
+        <button type="button" class="btn btn-sm" x-bind:disabled="overrides.busy" x-on:click="resetOverrides()" x-t="overrides.reset"></button>
+        <button type="button" class="btn btn-sm btn-primary" x-bind:disabled="overrides.busy" x-on:click="saveOverrides()"><span x-t="common.save"></span></button>
+      </div>
     </div>
     <div class="card-body">
       <p class="rl-hint" x-t="overrides.hint"></p>
+      <p class="rl-hint" x-t="overrides.defaults"></p>
       <p class="rl-error" x-show="overrides.error" x-text="overrides.error"></p>
       <template x-for="(row, index) in overrides.rows" x-bind:key="index">
         <div class="rl-inline">
           <input class="form-control" x-bind:aria-label="label('overrides.name')" x-bind:value="row.name" x-on:input="setHeader(index, 'name', $event)" x-bind:placeholder="label('overrides.name')">
           <input class="form-control" x-bind:aria-label="label('overrides.value')" x-bind:value="row.value" x-on:input="setHeader(index, 'value', $event)" x-bind:placeholder="label('overrides.value')">
+          <span class="badge" data-ok="changed" x-show="changedHeader(row)" x-t="overrides.overridden"></span>
           <button type="button" class="btn btn-sm btn-ghost" x-on:click="removeHeaderRow(index)" x-tip="common.remove"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.remove"></span></button>
         </div>
       </template>
@@ -202,11 +209,16 @@
       <input class="form-control" id="add-model" x-bind:value="add.defaultModel" x-on:input="setAddModel($event)">
       <label class="form-label" for="add-priority" x-t="provider.priority"></label>
       <input class="form-control" id="add-priority" type="number" min="1" x-bind:value="add.priority" x-on:input="setField('add.priority', $event)">
+      <div x-show="controlKeyField()">
+        <label class="form-label" for="add-control-key" x-t="provider.controlKey"></label>
+        <input class="form-control" id="add-control-key" type="password" autocomplete="off" x-bind:value="add.controlKey" x-on:input="setField('add.controlKey', $event)">
+        <p class="rl-hint" x-t="provider.controlKeyHint"></p>
+      </div>
       <div x-show="entry && entry.regions && entry.regions.length > 0">
         <label class="form-label" for="add-region" x-t="provider.region"></label>
-        <select class="form-select" id="add-region" x-bind:value="add.region" x-on:change="setField('add.region', $event)">
-          <option value=""></option>
-          <template x-for="region in (entry && entry.regions ? entry.regions : [])" x-bind:key="region"><option x-bind:value="region" x-text="region"></option></template>
+        <select class="form-select" id="add-region" x-on:change="setField('add.region', $event)">
+          <option value="" x-bind:selected="!add.region"></option>
+          <template x-for="region in (entry && entry.regions ? entry.regions : [])" x-bind:key="region"><option x-bind:value="region" x-bind:selected="add.region === region" x-text="region"></option></template>
         </select>
       </div>
       <fieldset class="rl-block-start">
@@ -276,11 +288,17 @@
         <input class="form-check-input" type="checkbox" id="edit-active" role="switch" x-bind:checked="edit ? edit.isActive : false" x-on:change="toggleEditActive()">
         <label class="form-check-label" for="edit-active" x-t="keys.active"></label>
       </div>
+      <div x-show="controlKeyField()">
+        <label class="form-label" for="edit-control-key" x-t="provider.controlKey"></label>
+        <input class="form-control" id="edit-control-key" type="password" autocomplete="off" x-bind:value="edit ? edit.controlKey : ''" x-on:input="setField('edit.controlKey', $event)">
+        <p class="rl-hint" x-t="provider.controlKeyHint"></p>
+        <p class="rl-hint" x-show="edit && edit.hasControlKey" x-t="provider.controlKeySaved"></p>
+      </div>
       <div x-show="entry && entry.regions && entry.regions.length > 0">
         <label class="form-label" for="edit-region" x-t="provider.region"></label>
-        <select class="form-select" id="edit-region" x-bind:value="edit ? edit.region : ''" x-on:change="setField('edit.region', $event)">
-          <option value=""></option>
-          <template x-for="region in (entry && entry.regions ? entry.regions : [])" x-bind:key="region"><option x-bind:value="region" x-text="region"></option></template>
+        <select class="form-select" id="edit-region" x-on:change="setField('edit.region', $event)">
+          <option value="" x-bind:selected="!edit || !edit.region"></option>
+          <template x-for="region in (entry && entry.regions ? entry.regions : [])" x-bind:key="region"><option x-bind:value="region" x-bind:selected="edit && edit.region === region" x-text="region"></option></template>
         </select>
       </div>
       <fieldset class="rl-block-start">
@@ -335,7 +353,7 @@
       <input class="form-control" id="alias-value" x-ref="aliasInput" x-bind:value="aliasForm.alias" x-on:input="setField('aliasForm.alias', $event)">
       <p class="rl-error" x-show="aliasForm.error" x-text="aliasForm.error"></p>
       <div class="rl-dialog-actions">
-        <button type="button" class="btn btn-ghost-danger" x-show="aliasForm.alias" x-bind:disabled="busy('alias:' + aliasForm.model)" x-on:click="dropAlias()"><span class="rl-icon" x-icon="trash"></span><span x-t="models.removeAlias"></span></button>
+        <button type="button" class="btn btn-outline-danger" x-show="aliasForm.alias" x-bind:disabled="busy('alias:' + aliasForm.model)" x-on:click="dropAlias()"><span class="rl-icon" x-icon="trash"></span><span x-t="models.removeAlias"></span></button>
         <button type="button" class="btn" x-on:click="closeAlias()" x-t="common.cancel"></button>
         <button type="submit" class="btn btn-primary" x-bind:disabled="busy('alias')" x-t="common.save"></button>
       </div>
@@ -372,8 +390,8 @@
       <div x-show="login.mode === ''">
         <div x-show="loginOffer() && loginOffer().variants && loginOffer().variants.length > 0">
           <label class="form-label" for="login-variant" x-t="provider.loginVariant"></label>
-          <select class="form-select" id="login-variant" x-bind:value="login.variant" x-on:change="setField('login.variant', $event)">
-            <template x-for="variant in (loginOffer() && loginOffer().variants ? loginOffer().variants : [])" x-bind:key="variant"><option x-bind:value="variant" x-text="variant"></option></template>
+          <select class="form-select" id="login-variant" x-on:change="setField('login.variant', $event)">
+            <template x-for="variant in (loginOffer() && loginOffer().variants ? loginOffer().variants : [])" x-bind:key="variant"><option x-bind:value="variant" x-bind:selected="login.variant === variant" x-text="variant"></option></template>
           </select>
         </div>
         <div x-show="loginOffer() && loginOffer().appFromAccount">

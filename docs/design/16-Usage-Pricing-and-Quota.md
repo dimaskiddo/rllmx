@@ -19,7 +19,8 @@ When a request completes, the pipeline enqueues one row to the analytics writer.
 - `today` and `24h` read the hour rollups, which live inside the request retention. Longer periods read the day rollups for the days before the oldest kept hour and the hour rollups from that day on, so a day whose hours were pruned is still counted once, whole.
 - The reporting zone is the server's own (`TZ`, `time.Local`); a day taken from the day rollups can only keep its UTC date (D360). `24h` is the 24 clock hours ending now (D361).
 - `history` answers the all-time totals, as the reference does, and `request-details` stays out because it serves stored bodies.
-- `logs` and `request-logs` are the 200 newest rows, one line each.
+- `logs` and `request-logs` are the 200 newest rows at or after the period's start (seven days by default), one line each, newest by time (D434).
+- The breakdown's API key grouping is one row per key: the server keeps an entry per key, model and provider, and the page sums the entries of one key, so a 60-day range does not list the same key once per model (D442). A read a client abandoned, a poll cancelled by a reload, is not logged as a failure, at the handler or at the database logger (D442).
 - `providers` is the distinct provider list from the day rollups, named by node then registry.
 - `byApiKey` is keyed by the key's id and shows the masked key, never the key (D362).
 - `last10Minutes`, the recent list's de-duplication and the log line's skills suffix are left out (D366).
@@ -59,6 +60,8 @@ The Antigravity limits are read by `app/llm/quota` for the selector; Gemini 4 Ca
 **Readers.** `GET /api/usage/{connectionId}` answers what is left of one connection's plan through `quota.Reader`. The reader dispatches on the provider through one table (the parity list below) and resolves the credential the way a request does: the login's token renewed first when due, else the stored key.
 
 A connection this build cannot read answers the reference's two messages: an unsupported provider, and an auth type the provider's reader does not serve. A refusal the provider typed as a 401 or 403 is retried once after a renewal, never after matching a message (D367).
+
+The key-only readers added with the 0.5.123 sync: Synthetic (`/v2/quotas`: two request buckets and a weekly pool shown as a share), DeepRelay (the wallet in dollars, a burn rate only when above zero, and a best-effort spend row that never delays the wallet) and OpenDesign Go (the plan's 5 hour and 7 day credit windows and the wallet, read with the account's control key by `amr-api.open-design.ai` only, one workspace never guessed, credits kept as integers until the share is known, D445).
 
 - One field carries one unit: a window counts in its provider's own numbers, a balance is a credit with a unit, and the share left is always a percentage (D368).
 - A reading is cached by connection id for a minute and `force=1` skips the cache; nothing is keyed by a token (D369).
@@ -141,6 +144,8 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 393 | Kiro's quota is read from CodeWhisperer's GET, then its POST (`x-amz-target`), then the Q host's GET, and the first answer wins; a refusal on all three is a message that says chat may still work, not an error that triggers a renewal **(built)** | The reference reads the same three and words its messages by sign-in method; this build had tried one host and built a second it never called. The live endpoints were never called here, so the POST attempt is unverified |
 | 394 | Text a provider returns in a Claude reset answer is cut to 200 bytes on a character boundary before it reaches the dashboard **(built)** | The reference passes `result`, `reason` and `error.message` through uncut, so one long answer from the vendor fills the page |
 | 380 | Quota auto-ping is not built; the settings are read and written in the reference's shape only **(scope cut)** | The scheduler needs its own design pass (tick ownership, restart dedupe, which call starts a window); the settings shape had to land now so a reference database round-trips |
+| 434 | The log read is bounded by the page's period, seven days by default, and ordered by time rather than by row id | The reference returns the 200 newest rows with no bound, so a month-old import fills the list; ordering by id lets an imported old row outrank a newer live one |
+| 442 | The usage table groups an API key's rows into one, summing its requests, tokens and cost across models and providers, and a read a client abandoned is not logged as a failure, at the handler or at the database logger. The reference's table has one row per key, model and provider. **(built)** | One key shown as several rows made a 60-day total look like several keys, and a poll cancelled by a reload filled the log with errors that meant nothing |
 
 ---
 
@@ -156,4 +161,3 @@ One row per lesson; the decision is what the code does because of it.
 | A failed read of the operator's prices must not become the price list for good. | The source returns the embedded table together with `ErrPricingOverrides`; requests price with it, and the next call reads again. |
 | Filtering a user's rows in the handler would still read every row, and a forgotten filter shows another account's numbers. | The key scope is a query parameter on every reader; an empty scope returns nothing rather than everything. |
 | An unknown model must not look free. | `Table.Cost` returns `known=false`; an override of `{}` is the only way to say a model costs nothing. |
-

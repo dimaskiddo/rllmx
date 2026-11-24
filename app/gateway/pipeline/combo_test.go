@@ -527,3 +527,52 @@ func TestARetryWaitThatTheClientEndsAnswersClosed(t *testing.T) {
 		t.Fatalf("%d stop=%v", got.Status, stop)
 	}
 }
+
+// A single model that cannot read what the turn carries gets the configured
+// fallback models tried first, and keeps its own place behind them.
+func TestASoloModelTakesTheCapacityAdapter(t *testing.T) {
+	const on = `{"capacityAdapter":{"vision":{"enabled":true,"models":["gem/g-vision"]}}}`
+	body := imageBody("forced/fm", "data:image/png;base64,iVBORw0KGgo=")
+
+	r := newRig(t, tests.Reply{ContentType: "application/json", Body: geminiOK})
+	r.conn("forced", "k1")
+	r.conn("gem", "k2")
+	r.p.d.Settings = settingsRow{raw: on}
+	out, _ := r.do("/v1/chat/completions", body)
+	if out.Status != 200 {
+		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+	if row := r.last(); row.Provider != "gem" || row.Model != "g-vision" {
+		t.Fatalf("the adapter did not answer: %+v", row)
+	}
+
+	r = newRig(t, tests.Reply{ContentType: "application/json", Body: okJSON})
+	r.conn("forced", "k1")
+	r.conn("gem", "k2")
+	r.p.d.Settings = settingsRow{raw: `{}`}
+	out, _ = r.do("/v1/chat/completions", body)
+	if out.Status != 200 {
+		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+	if row := r.last(); row.Provider != "forced" {
+		t.Fatalf("the adapter ran with the switch off: %+v", row)
+	}
+}
+
+// A combo whose members are all text-only sends an image turn to the configured
+// vision adapter, ahead of its own members.
+func TestAComboWithNoVisionMemberTakesTheAdapter(t *testing.T) {
+	r := comboRig(t, []string{"forced/fm", "wire/short"}, tests.Reply{ContentType: "application/json", Body: geminiOK})
+	r.conn("gem", "k2")
+	r.conn("forced", "k1")
+	r.conn("wire", "k3")
+	r.p.d.Settings = settingsRow{raw: `{"capacityAdapter":{"vision":{"enabled":true,"models":["gem/g-vision"]}}}`}
+	body := imageBody("chain", "data:image/png;base64,iVBORw0KGgo=")
+	out, _ := r.do("/v1/chat/completions", body)
+	if out.Status != 200 {
+		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+	if row := r.last(); row.Provider != "gem" || row.ComboName != "chain" {
+		t.Fatalf("%+v", row)
+	}
+}

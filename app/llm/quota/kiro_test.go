@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"rllmx/app/llm/upstream"
 )
 
 // kiroStub answers each Kiro attempt by method and host, and records the calls
@@ -136,5 +138,25 @@ func TestAnEuropeanAccountMovesOnlyTheQHost(t *testing.T) {
 	}
 	if got := k.calls[len(k.calls)-1]; got != "GET q.eu-central-1.amazonaws.com" {
 		t.Fatalf("last call %s", got)
+	}
+}
+
+func TestAKiroUsageCallPresentsTheIDEIdentityOfItsAccount(t *testing.T) {
+	k := &kiroStub{
+		status: map[string]int{"GET codewhisperer.us-east-1.amazonaws.com": 500},
+		body:   map[string]string{"POST codewhisperer.us-east-1.amazonaws.com": okKiro},
+	}
+	if _, err := readKiroWith(t, k, `{"providerSpecificData":{"authMethod":"builder-id","clientId":"cid"}}`); err != nil {
+		t.Fatal(err)
+	}
+	ua, amz := k.header.Get("User-Agent"), k.header.Get("X-Amz-User-Agent")
+	if !strings.Contains(ua, "KiroIDE-"+upstream.KiroIDEVersion+"-") || !strings.Contains(ua, "api/codewhispererruntime") {
+		t.Fatalf("user agent %q", ua)
+	}
+	if strings.Contains(ua+amz, "tok") && !strings.Contains(ua+amz, "KiroIDE") {
+		t.Fatalf("a credential reached the identity: %q %q", ua, amz)
+	}
+	if !strings.HasPrefix(amz, "aws-sdk-js/1.0.0 KiroIDE-"+upstream.KiroIDEVersion+"-") {
+		t.Fatalf("x-amz-user-agent %q", amz)
 	}
 }

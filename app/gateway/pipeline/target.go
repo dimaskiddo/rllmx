@@ -71,6 +71,11 @@ func (c *call) resolve(ctx context.Context) (Output, bool) {
 		// keeps the one row.
 		return c.comboRun(ctx, t.Combo), false
 	}
+	// A model that cannot read what the turn carries gets the configured fallback
+	// tried first, the way a combo with no capable member does.
+	if order, ok := c.adapterOrder(ctx, []routing.Member{{Provider: t.Provider, Model: t.Model}}, translate.DetectNeeds(c.req)); ok && c.in.Connection == "" {
+		return c.walkCombo(ctx, order), false
+	}
 	dest, out, ok := c.destinationOf(ctx, t)
 	if !ok {
 		return out, false
@@ -87,10 +92,11 @@ func (c *call) resolve(ctx context.Context) (Output, bool) {
 	}
 	c.dest = dest
 
-	caps := c.p.d.Caps.For(dest.provider, dest.model)
+	caps := onLane(c.p.d.Caps.For(dest.provider, dest.model), dest.lane)
 	tc := c.tctx
 	tc.TargetFormat, tc.Provider, tc.Model, tc.Caps, tc.Entry = dest.format, dest.provider, dest.model, caps, dest.entry
 	tc.BudgetOf = c.p.d.Caps.Budget
+	tc.Levels = c.servedLevels(dest)
 	if store := newSignatureStore(c.p.d.Signatures, c.in.Caller.ID, dest.model); store != nil {
 		tc.Calls = store
 	}
@@ -154,6 +160,14 @@ func (c *call) destinationOf(ctx context.Context, t routing.Target) (destination
 	return d, Output{}, true
 }
 
+// onLane applies the thinking shape a lane fixes to a model's capabilities.
+func onLane(caps upstream.Capability, l *upstream.Lane) upstream.Capability {
+	if l != nil && l.ThinkingFormat != "" {
+		caps.ThinkingFormat = l.ThinkingFormat
+	}
+	return caps
+}
+
 // laneAuth is how a key is presented on a lane: the lane's own block, else the
 // default for its format.
 func laneAuth(l upstream.Lane, format string) *upstream.Auth {
@@ -172,11 +186,18 @@ func claudeNamed(model string) bool {
 func defaultAuth(format string) *upstream.Auth {
 	switch format {
 	case upstream.FormatClaude:
-		return &upstream.Auth{Scheme: upstream.SchemeRaw, Header: "x-api-key", Headers: map[string]string{"anthropic-version": "2023-06-01"}}
+		return &upstream.Auth{Scheme: upstream.SchemeRaw, Header: "x-api-key", Headers: map[string]string{"anthropic-version": upstream.ClaudeVersion}}
 	case upstream.FormatGemini:
 		return &upstream.Auth{Scheme: upstream.SchemeRaw, Header: "x-goog-api-key"}
 	}
 	return &upstream.Auth{Scheme: upstream.SchemeBearer, Header: "Authorization"}
+}
+
+// servedLevels is the thinking levels the destination model takes: the ones its
+// data file lists, else the capability rules'.
+func (c *call) servedLevels(dest destination) []string {
+	spec, _ := c.p.d.Registry.Model(dest.provider, dest.model)
+	return c.p.d.Caps.Levels(dest.provider, dest.model, spec.Levels)
 }
 
 // build translates the request once; every account gets the same body.

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	neturl "net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -184,5 +185,34 @@ func TestAProfileIsEscapedInTheQuery(t *testing.T) {
 	}
 	if q.Get("profileArn") != `arn:aws:x/y&origin=EVIL#z` || q.Get("origin") != "AI_EDITOR" {
 		t.Fatalf("query %q: the profile broke out of its parameter", got)
+	}
+}
+
+// Kiro's model list is a call like any other, so it presents the IDE identity or
+// is turned away as an unsupported client; the client is the runtime one.
+func TestTheKiroModelListPresentsTheIDEIdentity(t *testing.T) {
+	var gotUA, gotAmz string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUA, gotAmz = r.Header.Get("User-Agent"), r.Header.Get("X-Amz-User-Agent")
+		_, _ = w.Write([]byte(`{"models":[{"modelId":"auto"}]}`))
+	}))
+	defer srv.Close()
+	s := store.Migrated(t)
+	c, err := s.Connections().Create(context.Background(), repository.ConnInput{
+		Provider: "kiro", AuthType: "oauth", Name: "k", Fields: map[string]string{"accessToken": `"tok-secret"`},
+		PSD: `{"clientId":"cid","profileArn":"arn:aws:codewhisperer:us-east-1:1:profile/X"}`,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := upstream.Entry{Transport: upstream.Transport{BaseURL: srv.URL}}
+	if _, err := kiroFetcher(e, srv.Client())(context.Background(), c); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(gotUA, "KiroIDE-"+upstream.KiroIDEVersion+"-") || !strings.Contains(gotUA, "api/codewhispererruntime") {
+		t.Fatalf("user agent %q", gotUA)
+	}
+	if !strings.HasPrefix(gotAmz, "aws-sdk-js/1.0.0 KiroIDE-") || strings.Contains(gotUA+gotAmz, "tok-secret") {
+		t.Fatalf("x-amz-user-agent %q", gotAmz)
 	}
 }

@@ -39,6 +39,10 @@ type Options struct {
 	// Value reads one config_schema value by its settings key, as the prompt
 	// should render it. A nil reader leaves every field to its default.
 	Value func(key string) (string, bool)
+	// Replace answers a skill's prompt from somewhere other than its folder, as
+	// the memory a local agent keeps. An empty text with ok means this turn has
+	// nothing to inject.
+	Replace func(id string) (text string, ok bool)
 	// Prior names the skills an earlier turn of this conversation already
 	// injected in full. A later smart match becomes a one-line reminder.
 	Prior map[string]bool
@@ -57,6 +61,9 @@ type Stats struct {
 	Session []string
 	// Notice reports that the failover notice was injected.
 	Notice bool
+	// Via names how each injected skill was chosen: "always", or the router that
+	// matched it.
+	Via map[string]string
 }
 
 // Changed reports whether the request was changed.
@@ -127,13 +134,30 @@ func Apply(reg *Registry, r *translate.Request, o Options) Stats {
 			}
 			return
 		}
-		body := Render(m, reg.Prompt(m.ID), o.Value)
+		prompt := reg.Prompt(m.ID)
+		if o.Replace != nil {
+			if text, ok := o.Replace(m.ID); ok {
+				if text == "" {
+					return
+				}
+				prompt = text
+			}
+		}
+		body := Render(m, prompt, o.Value)
 		if body == "" || !r.AppendSystem(body) {
 			return
 		}
 		seen[m.ID] = true
 		st.Skills = append(st.Skills, m.ID)
 		st.Session = append(st.Session, InjectedKey(router, m.ID))
+		if st.Via == nil {
+			st.Via = map[string]string{}
+		}
+		via := router
+		if via == "" {
+			via = "always"
+		}
+		st.Via[m.ID] = via
 	}
 	if o.Notice {
 		st.Notice = r.AppendSystem(failoverNotice)

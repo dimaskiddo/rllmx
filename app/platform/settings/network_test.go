@@ -15,6 +15,12 @@ func upstreamValues(curve string) tests.Config {
 	}}
 }
 
+func kiroValues(mode any) tests.Config {
+	c := upstreamValues("x25519")
+	c.Values["upstream.kiro_create_response"] = mode
+	return c
+}
+
 func TestTheTLScurveIsX25519UnlessTheStandardListIsAskedFor(t *testing.T) {
 	u, err := LoadUpstream(upstreamValues("x25519"))
 	if err != nil {
@@ -48,6 +54,23 @@ func TestTheClaudeCLIVersionPin(t *testing.T) {
 	for _, bad := range []string{"2.1", "2.1.4.0", "2.1.x", "v2.1.4", "2..4", "2.1.1234567"} {
 		if _, err := LoadUpstream(values(bad)); err == nil || !strings.Contains(err.Error(), "UPSTREAM_CLAUDE_CLI_VERSION") {
 			t.Errorf("%q: %v", bad, err)
+		}
+	}
+}
+
+func TestTheKiroCreateResponseModeIsAutoUnlessSaidOtherwise(t *testing.T) {
+	for raw, want := range map[string]KiroCreateResponse{
+		"": KiroAuto, "auto": KiroAuto, "AUTO": KiroAuto, " always ": KiroAlways, "off": KiroOff, "Off": KiroOff,
+	} {
+		u, err := LoadUpstream(kiroValues(raw))
+		if err != nil || u.KiroCreateResponse != want {
+			t.Errorf("%q: %v %v, want %v", raw, u, err, want)
+		}
+	}
+	for _, bad := range []string{"on", "true", "1", "sometimes", "auto,off"} {
+		_, err := LoadUpstream(kiroValues(bad))
+		if err == nil || !strings.Contains(err.Error(), "UPSTREAM_KIRO_CREATE_RESPONSE") || strings.Contains(err.Error(), bad) {
+			t.Errorf("%q: %v, want a refusal that names the variable and not the value", bad, err)
 		}
 	}
 }

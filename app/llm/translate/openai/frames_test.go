@@ -70,3 +70,24 @@ func TestARepeatedToolCallIDOpensOneBlock(t *testing.T) {
 		t.Fatalf("%+v %+v", first, again)
 	}
 }
+
+// Mistral streams a delta's content as a list of parts, visible text beside
+// thinking chunks. Read as a string it is the JSON of the list, which a client
+// would print as its answer.
+func TestAContentListIsReadAsTextAndThinkingNotAsItsJSON(t *testing.T) {
+	c, _ := translate.Lookup(translate.FormatOpenAI)
+	r := c.NewStreamReader(translate.NewCtx("", translate.FormatOpenAI))
+	got := r.Read("", []byte(`{"id":"x","choices":[{"delta":{"content":[`+
+		`{"type":"thinking","thinking":[{"type":"text","text":"let me "},{"type":"text","text":"see"}]},`+
+		`{"type":"text","text":"Hel"},{"type":"text","text":"lo"}]}}]}`))
+	if len(got) != 1 || got[0].Text != "Hello" || got[0].Reasoning != "let me see" {
+		t.Fatalf("%+v", got)
+	}
+	plain := r.Read("", []byte(`{"id":"x","choices":[{"delta":{"content":"again"}}]}`))
+	if len(plain) != 1 || plain[0].Text != "again" || plain[0].Reasoning != "" {
+		t.Fatalf("a plain string content changed: %+v", plain)
+	}
+	if skip := r.Read("", []byte(`{"id":"x","choices":[{"delta":{"content":[{"type":"image_url","image_url":{"url":"u"}}]}}]}`)); len(skip) != 0 && skip[0].Text != "" {
+		t.Fatalf("a part that is not text was read as text: %+v", skip)
+	}
+}

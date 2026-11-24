@@ -1,0 +1,57 @@
+<section x-data="usersPage">
+  <div class="rl-page-head">
+    <h1 class="rl-page-title" x-t="users.title"></h1>
+  </div>
+  <p class="text-secondary" x-t="users.hint"></p>
+  <p class="rl-error" x-show="error" x-text="error"></p>
+  <p class="text-secondary" x-show="loading" x-t="common.loading"></p>
+
+  <section class="card" x-show="!loading">
+    <div class="card-header rl-card-head">
+      <h2 class="rl-card-title" x-t="users.listTitle"></h2>
+      <button type="button" class="btn btn-sm btn-primary" x-on:click="openUser()"><span class="rl-icon" x-icon="plus"></span><span x-t="users.add"></span></button>
+    </div>
+    <div class="card-body">
+      <p class="rl-hint" x-show="users.length === 0" x-t="users.empty"></p>
+      <ul class="rl-list">
+        <template x-for="user in users" x-bind:key="user.id">
+          <li class="rl-list-row">
+            <div class="rl-list-main">
+              <div class="rl-list-title">
+                <span x-text="user.username"></span>
+                <span class="badge" x-show="user.provisioned === true" x-t="users.sso"></span>
+                <span class="badge" x-show="user.keys.length > 0" x-text="user.keys.length"></span>
+              </div>
+              <p class="rl-hint" x-show="user.email && user.email !== user.username" x-text="user.email"></p>
+            </div>
+            <div class="rl-list-actions">
+              <button type="button" class="btn btn-sm btn-ghost" x-on:click="openUser(user)" x-tip="common.edit"><span class="rl-icon" x-icon="pencil"></span><span class="visually-hidden" x-t="common.edit"></span></button>
+              <button type="button" class="btn btn-sm btn-ghost-danger" x-on:click="removeUser(user)" x-tip="common.delete"><span class="rl-icon" x-icon="trash"></span><span class="visually-hidden" x-t="common.delete"></span></button>
+            </div>
+          </li>
+        </template>
+      </ul>
+    </div>
+  </section>
+
+  <dialog class="rl-dialog" x-ref="userDlg" aria-labelledby="user-dlg-title">
+    <form x-on:submit.prevent="saveUser()">
+      <h2 id="user-dlg-title">
+        <template x-if="userForm && userForm.id"><span x-t="users.editTitle"></span></template>
+        <template x-if="!userForm || !userForm.id"><span x-t="users.addTitle"></span></template>
+      </h2>
+      <label class="form-label" for="user-name" x-t="users.name"></label>
+      <input class="form-control" id="user-name" x-ref="userName" maxlength="64" required x-bind:value="userForm ? userForm.name : ''" x-on:input="setUser('name', $event)">
+      <label class="form-label" for="user-email" x-t="users.email"></label>
+      <input class="form-control" id="user-email" type="email" maxlength="320" x-bind:value="userForm ? userForm.email : ''" x-on:input="setUser('email', $event)">
+      <label class="form-label" for="user-password" x-t="users.password"></label>
+      <input class="form-control" id="user-password" type="password" autocomplete="new-password" x-bind:value="userForm ? userForm.password : ''" x-on:input="setUser('password', $event)" x-bind:required="userForm ? userForm.id === '' : true">
+      <p class="rl-hint" x-show="userForm && userForm.id" x-t="users.passwordKeep"></p>
+      <p class="rl-error" x-show="userForm && userForm.error" x-text="userForm ? userForm.error : ''"></p>
+      <div class="rl-dialog-actions">
+        <button type="button" class="btn" x-on:click="closeUser()" x-t="common.cancel"></button>
+        <button type="submit" class="btn btn-primary" x-bind:disabled="userForm && userForm.busy" x-t="common.save"></button>
+      </div>
+    </form>
+  </dialog>
+</section>

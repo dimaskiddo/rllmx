@@ -34,7 +34,7 @@ func FinishFromGemini(reason string) string {
 	switch reason {
 	case "STOP", "":
 		return FinishStop
-	case "MAX_TOKENS":
+	case "MAX_TOKENS", "CONTINUATION":
 		return FinishLength
 	case "SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "IMAGE_SAFETY", "LANGUAGE":
 		return FinishFilter

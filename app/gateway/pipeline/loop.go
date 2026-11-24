@@ -78,6 +78,7 @@ func (c *call) serveFail(ctx context.Context) (Output, *accountFail) {
 		}
 		tried++
 		c.beginAttempt(sel.Conn.ID, tried > 1)
+		c.logRoute()
 		// A model the account's own provider does not list is the client's
 		// mistake, not the account's: it ends the request here, before a send,
 		// so no lock is written and no other account is tried for it.

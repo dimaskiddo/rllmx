@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"slices"
 	"time"
 
 	"rllmx/app/gateway/combo"
@@ -64,7 +65,11 @@ func (c *call) comboOrder(ctx context.Context, name string) (policy combo.Policy
 	if policy.Strategy != combo.StrategyFusion {
 		open = c.providerOpen
 	}
-	order, found := combo.Order(ctx, policy, members, c.comboCaps, open, translate.DetectNeeds(c.req), c.p.d.Rotation, smart)
+	needs := translate.DetectNeeds(c.req)
+	if extra, ok := c.adapterOrder(ctx, members, needs); ok {
+		members = extra
+	}
+	order, found := combo.Order(ctx, policy, members, c.comboCaps, open, needs, c.p.d.Rotation, smart)
 	if !found {
 		return policy, nil, c.fail(http.StatusBadRequest, "invalid_request", "The combo names no model"), false
 	}
@@ -212,6 +217,7 @@ func (c *call) comboContext(dest destination, t routing.Target) {
 	caps := c.p.d.Caps.For(dest.provider, dest.model)
 	c.tctx.Provider, c.tctx.Model, c.tctx.Caps, c.tctx.Entry = dest.provider, dest.model, caps, dest.entry
 	c.tctx.BudgetOf = c.p.d.Caps.Budget
+	c.tctx.Levels = c.servedLevels(dest)
 	if store := newSignatureStore(c.p.d.Signatures, c.in.Caller.ID, dest.model); store != nil {
 		c.tctx.Calls = store
 	}
@@ -284,6 +290,69 @@ func (c *call) expand(ctx context.Context, name string) ([]routing.Member, error
 		return e.Expand(ctx, name)
 	}
 	return nil, routing.ErrComboEmpty
+}
+
+// adapterOrder puts the configured fallback models in front when no declared
+// member can read what the turn carries. The answer is the whole order to try,
+// adapters first; ok is false when the declared order already meets every need.
+func (c *call) adapterOrder(ctx context.Context, declared []routing.Member, needs translate.Needs) ([]routing.Member, bool) {
+	if c.p == nil || c.p.d.Settings == nil || c.p.d.Resolver == nil || !needs.Any() {
+		return nil, false
+	}
+	capable := 0
+	for _, m := range declared {
+		if needs.Met(c.comboCaps(m)) {
+			capable++
+		}
+	}
+	if capable == len(declared) {
+		return nil, false
+	}
+	doc, err := c.p.d.Settings.Effective(ctx)
+	if err != nil {
+		return nil, false
+	}
+	pools := combo.AdaptersFor(doc)
+	if len(pools) == 0 {
+		return nil, false
+	}
+	var allow routing.Allow
+	restricted := c.in.Caller.Restricted
+	if restricted {
+		if allow, err = routing.NewAllow(ctx, c.p.d.Resolver, c.in.Caller.Allow); err != nil {
+			return nil, false
+		}
+	}
+	var out []routing.Member
+	for _, kind := range combo.AdapterKinds(needs) {
+		pool, ok := pools[kind]
+		if !ok {
+			continue
+		}
+		var got []routing.Member
+		for _, id := range pool.Models {
+			t, err := c.p.d.Resolver.Resolve(ctx, id)
+			if err != nil || t.Combo != "" || c.emptyDest(t) {
+				continue
+			}
+			if restricted && !allow.Target(t) {
+				continue
+			}
+			m := routing.Member{Provider: t.Provider, Model: t.Model}
+			if !combo.KindMet(kind, c.comboCaps(m)) || slices.Contains(got, m) || slices.Contains(declared, m) {
+				continue
+			}
+			got = append(got, m)
+		}
+		if pool.RoundRobin && len(got) > 1 && c.p.d.Rotation != nil {
+			got = c.p.d.Rotation.Rotate("adapter:"+kind, got, 1)
+		}
+		out = append(out, got...)
+	}
+	if len(out) == 0 {
+		return nil, false
+	}
+	return append(out, declared...), true
 }
 
 // emptyDest reports a target that is a media model, which a chat combo may not

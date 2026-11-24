@@ -298,3 +298,52 @@ func TestCardsLaysTheOverridesOverTheEmbeddedRows(t *testing.T) {
 		t.Fatalf("the view rewrote the baseline: %+v", tb.providers["github"])
 	}
 }
+
+// A tier is a way of calling one model, not another model: Opus 5.5 at "high"
+// costs what Opus 5.5 costs. A tiered id that missed its family's own row would
+// be priced as the older, dearer family and every figure on the usage page
+// would be wrong.
+func TestATieredIDIsPricedAsItsFamilyNotAnOlderOne(t *testing.T) {
+	reg, err := Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tb, err := DefaultTable(reg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for model, want := range map[string]Rates{
+		"claude-opus-5-5":         {Input: 4, Output: 20, Cached: 0.20, Reasoning: 20, CacheCreation: 5},
+		"claude-opus-5-5-high":    {Input: 4, Output: 20, Cached: 0.20, Reasoning: 20, CacheCreation: 5},
+		"claude-opus-5-5-max":     {Input: 4, Output: 20, Cached: 0.20, Reasoning: 20, CacheCreation: 5},
+		"claude-sonnet-5-5-low":   {Input: 2, Output: 10, Cached: 0.20, Reasoning: 10, CacheCreation: 2.5},
+		"claude-sonnet-5-5-max":   {Input: 2, Output: 10, Cached: 0.20, Reasoning: 10, CacheCreation: 2.5},
+		"gemini-4-hydrogen-xhigh": {Input: 1.5, Output: 7.5, Cached: 0.075, Reasoning: 7.5, CacheCreation: 1.5},
+		"gemini-4-hydrogen":       {Input: 1.5, Output: 7.5, Cached: 0.075, Reasoning: 7.5, CacheCreation: 1.5},
+		"gemini-4-neon-high":      {Input: 2, Output: 10, Cached: 0.10, Reasoning: 10, CacheCreation: 0.1875},
+	} {
+		got, ok := tb.Lookup("antigravity", model)
+		if !ok || got != want {
+			t.Errorf("%s: %+v (found %v), want %+v", model, got, ok, want)
+		}
+	}
+	if r, _ := tb.Lookup("anthropic", "claude-opus-4-1"); r.Input != 5 {
+		t.Errorf("an older Opus stopped being priced as Opus: %+v", r)
+	}
+}
+
+func TestKimiK31IsPricedAsItsOwnModel(t *testing.T) {
+	reg, err := Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tb, err := DefaultTable(reg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, model := range []string{"kimi-k3.1-pro", "k3.1-pro", "k3.1-pro-highspeed"} {
+		if r, ok := tb.Lookup("kimi", model); !ok || r.Input != 2 || r.Output != 10 || r.Cached != 0.20 {
+			t.Errorf("%s: %+v (found %v)", model, r, ok)
+		}
+	}
+}

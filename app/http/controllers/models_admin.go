@@ -24,6 +24,7 @@ const maxDisabledIDs = 2000
 // modelAdminCaps is the capability part the model page reads.
 type modelAdminCaps struct {
 	Vision        bool `json:"vision"`
+	Audio         bool `json:"audio"`
 	Search        bool `json:"search"`
 	Reasoning     bool `json:"reasoning"`
 	ContextWindow int  `json:"contextWindow"`
@@ -63,6 +64,7 @@ func (m *ModelsController) AdminList(ctx contractshttp.Context) contractshttp.Re
 	if err != nil {
 		return storageDown(ctx)
 	}
+	m.refreshDeclared(rc)
 	entries := m.Registry.All()
 	lists, err := catalog.RegistryAll(rc, st.KV(), entries)
 	if err != nil {
@@ -86,7 +88,7 @@ func (m *ModelsController) AdminList(ctx contractshttp.Context) contractshttp.Re
 			}
 			if m.Caps != nil {
 				c := m.Caps.For(e.ID, mm.ID)
-				v.Caps = modelAdminCaps{Vision: c.Vision, Search: c.Search, Reasoning: c.Reasoning, ContextWindow: c.ContextWindow, MaxOutput: c.MaxOutput}
+				v.Caps = modelAdminCaps{Vision: c.Vision, Audio: c.AudioInput, Search: c.Search, Reasoning: c.Reasoning, ContextWindow: c.ContextWindow, MaxOutput: c.MaxOutput}
 			}
 			out = append(out, v)
 		}
@@ -262,6 +264,34 @@ type customModel struct {
 
 func customKey(owner, id, kind string) string { return owner + "|" + id + "|" + kind }
 
+// refreshDeclared reloads what the operator declared about custom models, so a
+// vision or reasoning custom model sorts and adapts as one. A read failure
+// leaves the previous set alone.
+func (m *ModelsController) refreshDeclared(rc context.Context) {
+	if m.Caps == nil || m.DB == nil {
+		return
+	}
+	st := m.store()
+	if st == nil {
+		return
+	}
+	raw, err := st.KV().List(rc, repository.ScopeCustomModels)
+	if err != nil {
+		return
+	}
+	all := make(map[string]upstream.Capability, len(raw))
+	for _, body := range raw {
+		var stored customModel
+		if json.Unmarshal([]byte(body), &stored) != nil || stored.ProviderAlias == "" || stored.ID == "" {
+			continue
+		}
+		all[stored.ProviderAlias+"/"+stored.ID] = upstream.Capability{
+			Vision: stored.Caps["vision"], Reasoning: stored.Caps["reasoning"],
+		}
+	}
+	m.Caps.SetCustom(all)
+}
+
 // AddCustomModel answers POST /api/models/custom: one upsert.
 func (m *ModelsController) AddCustomModel(ctx contractshttp.Context) contractshttp.Response {
 	st := m.store()
@@ -322,6 +352,7 @@ func (m *ModelsController) AddCustomModel(ctx contractshttp.Context) contractsht
 	if err := st.KV().Set(rc, repository.ScopeCustomModels, key, string(body)); err != nil {
 		return flat(ctx, nethttp.StatusInternalServerError, "Failed to add custom model")
 	}
+	m.refreshDeclared(rc)
 	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"success": true, "added": !ok})
 }
 
@@ -336,9 +367,11 @@ func (m *ModelsController) DeleteCustomModel(ctx contractshttp.Context) contract
 	if msg != "" {
 		return flat(ctx, nethttp.StatusBadRequest, msg)
 	}
-	if err := st.KV().Delete(ctx.Request().Origin().Context(), repository.ScopeCustomModels, customKey(owner, id, kind)); err != nil {
+	rc := ctx.Request().Origin().Context()
+	if err := st.KV().Delete(rc, repository.ScopeCustomModels, customKey(owner, id, kind)); err != nil {
 		return flat(ctx, nethttp.StatusInternalServerError, "Failed to delete custom model")
 	}
+	m.refreshDeclared(rc)
 	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"success": true})
 }
 

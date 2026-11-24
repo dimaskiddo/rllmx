@@ -85,12 +85,18 @@ func readKiro(ctx context.Context, r *Reader, e upstream.Entry, a Access) (Readi
 }
 
 // kiroHeaders is the identity a usage call carries: the token the way the
-// account signed in, and the CLI's own agent string.
+// account signed in, and the IDE's own identity.
 func kiroHeaders(e upstream.Entry, a Access, method string) map[string]string {
 	h := bearerFor(e, a)
 	h["Accept"] = "application/json"
-	h["x-amz-user-agent"] = "aws-sdk-js/1.0.0 KiroIDE"
-	h["User-Agent"] = "aws-sdk-js/1.0.0 KiroIDE"
+	seed := upstream.KiroSeed{
+		ClientID: stored(a.Conn, "clientId"), RefreshToken: stored(a.Conn, "refreshToken"),
+		ProfileARN: stored(a.Conn, "profileArn"), AccessToken: a.Token,
+	}
+	if method == "api_key" {
+		seed.APIKey, seed.AccessToken = a.Token, ""
+	}
+	maps.Copy(h, upstream.KiroIdentity(seed, upstream.KiroRuntime))
 	switch method {
 	case "api_key":
 		h["TokenType"] = "API_KEY"

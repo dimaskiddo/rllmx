@@ -96,6 +96,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 167 | Executor returns it in `Result.ResetAt`; account lock uses it in place of backoff only when in the future, capped 30 minutes, backoff level cleared. Message with no zone read as UTC+8, as reference does | Wrong or distant date cannot lock an account for days |
 | 82 | One mutex per provider | No cross-provider queueing |
 | 170 | 402/403 whose body names quota or balance: 429 rate-limit error, account cooled down, next tried; other 403s stay auth errors | Empty plan temporary, not a bad key |
+| 443 | An Antigravity 429 whose only text is "Resource has been exhausted (e.g. check quota)" with no details is a refused prompt, not a quota: the executor does not retry it in place, sends the request once more with the system text moved into the first user turn, and answers a second refusal as a 400 that says it is not the user's quota. The 400 is request-scoped, so no account is locked and no strike is counted | Google fingerprints `systemInstruction` and refuses the same body the same way every time; the reference's answer is the same, and a lock or three retries only spent the account's pace on a body that cannot pass (improvement) |
 | 212 | A connection whose `testStatus` is `expired` is never a candidate, and is not the last resort either | A dead refresh token cannot serve a request, so it neither burns an attempt nor lands a 401 lock that hides the real state; the reconnect in the dashboard clears it |
 
 ---

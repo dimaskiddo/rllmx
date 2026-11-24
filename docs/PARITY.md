@@ -8,8 +8,8 @@ How closely Router-LLM follows 9router. The reference is read-only and never cop
 
 | Reference | Version | Commit | Commit date | Role |
 |---|---|---|---|---|
-| 9router | 0.5.119 | `1855aa44` | 2026-11-12 | Behavior baseline |
-| 9router-extended | 0.5.119-extended | `fe87e443` | 2026-11-12 | Extended fork; its delta matches the baseline except where recorded |
+| 9router | 0.5.123 | `5ae63d22` | 2026-11-23 | Behavior baseline |
+| 9router-extended | 0.5.123-extended | `14052060` | 2026-11-23 | Extended fork; its delta matches the baseline except where recorded |
 
 The project also tracks a private extended fork built on the same upstream release. On disagreement the baseline wins, and only the fork's own additions are adopted.
 

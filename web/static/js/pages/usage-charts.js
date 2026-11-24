@@ -2,6 +2,7 @@
 // provider ring. Chart.js draws a canvas; the ring is drawn node by node, so
 // nothing here puts data into markup.
 import { makeChart, destroyChart, chartPalette } from "/static/js/ui/charts.js";
+import { compactTokens } from "/static/js/ui/format.js";
 
 const svgNS = "http://www.w3.org/2000/svg";
 
@@ -16,14 +17,18 @@ function fade(hex) {
   return "rgba(" + r + ", " + g + ", " + b + ", 0.15)";
 }
 
+// chartOptions builds one chart's axes. The value axis is the vertical one on a
+// column chart and the horizontal one on a bar chart, and it is written in the
+// compact form so a long count never crowds the labels.
 function chartOptions(colors, horizontal) {
   const axis = { grid: { color: colors.grid }, ticks: { color: colors.text } };
+  const value = Object.assign({}, axis, { beginAtZero: true, ticks: { color: colors.text, callback: (v) => compactTokens(v) } });
   return {
     responsive: true,
     maintainAspectRatio: false,
     indexAxis: horizontal ? "y" : "x",
     plugins: { legend: { display: false } },
-    scales: { x: axis, y: Object.assign({}, axis, { beginAtZero: true }) },
+    scales: horizontal ? { x: value, y: axis } : { x: axis, y: value },
   };
 }
 
@@ -56,7 +61,7 @@ export const usageChartMethods = {
   },
 
   topEntries(table, valueOf, limit) {
-    const rows = Object.entries(table || {}).map(([key, entry]) => ({ key: key, label: entry.rawModel || key, value: valueOf(entry) }));
+    const rows = Object.entries(table || {}).map(([key, entry]) => ({ key: key, label: entry.name || entry.rawModel || key, value: valueOf(entry) }));
     rows.sort((a, b) => b.value - a.value);
     return rows.slice(0, limit);
   },
@@ -123,7 +128,8 @@ export const usageChartMethods = {
       node.setAttribute("class", "rl-topo-node " + this.nodeState(provider));
       node.setAttribute("tabindex", "0");
       node.setAttribute("role", "link");
-      node.setAttribute("aria-label", provider + ", " + this.label("usage.state." + (this.nodeState(provider) || "idle")));
+      const name = this.providerLabel(provider);
+      node.setAttribute("aria-label", name + ", " + this.label("usage.state." + (this.nodeState(provider) || "idle")));
       const dot = document.createElementNS(svgNS, "circle");
       dot.setAttribute("cx", String(x));
       dot.setAttribute("cy", String(y));
@@ -132,7 +138,7 @@ export const usageChartMethods = {
       label.setAttribute("x", String(x));
       label.setAttribute("y", String(y + 24));
       label.setAttribute("text-anchor", "middle");
-      label.textContent = provider.length > 16 ? provider.slice(0, 14) + "…" : provider;
+      label.textContent = name.length > 16 ? name.slice(0, 14) + "…" : name;
       node.append(dot, label);
       node.addEventListener("click", () => {
         window.location.assign("/dashboard/providers/" + encodeURIComponent(provider));
@@ -146,6 +152,11 @@ export const usageChartMethods = {
       nodes.append(node);
     });
     svg.replaceChildren(edges, router, nodes);
+  },
+
+  providerLabel(id) {
+    const entry = (this.stats.byProvider || {})[id];
+    return (entry && entry.name) || id;
   },
 
   topologyProviders() {

@@ -9,6 +9,18 @@
     "baseUrl": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
     "quirks": {
       "preserveCacheControl": true
+    },
+    "lanes": {
+      "claude": {
+        "baseUrl": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/apps/anthropic/v1/messages",
+        "headers": {
+          "Anthropic-Version": "2023-06-01"
+        },
+        "auth": {
+          "scheme": "bearer",
+          "header": "Authorization"
+        }
+      }
     }
   },
   "auth": {
@@ -39,6 +51,46 @@
     {
       "id": "deepseek-v4-pro",
       "name": "DeepSeek V4 Pro"
+    },
+    {
+      "id": "auto",
+      "name": "Auto"
+    },
+    {
+      "id": "qwen4-max",
+      "name": "Qwen4 Max"
+    },
+    {
+      "id": "qwen4-max-preview",
+      "name": "Qwen4 Max Preview"
+    },
+    {
+      "id": "qwen3.8-max",
+      "name": "Qwen3.8 Max"
+    },
+    {
+      "id": "qwen3.8-flash",
+      "name": "Qwen3.8 Flash"
+    },
+    {
+      "id": "glm-5.3",
+      "name": "GLM 5.3"
+    },
+    {
+      "id": "deepseek-v4-pro-0813",
+      "name": "DeepSeek V4 Pro 0813"
+    },
+    {
+      "id": "deepseek-v4-flash-0731",
+      "name": "DeepSeek V4 Flash 0731"
+    },
+    {
+      "id": "deepseek-v4.1-flash",
+      "name": "DeepSeek V4.1 Flash"
+    },
+    {
+      "id": "deepseek-v4.1-flash-1017",
+      "name": "DeepSeek V4.1 Flash 1017"
     }
   ]
 }

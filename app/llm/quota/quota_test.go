@@ -411,3 +411,44 @@ func TestTheArgonGroupIsReadBeforeTheGeminiGroup(t *testing.T) {
 		t.Fatalf("gemini weekly = %+v", b)
 	}
 }
+
+// A bare model name is a way of asking for its default tier, so it shares that
+// tier's bucket. Claude 5.5 defaults to medium now, falling back to high for an
+// account whose list has no medium row.
+func TestABareTierNameSharesTheBucketOfItsDefaultTier(t *testing.T) {
+	soon := t0.Add(time.Hour)
+	for name, tc := range map[string]struct {
+		snap  Snapshot
+		model string
+		want  float64
+	}{
+		"carbon":                      {Snapshot{"gemini-4-carbon-high": spent(soon)}, "gemini-4-carbon", 0},
+		"argon":                       {Snapshot{"gemini-4-argon-high": spent(soon)}, "gemini-4-argon", 0},
+		"neon":                        {Snapshot{"gemini-4-neon-high": spent(soon)}, "gemini-4-neon", 0},
+		"hydrogen":                    {Snapshot{"gemini-4-hydrogen-high": spent(soon)}, "gemini-4-hydrogen", 0},
+		"claude opus uses medium":     {Snapshot{"claude-opus-5-5-medium": room(30), "claude-opus-5-5-high": spent(soon)}, "claude-opus-5-5", 30},
+		"claude sonnet falls to high": {Snapshot{"claude-sonnet-5-5-high": room(45)}, "claude-sonnet-5-5", 45},
+	} {
+		b, ok := tc.snap.Of(tc.model, t0)
+		if !ok || b.Remaining != tc.want {
+			t.Errorf("%s: %+v %v, want %v", name, b, ok, tc.want)
+		}
+	}
+}
+
+func TestTheNewTiersKeepTheirOwnBucketsWhenTheAnswerIsParsed(t *testing.T) {
+	raw := `{"models":{` +
+		`"gemini-4-hydrogen-xhigh":{"quotaInfo":{"remainingFraction":0.5}},` +
+		`"gemini-4-neon-high":{"quotaInfo":{"remainingFraction":0.4}},` +
+		`"claude-opus-5-5-max":{"quotaInfo":{"remainingFraction":0.3}},` +
+		`"some-other-model":{"quotaInfo":{"remainingFraction":0.9}}}}`
+	got := ParseModels([]byte(raw))
+	for _, key := range []string{"gemini-4-hydrogen-xhigh", "gemini-4-neon-high", "claude-opus-5-5-max"} {
+		if _, ok := got[key]; !ok {
+			t.Errorf("%s was dropped from the answer", key)
+		}
+	}
+	if _, ok := got["some-other-model"]; ok {
+		t.Error("a model nobody serves was kept")
+	}
+}

@@ -269,3 +269,50 @@ func TestOnlyReadableConnectionsAreListedAndTheirProvidersAreNamedOnceInOrder(t 
 		t.Fatal("no providers must answer an empty list, not null")
 	}
 }
+
+// The page sorts by what a person scans for: every account of one provider
+// together, then the operator's own rank, then the name. The store renumbers a
+// provider's ranks to 1..N on every change, so ranks are only ever distinct
+// within a provider and two providers' first accounts both carry rank 1.
+func TestTheClientListGroupsByProviderThenPriority(t *testing.T) {
+	r, _ := quotaRig(t)
+	client := &ProvidersController{DB: func() *repository.Store { return r.m.st.Store }, Registry: r.m.pc.Registry}
+	r.m.guard.Handle(r.m.router, apphttp.ClassProtected, nethttp.MethodGet, "/api/providers/client", client.Client)
+
+	// Created interleaved on purpose: by rank alone the two providers' rank-1
+	// accounts would sit together and the rest would alternate.
+	seedConnectionNamed(t, r, "claude", "oauth", "claude-b", 2)
+	seedConnectionNamed(t, r, "codex", "oauth", "codex-a", 1)
+	seedConnectionNamed(t, r, "claude", "oauth", "claude-a", 1)
+	seedConnectionNamed(t, r, "codex", "oauth", "codex-b", 2)
+
+	code, out, raw := r.m.call("GET", "/api/providers/client?sort=priority&pageSize=50", "", true)
+	if code != 200 {
+		t.Fatalf("%d %s", code, raw)
+	}
+	var got []string
+	for _, c := range out["connections"].([]any) {
+		got = append(got, c.(map[string]any)["name"].(string))
+	}
+	want := []string{"claude-a", "claude-b", "codex-a", "codex-b"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("order %v, want %v", got, want)
+	}
+}
+
+func TestAnUnrankedAccountSortsAfterTheRankedOnesOfItsProvider(t *testing.T) {
+	rows := []repository.Connection{
+		{ID: "u", Provider: "claude", Name: "unset", Priority: 0},
+		{ID: "b", Provider: "claude", Name: "b", Priority: 2},
+		{ID: "a", Provider: "claude", Name: "a", Priority: 1},
+		{ID: "x", Provider: "codex", Name: "x", Priority: 0},
+	}
+	sortClients(rows, false)
+	var got []string
+	for _, c := range rows {
+		got = append(got, c.ID)
+	}
+	if strings.Join(got, ",") != "a,b,u,x" {
+		t.Fatalf("order %v", got)
+	}
+}

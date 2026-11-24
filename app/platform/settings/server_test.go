@@ -210,3 +210,18 @@ func TestTheUserCapIsReadAndChecked(t *testing.T) {
 		}
 	}
 }
+
+func TestTheSessionLifetimeIsReadAndBounded(t *testing.T) {
+	if s, err := loadWith(t, nil); err != nil || s.SessionTTL != 24*time.Hour {
+		t.Fatalf("%v %v", s.SessionTTL, err)
+	}
+	if s, err := loadWith(t, map[string]any{"auth.session_ttl": "90m"}); err != nil || s.SessionTTL != 90*time.Minute {
+		t.Fatalf("%v %v", s.SessionTTL, err)
+	}
+	for _, bad := range []string{"4m", "721h", "0s", "-1h", "soon"} {
+		_, err := loadWith(t, map[string]any{"auth.session_ttl": bad})
+		if err == nil || !strings.Contains(err.Error(), "AUTH_SESSION_TTL") || strings.Contains(err.Error(), "value "+bad) {
+			t.Errorf("auth.session_ttl=%q: %v", bad, err)
+		}
+	}
+}

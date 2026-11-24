@@ -71,6 +71,7 @@ func SocialExchange(ctx context.Context, c *oauth.TokenClient, f oauth.Flow, in 
 // kiroSocialRefresh renews a social sign-in with the body this provider
 // registered.
 func SocialRefresh(ctx context.Context, c *oauth.TokenClient, f oauth.Flow, refreshToken string, h map[string]string) (oauth.Tokens, error) {
+	h = oauth.WithIdentity(h, upstream.KiroIdentity(upstream.KiroSeed{RefreshToken: refreshToken}, upstream.KiroRuntime))
 	status, raw, err := c.PostJSON(ctx, f.TokenURL, oauth.JSONObject(map[string]string{"refreshToken": refreshToken}), h)
 	if err != nil {
 		return oauth.Tokens{}, err

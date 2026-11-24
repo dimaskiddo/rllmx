@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	nethttp "net/http"
-	"strings"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
 
@@ -41,18 +40,18 @@ func (c *SkillsController) Get(ctx contractshttp.Context) contractshttp.Response
 
 // Create answers POST /api/skills: a new custom skill under the skills folder.
 func (c *SkillsController) Create(ctx contractshttp.Context) contractshttp.Response {
-	return c.write(ctx, nethttp.StatusCreated, func(d skill.Draft) error {
+	return c.write(ctx, nethttp.StatusCreated, func(d skill.Draft) (string, error) {
 		return skill.Create(c.skillsDir(), d)
-	}, "")
+	})
 }
 
 // Update answers PUT /api/skills/{id}. Only a custom folder is rewritten; a
 // built-in, a catalog import or a hand-placed folder is refused.
 func (c *SkillsController) Update(ctx contractshttp.Context) contractshttp.Response {
 	id := ctx.Request().Route("id")
-	return c.write(ctx, nethttp.StatusOK, func(d skill.Draft) error {
-		return skill.Update(c.skillsDir(), id, d)
-	}, id)
+	return c.write(ctx, nethttp.StatusOK, func(d skill.Draft) (string, error) {
+		return id, skill.Update(c.skillsDir(), id, d)
+	})
 }
 
 // Delete answers DELETE /api/skills/{id}.
@@ -72,17 +71,15 @@ func (c *SkillsController) Delete(ctx contractshttp.Context) contractshttp.Respo
 }
 
 // write runs one Studio change under the write lock and answers the stored
-// skill.
-func (c *SkillsController) write(ctx contractshttp.Context, status int, apply func(skill.Draft) error, id string) contractshttp.Response {
+// skill. The change reports the id the skill was written under, which a create
+// derives from the name.
+func (c *SkillsController) write(ctx contractshttp.Context, status int, apply func(skill.Draft) (string, error)) contractshttp.Response {
 	d, msg := readDraft(ctx)
 	if msg != "" {
 		return flat(ctx, nethttp.StatusBadRequest, msg)
 	}
-	if id == "" {
-		id = strings.TrimSpace(d.ID)
-	}
 	c.studio.Lock()
-	err := apply(d)
+	id, err := apply(d)
 	c.studio.Unlock()
 	c.Reg.Invalidate()
 	if err != nil {

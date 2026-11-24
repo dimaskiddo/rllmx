@@ -13,10 +13,10 @@
   </ul>
 
   <div class="rl-toolbar">
-    <input class="form-control form-control-sm" type="search" x-bind:placeholder="label('skills.search')" x-bind:aria-label="label('skills.search')" x-bind:value="search" x-on:input="setSearch($event)">
-    <select class="form-select form-select-sm" x-bind:aria-label="label('skills.hookFilter')" x-bind:value="hook" x-on:change="setHookFilter($event)">
+    <input class="form-control form-control-sm" type="search" x-bind:placeholder="label('skills.search')" x-bind:aria-label="label('skills.search')" x-bind:value="search" x-on:input.debounce.250ms="setSearch($event)">
+    <select class="form-select form-select-sm" x-bind:aria-label="label('skills.hookFilter')" x-on:change="setHookFilter($event)">
       <template x-for="value in hooks()" x-bind:key="value">
-        <option x-bind:value="value" x-text="value === 'all' ? label('skills.allHooks') : hookName(value)"></option>
+        <option x-bind:value="value" x-bind:selected="hook === value" x-text="value === 'all' ? label('skills.allHooks') : hookName(value)"></option>
       </template>
     </select>
     <button type="button" class="btn btn-sm btn-primary" x-on:click="openCreate()"><span class="rl-icon" x-icon="wand-sparkles"></span><span x-t="skills.create"></span></button>
@@ -26,69 +26,85 @@
   <p class="rl-hint" x-show="!loading && visible().length === 0" x-t="skills.empty"></p>
 
   <section class="card" x-show="!loading && visible().length > 0">
+    <div class="card-header rl-card-head">
+      <h2 class="rl-card-title" x-t="skills.listTitle"></h2>
+      <label class="form-check form-switch rl-switch">
+        <input class="form-check-input" type="checkbox" role="switch" x-bind:aria-label="label('skills.all')" x-bind:checked="globalOn" x-on:change="toggleGlobal($event)">
+        <span class="form-check-label" x-t="skills.enabled"></span>
+      </label>
+    </div>
     <div class="card-body">
-      <ul class="rl-list">
-        <template x-for="skill in visible()" x-bind:key="skill.id">
-          <li class="rl-list-row">
-            <div class="rl-list-main">
-              <div class="rl-list-title">
-                <span x-text="skill.name"></span>
-                <span class="badge" x-text="hookName(skill.hook)"></span>
-                <span class="badge" x-show="skill.version" x-text="skill.version"></span>
-                <span class="badge" x-text="source(skill)"></span>
-              </div>
-              <p class="text-secondary" x-text="skill.description"></p>
-              <div class="rl-inline">
-                <label class="form-check form-switch rl-switch">
-                  <input class="form-check-input" type="checkbox" role="switch" x-bind:aria-label="label('skills.enabled') + ' ' + skill.name" x-bind:checked="skill.enabled === true" x-on:change="toggle(skill, $event)">
-                  <span class="form-check-label" x-t="skills.enabled"></span>
-                </label>
-                <select class="form-select form-select-sm" x-show="skill.routable === true" x-bind:aria-label="label('skills.routingMode')" x-bind:value="skill.mode" x-on:change="setMode(skill, $event)">
-                  <option value="smart" x-t="skills.smart"></option>
-                  <option value="always" x-t="skills.always"></option>
-                </select>
-              </div>
-              <div class="rl-inline" x-show="skill.enabled === true && skill.config_schema && skill.config_schema.length > 0">
-                <template x-for="field in skill.config_schema" x-bind:key="field.key">
-                  <div>
-                    <template x-if="field.type === 'toggle'">
-                      <label class="form-check form-switch rl-switch">
-                        <input class="form-check-input" type="checkbox" role="switch" x-bind:checked="fieldValue(skill, field) === true" x-on:change="setConfig(skill, field, $event)">
-                        <span class="form-check-label" x-text="field.label || field.key"></span>
-                      </label>
-                    </template>
-                    <template x-if="field.type !== 'toggle'">
+      <p class="rl-hint" x-show="globalOn !== true" x-t="skills.allOff"></p>
+      <template x-for="group in groups()" x-bind:key="group.key">
+        <div>
+          <ul class="rl-list">
+            <template x-for="skill in group.rows" x-bind:key="skill.id">
+              <li class="rl-list-row">
+                <div class="rl-list-main">
+                  <div class="rl-list-title">
+                    <span x-text="skill.name"></span>
+                    <span class="badge" x-text="hookName(skill.hook)"></span>
+                    <span class="badge" x-show="skill.version" x-text="skill.version"></span>
+                  </div>
+                  <p class="text-secondary" x-text="skill.description"></p>
+                  <div class="rl-fields" x-show="skill.enabled === true">
+                    <div x-show="skill.routable === true">
+                      <label class="form-label" x-bind:for="skill.id + '-mode'" x-t="skills.routingMode"></label>
+                      <select class="form-select form-select-sm" x-bind:id="skill.id + '-mode'" x-bind:aria-label="label('skills.routingMode')" x-bind:disabled="globalOn !== true" x-bind:value="skill.mode" x-on:change="setMode(skill, $event)">
+                        <option value="smart" x-t="skills.smart"></option>
+                        <option value="always" x-t="skills.always"></option>
+                      </select>
+                    </div>
+                    <template x-for="field in skill.config_schema || []" x-bind:key="field.key">
                       <div>
-                        <label class="form-label" x-bind:for="skill.id + '-' + field.key" x-text="field.label || field.key"></label>
-                        <template x-if="field.type === 'enum'">
-                          <select class="form-select form-select-sm" x-bind:id="skill.id + '-' + field.key" x-on:change="setOption(skill, field, $event.target.value)">
-                            <template x-for="option in field.options" x-bind:key="option.value">
-                              <option x-bind:value="option.value" x-bind:selected="option.value === fieldValue(skill, field)" x-text="option.label || option.value"></option>
+                        <template x-if="field.type === 'toggle'">
+                          <label class="form-check form-switch rl-switch">
+                            <input class="form-check-input" type="checkbox" role="switch" x-bind:disabled="globalOn !== true" x-bind:checked="fieldValue(skill, field) === true" x-on:change="setConfig(skill, field, $event)">
+                            <span class="form-check-label" x-text="field.label || field.key"></span>
+                          </label>
+                        </template>
+                        <template x-if="field.type !== 'toggle'">
+                          <div>
+                            <label class="form-label" x-bind:for="skill.id + '-' + field.key" x-text="field.label || field.key"></label>
+                            <template x-if="field.type === 'enum'">
+                              <select class="form-select form-select-sm" x-bind:id="skill.id + '-' + field.key" x-bind:disabled="globalOn !== true" x-on:change="setOption(skill, field, $event.target.value)">
+                                <template x-for="option in field.options" x-bind:key="option.value">
+                                  <option x-bind:value="option.value" x-bind:selected="option.value === fieldValue(skill, field)" x-text="option.label || option.value"></option>
+                                </template>
+                              </select>
                             </template>
-                          </select>
-                        </template>
-                        <template x-if="field.type === 'slider'">
-                          <input class="form-range" type="range" x-bind:id="skill.id + '-' + field.key" x-bind:min="field.min || 1" x-bind:max="field.max || 10" step="1" x-bind:value="fieldValue(skill, field)" x-on:change="setConfig(skill, field, $event)">
-                        </template>
-                        <template x-if="field.type === 'number'">
-                          <input class="form-control form-control-sm" type="number" x-bind:id="skill.id + '-' + field.key" x-bind:min="field.min || 1" x-bind:max="field.max || 10" x-bind:value="fieldValue(skill, field)" x-on:change="setConfig(skill, field, $event)">
-                        </template>
-                        <template x-if="field.type !== 'enum' && field.type !== 'slider' && field.type !== 'number'">
-                          <input class="form-control form-control-sm" type="text" x-bind:id="skill.id + '-' + field.key" x-bind:value="fieldValue(skill, field)" x-on:change="setConfig(skill, field, $event)">
+                            <template x-if="field.type === 'slider'">
+                              <div class="rl-range">
+                                <output class="rl-range-value" x-bind:for="skill.id + '-' + field.key" x-text="fieldValue(skill, field) + ' / ' + (field.max || 10)"></output>
+                                <input class="form-range" type="range" x-bind:id="skill.id + '-' + field.key" x-bind:min="field.min || 1" x-bind:max="field.max || 10" x-bind:step="field.step || 1" x-bind:disabled="globalOn !== true" x-bind:value="fieldValue(skill, field)" x-on:change="setConfig(skill, field, $event)">
+                                <div class="rl-range-scale"><span x-text="field.min || 1"></span><span x-text="field.max || 10"></span></div>
+                              </div>
+                            </template>
+                            <template x-if="field.type === 'number'">
+                              <input class="form-control form-control-sm" type="number" x-bind:id="skill.id + '-' + field.key" x-bind:min="field.min || 1" x-bind:max="field.max || 10" x-bind:disabled="globalOn !== true" x-bind:value="fieldValue(skill, field)" x-on:change="setConfig(skill, field, $event)">
+                            </template>
+                            <template x-if="field.type !== 'enum' && field.type !== 'slider' && field.type !== 'number'">
+                              <input class="form-control form-control-sm" type="text" x-bind:id="skill.id + '-' + field.key" x-bind:disabled="globalOn !== true" x-bind:value="fieldValue(skill, field)" x-on:change="setConfig(skill, field, $event)">
+                            </template>
+                          </div>
                         </template>
                       </div>
                     </template>
                   </div>
-                </template>
-              </div>
-            </div>
-            <div class="rl-list-actions">
-              <button type="button" class="btn btn-sm btn-ghost" x-show="skill.editable === true" x-on:click="openEdit(skill)" x-tip="common.edit"><span class="rl-icon" x-icon="pencil"></span><span class="visually-hidden" x-t="common.edit"></span></button>
-              <button type="button" class="btn btn-sm btn-ghost-danger" x-show="skill.editable === true" x-on:click="removeSkill(skill)" x-tip="common.delete"><span class="rl-icon" x-icon="trash"></span><span class="visually-hidden" x-t="common.delete"></span></button>
-            </div>
-          </li>
-        </template>
-      </ul>
+                </div>
+                <div class="rl-list-actions">
+                  <label class="form-check form-switch rl-switch">
+                    <input class="form-check-input" type="checkbox" role="switch" x-bind:aria-label="label('skills.enabled') + ' ' + skill.name" x-bind:disabled="globalOn !== true" x-bind:checked="skill.enabled === true" x-on:change="toggle(skill, $event)">
+                    <span class="form-check-label" x-t="skills.enabled"></span>
+                  </label>
+                  <button type="button" class="btn btn-sm btn-ghost" x-show="skill.editable === true" x-on:click="openEdit(skill)" x-tip="common.edit"><span class="rl-icon" x-icon="pencil"></span><span class="visually-hidden" x-t="common.edit"></span></button>
+                  <button type="button" class="btn btn-sm btn-ghost-danger" x-show="skill.editable === true" x-on:click="removeSkill(skill)" x-tip="common.delete"><span class="rl-icon" x-icon="trash"></span><span class="visually-hidden" x-t="common.delete"></span></button>
+                </div>
+              </li>
+            </template>
+          </ul>
+        </div>
+      </template>
     </div>
   </section>
 
@@ -98,13 +114,11 @@
     </div>
     <div class="card-body">
       <p class="rl-hint" x-t="skills.syncHint"></p>
-      <label class="form-label" for="sync-source" x-t="skills.syncSource"></label>
-      <input class="form-control" id="sync-source" type="url" maxlength="2048" x-bind:value="sync.source" x-on:input="setSync('source', $event)">
-      <label class="form-label" for="sync-tag" x-t="skills.syncTag"></label>
-      <input class="form-control" id="sync-tag" type="text" maxlength="128" x-bind:value="sync.tag" x-on:input="setSync('tag', $event)">
-      <div class="form-check form-switch rl-switch">
-        <input class="form-check-input" type="checkbox" id="sync-force" role="switch" x-bind:checked="sync.force" x-on:change="setSyncForce($event)">
-        <label class="form-check-label" for="sync-force" x-t="skills.syncForce"></label>
+      <div class="rl-inline">
+        <div class="form-check form-switch rl-switch">
+          <input class="form-check-input" type="checkbox" id="sync-force" role="switch" x-bind:checked="sync.force" x-on:change="setSyncForce($event)">
+          <label class="form-check-label" for="sync-force" x-t="skills.syncForce"></label>
+        </div>
       </div>
       <p class="rl-error" x-show="sync.error" x-text="sync.error"></p>
       <p class="rl-hint" x-show="sync.result" x-text="sync.result"></p>
@@ -117,13 +131,13 @@
   <section class="card">
     <div class="card-header rl-card-head">
       <h2 class="rl-card-title" x-t="skills.planTitle"></h2>
+      <div class="form-check form-switch rl-switch">
+        <input class="form-check-input" type="checkbox" id="plan-on" role="switch" x-bind:aria-label="label('skills.planOn')" x-bind:checked="plan.autoPlanEnabled" x-on:change="setPlanBool('autoPlanEnabled', $event)">
+        <label class="form-check-label" for="plan-on" x-t="skills.enabled"></label>
+      </div>
     </div>
     <div class="card-body">
       <p class="rl-hint" x-t="skills.planHint"></p>
-      <div class="form-check form-switch rl-switch">
-        <input class="form-check-input" type="checkbox" id="plan-on" role="switch" x-bind:checked="plan.autoPlanEnabled" x-on:change="setPlanBool('autoPlanEnabled', $event)">
-        <label class="form-check-label" for="plan-on" x-t="skills.planOn"></label>
-      </div>
       <div x-show="plan.autoPlanEnabled === true">
         <label class="form-label" for="plan-mode" x-t="skills.planMode"></label>
         <select class="form-select" id="plan-mode" x-bind:value="plan.autoPlanMode" x-on:change="setPlanField('autoPlanMode', $event)">
@@ -132,22 +146,26 @@
         </select>
         <div x-show="plan.autoPlanMode === 'manual'">
           <label class="form-label" for="plan-combo" x-t="skills.planCombo"></label>
-          <select class="form-select" id="plan-combo" x-bind:value="plan.autoPlanComboId" x-on:change="setPlanField('autoPlanComboId', $event)">
-            <option value="" x-t="skills.planComboDefault"></option>
+          <select class="form-select" id="plan-combo" x-on:change="setPlanField('autoPlanComboId', $event)">
+            <option value="" x-bind:selected="!plan.autoPlanComboId" x-t="skills.planComboDefault"></option>
             <template x-for="combo in combos" x-bind:key="combo.id">
-              <option x-bind:value="combo.name" x-text="combo.name"></option>
+              <option x-bind:value="combo.name" x-bind:selected="plan.autoPlanComboId === combo.name" x-text="combo.name"></option>
             </template>
           </select>
           <label class="form-label" for="plan-code-combo" x-t="skills.codeCombo"></label>
-          <select class="form-select" id="plan-code-combo" x-bind:value="plan.autoCodeComboId" x-on:change="setPlanField('autoCodeComboId', $event)">
-            <option value="" x-t="skills.planComboDefault"></option>
+          <select class="form-select" id="plan-code-combo" x-on:change="setPlanField('autoCodeComboId', $event)">
+            <option value="" x-bind:selected="!plan.autoCodeComboId" x-t="skills.planComboDefault"></option>
             <template x-for="combo in combos" x-bind:key="combo.id">
-              <option x-bind:value="combo.name" x-text="combo.name"></option>
+              <option x-bind:value="combo.name" x-bind:selected="plan.autoCodeComboId === combo.name" x-text="combo.name"></option>
             </template>
           </select>
         </div>
         <label class="form-label" for="plan-threshold" x-t="skills.planThreshold"></label>
-        <input class="form-range" id="plan-threshold" type="range" min="1" max="10" step="1" x-bind:value="plan.autoPlanComplexityThreshold" x-on:change="setPlanField('autoPlanComplexityThreshold', $event)">
+        <div class="rl-range">
+          <output class="rl-range-value" for="plan-threshold" x-text="plan.autoPlanComplexityThreshold + ' / 10'"></output>
+          <input class="form-range" id="plan-threshold" type="range" min="1" max="10" step="1" x-bind:value="plan.autoPlanComplexityThreshold" x-on:change="setPlanField('autoPlanComplexityThreshold', $event)">
+          <div class="rl-range-scale"><span>1</span><span>10</span></div>
+        </div>
         <p class="rl-hint" x-t="skills.planThresholdHint"></p>
         <label class="form-label" for="plan-tokens" x-t="skills.planMaxTokens"></label>
         <input class="form-control" id="plan-tokens" type="number" min="200" max="4000" step="100" x-bind:value="plan.autoPlanMaxTokens" x-on:change="setPlanField('autoPlanMaxTokens', $event)">
@@ -171,21 +189,30 @@
       <div x-show="studio">
         <label class="form-label" for="studio-name" x-t="skills.studioName"></label>
         <input class="form-control" id="studio-name" type="text" maxlength="100" x-bind:value="studio ? studio.name : ''" x-on:input="setStudioField('name', $event)">
-        <label class="form-label" for="studio-id" x-t="skills.studioID"></label>
-        <input class="form-control" id="studio-id" type="text" maxlength="64" x-bind:value="studio ? studio.id : ''" x-bind:disabled="studio && studio.mode === 'edit'" x-on:input="setStudioID($event)">
         <label class="form-label" for="studio-desc" x-t="skills.studioDescription"></label>
         <input class="form-control" id="studio-desc" type="text" maxlength="256" x-bind:value="studio ? studio.description : ''" x-on:input="setStudioField('description', $event)">
 
         <h3 class="rl-card-title" x-t="skills.studioHook"></h3>
-        <ul class="rl-chips">
+        <ul class="rl-choices">
           <template x-for="value in studioHooks()" x-bind:key="value">
-            <li class="rl-chip">
+            <li class="rl-choice">
               <button type="button" class="btn btn-sm" x-bind:aria-pressed="studio && studio.hook === value ? 'true' : 'false'" x-on:click="setHook(value)" x-text="hookName(value)"></button>
             </li>
           </template>
         </ul>
 
         <div x-show="ruleHook() === 'system-prompt'">
+          <label class="form-label" for="studio-routing" x-t="skills.studioRouting"></label>
+          <select class="form-select" id="studio-routing" x-on:change="setRouting($event)">
+            <option value="smart" x-bind:selected="!studio || studio.routing !== 'always'" x-t="saver.smart"></option>
+            <option value="always" x-bind:selected="studio && studio.routing === 'always'" x-t="saver.always"></option>
+          </select>
+          <div x-show="!studio || studio.routing !== 'always'">
+            <label class="form-label" for="studio-triggers" x-t="skills.studioTriggers"></label>
+            <input class="form-control" id="studio-triggers" type="text" x-bind:placeholder="label('skills.studioTermsHint')" x-bind:value="studio ? studio.triggers : ''" x-on:input="setStudioField('triggers', $event)">
+            <label class="form-label" for="studio-keywords" x-t="skills.studioKeywords"></label>
+            <input class="form-control" id="studio-keywords" type="text" x-bind:placeholder="label('skills.studioTermsHint')" x-bind:value="studio ? studio.keywords : ''" x-on:input="setStudioField('keywords', $event)">
+          </div>
           <label class="form-label" for="studio-prompt" x-t="skills.studioPrompt"></label>
           <textarea class="form-control" id="studio-prompt" rows="5" x-bind:value="studio ? studio.prompt : ''" x-on:input="setStudioField('prompt', $event)"></textarea>
         </div>

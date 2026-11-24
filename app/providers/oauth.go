@@ -114,7 +114,7 @@ func newQuotaGate(reg *upstream.Registry, client quota.HTTP) *quota.Gate {
 	return quota.New(f.Fetch)
 }
 
-// quotaVersion reads the version out of "antigravity/hub/2.24.0 darwin/arm64".
+// quotaVersion reads the version out of "antigravity/hub/2.33.0 darwin/arm64".
 func quotaVersion(agent string) string {
 	head, _, _ := strings.Cut(agent, " ")
 	if i := strings.LastIndexByte(head, '/'); i >= 0 {

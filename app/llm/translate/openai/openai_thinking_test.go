@@ -264,3 +264,80 @@ func TestAToolResultTurnKeepsItsThinkingRequest(t *testing.T) {
 		t.Fatalf("the tool-result turn lost its thinking")
 	}
 }
+
+func TestQwenTurnsThinkingOnWithASwitchAndABudgetAndOffWithTheSwitchAlone(t *testing.T) {
+	can := upstream.Capability{Reasoning: true, ThinkingCanOff: true, ThinkingFormat: "qwen"}
+	cannot := upstream.Capability{Reasoning: true, ThinkingFormat: "qwen"}
+	ranged := upstream.Capability{Reasoning: true, ThinkingCanOff: true, ThinkingFormat: "qwen", ThinkingMin: 1024, ThinkingMax: 8192}
+	budgets := func(level string) int {
+		return map[string]int{"minimal": 1024, "low": 2048, "medium": 8192, "high": 24576, "xhigh": 32768, "max": 65536}[level]
+	}
+	for name, tc := range map[string]struct {
+		th   translate.Thinking
+		caps upstream.Capability
+		want string
+	}{
+		"off":                      {translate.Thinking{Mode: "none"}, can, `{"enable_thinking":false}`},
+		"off on a fixed model":     {translate.Thinking{Mode: "none"}, cannot, `{"enable_thinking":true,"thinking_budget":1024}`},
+		"low":                      {translate.Thinking{Mode: "level", Level: "low"}, can, `{"enable_thinking":true,"thinking_budget":2048}`},
+		"high":                     {translate.Thinking{Mode: "level", Level: "high"}, can, `{"enable_thinking":true,"thinking_budget":24576}`},
+		"max":                      {translate.Thinking{Mode: "level", Level: "max"}, can, `{"enable_thinking":true,"thinking_budget":65536}`},
+		"an unknown level":         {translate.Thinking{Mode: "level", Level: "turbo"}, can, `{"enable_thinking":true}`},
+		"auto":                     {translate.Thinking{Mode: "auto"}, can, `{"enable_thinking":true}`},
+		"a budget":                 {translate.Thinking{Mode: "budget", Budget: 5000}, can, `{"enable_thinking":true,"thinking_budget":5000}`},
+		"a zero budget":            {translate.Thinking{Mode: "budget", Budget: 0}, can, `{"enable_thinking":true}`},
+		"a budget below the range": {translate.Thinking{Mode: "budget", Budget: 100}, ranged, `{"enable_thinking":true,"thinking_budget":1024}`},
+		"a level above the range":  {translate.Thinking{Mode: "level", Level: "high"}, ranged, `{"enable_thinking":true,"thinking_budget":8192}`},
+		"a budget above the range": {translate.Thinking{Mode: "budget", Budget: 99999}, ranged, `{"enable_thinking":true,"thinking_budget":8192}`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := translate.NewCtx(translate.FormatOpenAI, translate.FormatOpenAI)
+			c.Caps, c.BudgetOf = tc.caps, budgets
+			out, err := OpenAICodec{}.WriteRequest(&translate.Request{Model: "m", Thinking: tc.th}, c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := `{}`
+			for _, k := range []string{"enable_thinking", "thinking_budget", "reasoning_effort", "thinking"} {
+				if v := gjson.GetBytes(out, k); v.Exists() {
+					got, _ = sjson.SetRaw(got, k, v.Raw)
+				}
+			}
+			var a, b any
+			_ = json.Unmarshal([]byte(got), &a)
+			_ = json.Unmarshal([]byte(tc.want), &b)
+			if !reflect.DeepEqual(a, b) {
+				t.Fatalf("%s, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestQwenNeverWritesAnEffortOrAThinkingObject(t *testing.T) {
+	c := translate.NewCtx(translate.FormatOpenAI, translate.FormatOpenAI)
+	c.Caps = upstream.Capability{Reasoning: true, ThinkingCanOff: true, ThinkingFormat: "qwen"}
+	c.BudgetOf = func(string) int { return 2048 }
+	for _, th := range []translate.Thinking{{Mode: "level", Level: "high"}, {Mode: "auto"}, {Mode: "none"}, {Mode: "budget", Budget: 3000}} {
+		out, _ := OpenAICodec{}.WriteRequest(&translate.Request{Model: "m", Thinking: th}, c)
+		for _, k := range []string{"reasoning_effort", "thinking", "reasoning"} {
+			if gjson.GetBytes(out, k).Exists() {
+				t.Errorf("%+v: %s was written: %s", th, k, out)
+			}
+		}
+	}
+}
+
+func TestAClientsOwnQwenFieldsPassThroughOnlyWhenNothingWasAsked(t *testing.T) {
+	c := translate.NewCtx(translate.FormatOpenAI, translate.FormatOpenAI)
+	c.Caps = upstream.Capability{Reasoning: true, ThinkingCanOff: true, ThinkingFormat: "qwen"}
+	c.BudgetOf = func(string) int { return 2048 }
+	extra := map[string]json.RawMessage{"enable_thinking": []byte(`true`), "thinking_budget": []byte(`999`)}
+	out, _ := OpenAICodec{}.WriteRequest(&translate.Request{Model: "m", Extra: extra}, c)
+	if gjson.GetBytes(out, "thinking_budget").Int() != 999 {
+		t.Errorf("a client's fields were dropped when no thinking was asked: %s", out)
+	}
+	out, _ = OpenAICodec{}.WriteRequest(&translate.Request{Model: "m", Extra: extra, Thinking: translate.Thinking{Mode: "level", Level: "low"}}, c)
+	if gjson.GetBytes(out, "thinking_budget").Int() != 2048 {
+		t.Errorf("a stale client field beat the resolved request: %s", out)
+	}
+}

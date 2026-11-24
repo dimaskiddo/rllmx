@@ -337,3 +337,15 @@ func TestTheShippedClineAndGitLabFilesDeclareWhatTheirLoginsNeed(t *testing.T) {
 		t.Fatalf("xai: %+v", x.OAuth)
 	}
 }
+
+func TestALaneMayFixItsThinkingShapeAndNoOtherThanAKnownOne(t *testing.T) {
+	lane := func(format string) string {
+		return `{"id":"a","category":"apikey","transport":{"baseUrl":"https://x.example/v1/chat","lanes":{"claude":{"baseUrl":"https://x.example/v1/messages","thinkingFormat":"` + format + `"}}},"models":[]}`
+	}
+	if _, err := Load(fstest.MapFS{"data/a.json": file(lane("claude-adaptive"))}, "data"); err != nil {
+		t.Fatalf("a known shape was refused: %v", err)
+	}
+	if _, err := Load(fstest.MapFS{"data/a.json": file(lane("made-up"))}, "data"); err == nil || !strings.Contains(err.Error(), "thinkingFormat") {
+		t.Fatalf("err %v, want a refusal naming thinkingFormat", err)
+	}
+}

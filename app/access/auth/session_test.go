@@ -9,7 +9,7 @@ import (
 var testSecret = []byte("0123456789abcdef0123456789abcdef")
 
 func TestSignAndVerifyRoundTrip(t *testing.T) {
-	token, err := Sign(testSecret, Claims{Authenticated: true, Method: MethodPassword, PV: "abcdef0123456789"})
+	token, err := Sign(testSecret, Claims{Authenticated: true, Method: MethodPassword, PV: "abcdef0123456789"}, SessionTTL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +26,7 @@ func TestSignAndVerifyRoundTrip(t *testing.T) {
 }
 
 func TestTheTokenIsThreeUnpaddedBase64URLSegments(t *testing.T) {
-	token, err := Sign(testSecret, Claims{Authenticated: true})
+	token, err := Sign(testSecret, Claims{Authenticated: true}, SessionTTL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,14 +42,14 @@ func TestTheTokenIsThreeUnpaddedBase64URLSegments(t *testing.T) {
 }
 
 func TestVerifyRejectsWhatIsNotASession(t *testing.T) {
-	good, err := Sign(testSecret, Claims{Authenticated: true})
+	good, err := Sign(testSecret, Claims{Authenticated: true}, SessionTTL)
 	if err != nil {
 		t.Fatal(err)
 	}
 	parts := strings.Split(good, ".")
 
 	tampered := parts[0] + "." + parts[1] + "." + flipLast(parts[2])
-	expired, _ := Sign(testSecret, Claims{})
+	expired, _ := Sign(testSecret, Claims{}, SessionTTL)
 	expiredParts := strings.Split(expired, ".")
 
 	cases := []struct {
@@ -99,7 +99,7 @@ func TestVerifyRequiresTheAuthenticatedClaimAndIssuer(t *testing.T) {
 }
 
 func TestLeewayAllowsASmallClockSkew(t *testing.T) {
-	token, err := Sign(testSecret, Claims{Authenticated: true})
+	token, err := Sign(testSecret, Claims{Authenticated: true}, SessionTTL)
 	if err != nil {
 		t.Fatal(err)
 	}
