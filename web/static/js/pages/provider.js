@@ -4,7 +4,6 @@ import { api } from "/static/js/ui/api.js";
 import { copy } from "/static/js/ui/copy.js";
 import { t } from "/static/js/ui/i18n.js";
 import { formatMethods } from "/static/js/ui/format.js";
-import { setPath } from "/static/js/ui/fields.js";
 import { connectionMethods } from "./provider-connections.js";
 import { loginMethods } from "./provider-login.js";
 import { modelMethods } from "./provider-models.js";

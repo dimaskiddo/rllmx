@@ -38,7 +38,7 @@ func readMiniMaxCode(ctx context.Context, r *Reader, e upstream.Entry, a Access)
 			return failed("MiniMax Code", ierr)
 		}
 		if code != http.StatusOK {
-			return Reading{}, ErrAuth
+			return answered("MiniMax Code", code)
 		}
 		userID = firstString(info, "data.userInfo.realUserID", "data.userInfo.real_user_id", "data.user_info.real_user_id")
 	}
@@ -46,8 +46,8 @@ func readMiniMaxCode(ctx context.Context, r *Reader, e upstream.Entry, a Access)
 	if err != nil {
 		return failed("MiniMax Code", err)
 	}
-	if code == http.StatusUnauthorized || code == http.StatusForbidden {
-		return Reading{}, ErrAuth
+	if code != http.StatusOK {
+		return answered("MiniMax Code", code)
 	}
 	workspace := ""
 	for _, entry := range body.Get("data.workspaces").Array() {
@@ -62,8 +62,8 @@ func readMiniMaxCode(ctx context.Context, r *Reader, e upstream.Entry, a Access)
 	if err != nil {
 		return failed("MiniMax Code", err)
 	}
-	if code == http.StatusUnauthorized || code == http.StatusForbidden {
-		return Reading{}, ErrAuth
+	if code != http.StatusOK {
+		return answered("MiniMax Code", code)
 	}
 	merged := member.Get("data")
 	if !merged.IsObject() {
@@ -85,7 +85,7 @@ func readMiniMaxCode(ctx context.Context, r *Reader, e upstream.Entry, a Access)
 	group := firstString(merged, "op_group_id", "data.op_group_id")
 	if merged.Get("has_token_plan").Bool() && group != "" {
 		code, raw, err := r.do(ctx, request{URL: site.platform + "/v1/api/openplatform/coding_plan/remains", Headers: map[string]string{
-			"Authorization": bearerWord(a.Token), "X-Group-Id": group,
+			"Authorization": bearerHeader(a.Token), "X-Group-Id": group,
 		}})
 		if err != nil {
 			return failed("MiniMax Code", err)
@@ -121,7 +121,7 @@ func (r *Reader) minimaxSigned(ctx context.Context, site struct{ agent, platform
 		sign = md5Hex(ts + r.MiniMaxSecret + body)
 	}
 	headers := map[string]string{
-		"Authorization": bearerWord(token),
+		"Authorization": bearerHeader(token),
 		"User-Agent":    "MiniMaxCode",
 		"x-timestamp":   ts,
 		"yy":            hex.EncodeToString(sum[:]),
@@ -198,8 +198,6 @@ func md5Hex(s string) string {
 	sum := md5.Sum([]byte(s))
 	return hex.EncodeToString(sum[:])
 }
-
-func bearerWord(token string) string { return "Bearer " + token }
 
 // firstString answers the first field that holds a non-empty string.
 func firstString(v gjson.Result, paths ...string) string {

@@ -103,3 +103,20 @@ func TestOfferWithNoRegistryOrClientReader(t *testing.T) {
 		t.Fatalf("got %+v, offered %v; want a switched-off offer", got, ok)
 	}
 }
+
+// A login with no client setting and no noClient flag can never start: the
+// flow is refused as switched off, whatever the operator configures.
+func TestNoShippedLoginIsSwitchedOffWithNoSettingToTurnItOn(t *testing.T) {
+	configurable := map[string]bool{
+		"claude": true, "codex": true, "github": true, "kimi": true, "muse": true, "nous": true, "xai": true,
+		"grok-cli": true, "minimax-code": true, "minimax-code-global": true, "gemini-cli": true, "antigravity": true,
+	}
+	for _, e := range registry(t).All() {
+		if e.OAuth == nil || configurable[e.ID] {
+			continue
+		}
+		if _, err := oauth.NewFlow(e, ""); errors.Is(err, oauth.ErrDisabled) {
+			t.Errorf("%s: its login needs a client id nothing can set; mark it noClient", e.ID)
+		}
+	}
+}

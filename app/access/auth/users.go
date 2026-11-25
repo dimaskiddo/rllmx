@@ -48,6 +48,7 @@ var (
 	ErrUserHash    = errors.New("auth: a user needs a password")
 	ErrUserFull    = errors.New("auth: the user list is full")
 	ErrUserTaken   = errors.New("auth: a user with that name or email exists")
+	ErrUserIDTaken = errors.New("auth: a user with that id exists")
 	ErrUserMissing = errors.New("auth: no such user")
 )
 
@@ -174,6 +175,17 @@ func (r *UserRepo) Put(ctx context.Context, u User) error {
 		return err
 	}
 	return nil
+}
+
+// Create stores a user that must be new: an id another user holds is refused,
+// where Put would take it as an update and overwrite that user.
+func (r *UserRepo) Create(ctx context.Context, u User) error {
+	if _, held, err := r.Get(ctx, u.ID); err != nil {
+		return err
+	} else if held {
+		return ErrUserIDTaken
+	}
+	return r.Put(ctx, u)
 }
 
 // Delete removes a user and every key assignment that named them, which ends
@@ -356,6 +368,31 @@ func (u *Users) Put(ctx context.Context, v User) error {
 	}
 	u.Changed()
 	return nil
+}
+
+// Add stores a new user under a freshly drawn id. build is handed the id and
+// answers the user to store; an id that is already held is drawn again.
+func (u *Users) Add(ctx context.Context, build func(id string) User) (User, error) {
+	if u == nil {
+		return User{}, ErrUserNoStore
+	}
+	for range 5 {
+		id, err := NewUserID()
+		if err != nil {
+			return User{}, err
+		}
+		v := build(id)
+		err = u.repo.Create(ctx, v)
+		if errors.Is(err, ErrUserIDTaken) {
+			continue
+		}
+		if err != nil {
+			return User{}, err
+		}
+		u.Changed()
+		return v, nil
+	}
+	return User{}, ErrUserIDTaken
 }
 
 // Delete removes a user, their key assignments, and their sessions.

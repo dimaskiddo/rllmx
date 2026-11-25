@@ -1,4 +1,4 @@
-# Environment Variables
+# Router-LLM - Environment Variables
 
 Every variable this program reads, in the order [`.env.example`](../.env.example) lists them. The process environment overrides `.env`; `.env` overrides the default in `config/`. Only `APP_KEY`, `DB_ENCRYPTION_SECRET` and a dashboard password must be set.
 

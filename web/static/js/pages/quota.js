@@ -61,6 +61,7 @@ window.Alpine.data("quotaPage", () => Object.assign({
   tick: 0,
   gone: false,
   pass: 0,
+  loadSeq: 0,
   resetting: {},
   expiry: { open: false, provider: "", name: "", busy: false, error: "", rows: [] },
 
@@ -82,6 +83,7 @@ window.Alpine.data("quotaPage", () => Object.assign({
   },
 
   async load() {
+    const seq = ++this.loadSeq;
     this.loading = true;
     this.error = "";
     try {
@@ -93,6 +95,9 @@ window.Alpine.data("quotaPage", () => Object.assign({
         provider: this.provider,
       });
       const answer = await api("/api/providers/client?" + query.toString());
+      if (seq !== this.loadSeq) {
+        return;
+      }
       this.connections = answer.connections || [];
       this.providerOptions = answer.providerOptions || [];
       this.pagination = answer.pagination || this.pagination;
@@ -102,9 +107,13 @@ window.Alpine.data("quotaPage", () => Object.assign({
       }
       await this.readAll(false);
     } catch (err) {
-      this.error = err.message;
+      if (seq === this.loadSeq) {
+        this.error = err.message;
+      }
     } finally {
-      this.loading = false;
+      if (seq === this.loadSeq) {
+        this.loading = false;
+      }
     }
   },
 
@@ -286,11 +295,15 @@ window.Alpine.data("quotaPage", () => Object.assign({
   },
 
   async openExpiry(conn) {
-    this.expiry = { open: true, provider: conn.provider, name: this.connectionName(conn), busy: true, error: "", rows: [] };
+    const dialog = { open: true, provider: conn.provider, name: this.connectionName(conn), busy: true, error: "", rows: [] };
+    this.expiry = dialog;
     this.$refs.expiry.showModal();
     try {
       if (conn.provider === "codex") {
         const out = await api("/api/usage/" + encodeURIComponent(conn.id) + "/codex-reset-credits");
+        if (this.expiry !== dialog) {
+          return;
+        }
         this.expiry.rows = (out.credits || []).map((credit) => ({
           status: credit.status || "",
           grantedAt: this.formatDate(credit.grantedAt),
@@ -310,9 +323,13 @@ window.Alpine.data("quotaPage", () => Object.assign({
         }));
       }
     } catch (err) {
-      this.expiry.error = err.message;
+      if (this.expiry === dialog) {
+        this.expiry.error = err.message;
+      }
     } finally {
-      this.expiry.busy = false;
+      if (this.expiry === dialog) {
+        this.expiry.busy = false;
+      }
     }
   },
 

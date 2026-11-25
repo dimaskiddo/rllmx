@@ -2,7 +2,6 @@ package controllers
 
 import (
 	"context"
-	"encoding/base64"
 	"net/http"
 	"strings"
 
@@ -163,20 +162,6 @@ func jsonSession(status int, body []byte, field string) Result {
 		return Result{Outcome: OutcomeInvalidKey}
 	}
 	return Result{Outcome: OutcomeValid}
-}
-
-// jwtClaim reads one claim from a JWT without verifying it, as a probe needs
-// nothing more than a name.
-func jwtClaim(token, claim string) string {
-	parts := strings.Split(token, ".")
-	if len(parts) < 2 {
-		return ""
-	}
-	raw, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
-		return ""
-	}
-	return gjson.GetBytes(raw, claim).String()
 }
 
 // CheckDeepSeekWeb judges the pasted web token the deepseek-web provider sends.

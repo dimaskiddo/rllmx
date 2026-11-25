@@ -57,13 +57,19 @@ func (r *Reader) Block(limit int) string {
 	memAt, userAt := modTime(memPath), modTime(userPath)
 
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	if r.loaded && r.limit == limit && memAt.Equal(r.memAt) && userAt.Equal(r.userAt) {
-		return r.block
+		block := r.block
+		r.mu.Unlock()
+		return block
 	}
-	r.loaded, r.limit, r.memAt, r.userAt = true, limit, memAt, userAt
-	r.block = render(entries(memPath), entries(userPath), limit)
-	return r.block
+	r.mu.Unlock()
+	// The files are read with no lock held; two requests that both see a stale
+	// block read them twice and store the same result.
+	block := render(entries(memPath), entries(userPath), limit)
+	r.mu.Lock()
+	r.loaded, r.limit, r.memAt, r.userAt, r.block = true, limit, memAt, userAt, block
+	r.mu.Unlock()
+	return block
 }
 
 // render joins the two folders' entries into one block, cut at limit.

@@ -255,3 +255,61 @@ func TestKiroInferenceSendsTheIDEIdentityAndTheAccountKeepsIt(t *testing.T) {
 		t.Fatalf("an API key was seeded as %+v", key)
 	}
 }
+
+// hostLog is a client that sends every call to the stub and notes the host each
+// one was addressed to.
+func hostLog(up *tests.Upstream, hosts *[]string) *http.Client {
+	return &http.Client{Transport: tests.Redirect(func(r *http.Request) {
+		*hosts = append(*hosts, r.URL.Host)
+		r.URL.Scheme, r.URL.Host = "http", strings.TrimPrefix(up.URL, "http://")
+	})}
+}
+
+func twoHosts(t *testing.T, up *tests.Upstream) executor.Request {
+	t.Helper()
+	req := kiroRequest(t, up, `{"conversationState":{}}`)
+	req.Entry = upstream.Entry{Transport: upstream.Transport{BaseURLs: []string{
+		"https://q.us-east-1.amazonaws.com/generateAssistantResponse",
+		"https://codewhisperer.us-east-1.amazonaws.com/generateAssistantResponse",
+	}}}
+	return req
+}
+
+func TestTheLastHostsRefusalKeepsItsText(t *testing.T) {
+	up := tests.NewUpstream(t,
+		tests.Reply{Status: http.StatusForbidden, Body: `{"message":"first"}`},
+		tests.Reply{Status: http.StatusForbidden, Body: `{"message":"version no longer supported"}`},
+	)
+	var hosts []string
+	k := &Kiro{Default: &executor.Default{Client: hostLog(up, &hosts)}}
+	resp, err := k.Execute(context.Background(), twoHosts(t, up))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.Status != http.StatusForbidden || !strings.Contains(string(body), "version no longer supported") {
+		t.Fatalf("%d %q: the answer of the last host was drained", resp.Status, body)
+	}
+}
+
+func TestTheRepairGoesToTheHostThatServed(t *testing.T) {
+	empty := kiroEvent("assistantResponseEvent", `{"content":"..."}`) + kiroEvent("messageStopEvent", `{"stopReason":"end_turn"}`)
+	good := kiroEvent("assistantResponseEvent", `{"content":"the answer"}`) + kiroEvent("messageStopEvent", `{"stopReason":"end_turn"}`)
+	up := tests.NewUpstream(t,
+		tests.Reply{Status: http.StatusForbidden, Body: `{}`},
+		tests.Reply{ContentType: "application/vnd.amazon.eventstream", Body: empty},
+		tests.Reply{ContentType: "application/vnd.amazon.eventstream", Body: good},
+	)
+	var hosts []string
+	k := &Kiro{Default: &executor.Default{Client: hostLog(up, &hosts)}}
+	resp, err := k.Execute(context.Background(), twoHosts(t, up))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if len(hosts) != 3 || hosts[2] != hosts[1] {
+		t.Fatalf("calls went to %v: the repair must follow the host that answered", hosts)
+	}
+}

@@ -123,8 +123,7 @@ func (c *call) hermesBlock(doc document.Doc) func(string) (string, bool) {
 	if c.p == nil || c.p.d.Hermes == nil || c.headerOff(hermes.Bypass) {
 		return nil
 	}
-	limit := int(doc.Int("hermes-toolkit_char_limit", 0))
-	notes := c.p.d.Hermes.Block(limit)
+	notes := c.hermesNotes(doc)
 	protocol := c.p.d.Skills.Prompt("hermes-toolkit")
 	return func(id string) (string, bool) {
 		if id != "hermes-toolkit" {
@@ -138,6 +137,15 @@ func (c *call) hermesBlock(doc document.Doc) func(string) (string, bool) {
 		}
 		return protocol + "\n\n" + notes, true
 	}
+}
+
+// hermesNotes is the agent's notes as a request would carry them: empty when
+// the agent skill is off for this request or the agent has none.
+func (c *call) hermesNotes(doc document.Doc) string {
+	if c.p == nil || c.p.d.Hermes == nil || c.headerOff(hermes.Bypass) {
+		return ""
+	}
+	return c.p.d.Hermes.Block(int(doc.Int("hermes-toolkit_char_limit", 0)))
 }
 
 // configValue reads one config_schema value as the prompt renders it: a string
@@ -271,6 +279,9 @@ func (c *call) skillKey(ctx context.Context) string {
 				fmt.Fprintf(h, "%s=%s;", key, raw)
 			}
 		}
+	}
+	if block := c.hermesNotes(doc); block != "" {
+		fmt.Fprintf(h, "notes=%x;", sha256.Sum256([]byte(block)))
 	}
 	fmt.Fprintf(h, "ecc=%t/%v/%d", o.ECC.Enabled, o.ECC.Confidence, o.ECC.MaxSkills)
 	return "sk=" + hex.EncodeToString(h.Sum(nil)[:6])

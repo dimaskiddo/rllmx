@@ -287,3 +287,33 @@ func TestParallelFirstSignInsNeverExceedTheCap(t *testing.T) {
 		t.Fatalf("%d users stored, the cap is 3", len(users))
 	}
 }
+
+func TestANewUserNeverReplacesOneThatHoldsTheDrawnID(t *testing.T) {
+	r, _ := newUsers(t)
+	ctx := context.Background()
+	kept := addUser(t, r, "abc123", "kept", "kept@example.com")
+	err := r.Create(ctx, User{ID: "abc123", Username: "other", Email: "other@example.com", Hash: "h"})
+	if !errors.Is(err, ErrUserIDTaken) {
+		t.Fatalf("a taken id answered %v", err)
+	}
+	got, _, _ := r.Get(ctx, "abc123")
+	if got.Username != kept.Username || got.Hash != kept.Hash {
+		t.Fatalf("the existing user was overwritten: %+v", got)
+	}
+}
+
+func TestAddDrawsAgainWhenAnIDIsTaken(t *testing.T) {
+	r, _ := newUsers(t)
+	users := NewUsers(r)
+	taken := 0
+	got, err := users.Add(context.Background(), func(id string) User {
+		taken++
+		if taken == 1 {
+			addUser(t, r, id, "squatter", "")
+		}
+		return User{ID: id, Username: "fresh", Hash: "h"}
+	})
+	if err != nil || taken != 2 || got.Username != "fresh" {
+		t.Fatalf("%+v after %d tries: %v", got, taken, err)
+	}
+}

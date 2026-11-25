@@ -3,9 +3,7 @@ package oauth
 import (
 	"context"
 	"errors"
-	"net/url"
 	"strings"
-	"time"
 
 	"github.com/tidwall/gjson"
 
@@ -34,7 +32,7 @@ func (s *Service) importByImporter(ctx context.Context, f Flow, values map[strin
 	case "kiro-apikey", "mimo-key":
 		// A Kiro API key is an AWS-signed key, and a MiMo session has no OAuth
 		// block to reach this route through; both wait on their own connection
-		// shape (doc 22).
+		// shape.
 		return "", ErrUnsupported
 	}
 	return "", ErrUnsupported
@@ -51,12 +49,9 @@ func (s *Service) importCodexToken(ctx context.Context, f Flow, values map[strin
 	if !ok {
 		return "", ErrToken
 	}
-	auth := claims.Get(`https://api.openai.com/auth`)
-	if !auth.Exists() {
-		if entry, ok := claims.Map()["https://api.openai.com/auth"]; ok {
-			auth = entry
-		}
-	}
+	// The claim's name holds dots, which a path would split, so it is read as a
+	// key of the object.
+	auth := claims.Map()["https://api.openai.com/auth"]
 	acc := Account{
 		Email:     CleanEmail(claimText(claims, "email", "preferred_username")),
 		NoRefresh: true,
@@ -71,10 +66,7 @@ func (s *Service) importCodexToken(ctx context.Context, f Flow, values map[strin
 	if plan := auth.Get("chatgpt_plan_type").String(); plan != "" {
 		acc.PSD = WithPSD(acc.PSD, "chatgptPlanType", plan)
 	}
-	if exp := claims.Get("exp"); exp.Exists() && exp.Int() > 0 {
-		acc.NoRefresh = false
-		acc.ExpiresAt = time.Unix(exp.Int(), 0).UTC()
-	}
+	applyExpiry(&acc, claims)
 	return s.Save(ctx, f, Tokens{Access: token}, acc)
 }
 
@@ -113,7 +105,15 @@ func (s *Service) importKiroRefresh(ctx context.Context, f Flow, values map[stri
 	clientID := strings.TrimSpace(values["clientId"])
 	secret := strings.TrimSpace(values["clientSecret"])
 	region := strings.TrimSpace(values["region"])
+	// The region lands in the host the refresh token and client secret are sent
+	// to, so a value that is not a region name is refused before any call.
+	if region != "" && !upstream.ValidRegion(region) {
+		return "", ErrImportField
+	}
 	if clientID != "" && secret != "" {
+		if !CredentialText(clientID) || !CredentialText(secret) {
+			return "", ErrImportField
+		}
 		if region == "" {
 			region = "us-east-1"
 		}
@@ -135,6 +135,9 @@ func (s *Service) importKiroRefresh(ctx context.Context, f Flow, values map[stri
 	acc.PSD = WithPSD(acc.PSD, "authMethod", method)
 	acc.PSD = WithPSD(acc.PSD, "provider", provider)
 	if arn := strings.TrimSpace(values["profileArn"]); arn != "" {
+		if len(arn) > MaxProfileField || !CredentialText(arn) {
+			return "", ErrImportField
+		}
 		acc.PSD = WithPSD(acc.PSD, "profileArn", arn)
 	}
 	if region != "" {
@@ -180,27 +183,4 @@ func (s *Service) importKiroExternalIDP(ctx context.Context, f Flow, values map[
 		acc.PSD = WithPSD(acc.PSD, "scopes", scopes)
 	}
 	return s.Save(ctx, f, Tokens{Access: access, Refresh: refresh, ExpiresIn: 3600}, acc)
-}
-
-// rebaseAll moves every endpoint onto the pasted server address.
-func rebaseTo(target, base string) string {
-	u, err := url.Parse(base)
-	if err != nil || u.Host == "" {
-		return target
-	}
-	if strings.HasPrefix(target, "https://") || strings.HasPrefix(target, "http://") {
-		rest := target[strings.Index(target, "://")+3:]
-		if i := strings.IndexByte(rest, '/'); i >= 0 {
-			return u.Scheme + "://" + u.Host + rest[i:]
-		}
-	}
-	return target
-}
-
-// importerFor answers the importer a provider's data names, or "".
-func importerFor(e upstream.Entry) string {
-	if e.OAuth == nil {
-		return ""
-	}
-	return e.OAuth.Importer
 }

@@ -68,7 +68,7 @@ Protected: a session, or a local caller while `requireLogin` is off; cross-site 
 | `GET/POST /api/provider-nodes`, `PUT/DELETE /api/provider-nodes/{id}`, `POST /api/provider-nodes/validate` | Custom nodes |
 | `GET/POST /api/skills`, `GET/PUT/DELETE /api/skills/{id}`, `POST /api/skills/sync` | Skills Studio: the list, which says for each skill whether this router may rewrite its folder, the catalog sync and a custom skill's create, read, edit and delete (design doc 11) |
 | `GET /api/about/update` | The About page's update check: one on-demand read of this repository's newest GitHub release, answered with the tag, its link and its date; no cache and nothing on a page load (D452) |
-| `POST /api/about/upgrade` | Admin only: installs the newest release (checksum verified, binary swapped) and re-executes it; the answer leaves before the process restarts (D454) |
+| `POST /api/about/upgrade` | Admin only: installs the newest release (checksum verified, binary swapped) and re-executes the path the install returned; the answer leaves first, then the application stops the way a signal would stop it (the server drains, the usage writer flushes) before the new binary starts. A second call while one runs answers 409, and the call has the long write deadline (D454) |
 
 | Rule | Detail |
 |---|---|

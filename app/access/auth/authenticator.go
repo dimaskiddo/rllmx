@@ -257,10 +257,6 @@ func (a *Authenticator) ssoUser(ctx context.Context, email string, exactOnly boo
 	if u, ok := a.Users.ByEmail(ctx, email); ok {
 		return u, true
 	}
-	id, err := NewUserID()
-	if err != nil {
-		return User{}, false
-	}
 	secret, err := NewUserPassword()
 	if err != nil {
 		return User{}, false
@@ -269,13 +265,19 @@ func (a *Authenticator) ssoUser(ctx context.Context, email string, exactOnly boo
 	if err != nil {
 		return User{}, false
 	}
-	if err := a.Users.Put(ctx, User{ID: id, Username: ssoUsername(email, id, false), Email: email, Hash: hash, Provisioned: true}); err != nil {
+	provision := func(derived bool) error {
+		_, err := a.Users.Add(ctx, func(id string) User {
+			return User{ID: id, Username: ssoUsername(email, id, derived), Email: email, Hash: hash, Provisioned: true}
+		})
+		return err
+	}
+	if err := provision(false); err != nil {
 		if !errors.Is(err, ErrUserTaken) {
 			return User{}, false
 		}
 		// A password user already holds the address as a name. The address is
 		// the account's identity, so it gets a derived name, not that user.
-		if err := a.Users.Put(ctx, User{ID: id, Username: ssoUsername(email, id, true), Email: email, Hash: hash, Provisioned: true}); err != nil {
+		if err := provision(true); err != nil {
 			return User{}, false
 		}
 	}

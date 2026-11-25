@@ -84,24 +84,50 @@ func TestTheAboutUpgradeIsOffUnlessWired(t *testing.T) {
 }
 
 func TestTheAboutUpgradeAnswersBeforeItRestarts(t *testing.T) {
-	restarted := make(chan struct{}, 1)
+	restarted := make(chan string, 1)
 	c := &AboutController{
 		Version: "0.5.0",
-		Upgrade: func(context.Context) (string, error) { return "0.6.0", nil },
-		Restart: func() { restarted <- struct{}{} },
+		Upgrade: func(context.Context) (string, string, error) { return "0.6.0", "/opt/rllmx", nil },
+		Restart: func(exe string) { restarted <- exe },
 	}
 	rec := servePost(t, "/api/about/upgrade", c.RunUpgrade)
 	if rec.Code != nethttp.StatusOK || !strings.Contains(rec.Body.String(), `"latestVersion":"0.6.0"`) {
 		t.Fatalf("%d %s", rec.Code, rec.Body.String())
 	}
 	select {
-	case <-restarted:
+	case exe := <-restarted:
+		if exe != "/opt/rllmx" {
+			t.Fatalf("restarted %q, want the path the install returned", exe)
+		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("the process was never restarted")
 	}
-	c.Upgrade = func(context.Context) (string, error) { return "", errors.New("checksum") }
+	c.Upgrade = func(context.Context) (string, string, error) { return "", "", errors.New("checksum") }
 	rec = servePost(t, "/api/about/upgrade", c.RunUpgrade)
 	if rec.Code != nethttp.StatusBadGateway || strings.Contains(rec.Body.String(), "checksum") {
 		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestASecondUpgradeWhileOneRunsIsRefused(t *testing.T) {
+	started, release := make(chan struct{}), make(chan struct{})
+	c := &AboutController{
+		Version: "0.5.0",
+		Upgrade: func(context.Context) (string, string, error) {
+			close(started)
+			<-release
+			return "0.6.0", "/opt/rllmx", nil
+		},
+		Restart: func(string) {},
+	}
+	done := make(chan int, 1)
+	go func() { done <- servePost(t, "/api/about/upgrade", c.RunUpgrade).Code }()
+	<-started
+	if rec := servePost(t, "/api/about/upgrade", c.RunUpgrade); rec.Code != nethttp.StatusConflict {
+		t.Fatalf("second install: %d %s", rec.Code, rec.Body.String())
+	}
+	close(release)
+	if code := <-done; code != nethttp.StatusOK {
+		t.Fatalf("first install: %d", code)
 	}
 }

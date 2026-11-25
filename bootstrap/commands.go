@@ -29,7 +29,7 @@ func Commands(version, commit string) []console.Command {
 	return []console.Command{
 		&commands.Health{Settings: func() (*settings.Server, error) { return settings.LoadServer(facades.Config()) }},
 		&commands.Version{Version: version, Commit: commit},
-		&commands.Upgrade{Version: version, Commit: commit, Fetch: guardedFetch(version, "application/octet-stream", 64<<20)},
+		&commands.Upgrade{Version: version, Commit: commit, Fetch: releaseFetch(version)},
 		&commands.DBBackup{R: db},
 		&commands.DBCheck{R: db},
 		&commands.DBMigrate{R: db},

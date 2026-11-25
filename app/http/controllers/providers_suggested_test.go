@@ -72,9 +72,32 @@ func TestKiloFreeModelsKeepsItsListAndAnswersItWhenTheRefreshFails(t *testing.T)
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"id":"a"`) || strings.Contains(rec.Body.String(), `"id":"b"`) || !strings.Contains(rec.Body.String(), `"cached":false`) {
 		t.Fatalf("%d %s", rec.Code, rec.Body.String())
 	}
+	c.kiloAt = c.kiloAt.Add(-2 * kiloTTL)
 	c.Fetch = func(context.Context, string) ([]byte, error) { return nil, errors.New("down") }
 	rec = serve(t, "/api/providers/kilo/free-models", c.KiloFreeModels, http.MethodGet)
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"cached":true`) || !strings.Contains(rec.Body.String(), `"warning"`) {
 		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestASpelledDifferentlyAskIsTheSameKeptList(t *testing.T) {
+	c, calls := fetchOnce(`{"data":[{"id":"big","context_length":300000,"pricing":{"prompt":"0","completion":"0"}}]}`)
+	for _, q := range []string{"openrouter", "%20openrouter", "openrouter%20", "%20openrouter%20"} {
+		serveGet(t, "/api/providers/suggested-models", "/api/providers/suggested-models?provider="+q, c.SuggestedModels)
+	}
+	if *calls != 1 || len(c.suggestAt) != 1 {
+		t.Fatalf("%d reads and %d kept lists for one provider", *calls, len(c.suggestAt))
+	}
+}
+
+func TestKiloFreeModelsAreReadOncePerHour(t *testing.T) {
+	c, calls := fetchOnce(`{"data":[{"id":"a","isFree":true}]}`)
+	for range 3 {
+		if rec := serve(t, "/api/providers/kilo/free-models", c.KiloFreeModels, http.MethodGet); rec.Code != 200 {
+			t.Fatalf("%d %s", rec.Code, rec.Body.String())
+		}
+	}
+	if *calls != 1 {
+		t.Fatalf("the gateway was read %d times inside the hour", *calls)
 	}
 }

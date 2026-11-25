@@ -5,7 +5,6 @@ import { t } from "/static/js/ui/i18n.js";
 import { toast } from "/static/js/ui/toast.js";
 import { cooldownOf } from "./provider-status.js";
 import { formatMethods } from "/static/js/ui/format.js";
-import { setPath } from "/static/js/ui/fields.js";
 import { fieldMethods } from "/static/js/ui/fields.js";
 import { cardMethods } from "./provider-card.js";
 

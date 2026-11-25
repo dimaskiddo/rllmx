@@ -88,6 +88,7 @@ window.Alpine.data("usagePage", () => Object.assign({
   tick: 0,
   logLines: [],
   logCursor: "",
+  logPaged: false,
   logFilter: "",
   logStatus: "all",
   logRefresh: true,
@@ -167,6 +168,9 @@ window.Alpine.data("usagePage", () => Object.assign({
     this.period = event.target.value;
     this.syncURL();
     this.load().then(() => {
+      if (this.gone) {
+        return;
+      }
       if (this.tab === "logs") {
         this.loadLogs();
       }
@@ -298,10 +302,6 @@ window.Alpine.data("usagePage", () => Object.assign({
   },
 
 
-  money(value) {
-    return "$" + Number(value || 0).toFixed(2);
-  },
-
   totalOf(row) {
     return row.promptTokens + row.completionTokens;
   },
@@ -387,6 +387,9 @@ window.Alpine.data("usagePage", () => Object.assign({
 
   async pollActive() {
     await this.readActive();
+    if (this.gone) {
+      return;
+    }
     this.activeTimer = setInterval(() => this.readActive(), 5000);
   },
 
@@ -437,6 +440,7 @@ window.Alpine.data("usagePage", () => Object.assign({
       }
       const page = (rows || []).map(parseLog);
       this.logLines = before ? page.concat(this.logLines) : page;
+      this.logPaged = Boolean(before);
       this.logCursor = res.headers.get("X-Next-Cursor") || "";
     } catch (err) {
       this.error = err.message;
@@ -452,7 +456,8 @@ window.Alpine.data("usagePage", () => Object.assign({
   startLogTimer() {
     this.stopLogTimer();
     this.logTimer = setInterval(() => {
-      if (this.logRefresh && !document.hidden) {
+      // A refresh replaces the list, so it waits while older pages are open.
+      if (this.logRefresh && !this.logPaged && !document.hidden) {
         this.loadLogs();
       }
     }, 3000);

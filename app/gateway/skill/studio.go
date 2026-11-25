@@ -52,8 +52,9 @@ type Draft struct {
 // would name a process or claim another writer's folder.
 var RefusedDraft = []string{"hook.js", "hook_script", "install_command", "update_command", "uninstall_command", "source"}
 
-// manifest renders the draft as the manifest that is written, after every check.
-func (d Draft) manifest(id string) (Manifest, []byte, error) {
+// manifest renders the draft as the manifest and the rules file that are
+// written, after every check.
+func (d Draft) manifest(id string) (Manifest, []byte, []byte, error) {
 	m := Manifest{
 		ID: id, Name: strings.TrimSpace(d.Name), Description: strings.TrimSpace(d.Description),
 		Version: d.Version, Category: d.Category, DefaultEnabled: d.DefaultEnabled,
@@ -66,23 +67,23 @@ func (d Draft) manifest(id string) (Manifest, []byte, error) {
 		m.Hook = "system-prompt"
 	}
 	if !studioHooks[m.Hook] {
-		return Manifest{}, nil, fmt.Errorf("%w: hook must be system-prompt, pre-route or pre-request", ErrInvalid)
+		return Manifest{}, nil, nil, fmt.Errorf("%w: hook must be system-prompt, pre-route or pre-request", ErrInvalid)
 	}
 	if problems := Validate(m); len(problems) > 0 {
-		return Manifest{}, nil, fmt.Errorf("%w: %s", ErrInvalid, strings.Join(problems, "; "))
+		return Manifest{}, nil, nil, fmt.Errorf("%w: %s", ErrInvalid, strings.Join(problems, "; "))
 	}
 	rules, err := d.ruleBytes(id, m.Hook)
 	if err != nil {
-		return Manifest{}, nil, err
+		return Manifest{}, nil, nil, err
 	}
 	if err := d.checkPrompt(m.Hook, len(rules) > 0); err != nil {
-		return Manifest{}, nil, err
+		return Manifest{}, nil, nil, err
 	}
 	raw, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
-		return Manifest{}, nil, fmt.Errorf("%w: the manifest cannot be written", ErrInvalid)
+		return Manifest{}, nil, nil, fmt.Errorf("%w: the manifest cannot be written", ErrInvalid)
 	}
-	return m, raw, nil
+	return m, raw, rules, nil
 }
 
 // ruleBytes normalises the draft's rules into the file's own shape and checks
@@ -310,11 +311,7 @@ func skillDir(dir, id string) (string, error) {
 // writeSkill writes the three files, replacing the ones the draft drops on an
 // update.
 func writeSkill(dir, target, id string, d Draft, old *Manifest) error {
-	_, raw, err := d.manifest(id)
-	if err != nil {
-		return err
-	}
-	rules, err := d.ruleBytes(id, draftHook(d))
+	_, raw, rules, err := d.manifest(id)
 	if err != nil {
 		return err
 	}
@@ -340,13 +337,6 @@ func writeSkill(dir, target, id string, d Draft, old *Manifest) error {
 		}
 	}
 	return nil
-}
-
-func draftHook(d Draft) string {
-	if d.Hook == "" {
-		return "system-prompt"
-	}
-	return d.Hook
 }
 
 // removeIfPresent deletes a file the draft dropped; absence is success.

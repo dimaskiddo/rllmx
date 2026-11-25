@@ -1,4 +1,4 @@
-# Router-LLM — Divergences from the Reference
+# Router-LLM - Divergences from the Reference
 
 Deliberate differences from 9router. **The detail lives in each design doc's `Divergences` section**, beside the area it describes; this file is only the index.
 

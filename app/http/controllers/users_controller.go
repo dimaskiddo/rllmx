@@ -90,12 +90,10 @@ func (c *UsersController) Create(ctx contractshttp.Context) contractshttp.Respon
 	if err != nil {
 		return flat(ctx, nethttp.StatusInternalServerError, "Could not store the password")
 	}
-	id, err := auth.NewUserID()
+	u, err := c.Users.Add(ctx.Request().Origin().Context(), func(id string) auth.User {
+		return auth.User{ID: id, Username: name, Email: email, Hash: hash}
+	})
 	if err != nil {
-		return flat(ctx, nethttp.StatusInternalServerError, "Could not create the user")
-	}
-	u := auth.User{ID: id, Username: name, Email: email, Hash: hash}
-	if err := c.Users.Put(ctx.Request().Origin().Context(), u); err != nil {
 		return userRefused(ctx, err)
 	}
 	return ctx.Response().Json(nethttp.StatusCreated, contractshttp.Json{"user": userView{ID: u.ID, Username: u.Username, Email: u.Email, Keys: []string{}}})

@@ -8,6 +8,7 @@ import (
 
 	"github.com/tidwall/gjson"
 
+	"rllmx/app/platform/text"
 	"rllmx/app/platform/ttl"
 	"rllmx/app/store/document"
 )
@@ -47,7 +48,7 @@ func (c *settingsCache) drop() { c.v.Drop() }
 // A name this version does not know behaves as fill-first.
 func strategyFor(s document.Doc, provider string) string {
 	if raw, ok := s.GetRaw("providerStrategies"); ok {
-		entry := gjson.Get(raw, escapeKey(provider))
+		entry := gjson.Get(raw, text.EscapePath(provider))
 		// The settings write accepts the bare word as well as the object, so a
 		// row saved either way must select the same way.
 		if entry.Type == gjson.String && entry.String() != "" {
@@ -85,7 +86,7 @@ func known(name string) string {
 // negative and unreadable values fall through to the next.
 func stickyLimit(s document.Doc, provider string) int {
 	if raw, ok := s.GetRaw("providerStrategies"); ok {
-		if n := positive(gjson.Get(raw, escapeKey(provider)+".stickyRoundRobinLimit")); n > 0 {
+		if n := positive(gjson.Get(raw, text.EscapePath(provider)+".stickyRoundRobinLimit")); n > 0 {
 			return n
 		}
 	}
@@ -109,16 +110,4 @@ func positive(r gjson.Result) int {
 		}
 	}
 	return 0
-}
-
-// escapeKey makes a provider id safe as one gjson path element.
-func escapeKey(k string) string {
-	var b strings.Builder
-	for _, r := range k {
-		if strings.ContainsRune(`.*?|#@\!=<>%`, r) {
-			b.WriteByte('\\')
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
 }

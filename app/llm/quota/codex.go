@@ -22,19 +22,11 @@ const (
 // readCodex reads the account's windows: the session and weekly pair, then the
 // review and spark pairs when the plan reports them.
 func readCodex(ctx context.Context, r *Reader, e upstream.Entry, a Access) (Reading, error) {
-	raw, stop, early, earlyErr := r.getOK(ctx, "Codex", request{URL: codexUsageURL, Headers: codexHeaders(e, a, codexExtra())})
+	raw, stop, early, earlyErr := r.getOK(ctx, "Codex", request{URL: codexUsageURL, Headers: codexHeaders(e, a)})
 	if stop {
 		return early, earlyErr
 	}
 	return parseCodex(raw), nil
-}
-
-// codexHeaders are the CLI's own: its identity, the account header and the
-// bearer token.
-// codexExtra is the pair of headers the tool sends with every call; the
-// account header comes from the entry's own mapping.
-func codexExtra() map[string]string {
-	return map[string]string{"OpenAI-Beta": "codex-1", "originator": "codex_cli_rs"}
 }
 
 // firstOf reads the first of several spellings a field may take.
@@ -47,16 +39,16 @@ func firstOf(v gjson.Result, names ...string) gjson.Result {
 	return gjson.Result{}
 }
 
-func codexHeaders(e upstream.Entry, a Access, extra map[string]string) map[string]string {
+// codexHeaders are the CLI's own: its identity, the account header from the
+// entry's mapping, and the bearer token.
+func codexHeaders(e upstream.Entry, a Access) map[string]string {
 	h := bearerFor(e, a)
 	if e.OAuth != nil && e.OAuth.Account != nil {
 		if v := e.OAuth.Account.Value(a.Conn.Data); v != "" {
 			h[e.OAuth.Account.Name] = v
 		}
 	}
-	for k, v := range extra {
-		h[k] = v
-	}
+	h["OpenAI-Beta"], h["originator"] = "codex-1", "codex_cli_rs"
 	return h
 }
 
@@ -143,7 +135,7 @@ func (r *Reader) CodexCredits(ctx context.Context, conn repository.Connection) (
 	if err != nil {
 		return ResetCredits{}, err
 	}
-	code, raw, err := r.do(ctx, request{URL: codexCreditsURL, Headers: codexHeaders(entry, access, codexExtra())})
+	code, raw, err := r.do(ctx, request{URL: codexCreditsURL, Headers: codexHeaders(entry, access)})
 	if err != nil {
 		return ResetCredits{}, err
 	}
@@ -180,7 +172,7 @@ func (r *Reader) CodexConsume(ctx context.Context, conn repository.Connection) (
 	if err != nil {
 		return ConsumeResult{}, err
 	}
-	code, raw, err := r.do(ctx, request{Method: http.MethodPost, URL: codexConsumeURL, Headers: codexHeaders(entry, access, codexExtra()), Body: body})
+	code, raw, err := r.do(ctx, request{Method: http.MethodPost, URL: codexConsumeURL, Headers: codexHeaders(entry, access), Body: body})
 	if err != nil {
 		return ConsumeResult{}, err
 	}
@@ -191,7 +183,7 @@ func (r *Reader) CodexConsume(ctx context.Context, conn repository.Connection) (
 	data := gjson.ParseBytes(raw)
 	out.Code = data.Get("code").String()
 	out.WindowsReset = int(data.Get("windows_reset").Int())
-	out.Message = data.Get("message").String()
+	out.Message = upstreamText(data.Get("message").String())
 	out.Reset = code/100 == 2 && (out.Code == "reset" || out.WindowsReset > 0)
 	return out, nil
 }

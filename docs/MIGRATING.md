@@ -1,4 +1,4 @@
-# Router-LLM — Migrating from 9Router
+# Router-LLM - Migrating from 9Router
 
 Moving a 9Router install to Router-LLM, and moving back. The import reads a copy of the 9Router database and seeds a database Router-LLM owns, so the original is never opened and the new install may use SQLite or PostgreSQL. Setup goes through a `.env` file; the shell environment is shown as the alternative.
 

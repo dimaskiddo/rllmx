@@ -35,3 +35,23 @@ func TestOnlyClaudeAndCodexAreWarmed(t *testing.T) {
 		t.Fatal("a provider without a reset window is warmed")
 	}
 }
+
+func TestAnAutoPingSettingIsReadInBothShapes(t *testing.T) {
+	for _, tc := range []struct {
+		raw  string
+		id   string
+		want bool
+	}{
+		{`true`, "c1", true},
+		{`false`, "c1", false},
+		{``, "c1", false},
+		{`{"connections":{"c1":true,"c2":false}}`, "c1", true},
+		{`{"connections":{"c1":true,"c2":false}}`, "c2", false},
+		{`{"connections":{"c1":true}}`, "other", false},
+		{`{"schedules":{"c1":{"enabled":true}}}`, "c1", false},
+	} {
+		if got := pingWanted(tc.raw, tc.id); got != tc.want {
+			t.Errorf("%q for %s: %v, want %v", tc.raw, tc.id, got, tc.want)
+		}
+	}
+}

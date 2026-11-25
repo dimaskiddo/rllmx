@@ -10,12 +10,14 @@ import (
 	"time"
 
 	"github.com/goravel/framework/contracts/foundation"
+	"github.com/tidwall/gjson"
 
 	"rllmx/app/access/identity"
 	"rllmx/app/gateway/pipeline"
 	"rllmx/app/llm/quota"
 	"rllmx/app/llm/stream"
 	"rllmx/app/llm/upstream"
+	"rllmx/app/platform/text"
 	"rllmx/app/store/repository"
 )
 
@@ -93,7 +95,11 @@ func (r *quotaPingRunner) tick(ctx context.Context) {
 	now := r.now()
 	for _, conn := range conns {
 		setting := pingSwitch(conn.Provider)
-		if setting == "" || !doc.Bool(setting, false) || !conn.IsActive {
+		if setting == "" || !conn.IsActive {
+			continue
+		}
+		raw, _ := doc.GetRaw(setting)
+		if !pingWanted(raw, conn.ID) {
 			continue
 		}
 		if conn.AuthType != "oauth" && conn.AuthType != "access_token" {
@@ -129,6 +135,20 @@ func (r *quotaPingRunner) tick(ctx context.Context) {
 		delete(r.failed, conn.ID)
 		r.mu.Unlock()
 	}
+}
+
+// pingWanted reads an auto-ping setting for one connection: a switch for every
+// connection, or an object whose "connections" map opts connections in one by
+// one, as the reference's setting does.
+func pingWanted(raw, id string) bool {
+	v := gjson.Parse(raw)
+	switch {
+	case v.Type == gjson.True:
+		return true
+	case v.IsObject():
+		return v.Get("connections").Get(text.EscapePath(id)).Type == gjson.True
+	}
+	return false
 }
 
 // pingSwitch names the operator's switch for a provider, or "" for one this

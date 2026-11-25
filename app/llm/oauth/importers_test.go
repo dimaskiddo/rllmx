@@ -3,6 +3,7 @@ package oauth_test
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -93,6 +94,18 @@ func TestAnImporterThatIsNotBuiltAnswersUnsupported(t *testing.T) {
 		svc, _ := importerService(t, "imp", name)
 		if _, err := svc.ImportToken(context.Background(), "imp", map[string]string{"accessToken": "TOKEN-" + strings.Repeat("d", 60)}); err != oauth.ErrUnsupported {
 			t.Fatalf("%s: %v", name, err)
+		}
+	}
+}
+
+func TestAKiroRefreshPasteNeverReachesAHostItNamed(t *testing.T) {
+	for _, region := range []string{"evil.example/x#", "us-east-1.evil.example", "us east", "../x", "US-EAST-1"} {
+		svc, accounts := importerService(t, "kiro", "kiro-refresh")
+		_, err := svc.ImportToken(context.Background(), "kiro", map[string]string{
+			"refreshToken": "R" + strings.Repeat("r", 60), "clientId": "id", "clientSecret": "secret", "region": region,
+		})
+		if !errors.Is(err, oauth.ErrImportField) || len(accounts.made) != 0 {
+			t.Errorf("region %q: %v, want the field refused before any call", region, err)
 		}
 	}
 }

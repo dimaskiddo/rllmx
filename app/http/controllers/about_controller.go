@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	nethttp "net/http"
 	"strings"
+	"sync"
 	"time"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
@@ -27,12 +28,16 @@ type AboutController struct {
 	Commit  string
 	// Fetch reads the release answer through the guarded client; nil answers 503.
 	Fetch func(ctx context.Context, address string) ([]byte, error)
-	// Upgrade installs the newest release and answers with its version; nil
-	// leaves the action out.
-	Upgrade func(ctx context.Context) (string, error)
-	// Restart replaces this process with the swapped binary; nil keeps it as it
+	// Upgrade installs the newest release and answers its version and the path
+	// of the swapped binary; nil leaves the action out.
+	Upgrade func(ctx context.Context) (latest, exe string, err error)
+	// Restart replaces this process with the binary at exe; nil keeps it as it
 	// is, for a build that cannot restart itself.
-	Restart func()
+	Restart func(exe string)
+
+	// installing refuses a second install while one runs: two would race on the
+	// binary's rename and could leave none on disk.
+	installing sync.Mutex
 }
 
 // release is the part of GitHub's answer the page shows.
@@ -78,13 +83,17 @@ func (c *AboutController) RunUpgrade(ctx contractshttp.Context) contractshttp.Re
 	if c.Upgrade == nil || c.Restart == nil {
 		return flat(ctx, nethttp.StatusServiceUnavailable, "The update action is not available")
 	}
+	if !c.installing.TryLock() {
+		return flat(ctx, nethttp.StatusConflict, "An update is already being installed")
+	}
+	defer c.installing.Unlock()
 	rc, cancel := context.WithTimeout(ctx.Request().Origin().Context(), 5*time.Minute)
 	defer cancel()
-	latest, err := c.Upgrade(rc)
+	latest, exe, err := c.Upgrade(rc)
 	if err != nil {
 		return flat(ctx, nethttp.StatusBadGateway, "The update could not be installed")
 	}
-	time.AfterFunc(300*time.Millisecond, c.Restart)
+	time.AfterFunc(300*time.Millisecond, func() { c.Restart(exe) })
 	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"latestVersion": latest, "restarting": true})
 }
 

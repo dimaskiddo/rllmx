@@ -1,4 +1,4 @@
-# Router-LLM — Workflows
+# Router-LLM - Workflows
 
 Flow: env load, store open, authenticate, resolve, select account, translate, execute, stream, record usage. Owns startup order and operator procedures (migration, imports). Component detail: the design document for that area in [`docs/design/`](design/). Reference tracking: [`PARITY.md`](PARITY.md).
 

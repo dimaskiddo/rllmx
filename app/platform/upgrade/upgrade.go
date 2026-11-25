@@ -234,21 +234,30 @@ func unpack(archive []byte, goos string) ([]byte, error) {
 		if filepath.Base(f.Name) != name || f.FileInfo().IsDir() {
 			continue
 		}
-		rc, err := f.Open()
-		if err != nil {
-			return nil, err
-		}
-		defer rc.Close()
-		body, err := io.ReadAll(io.LimitReader(rc, maxArchive))
-		if err != nil {
-			return nil, err
-		}
-		if len(body) == 0 {
-			return nil, errors.New("upgrade: the release holds an empty binary")
-		}
-		return body, nil
+		return readEntry(f)
 	}
 	return nil, fmt.Errorf("upgrade: the release holds no %s", name)
+}
+
+// readEntry reads one archive entry whole. One past the limit is read so a
+// larger binary is refused instead of installed cut short.
+func readEntry(f *zip.File) ([]byte, error) {
+	rc, err := f.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+	body, err := io.ReadAll(io.LimitReader(rc, maxArchive+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(body) > maxArchive {
+		return nil, errors.New("upgrade: the binary in the release is too large")
+	}
+	if len(body) == 0 {
+		return nil, errors.New("upgrade: the release holds an empty binary")
+	}
+	return body, nil
 }
 
 // swap writes the new binary beside the old one and renames both, so a failure
@@ -256,9 +265,11 @@ func unpack(archive []byte, goos string) ([]byte, error) {
 func swap(exe string, body []byte) error {
 	next := exe + ".new"
 	old := exe + ".old"
-	f, err := os.OpenFile(next, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	// O_EXCL makes the file the lock: a second install fails here, before it
+	// moves the binary, and a crashed one leaves a file the error names.
+	f, err := os.OpenFile(next, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
-		return fmt.Errorf("upgrade: cannot write beside the binary: %w", err)
+		return fmt.Errorf("upgrade: cannot write %s (another update may be running; remove it if not): %w", next, err)
 	}
 	if _, err := f.Write(body); err != nil {
 		f.Close()

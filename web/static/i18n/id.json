@@ -116,7 +116,6 @@
   "console.levelAll": "Semua tingkat",
   "console.levelError": "Galat saja",
   "console.levelWarning": "Peringatan dan galat",
-  "console.lines": "Baris",
   "console.state.connecting": "Menyambung",
   "console.state.live": "Langsung",
   "console.state.reconnecting": "Menyambung ulang",

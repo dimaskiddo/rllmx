@@ -39,11 +39,13 @@ func IsClientAPI(p string) bool {
 func IsDashboardAPI(p string) bool { return p == "/api" || strings.HasPrefix(p, "/api/") }
 
 // IsLongDashboardCall reports a dashboard route whose work outlives the default
-// write deadline: a feed, and the two tests that wait on providers. Each such
+// write deadline: a feed, the tests that wait on providers, and the two calls
+// that download (an update, a skill catalog). Each such
 // handler bounds its own work instead.
 func IsLongDashboardCall(p string) bool {
 	switch p {
-	case "/api/health/latency-stream", "/api/providers/test-batch", "/api/translator/console-logs/stream", "/api/usage/stream":
+	case "/api/health/latency-stream", "/api/providers/test-batch", "/api/translator/console-logs/stream", "/api/usage/stream",
+		"/api/about/upgrade", "/api/skills/sync":
 		return true
 	}
 	return strings.HasSuffix(p, "/test-models")

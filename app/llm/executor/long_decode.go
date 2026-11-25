@@ -6,11 +6,14 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
+	"sync"
 
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 
 	"rllmx/app/platform/file"
+	"rllmx/app/platform/text"
 )
 
 const (
@@ -183,7 +186,7 @@ func compose(first Response, root gjson.Result, last []byte, parts []string, usa
 	if len(out) == 0 || !gjson.ValidBytes(out) {
 		out = []byte(`{}`)
 	}
-	arr := "[" + joinRaw(parts) + "]"
+	arr := "[" + strings.Join(parts, ",") + "]"
 	out, _ = sjson.SetRawBytes(out, "candidates.0.content.parts", []byte(arr))
 	if role := root.Get("candidates.0.content.role").String(); role != "" || gjson.Get(lastInner.Raw, "candidates.0.content.role").Exists() {
 		if role == "" {
@@ -206,17 +209,6 @@ func compose(first Response, root gjson.Result, last []byte, parts []string, usa
 		env = []byte(root.Raw)
 	}
 	return sjson.SetRawBytes(env, "response", out)
-}
-
-func joinRaw(parts []string) string {
-	var b bytes.Buffer
-	for i, p := range parts {
-		if i > 0 {
-			b.WriteByte(',')
-		}
-		b.WriteString(p)
-	}
-	return b.String()
 }
 
 // addUsage adds the numeric fields of one hop's usage to the running total.
@@ -244,22 +236,9 @@ func usageJSON(total map[string]float64, latest gjson.Result) []byte {
 		out = []byte(latest.Raw)
 	}
 	for k, v := range total {
-		out, _ = sjson.SetBytes(out, escape(k), int64(v))
+		out, _ = sjson.SetBytes(out, text.EscapePath(k), int64(v))
 	}
 	return out
-}
-
-// escape makes a key safe as one sjson path element.
-func escape(k string) string {
-	var b bytes.Buffer
-	for i := 0; i < len(k); i++ {
-		switch k[i] {
-		case '.', '*', '?', '|', '#', '@', '\\', ':', '!', '=', '<', '>', '%':
-			b.WriteByte('\\')
-		}
-		b.WriteByte(k[i])
-	}
-	return b.String()
 }
 
 // stream is the first hop and the ones after it as one event stream.
@@ -288,11 +267,16 @@ type hopStream struct {
 	hop     map[string]float64
 	wrapped bool
 	done    bool
+
+	// mu guards live and closed: the stream's reader runs on its own goroutine
+	// while the caller closes from another.
+	mu     sync.Mutex
+	closed bool
 }
 
 func (s *hopStream) Read(p []byte) (int, error) {
 	for s.out.Len() == 0 {
-		if s.done {
+		if s.done || s.isClosed() {
 			return 0, io.EOF
 		}
 		s.advance()
@@ -300,13 +284,34 @@ func (s *hopStream) Read(p []byte) (int, error) {
 	return s.out.Read(p)
 }
 
+func (s *hopStream) isClosed() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.closed
+}
+
 func (s *hopStream) Close() error {
-	s.done = true
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.closed = true
 	return s.live.Close()
 }
 
+// swap makes body the live hop, or closes it when the stream was closed while
+// it was being opened.
+func (s *hopStream) swap(body io.ReadCloser) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		Drain(body)
+		return false
+	}
+	s.live = body
+	return true
+}
+
 func (s *hopStream) advance() {
-	line, err := s.lines.ReadBytes('\n')
+	line, err := readHopLine(s.lines)
 	if len(line) > 0 {
 		s.out.Write(s.transform(bytes.TrimRight(line, "\r\n")))
 		s.out.WriteByte('\n')
@@ -315,6 +320,10 @@ func (s *hopStream) advance() {
 		return
 	}
 	_ = s.live.Close()
+	if errors.Is(err, errHopLineTooLong) {
+		s.truncate()
+		return
+	}
 	if s.token == "" {
 		s.done = true
 		return
@@ -327,9 +336,34 @@ func (s *hopStream) advance() {
 		s.truncate()
 		return
 	}
+	if !s.swap(resp.Body) {
+		s.done = true
+		return
+	}
 	s.base = sum(s.base, s.hop)
 	s.hop, s.token = nil, ""
-	s.live, s.lines = resp.Body, bufio.NewReaderSize(resp.Body, 32<<10)
+	s.lines = bufio.NewReaderSize(resp.Body, 32<<10)
+}
+
+// maxHopLine bounds one line of a hop's stream; an upstream that sends none
+// of the line ends would otherwise grow the buffer without limit.
+const maxHopLine = 4 << 20
+
+var errHopLineTooLong = errors.New("executor: a hop's line is too long")
+
+// readHopLine reads one line, ends included, and refuses one past maxHopLine.
+func readHopLine(r *bufio.Reader) ([]byte, error) {
+	var line []byte
+	for {
+		chunk, err := r.ReadSlice('\n')
+		line = append(line, chunk...)
+		if len(line) > maxHopLine {
+			return nil, errHopLineTooLong
+		}
+		if !errors.Is(err, bufio.ErrBufferFull) {
+			return line, err
+		}
+	}
 }
 
 func isEvents(r Response) bool {

@@ -1,7 +1,6 @@
 // Users: the standard-user accounts and the keys assigned to each. Every route
 // behind this page is admin-only, and the server refuses it to a standard user.
 import { api } from "/static/js/ui/api.js";
-import { session } from "/static/js/ui/session.js";
 import { ask } from "/static/js/ui/dialog.js";
 import { t } from "/static/js/ui/i18n.js";
 import { toast } from "/static/js/ui/toast.js";
@@ -9,13 +8,8 @@ import { toast } from "/static/js/ui/toast.js";
 window.Alpine.data("usersPage", () => ({
   loading: true,
   error: "",
-  role: "user",
   users: [],
   userForm: null,
-
-  isAdmin() {
-    return this.role !== "user";
-  },
 
   async init() {
     await this.load();
@@ -25,7 +19,6 @@ window.Alpine.data("usersPage", () => ({
     this.loading = true;
     this.error = "";
     try {
-      this.role = (await session()).role;
       const listing = await api("/api/users");
       this.users = listing.users || [];
     } catch (err) {
@@ -50,6 +43,11 @@ window.Alpine.data("usersPage", () => ({
 
   closeUser() {
     this.$refs.userDlg.close();
+  },
+
+  // forgetUser runs on the dialog's own close event, so a typed password is
+  // dropped for Escape and the corner button as well as Cancel.
+  forgetUser() {
     this.userForm = null;
   },
 

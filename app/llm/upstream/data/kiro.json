@@ -22,6 +22,7 @@
   "oauth": {
     "importer": "kiro-refresh",
     "flow": "device",
+    "noClient": true,
     "deviceUrl": "https://oidc.us-east-1.amazonaws.com/device_authorization",
     "tokenUrl": "https://oidc.us-east-1.amazonaws.com/token",
     "scope": "codewhisperer:completions codewhisperer:analysis codewhisperer:conversations",

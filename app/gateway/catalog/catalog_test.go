@@ -498,3 +498,25 @@ func TestALiveListKeepsCustomRowsAndDropsDisabledOnes(t *testing.T) {
 		t.Fatal("an embedded id survived the live list")
 	}
 }
+
+func TestAnImageModelOfAChatProviderIsNotListedAsAChatModel(t *testing.T) {
+	const mixed = `{"id":"free","category":"free","noAuth":true,"display":{"name":"F"},` +
+		`"transport":{"baseUrl":"https://f.example/v1/chat/completions","format":"openai"},` +
+		`"models":[{"id":"fm"},{"id":"draw","kind":"image"}]}`
+	reg, err := upstream.Load(fstest.MapFS{"data/free.json": {Data: []byte(mixed)}}, "data")
+	if err != nil {
+		t.Fatal(err)
+	}
+	caps, err := upstream.LoadCapabilities(reg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &rig{t: t, kv: &fakeKV{scopes: map[string]map[string]string{}, disabled: map[string][]string{}}, conns: &fakeConns{}, nodes: &fakeNodes{}}
+	r.c = &Catalog{
+		Registry: reg, Caps: caps, Conns: r.conns, Nodes: r.nodes, KV: r.kv, Created: 1700000000,
+		Resolver: &routing.Resolver{Registry: reg, Snapshot: routing.NewSnapshot(routingSource{r}, nil)},
+	}
+	if got := r.ids(anyone); len(got) != 1 || got[0] != "free/fm" {
+		t.Fatalf("%v", got)
+	}
+}

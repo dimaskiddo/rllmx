@@ -412,6 +412,11 @@ export const connectionMethods = {
     this.$refs.bulkDlg.close();
   },
 
+  // forgetBulk drops the pasted keys whichever way the dialog went away.
+  forgetBulk() {
+    this.bulk.text = "";
+  },
+
   async runBulk() {
     this.bulk.error = "";
     this.bulk.busy = true;

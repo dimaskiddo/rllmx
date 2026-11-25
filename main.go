@@ -18,4 +18,5 @@ func main() {
 	app := bootstrap.Boot(version, commit)
 
 	app.Start()
+	bootstrap.Relaunch()
 }

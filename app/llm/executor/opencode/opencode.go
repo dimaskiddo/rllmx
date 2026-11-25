@@ -68,7 +68,7 @@ const (
 func (o *OpenCodeFree) Execute(ctx context.Context, req executor.Request) (executor.Response, error) {
 	lane := o.lane()
 	req.URL = openCodeURL(lane, openCodeEntryBase(req), req.Model)
-	req.Body = openCodeFreeBody(req.Body, openCodeIsResponses(req.Model), openCodeIsMessages(req.Model))
+	req.Body = openCodeFreeBody(req.Body, openCodeIsResponses(req.Model))
 	// The free lane's 1.3 model is only accepted with a tool choice present.
 	if strings.Contains(req.Model, "muse-spark-1.3") {
 		req.Body = executor.SetValue(req.Body, "tool_choice", "auto")
@@ -265,7 +265,7 @@ func openCodeIsMessages(model string) bool { return openCodeBaseModel(model) == 
 // openCodeFreeBody fits the body to the lane: the forced stream, the Responses
 // rewrite when the lane is one, the free tier's fingerprint tools and the
 // environment marker.
-func openCodeFreeBody(body []byte, responses, messages bool) []byte {
+func openCodeFreeBody(body []byte, responses bool) []byte {
 	body = executor.SetValue(body, "stream", true)
 	if responses {
 		body = openCodeResponsesBody(body, nil)
@@ -273,11 +273,7 @@ func openCodeFreeBody(body []byte, responses, messages bool) []byte {
 		return body
 	}
 	body = openCodeDropAutoEffort(body)
-	body = openCodeFingerprint(body, false)
-	if messages {
-		return body
-	}
-	return body
+	return openCodeFingerprint(body, false)
 }
 
 // openCodeDropAutoEffort leaves "auto" out, which the plain Chat lane refuses

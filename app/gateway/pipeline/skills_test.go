@@ -505,3 +505,30 @@ func TestTheMemorySkillInjectsTheAgentNotes(t *testing.T) {
 		}
 	}
 }
+
+func TestTheCacheKeyFollowsTheAgentNotesAndTheirBypass(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, "memories"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	notes := filepath.Join(home, "memories", "MEMORY.md")
+	keyOf := func(header http.Header) string {
+		c := skillCall(t, `{"hermes-toolkitEnabled":true}`, header, nil)
+		c.p.d.Skills = skill.NewRegistry("", skill.Builtin())
+		c.p.d.Hermes = &hermes.Reader{Home: home}
+		return c.skillKey(context.Background())
+	}
+	if err := os.WriteFile(notes, []byte("the router is Go"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	first := keyOf(nil)
+	if keyOf(bypassHeader(hermes.Bypass)) == first {
+		t.Error("a request that switched the notes off shares the key of one that carried them")
+	}
+	if err := os.WriteFile(notes, []byte("the router is Rust"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if keyOf(nil) == first {
+		t.Error("an answer made under older notes is served after the notes changed")
+	}
+}

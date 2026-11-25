@@ -168,8 +168,7 @@ func (c *ProvidersController) checkOne(ctx context.Context, st *repository.Store
 	case conn.AuthType == "oauth" && c.oauthEntry(conn.Provider):
 		res, refreshed = c.checkLogin(ctx, conn.ID)
 	case conn.AuthType == "cookie":
-		cookie, _ := conn.Doc().GetString("cookie")
-		res = c.Checker.CheckWeb(ctx, conn.Provider, cookie)
+		res = c.Checker.CheckWeb(ctx, conn.Provider, key)
 	case conn.Provider == "deepseek-web":
 		res = c.Checker.CheckDeepSeekWeb(ctx, key)
 	case conn.AuthType != "apikey":

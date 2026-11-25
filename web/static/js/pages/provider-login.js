@@ -63,6 +63,8 @@ export const loginMethods = {
     this.login.open = false;
     this.login.token = "";
     this.login.input = "";
+    this.login.bulk = "";
+    this.login.fields = {};
     this.login.app.clientSecret = "";
   },
 

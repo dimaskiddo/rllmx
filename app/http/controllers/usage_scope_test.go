@@ -3,6 +3,7 @@ package controllers
 import (
 	nethttp "net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
@@ -70,5 +71,28 @@ func TestAUserReadsOnlyTheKeysTheyOwn(t *testing.T) {
 	}
 	if len(r.f.lastKeys) != 1 || r.f.lastKeys[0] != r.key.ID {
 		t.Fatalf("keys %v", r.f.lastKeys)
+	}
+}
+
+func TestAUserSeesNoNameOrEmailOfTheOperatorsUpstreamAccounts(t *testing.T) {
+	r := newUsageRig(t)
+	a, b := r.sums()
+	r.f.sums = []analytics.Sum{a, b}
+	r.f.recent = []analytics.Request{{ID: 7, Time: usageNow, Provider: "openai", Model: "gpt-4o", ConnectionID: r.conn.ID, APIKeyName: "ci", Status: 200}}
+	users, get := userUsageRoute(t, r, "u1")
+	if err := users.SetOwner(t.Context(), r.key.ID, "u1"); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/api/usage/stats?period=all", "/api/usage/logs"} {
+		rec := get(path)
+		if rec.Code != nethttp.StatusOK {
+			t.Fatalf("%s: %d %s", path, rec.Code, rec.Body.String())
+		}
+		if strings.Contains(rec.Body.String(), "work") {
+			t.Errorf("%s names the operator's account to a standard user: %s", path, rec.Body.String())
+		}
+	}
+	if _, _, raw := r.m.call("GET", "/api/usage/logs", "", true); !strings.Contains(raw, "work") {
+		t.Errorf("the administrator lost the account name: %s", raw)
 	}
 }

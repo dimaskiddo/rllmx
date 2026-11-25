@@ -212,6 +212,9 @@ func (c *call) cached(ctx context.Context) (Output, bool) {
 // close to one already cached. It leaves the vector for remember, so the answer
 // is indexed without a second embedding.
 func (c *call) cachedSimilar(ctx context.Context, s cacheSettings) (Output, bool) {
+	// A combo member before this one may have left its vector; it indexes that
+	// member's answer, not this one's.
+	c.cacheVec, c.cacheBucket = nil, ""
 	rc := c.p.d.ResponseCache
 	if rc == nil || rc.Semantic == nil || c.p.d.Embed == nil || !s.Semantic.Enabled || s.Semantic.Model == "" {
 		return Output{}, false

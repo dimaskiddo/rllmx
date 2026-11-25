@@ -41,6 +41,12 @@ func (s *SemanticIndex) Lookup(bucket string, vec []float32, threshold float64) 
 	if s == nil || len(vec) == 0 {
 		return "", 0, false
 	}
+	// Stored vectors are unit length, so the query must be too: a longer one
+	// would score past the threshold against an unrelated entry.
+	vec = normalize(vec)
+	if len(vec) == 0 {
+		return "", 0, false
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	best, bestScore := "", 0.0
@@ -69,11 +75,12 @@ func (s *SemanticIndex) Add(bucket, key string, vec []float32) {
 		return
 	}
 	list := append(s.buckets[bucket], semanticEntry{key: key, vec: norm, at: s.now()})
-	if len(list) > semanticBucketCap {
-		list = list[len(list)-semanticBucketCap:]
+	s.total++
+	if over := len(list) - semanticBucketCap; over > 0 {
+		list = list[over:]
+		s.total -= over
 	}
 	s.buckets[bucket] = list
-	s.total++
 	if s.total > semanticTotalCap {
 		s.evictOldest()
 	}
@@ -131,7 +138,11 @@ func (s *SemanticIndex) evictOldest() {
 	if oldestBucket == "" {
 		return
 	}
-	s.buckets[oldestBucket] = s.buckets[oldestBucket][1:]
+	if rest := s.buckets[oldestBucket][1:]; len(rest) > 0 {
+		s.buckets[oldestBucket] = rest
+	} else {
+		delete(s.buckets, oldestBucket)
+	}
 	s.total--
 }
 

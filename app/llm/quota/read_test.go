@@ -644,3 +644,49 @@ func TestQoderExchangesAPersonalTokenOnce(t *testing.T) {
 		t.Fatalf("the token was exchanged %d times", exchanges)
 	}
 }
+
+// An expired MiniMax session is a refused credential, which the caller renews;
+// a server fault is neither a refusal nor a free plan.
+func TestMiniMaxCodeTellsARefusedSessionFromAServerFault(t *testing.T) {
+	refused := newStub().on("agent.minimaxi.com", "/v1/api/user/info", `{"statusInfo":{"code":1000048}}`)
+	r := testReader(refused, connOf("minimax-code", "oauth", ""), "t")
+	r.MiniMaxSecret = "secret"
+	if _, err := r.Read(context.Background(), connOf("minimax-code", "oauth", ""), true); !errors.Is(err, ErrAuth) {
+		t.Fatalf("a refused session answered %v", err)
+	}
+
+	for _, path := range []string{"/v1/api/user/info", "/matrix/api/v1/user/get_user_extra_info", "/matrix/api/v1/commerce/get_membership_info"} {
+		down := newStub().
+			on("agent.minimaxi.com", "/v1/api/user/info", `{"data":{"userInfo":{"realUserID":"u1"}}}`).
+			on("agent.minimaxi.com", "/matrix/api/v1/user/get_user_extra_info", `{"data":{}}`).
+			on("agent.minimaxi.com", "/matrix/api/v1/commerce/get_membership_info", `{"data":{}}`).
+			code("agent.minimaxi.com", path, http.StatusBadGateway)
+		r := testReader(down, connOf("minimax-code", "oauth", ""), "t")
+		r.MiniMaxSecret = "secret"
+		out, err := r.Read(context.Background(), connOf("minimax-code", "oauth", ""), true)
+		if err != nil || out.Plan != "" || out.Message == "" {
+			t.Errorf("%s down: %+v %v, want a message and no plan", path, out, err)
+		}
+	}
+}
+
+func TestAMiMoAnswerWithNoPercentIsNotAnEmptyWindow(t *testing.T) {
+	out := parseXiaomi([]byte(`{"code":0,"data":{}}`))
+	if _, has := out.Quotas["Weekly"]; has || out.Message == "" {
+		t.Fatalf("an answer with no figure was read as 0%% left: %+v", out)
+	}
+}
+
+func TestQoderJobTokensAreKeyedByDigestAndExpiredOnesGo(t *testing.T) {
+	r := &Reader{Now: func() time.Time { return time.Unix(1_000_000, 0) }}
+	r.qoderStore("https://q.example", "pt-secret", "job-1", time.Unix(1_000_000, 0).Add(-time.Hour))
+	r.qoderStore("https://q.example", "pt-other", "job-2", time.Unix(1_000_000, 0).Add(time.Hour))
+	if len(r.qoderJobs) != 1 {
+		t.Fatalf("%d job tokens kept, want only the unexpired one", len(r.qoderJobs))
+	}
+	for key := range r.qoderJobs {
+		if strings.Contains(key, "pt-") {
+			t.Fatalf("the personal token is a map key: %q", key)
+		}
+	}
+}

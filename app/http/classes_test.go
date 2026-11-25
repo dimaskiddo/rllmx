@@ -130,3 +130,16 @@ func TestAProviderUsagePathIsAClientRouteAndADashboardOneIsNot(t *testing.T) {
 		}
 	}
 }
+
+func TestTheCallsThatWaitOnTheNetworkOutliveTheDefaultWriteDeadline(t *testing.T) {
+	for _, p := range []string{"/api/about/upgrade", "/api/skills/sync", "/api/providers/x/test-models"} {
+		if !IsLongDashboardCall(p) {
+			t.Errorf("%s would be cut at the default write deadline", p)
+		}
+	}
+	for _, p := range []string{"/api/keys", "/api/about/update", "/api/skills"} {
+		if IsLongDashboardCall(p) {
+			t.Errorf("%s was given the long deadline", p)
+		}
+	}
+}

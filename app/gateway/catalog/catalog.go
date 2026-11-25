@@ -121,15 +121,11 @@ func (c *Catalog) List(ctx context.Context, caller identity.Caller) ([]Entry, er
 		if err != nil {
 			return nil, err
 		}
-		base := make([]Model, 0, len(e.Models))
-		for _, m := range e.Models {
-			base = append(base, Model{ID: m.ID, Name: m.Name, Source: "builtin"})
-		}
 		owner := e.Alias
 		if owner == "" {
 			owner = e.ID
 		}
-		out = append(out, c.entries(e.ID, owner, merge(base, names, custom, aliases, off), cs)...)
+		out = append(out, c.entries(e.ID, owner, merge(baseModels(e), names, custom, aliases, off), cs)...)
 	}
 
 	nodes, err := c.Nodes.List(ctx, "")

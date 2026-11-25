@@ -330,7 +330,10 @@ func (c *UsageController) Logs(ctx contractshttp.Context) contractshttp.Response
 	if err != nil {
 		return c.failed(ctx, "logs", "Failed to fetch logs", err)
 	}
-	accounts := c.accountNames(rc)
+	var accounts map[string]string
+	if keys == nil {
+		accounts = c.accountNames(rc)
+	}
 	nodes := nodeNames(rc, c.store())
 	lines := make([]string, 0, len(rows))
 	for _, r := range rows {
@@ -400,8 +403,13 @@ func (c *UsageController) build(ctx context.Context, w usageWindow, keys []strin
 		return usageStats{}, err
 	}
 	nodes := nodeNames(ctx, c.store())
-	accounts := c.accountNames(ctx)
-	names := usageNames{accounts: accounts, keys: c.keyNames(ctx)}
+	// The operator's upstream accounts are not a standard user's to see: their
+	// usage is by key, and an account's name or address is the operator's.
+	var accounts map[string]string
+	if keys == nil {
+		accounts = c.accountNames(ctx)
+	}
+	names := usageNames{accounts: accounts, keys: c.keyNames(ctx), scoped: keys != nil}
 
 	out := usageStats{
 		ByProvider:          map[string]usageProviderEntry{},
@@ -441,6 +449,8 @@ func (c *UsageController) build(ctx context.Context, w usageWindow, keys []strin
 type usageNames struct {
 	accounts map[string]string
 	keys     map[string]usageKeyName
+	// scoped is a standard user's read: no connection is named or identified.
+	scoped bool
 	// provider is the current sum's provider, as the page names it.
 	provider string
 }
@@ -467,11 +477,14 @@ func (u *usageStats) add(s analytics.Sum, n usageNames, stamp string) {
 	m.RawModel, m.Provider, m.LastUsed = s.Model, provider, stamp
 	u.ByModel[mk] = m
 
-	name := n.accounts[s.ConnectionID]
+	name, connection := n.accounts[s.ConnectionID], s.ConnectionID
+	if n.scoped {
+		connection = ""
+	}
 	ak := s.Model + " (" + provider + " - " + name + ")"
 	a := u.ByAccount[ak]
 	a.usageTotals.add(t)
-	a.RawModel, a.Provider, a.ConnectionID, a.AccountName, a.LastUsed = s.Model, provider, s.ConnectionID, name, stamp
+	a.RawModel, a.Provider, a.ConnectionID, a.AccountName, a.LastUsed = s.Model, provider, connection, name, stamp
 	u.ByAccount[ak] = a
 
 	k := usageKeyName{}

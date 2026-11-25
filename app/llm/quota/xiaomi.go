@@ -32,7 +32,7 @@ func readXiaomiMimo(ctx context.Context, r *Reader, e upstream.Entry, a Access) 
 		return Reading{Message: "Xiaomi MiMo has no session and no key"}, nil
 	}
 	code, raw, err := r.do(ctx, request{URL: "https://aistudio.xiaomimimo.com/open-apis/v1/user/usage", Headers: map[string]string{
-		"Authorization": bearerWord(a.Token), "X-Mimo-Source": "mimocode-cli",
+		"Authorization": bearerHeader(a.Token), "X-Mimo-Source": "mimocode-cli",
 	}})
 	if err != nil {
 		return failed("Xiaomi MiMo", err)
@@ -87,6 +87,10 @@ func parseXiaomi(raw []byte) Reading {
 		return out
 	}
 	body := data.Get("data")
+	if !body.Get("percent").Exists() {
+		out.Message = "Xiaomi MiMo reported no figure"
+		return out
+	}
 	left := clampPercent(body.Get("percent").Float())
 	reset := stampOf(body.Get("resetAt"))
 	if reset.IsZero() {

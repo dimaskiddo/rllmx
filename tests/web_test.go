@@ -503,6 +503,23 @@ func TestEveryDialogIsNamedByAHeadingInItsFile(t *testing.T) {
 	})
 }
 
+// A dialog that holds a typed secret forgets it on the dialog's own close event,
+// which fires for Escape and the corner button as well as Cancel.
+func TestEveryDialogWithASecretFieldForgetsItOnClose(t *testing.T) {
+	ours(t, func(name, body string) {
+		if !strings.HasSuffix(name, ".html") {
+			return
+		}
+		for _, block := range strings.Split(body, "<dialog")[1:] {
+			block, _, _ = strings.Cut(block, "</dialog>")
+			open, _, _ := strings.Cut(block, ">")
+			if strings.Contains(block, `type="password"`) && !strings.Contains(open, "x-on:close=") {
+				t.Errorf("%s: a dialog with a password field never forgets it on close: <dialog%s>", name, open)
+			}
+		}
+	})
+}
+
 // A toast raised by script is read aloud only inside a live region.
 func TestTheToastStackIsALiveRegionInTheTopLayer(t *testing.T) {
 	body, err := fs.ReadFile(web.Static, "static/shell.html")

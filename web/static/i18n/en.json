@@ -116,7 +116,6 @@
   "console.levelAll": "All levels",
   "console.levelError": "Errors only",
   "console.levelWarning": "Warnings and errors",
-  "console.lines": "Lines",
   "console.state.connecting": "Connecting",
   "console.state.live": "Live",
   "console.state.reconnecting": "Reconnecting",

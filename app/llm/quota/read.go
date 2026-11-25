@@ -224,8 +224,12 @@ func answered(provider string, code int) (Reading, error) {
 	return Reading{Message: fmt.Sprintf("%s answered %d", provider, code)}, nil
 }
 
-// failed is a soft message for a call that never got an answer.
+// failed is a soft message for a call that never got an answer. A credential
+// the provider refused stays a refusal, so the caller renews it.
 func failed(provider string, err error) (Reading, error) {
+	if errors.Is(err, ErrAuth) {
+		return Reading{}, ErrAuth
+	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return Reading{Message: fmt.Sprintf("%s did not answer in time", provider)}, nil
 	}
@@ -268,12 +272,15 @@ func identity(e upstream.Entry) map[string]string {
 	return h
 }
 
+// bearerHeader is the Authorization value a bearer call carries.
+func bearerHeader(token string) string { return "Bearer " + token }
+
 // bearer adds the token to a call's headers the way a login's request carries it.
 func bearer(h map[string]string, token string) map[string]string {
 	if h == nil {
 		h = map[string]string{}
 	}
-	h["Authorization"] = "Bearer " + token
+	h["Authorization"] = bearerHeader(token)
 	return h
 }
 

@@ -45,11 +45,12 @@ var suggestedSources = map[string]struct{ url, filter string }{
 // SuggestedModels answers GET /api/providers/suggested-models?provider= with the
 // provider's own list, filtered to the free models it serves.
 func (c *ProvidersController) SuggestedModels(ctx contractshttp.Context) contractshttp.Response {
-	source, ok := suggestedSources[strings.TrimSpace(ctx.Request().Query("provider"))]
+	provider := strings.TrimSpace(ctx.Request().Query("provider"))
+	source, ok := suggestedSources[provider]
 	if !ok || c.Fetch == nil {
 		return flat(ctx, http.StatusBadRequest, "Unknown provider")
 	}
-	out, err := c.suggested(ctx.Request().Origin().Context(), ctx.Request().Query("provider"), source.url, source.filter, suggestedTTL)
+	out, err := c.suggested(ctx.Request().Origin().Context(), provider, source.url, source.filter, suggestedTTL)
 	if err != nil {
 		return ctx.Response().Json(http.StatusOK, contractshttp.Json{"data": []suggestedModel{}})
 	}
@@ -62,11 +63,15 @@ func (c *ProvidersController) KiloFreeModels(ctx contractshttp.Context) contract
 	if c.Fetch == nil {
 		return flat(ctx, http.StatusServiceUnavailable, "The model list is not available")
 	}
+	c.suggestMu.Lock()
+	kept, keptAt := c.kiloBody, c.kiloAt
+	c.suggestMu.Unlock()
+	if len(kept) > 0 && time.Since(keptAt) < kiloTTL {
+		return ctx.Response().Json(http.StatusOK, contractshttp.Json{"models": kept, "cached": true})
+	}
 	body, err := c.Fetch(ctx.Request().Origin().Context(), kiloModels)
 	if err != nil {
-		c.suggestMu.Lock()
-		stale := c.kiloBody
-		c.suggestMu.Unlock()
+		stale := kept
 		if len(stale) > 0 {
 			return ctx.Response().Json(http.StatusOK, contractshttp.Json{"models": stale, "cached": true, "warning": "the list could not be refreshed"})
 		}
@@ -151,7 +156,7 @@ func filterModels(raw []byte, filter string, kilo bool) []suggestedModel {
 		case "airforce-free":
 			// Kilo's own answer marks its free rows.
 			if kilo {
-				if item.Get("isFree").Bool() != true {
+				if !item.Get("isFree").Bool() {
 					continue
 				}
 				break

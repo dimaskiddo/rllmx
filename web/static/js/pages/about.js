@@ -7,6 +7,16 @@ import { session } from "/static/js/ui/session.js";
 import { toast } from "/static/js/ui/toast.js";
 import { formatMethods } from "/static/js/ui/format.js";
 
+// ownReleaseURL keeps an address only when it is an https page on GitHub, else "".
+function ownReleaseURL(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname === "github.com" ? url.href : "";
+  } catch (err) {
+    return "";
+  }
+}
+
 window.Alpine.data("aboutPage", () => Object.assign({
   loading: true,
   error: "",
@@ -41,7 +51,9 @@ window.Alpine.data("aboutPage", () => Object.assign({
     try {
       const out = await api("/api/about/update");
       this.check.latest = out.latestVersion || "";
-      this.check.url = out.url || "";
+      // The address comes from an upstream answer, so only this project's own
+      // releases are linked.
+      this.check.url = ownReleaseURL(out.url);
       this.check.hasUpdate = out.hasUpdate === true;
       this.check.releasedOn = (out.publishedAt || "").slice(0, 10);
       this.check.done = true;

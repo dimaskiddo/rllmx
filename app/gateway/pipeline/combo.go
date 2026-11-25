@@ -198,8 +198,12 @@ func (c *call) comboMember(ctx context.Context, m routing.Member, shape func(*tr
 	c.requested = m.Provider + "/" + m.Model
 	c.comboContext(dest, t)
 
-	if out, hit := c.cached(ctx); hit {
-		return out, nil
+	// The key hashes the client's own body, so a request a shape rewrote
+	// neither reads nor stores an entry.
+	if shape == nil {
+		if out, hit := c.cached(ctx); hit {
+			return out, nil
+		}
 	}
 	if out, ok := c.build(ctx, dest); !ok {
 		return out, &accountFail{status: out.Status, class: "invalid_request", text: "The combo member cannot be built"}

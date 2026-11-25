@@ -1,4 +1,4 @@
-# Router-LLM — Screenshots
+# Router-LLM - Screenshots
 
 The dashboard, page by page. The captures below come from the dark theme at a desktop width; every page has the same layout in the light theme. Settings that live in a dialog open over the page they belong to.
 

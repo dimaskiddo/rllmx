@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"io"
 	nethttp "net/http"
-	"os"
+	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/goravel/framework/contracts/console"
@@ -91,8 +92,8 @@ func declareRoutes(version, commit string) {
 	base.About = &controllers.AboutController{
 		Version: version, Commit: commit,
 		Fetch:   guardedFetch(version, "application/vnd.github+json", 64<<10),
-		Upgrade: func(ctx context.Context) (string, error) { return installRelease(version, ctx) },
-		Restart: restartThisBinary,
+		Upgrade: func(ctx context.Context) (string, string, error) { return installRelease(version, ctx) },
+		Restart: restartBinary,
 	}
 	base.Logs = &controllers.LogsController{Book: config.ConsoleLog()}
 	base.Keys = keysController(h, db)
@@ -202,24 +203,69 @@ func guardedFetch(version, accept string, cap int64) func(context.Context, strin
 	}
 }
 
-// installRelease replaces this binary with the newest release for this platform.
-func installRelease(version string, ctx context.Context) (string, error) {
-	res, err := upgrade.Install(ctx, upgrade.Options{
-		Version: version, Fetch: guardedFetch(version, "application/octet-stream", 64<<20),
-	})
-	if err != nil {
-		return "", err
+// githubJSON is the Accept value the release API answers; it refuses any other.
+const githubJSON = "application/vnd.github+json"
+
+// releaseAccept names what an address is read as: the release API as JSON, a
+// release file as bytes.
+func releaseAccept(address string) string {
+	if strings.HasPrefix(address, "https://api.github.com/") {
+		return githubJSON
 	}
-	return res.Latest, nil
+	return "application/octet-stream"
 }
 
-// restartThisBinary replaces the running process with the swapped binary.
-func restartThisBinary() {
-	exe, err := os.Executable()
+// releaseFetch reads the release answer and its files, each with its own Accept.
+func releaseFetch(version string) func(context.Context, string) ([]byte, error) {
+	meta := guardedFetch(version, githubJSON, 1<<20)
+	file := guardedFetch(version, "application/octet-stream", 64<<20)
+	return func(ctx context.Context, address string) ([]byte, error) {
+		if releaseAccept(address) == githubJSON {
+			return meta(ctx, address)
+		}
+		return file(ctx, address)
+	}
+}
+
+// installRelease replaces this binary with the newest release for this platform
+// and answers its version and the path it now lives at.
+func installRelease(version string, ctx context.Context) (latest, exe string, err error) {
+	res, err := upgrade.Install(ctx, upgrade.Options{Version: version, Fetch: releaseFetch(version)})
 	if err != nil {
+		return "", "", err
+	}
+	return res.Latest, res.Exe, nil
+}
+
+// pendingExe is the binary an update asked to start once this process has
+// stopped.
+var pendingExe atomic.Pointer[string]
+
+// restartBinary stops the application the way a signal would, so the server
+// drains and the usage writer flushes, and leaves the new binary to Relaunch.
+// It names the path the install returned: the running file was renamed aside,
+// so asking the system for its own path now would name the old one.
+func restartBinary(exe string) {
+	pendingExe.Store(&exe)
+	if err := facades.App().Shutdown(); err != nil {
+		facades.Log().Warningf("upgrade: the application did not stop cleanly: %v", err)
+	}
+}
+
+// Relaunch replaces the stopped process with the updated binary when an update
+// asked for one. It returns when none did, or when the start failed.
+func Relaunch() {
+	relaunch(upgrade.Restart)
+}
+
+func relaunch(start func(string) error) {
+	exe := pendingExe.Swap(nil)
+	if exe == nil {
 		return
 	}
-	_ = upgrade.Restart(exe)
+	if err := start(*exe); err != nil {
+		facades.Log().Errorf("upgrade: the new binary could not be started: %v", err)
+	}
 }
 
 // headroomClient builds the guarded client for one sidecar host; the address is

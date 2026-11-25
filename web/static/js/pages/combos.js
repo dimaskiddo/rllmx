@@ -102,10 +102,6 @@ window.Alpine.data("combosPage", () => Object.assign({
     return out;
   },
 
-  adapterName(kind) {
-    return kind === "vision" ? t("models.vision") : t("models.audio");
-  },
-
   adapterBlock(kind) {
     return this.adapter ? this.adapter[kind] : { enabled: false, roundRobin: false, models: [] };
   },

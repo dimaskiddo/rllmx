@@ -468,3 +468,13 @@ func TestALoginAnswerCarriesNoSecret(t *testing.T) {
 		t.Fatalf("%s", raw)
 	}
 }
+
+func TestTestingASavedCookieConnectionReadsTheStoredCookie(t *testing.T) {
+	m := newMgmtRig(t)
+	m.pc.Checker = webChecker(webStub{"chatgpt.com/api/auth/session": {body: `{"user":{"email":"a@b.c"}}`}})
+	id := connID(t, m.ok(t, "POST", "/api/providers",
+		`{"provider":"chatgpt-web","apiKey":"__Secure-next-auth.session-token=v","name":"web"}`, 201))
+	if out := m.ok(t, "POST", "/api/providers/"+id+"/test", "", 200); out["valid"] != true {
+		t.Fatalf("a saved, working cookie was judged: %v", out)
+	}
+}

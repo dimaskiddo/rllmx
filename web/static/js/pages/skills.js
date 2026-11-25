@@ -29,7 +29,6 @@ window.Alpine.data("skillsPage", () => Object.assign({
   error: "",
   skills: [],
   problems: [],
-  settings: {},
   globalOn: true,
   builtinOn: true,
   customOn: true,
@@ -55,7 +54,6 @@ window.Alpine.data("skillsPage", () => Object.assign({
       const [list, settings, combos] = await Promise.all([api("/api/skills"), api("/api/settings"), api("/api/combos")]);
       this.skills = list.skills || [];
       this.problems = list.problems || [];
-      this.settings = settings;
       this.globalOn = settings.globalSkillsEnabled !== false;
       this.builtinOn = settings.builtinSkillsEnabled !== false;
       this.customOn = settings.customSkillsEnabled !== false;
@@ -207,14 +205,14 @@ window.Alpine.data("skillsPage", () => Object.assign({
     const clamped = Math.min(0.9, Math.max(0.1, value));
     this.eccConfidence = clamped;
     event.target.value = clamped;
-    await this.patch({ ecc_auto_skill_routerConfidence: clamped });
+    await this.saveOrReload({ ecc_auto_skill_routerConfidence: clamped });
   },
 
   async setEccMax(event) {
     const value = clampInt(event.target.value, 1, 3) ?? 1;
     this.eccMax = value;
     event.target.value = value;
-    await this.patch({ ecc_auto_skill_routerMaxSkills: value });
+    await this.saveOrReload({ ecc_auto_skill_routerMaxSkills: value });
   },
 
   setSearch(event) {
@@ -239,11 +237,19 @@ window.Alpine.data("skillsPage", () => Object.assign({
 
   async patch(body) {
     try {
-      this.settings = await patchSettings(body);
+      await patchSettings(body);
       return true;
     } catch (err) {
       toast().error(err.message);
       return false;
+    }
+  },
+
+  // saveOrReload saves a setting and, when the server refuses it, reads the page
+  // again so no control keeps showing a value that was not stored.
+  async saveOrReload(body) {
+    if (!(await this.patch(body))) {
+      await this.load();
     }
   },
 
@@ -264,7 +270,7 @@ window.Alpine.data("skillsPage", () => Object.assign({
   },
 
   setMode(skill, event) {
-    this.patch({ [skill.id + "RoutingMode"]: event.target.value });
+    return this.saveOrReload({ [skill.id + "RoutingMode"]: event.target.value });
   },
 
   async setConfig(skill, field, event) {
@@ -341,7 +347,7 @@ window.Alpine.data("skillsPage", () => Object.assign({
       value = clampInt(value, 1000, 60000) ?? 15000;
       this.plan[key] = value;
     }
-    await this.patch({ [key]: value });
+    await this.saveOrReload({ [key]: value });
   },
 
 }, studioMethods, formatMethods));

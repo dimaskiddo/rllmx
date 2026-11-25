@@ -250,7 +250,7 @@
     </form>
   </dialog>
 
-  <dialog class="rl-dialog" x-ref="bulkDlg" aria-labelledby="dlg-bulkDlg-title">
+  <dialog class="rl-dialog" x-ref="bulkDlg" x-on:close="forgetBulk()" aria-labelledby="dlg-bulkDlg-title">
     <button type="button" class="btn btn-sm btn-ghost rl-dialog-close" x-tip="common.close" x-on:click="$el.closest('dialog').close()"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.close"></span></button>
     <form x-on:submit.prevent="runBulk()">
       <h2 id="dlg-bulkDlg-title" x-t="provider.bulkTitle"></h2>

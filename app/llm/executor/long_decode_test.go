@@ -378,3 +378,45 @@ func FuzzLongDecodeStream(f *testing.F) {
 		_ = resp.Body.Close()
 	})
 }
+
+func TestAHopOpenedWhileTheStreamIsBeingClosedIsClosedToo(t *testing.T) {
+	var stream io.Closer
+	var opened *spyBody
+	h := &hops{replies: []Response{sseHop("a", "CONTINUATION", "T1", 1)}, again: func() Response {
+		_ = stream.Close()
+		r := sseHop("b", "STOP", "", 1)
+		opened = r.Body.(*spyBody)
+		return r
+	}}
+	resp, err := Continue(context.Background(), h, Request{Body: []byte(askBody), LongDecode: true, Stream: true}, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream = resp.Body
+	_, _ = io.ReadAll(resp.Body)
+	if opened == nil || !opened.closed {
+		t.Fatal("a hop opened as the stream was closed was left open")
+	}
+}
+
+func TestALineWithNoEndStopsTheTurnInsteadOfGrowingWithoutBound(t *testing.T) {
+	huge := Response{Status: 200, Header: http.Header{"Content-Type": {"text/event-stream"}},
+		Body: &spyBody{Reader: io.LimitReader(zeroes{}, maxHopLine+(1<<20))}}
+	resp, err := Continue(context.Background(), &hops{replies: []Response{huge}}, Request{Body: []byte(askBody), LongDecode: true, Stream: true}, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _ := io.ReadAll(resp.Body)
+	if len(out) > 4096 || !strings.Contains(string(out), "MAX_TOKENS") {
+		t.Fatalf("%d bytes came back: %.120s", len(out), out)
+	}
+}
+
+type zeroes struct{}
+
+func (zeroes) Read(p []byte) (int, error) {
+	for i := range p {
+		p[i] = 'x'
+	}
+	return len(p), nil
+}

@@ -2,9 +2,10 @@ package quota
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
-	"net/http"
 	"strings"
 	"time"
 
@@ -41,17 +42,11 @@ func readQoder(ctx context.Context, r *Reader, e upstream.Entry, a Access) (Read
 		}
 		token = job
 	}
-	code, raw, err := r.do(ctx, request{URL: base + "/api/v2/quota/usage", Headers: map[string]string{
-		"Authorization": bearerWord(token),
+	raw, stop, early, earlyErr := r.getOK(ctx, "Qoder", request{URL: base + "/api/v2/quota/usage", Headers: map[string]string{
+		"Authorization": bearerHeader(token),
 	}})
-	if err != nil {
-		return failed("Qoder", err)
-	}
-	if code == http.StatusUnauthorized || code == http.StatusForbidden {
-		return Reading{}, ErrAuth
-	}
-	if code != http.StatusOK {
-		return answered("Qoder", code)
+	if stop {
+		return early, earlyErr
 	}
 	return parseQoder(raw), nil
 }
@@ -59,7 +54,7 @@ func readQoder(ctx context.Context, r *Reader, e upstream.Entry, a Access) (Read
 // qoderJobToken exchanges a personal token once and keeps the answer until
 // shortly before it expires.
 func (r *Reader) qoderJobToken(ctx context.Context, base, personal string) (string, error) {
-	key := base + "|" + personal
+	key := qoderKey(base, personal)
 	r.qoderMu.Lock()
 	if job, ok := r.qoderJobs[key]; ok && job.until.After(r.now().Add(5*time.Minute)) {
 		r.qoderMu.Unlock()
@@ -75,13 +70,35 @@ func (r *Reader) qoderJobToken(ctx context.Context, base, personal string) (stri
 		}
 		return "", err
 	}
+	r.qoderStore(base, personal, token, until)
+	return token, nil
+}
+
+// qoderKey names a personal token by its digest, so the token itself is never
+// a map key.
+func qoderKey(base, personal string) string {
+	sum := sha256.Sum256([]byte(base + "|" + personal))
+	return hex.EncodeToString(sum[:])
+}
+
+// qoderStore keeps a job token until it expires and drops every one that
+// already has, so the map holds only live tokens.
+func (r *Reader) qoderStore(base, personal, token string, until time.Time) {
+	now := r.now()
 	r.qoderMu.Lock()
+	defer r.qoderMu.Unlock()
+	for key, job := range r.qoderJobs {
+		if !job.until.After(now) {
+			delete(r.qoderJobs, key)
+		}
+	}
+	if !until.After(now) {
+		return
+	}
 	if r.qoderJobs == nil {
 		r.qoderJobs = map[string]qoderJob{}
 	}
-	r.qoderJobs[key] = qoderJob{token: token, until: until}
-	r.qoderMu.Unlock()
-	return token, nil
+	r.qoderJobs[qoderKey(base, personal)] = qoderJob{token: token, until: until}
 }
 
 // parseQoder turns the account's pools into rows. A pool whose total is zero is

@@ -60,16 +60,19 @@ func (k *Kiro) Execute(ctx context.Context, req executor.Request) (executor.Resp
 	hosts := kiroHosts(req.Entry, auth.method, kiroRegionOf(req))
 	var resp executor.Response
 	var err error
-	for _, host := range hosts {
+	served := hosts[0]
+	for i, host := range hosts {
+		served = host
 		resp, err = k.send(ctx, req, host, auth, profile)
 		if err != nil {
 			return resp, err
 		}
-		if !kiroFallbacks[resp.Status] {
+		if !kiroFallbacks[resp.Status] || i == len(hosts)-1 {
 			break
 		}
 		// The body is drained rather than read: this host does not serve the
-		// credential, so its answer says nothing about the next one.
+		// credential, so its answer says nothing about the next one. The last
+		// host's answer is kept, since it is the one the caller is told.
 		executor.Drain(resp.Body)
 	}
 	if err == nil && resp.Status == http.StatusTooManyRequests && conversation && mode == settings.KiroAuto {
@@ -82,7 +85,7 @@ func (k *Kiro) Execute(ctx context.Context, req executor.Request) (executor.Resp
 	if err != nil || resp.Status < 200 || resp.Status > 299 || !req.Stream {
 		return resp, err
 	}
-	return k.inspect(ctx, req, resp, auth, profile)
+	return k.inspect(ctx, req, resp, served, auth, profile)
 }
 
 // mode is when the Responses transport applies to this request: the
@@ -132,7 +135,7 @@ func (k *Kiro) send(ctx context.Context, req executor.Request, host string, auth
 // inspect reads the answer whole and asks once more when the turn ended on
 // nothing. A client that asked for JSON is left to the pipeline: the gate only
 // judges a stream, because only a stream can be replayed.
-func (k *Kiro) inspect(ctx context.Context, req executor.Request, resp executor.Response, auth kiroAuth, profile string) (executor.Response, error) {
+func (k *Kiro) inspect(ctx context.Context, req executor.Request, resp executor.Response, host string, auth kiroAuth, profile string) (executor.Response, error) {
 	if req.Account != nil && req.Account("kiroToolCallRepair") == "false" {
 		return resp, nil
 	}
@@ -147,8 +150,7 @@ func (k *Kiro) inspect(ctx context.Context, req executor.Request, resp executor.
 	// what was wrong. A second failure is answered as it came.
 	retry := req
 	retry.Body = appendKiroRepair(req.Body, first.reason)
-	hosts := kiroHosts(req.Entry, auth.method, kiroRegionOf(req))
-	retryResp, rerr := k.send(ctx, retry, hosts[0], auth, profile)
+	retryResp, rerr := k.send(ctx, retry, host, auth, profile)
 	if rerr != nil {
 		return executor.Response{}, rerr
 	}

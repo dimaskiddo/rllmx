@@ -7,7 +7,6 @@ import { copy } from "/static/js/ui/copy.js";
 import { t } from "/static/js/ui/i18n.js";
 import { toast } from "/static/js/ui/toast.js";
 import { formatMethods } from "/static/js/ui/format.js";
-import { setPath } from "/static/js/ui/fields.js";
 import { fieldMethods } from "/static/js/ui/fields.js";
 import { invalidateModelChoices, loadModelChoices } from "./model-choices.js";
 
@@ -16,7 +15,7 @@ function budgetWindowKey(window) {
 }
 
 function budgetAmount(kind, value) {
-  return kind === "cost" ? "$" + Number(value).toFixed(2) : Number(value).toLocaleString();
+  return kind === "cost" ? formatMethods.money(value) : Number(value).toLocaleString();
 }
 
 function emptyBudget() {
@@ -221,14 +220,21 @@ window.Alpine.data("endpointPage", () => Object.assign({
     this.create.busy = true;
     try {
       const made = await api("/api/keys", { method: "POST", body: { name: this.create.name, owner: this.create.owner } });
-      this.keys = (await api("/api/keys")).keys || [];
+      // The key exists from here on, and its value is shown once: a failed list
+      // read must not hide it or invite a second create.
       this.created = made;
       this.closeCreate();
       this.$refs.createdDlg.showModal();
     } catch (err) {
       this.create.error = err.message;
+      return;
     } finally {
       this.create.busy = false;
+    }
+    try {
+      this.keys = (await api("/api/keys")).keys || [];
+    } catch (err) {
+      toast().error(err.message);
     }
   },
 

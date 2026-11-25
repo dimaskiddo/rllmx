@@ -22,13 +22,18 @@ const (
 	claudeResetURL   = "https://api.anthropic.com/api/organizations/"
 )
 
+// claudeHeaders adds the two headers every call to the Claude OAuth API carries.
+func claudeHeaders(h map[string]string) map[string]string {
+	h["anthropic-beta"] = "oauth-2025-04-20"
+	h["anthropic-version"] = "2023-06-01"
+	return h
+}
+
 // readClaude reads a Claude Code login's windows. The service answers a spent
 // window as a number used out of 100, and names a model's own weekly window in
 // either the top-level keys or the limits list.
 func readClaude(ctx context.Context, r *Reader, e upstream.Entry, a Access) (Reading, error) {
-	h := bearerFor(e, a)
-	h["anthropic-beta"] = "oauth-2025-04-20"
-	h["anthropic-version"] = "2023-06-01"
+	h := claudeHeaders(bearerFor(e, a))
 	raw, stop, early, earlyErr := r.getOK(ctx, "Claude", request{URL: claudeUsageURL, Headers: h})
 	if stop {
 		return early, earlyErr
@@ -86,9 +91,7 @@ func (r *Reader) ClaudeReset(ctx context.Context, conn repository.Connection, gr
 	if err != nil {
 		return ResetResult{}, err
 	}
-	h := bearer(identity(entry), access.Token)
-	h["anthropic-beta"] = "oauth-2025-04-20"
-	h["anthropic-version"] = "2023-06-01"
+	h := claudeHeaders(bearer(identity(entry), access.Token))
 	h["Content-Type"] = "application/json"
 	code, raw, err := r.do(ctx, request{URL: claudeProfileURL, Headers: h})
 	if err != nil {

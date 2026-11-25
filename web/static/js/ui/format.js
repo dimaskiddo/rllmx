@@ -34,6 +34,11 @@ export function compactTokens(value) {
 }
 
 export const formatMethods = {
+  // money writes a cost in dollars, two places.
+  money(value) {
+    return "$" + Number(value || 0).toFixed(2);
+  },
+
   // formatDate writes a stored timestamp in the reader's own zone and format,
   // and leaves a value it cannot read as it was.
   formatDate(value) {

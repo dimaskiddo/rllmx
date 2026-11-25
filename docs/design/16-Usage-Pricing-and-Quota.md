@@ -94,7 +94,7 @@ MiniMax Code (signed account calls, its key configured not literal, D456), Xiaom
 ## Remaining work
 **The usage rows, the readers, every usage route, the per-connection quota readers, the auto-ping runner and the keyset-paged log are built. Each row carries the savers and skills that acted, as names only, and whether its cost came from a rate.**
 
-A standard user's read is narrowed to the keys assigned to them inside the query (`Sums`, `Buckets`, `LastSeen`, `Recent`, `RecentServed` and `Providers` take the key list; nil means every key, an empty list means none). The in-flight counts stay admin-only because that table holds no key id (`design doc 2`).
+A standard user's read is narrowed to the keys assigned to them inside the query (`Sums`, `Buckets`, `LastSeen`, `Recent`, `RecentServed` and `Providers` take the key list; nil means every key, an empty list means none). The in-flight counts stay admin-only because that table holds no key id (`design doc 2`). A narrowed read also leaves out every upstream account's name, email and connection id: those belong to the operator, and a user's usage is by key.
 
 - [x] `/api/usage/*` over `requests` and the rollups, with the live feed; `history` answers the all-time totals (D363), and `/api/usage/logs?before=<ms>-<id>` pages the log with a `(ts,id)` keyset cursor and an `X-Next-Cursor` (the page's Load older)
 - [x] Pricing lookup over the embedded baseline and the `pricing` overrides; the pipeline's usage hook calls it

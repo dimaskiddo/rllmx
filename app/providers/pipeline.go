@@ -204,6 +204,9 @@ func responseCache(app foundation.Application, store *repository.Store) *pipelin
 		return nil
 	}
 	rc := &pipeline.ResponseCache{Cache: c, Flags: store.KV(), Semantic: pipeline.NewSemanticIndex()}
+	// The answers are purged by a settings write, so the index of their requests
+	// goes with them, and a changed embedding model never meets old vectors.
+	store.OnSettingsChange(rc.Semantic.Purge)
 	if lim, err := settings.LoadCache(app.MakeConfig()); err == nil && !lim.Shared {
 		rc.Budget = &cache.Budget{MaxEntries: lim.ResponseMaxEntries, MaxBytes: lim.ResponseMaxBytes}
 		// A settings write purges the answers; the budget must forget them too.

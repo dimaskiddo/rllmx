@@ -13,9 +13,12 @@ import (
 
 	"rllmx/app/access/identity"
 	"rllmx/app/gateway/account"
+	"rllmx/app/gateway/combo"
+	"rllmx/app/llm/routing"
 	"rllmx/app/llm/stream"
 	"rllmx/app/llm/translate"
 	"rllmx/app/platform/cache"
+	"rllmx/app/store/repository"
 	"rllmx/tests"
 )
 
@@ -615,5 +618,48 @@ func TestASwitchedOffCacheNeverEmbeds(t *testing.T) {
 	}
 	if calls != 0 {
 		t.Fatalf("a switched-off cache embedded %d time(s)", calls)
+	}
+}
+
+func TestAnAnswerMadeFromARewrittenRequestIsNeverStoredUnderTheClientsKey(t *testing.T) {
+	reply := tests.Reply{ContentType: "application/json", Body: okJSON}
+	cr := newCacheRig(t, reply, reply, reply, reply, reply, reply, reply, reply)
+	cr.conn("forced", "k1")
+	cr.conn("wire", "k3")
+	cr.p.d.Rotation = combo.NewRotation()
+	cr.p.d.Sticky = combo.NewSticky()
+	cr.p.d.Settings = tests.Settings{JSON: strings.TrimSuffix(cacheOn, "}") +
+		`,"comboStrategies":{"chain":{"fallbackStrategy":"fusion","judgeModel":"wire/short"}}}`}
+	cr.p.d.Resolver = &routing.Resolver{Registry: cr.p.d.Registry, Snapshot: routing.NewSnapshot(source{
+		combos:       []string{"chain"},
+		comboMembers: []repository.Combo{{Name: "chain", Models: []string{"forced/fm", "wire/short"}}},
+	}, nil)}
+	body := `{"model":"chain","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"f","parameters":{"type":"object"}}}]}`
+	for range 2 {
+		if out, _ := cr.send(cr.use(body)); out.Status != 200 {
+			t.Fatalf("%d %s", out.Status, out.Body)
+		}
+	}
+	if n := len(cr.up.Calls()); n != 6 {
+		t.Fatalf("%d upstream calls for two fusion requests, want 6: a panel or judge answer was replayed from the cache", n)
+	}
+}
+
+func TestAMemberWhoseEmbeddingFailsIndexesNothingUnderAnEarlierMembersVector(t *testing.T) {
+	r := semanticRig(t, tests.Reply{ContentType: "application/json", Body: okJSON})
+	r.p.d.Embed = func(context.Context, string, string) ([]float32, error) { return nil, errors.New("down") }
+	c := &call{
+		p: r.p, in: Input{Body: []byte(chatBody), Caller: identity.Caller{ID: "key-1"}},
+		tctx: translate.NewCtx("openai", "openai"),
+		req:  &translate.Request{Model: "m", Messages: []translate.Message{{Role: translate.RoleUser, Content: translate.TextPart("hi")}}},
+		// What the previous combo member left behind.
+		cacheVec: []float32{1, 0}, cacheBucket: "earlier-member",
+	}
+	s := cacheSettings{Semantic: semanticSettings{Enabled: true, Model: "openai/embed", Threshold: 0.9}}
+	if _, hit := c.cachedSimilar(context.Background(), s); hit {
+		t.Fatal("a failed embedding answered")
+	}
+	if len(c.cacheVec) != 0 || c.cacheBucket != "" {
+		t.Fatalf("the earlier member's vector survived: %v in %q", c.cacheVec, c.cacheBucket)
 	}
 }

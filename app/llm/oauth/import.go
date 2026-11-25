@@ -40,18 +40,23 @@ func (s *Service) ImportToken(ctx context.Context, provider string, values map[s
 	}
 	if cl, ok := Claims(token); ok {
 		acc.Email = CleanEmail(claimText(cl, "email", "sub"))
-		// A token that says when it ends is stored with that moment: a guess
-		// either drops a working account or sends a dead one.
-		if exp := cl.Get("exp"); exp.Type == gjson.Number && exp.Int() > 0 {
-			acc.NoRefresh = false
-			acc.ExpiresAt = time.Unix(exp.Int(), 0).UTC()
-		}
+		applyExpiry(&acc, cl)
 	}
 	caseEmail := strings.TrimSpace(values["email"])
 	if acc.Email == "" && caseEmail != "" {
 		acc.Email = CleanEmail(caseEmail)
 	}
 	return s.Save(ctx, f, Tokens{Access: token}, acc)
+}
+
+// applyExpiry stores the moment a token says it ends. A guess either drops a
+// working account or sends a dead one, so a token that names none stays as the
+// caller made it.
+func applyExpiry(acc *Account, claims gjson.Result) {
+	if exp := claims.Get("exp"); exp.Type == gjson.Number && exp.Int() > 0 {
+		acc.NoRefresh = false
+		acc.ExpiresAt = time.Unix(exp.Int(), 0).UTC()
+	}
 }
 
 // importPSD reads the extra values a provider's data names, as its provider
