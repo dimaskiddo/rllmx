@@ -7,6 +7,7 @@
 | PXPIPE | Deferred | Lazily installed external module; add later behind an interface |
 | MITM, Cloudflare and Tailscale tunnels, relay deployers | Deferred | Interception and public exposure; outside the router's job for v1 |
 | Outbound proxy, proxy pools, per-connection proxies | Out | The router dials direct; nothing is built, stored or read for them (divergence 214) |
+| OTLP push, the Goravel `Telemetry` facade | Out | Metrics are our own OpenMetrics text at `GET /metrics`, pulled by the scraper; nothing is pushed, and no otel SDK becomes a direct dependency (`docs/METRICS.md`, doc 16) |
 | Browser-automation web login, `playwright-core`, `wreq-js` | Deferred | `playwright-core` drives Chromium for gemini-web (every request), chatgpt-web's Turnstile fallback, muse-web, the web-login button and the extended fork's browser pool and Obscura. `wreq-js` imitates a TLS ClientHello: OpenCode Free, built here as the suite set on the guarded transport (D269), and grok-web, deferred. Both are reached by a run-time `npm install`, a spawned process; the browser-driven providers stay deferred. chatgpt-web's plain-HTTP image path, uc-web and veoaifree-web are built from their media models (D322) |
 | MiniMax lease broker | Deferred | Reads another desktop app's data; revisit later |
 | Legacy `db.json`/`usage.json` import | Out | Only 9router databases that already migrated are supported |

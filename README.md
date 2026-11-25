@@ -77,6 +77,7 @@ See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the module map, the des
 | [docs/design/](docs/design/) | One design document per area: status, design, parity rows, divergences, findings |
 | [ROADMAP.md](ROADMAP.md) | What is built, partial and planned |
 | [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) | Every environment variable, in `.env.example` order |
+| [docs/METRICS.md](docs/METRICS.md) | The `GET /metrics` export for Prometheus and Grafana, with every metric and its queries |
 | [.env.example](.env.example) | The same variables as a file to copy |
 
 ---

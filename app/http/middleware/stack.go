@@ -14,6 +14,8 @@ type Options struct {
 	Log   log.Log
 	// MaxBody is the client API body cap in bytes.
 	MaxBody int64
+	// LoginPolicy is the sign-in page's CSP when a CAPTCHA provider is set.
+	LoginPolicy string
 }
 
 // Stack installs the global middleware, outermost first: request id, access log,
@@ -25,7 +27,7 @@ func Stack(m configuration.Middleware, o Options) {
 	m.Use(
 		&RequestID{},
 		&AccessLog{Log: o.Log},
-		&SecurityHeaders{Trust: o.Trust},
+		&SecurityHeaders{Trust: o.Trust, LoginPolicy: o.LoginPolicy},
 		&CORS{},
 		&Deadlines{},
 		&BodyLimit{ClientMax: o.MaxBody},

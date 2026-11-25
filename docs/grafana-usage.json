@@ -1,0 +1,131 @@
+{
+  "title": "Router-LLM usage",
+  "uid": "rllmx-usage",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "Prometheus",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {},
+        "hide": 0
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Requests",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{ "refId": "A", "expr": "sum(increase(rllmx_requests_total[$__range]))" }],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+    },
+    {
+      "type": "stat",
+      "title": "Tokens",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{ "refId": "A", "expr": "sum(increase(rllmx_tokens_total[$__range]))" }],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+    },
+    {
+      "type": "stat",
+      "title": "Spend (USD)",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{ "refId": "A", "expr": "sum(increase(rllmx_cost_usd_total[$__range]))" }],
+      "fieldConfig": { "defaults": { "unit": "currencyUSD" }, "overrides": [] }
+    },
+    {
+      "type": "stat",
+      "title": "In flight",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [{ "refId": "A", "expr": "sum(rllmx_inflight_requests)" }],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Trend",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "legendFormat": "tokens/s", "expr": "sum(rate(rllmx_tokens_total[$__interval]))" },
+        { "refId": "B", "legendFormat": "requests/s", "expr": "sum(rate(rllmx_requests_total[$__interval]))" },
+        { "refId": "C", "legendFormat": "USD/s", "expr": "sum(rate(rllmx_cost_usd_total[$__interval]))" }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "By provider",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "format": "table", "expr": "sum by (provider) (increase(rllmx_requests_total[$__range]))" }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "By model",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "format": "table", "expr": "sum by (provider, model) (increase(rllmx_requests_total[$__range]))" }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "By account",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "expr": "sum by (provider, model, connection_id) (increase(rllmx_cost_usd_total[$__range])) * on (connection_id) group_left (account_name) rllmx_account_info"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "By API key",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "expr": "sum by (provider, model, api_key_id) (increase(rllmx_cost_usd_total[$__range])) * on (api_key_id) group_left (api_key_name) rllmx_api_key_info"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "By user",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "expr": "sum by (user) (increase(rllmx_cost_usd_total[$__range]) * on (api_key_id) group_left (user) rllmx_api_key_info)"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "By endpoint",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "format": "table", "expr": "sum by (endpoint) (increase(rllmx_requests_total[$__range]))" }
+      ]
+    }
+  ]
+}

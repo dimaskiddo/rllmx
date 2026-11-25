@@ -28,6 +28,7 @@ type authRig struct {
 	guard *apphttp.Guard
 	sq    *store.Store
 	auth  *auth.Authenticator
+	ctl   *AuthController
 }
 
 var rigSecret = []byte("0123456789abcdef0123456789abcdef")
@@ -56,7 +57,7 @@ func newAuthRig(t *testing.T) *authRig {
 	})
 	g.Handle(r, apphttp.ClassPublic, nethttp.MethodGet, "/api/settings/require-login", c.RequireLogin)
 	g.Handle(r, apphttp.ClassAlwaysProtected, nethttp.MethodPost, "/api/auth/change-password", c.ChangePassword)
-	return &authRig{route: r, guard: g, sq: sq, auth: a}
+	return &authRig{route: r, guard: g, sq: sq, auth: a, ctl: c}
 }
 
 // bcryptOnly is the framework hasher shape without an application, so the route

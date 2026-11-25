@@ -64,6 +64,8 @@ type Base struct {
 	// About answers the update check the About page asks for; nil leaves its
 	// route out.
 	About *controllers.AboutController
+	// Metrics serves the OpenMetrics scrape; nil leaves its route out.
+	Metrics *controllers.MetricsController
 }
 
 // Web declares the route tables. Every route goes through guard.Handle, which
@@ -93,6 +95,12 @@ func webBase(router route.Route, guard *apphttp.Guard, base Base) {
 
 	setup := controllers.NewInitController(base.Connections)
 	guard.Handle(router, apphttp.ClassPublic, nethttp.MethodGet, "/api/init", setup.Index)
+
+	// The scrape carries its own credential, so the session guard stays out of
+	// its way; the handler refuses an unset one.
+	if m := base.Metrics; m != nil {
+		guard.Handle(router, apphttp.ClassPublic, nethttp.MethodGet, "/metrics", m.Index)
+	}
 }
 
 // webAccess declares the sign-in routes and the routes that manage keys.

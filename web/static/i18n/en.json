@@ -170,6 +170,8 @@
   "locale.failed": "The language could not be changed",
   "locale.switch": "Switch language",
   "login.changeFromMachine": "Change the default password from the machine itself before signing in remotely.",
+  "login.captchaLoadFailed": "The CAPTCHA could not load. Reload the page.",
+  "login.captchaRequired": "Complete the CAPTCHA check.",
   "login.checking": "Checking the sign-in method…",
   "login.defaultPassword": "The default password is still in use. Change it before exposing this server.",
   "login.locked": "Too many attempts. Wait",

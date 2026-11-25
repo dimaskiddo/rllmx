@@ -1,5 +1,3 @@
-version: 2
-project_name: rllmx
 before:
   hooks:
     - make deps
@@ -15,29 +13,33 @@ builds:
       - -X main.commit={{.ShortCommit}}
     flags:
       - -trimpath
+      - -a
       - -tags=nomsgpack
     goos:
       - darwin
       - linux
       - windows
     goarch:
+      - 386
       - amd64
       - arm64
 archives:
-  - formats:
-      - zip
-    name_template: >-
-      {{ .ProjectName }}_{{ .Version }}_
-      {{- if eq .Os "darwin" }}macos{{ else }}{{ .Os }}{{ end }}_
-      {{- if eq .Arch "amd64" }}64-bit{{ else if eq .Arch "arm64" }}arm-64-bit{{ else }}{{ .Arch }}{{ end }}
-    files:
-      - LICENSE
-      - README.md
-      - .env.example
+- replacements:
+    darwin: macos
+    linux: linux
+    windows: windows
+    386: 32-bit
+    amd64: 64-bit
+    arm64: arm-64-bit
+  format: zip
+  files:
+    - LICENSE
+    - README.md
+    - .env.example
 checksum:
   name_template: "checksums.txt"
 snapshot:
-  version_template: "{{ .Version }}"
+  name_template: "{{ .Version }}"
 changelog:
   filters:
     exclude:

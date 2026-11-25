@@ -18,6 +18,10 @@ Alpine.data("loginPage", () => ({
   form: true,
   sso: { oidc: false, saml: false, oidcLabel: "", samlLabel: "" },
   hint: { defaultPassword: false },
+  captcha: null,
+  captchaToken: "",
+  captchaWidget: null,
+  captchaFailed: false,
   init() {
     this.target = nextPath(location.search);
     this.check();
@@ -50,6 +54,9 @@ Alpine.data("loginPage", () => ({
         samlLabel: status.samlLoginLabel || t("login.saml"),
       };
       this.hint.defaultPassword = status.defaultPassword === true;
+      if (status.captcha) {
+        this.setupCaptcha(status.captcha);
+      }
     }
     const code = new URLSearchParams(location.search).get("error");
     if (code) {
@@ -66,16 +73,69 @@ Alpine.data("loginPage", () => ({
   setPassword(event) {
     this.password = event.target.value;
   },
+  // The server names the provider and its loader, so no file here carries
+  // another origin's address. The loader calls the one hook it was given once
+  // its own interface exists; both providers render and reset the same way.
+  setupCaptcha(settings) {
+    this.captcha = settings;
+    window.rllmCaptchaReady = () => this.renderCaptcha();
+    const script = document.createElement("script");
+    script.src = settings.script;
+    script.async = true;
+    script.defer = true;
+    script.addEventListener("error", () => {
+      this.captchaFailed = true;
+    });
+    document.head.appendChild(script);
+  },
+  renderCaptcha() {
+    const api = window.turnstile || window.grecaptcha;
+    const slot = this.$refs.captcha;
+    if (!this.captcha || !slot || !api || typeof api.render !== "function") {
+      this.captchaFailed = true;
+      return;
+    }
+    this.captchaWidget = api.render(slot, {
+      sitekey: this.captcha.siteKey,
+      callback: (token) => {
+        this.captchaToken = token;
+      },
+      "expired-callback": () => {
+        this.captchaToken = "";
+      },
+      "error-callback": () => {
+        this.captchaToken = "";
+      },
+    });
+  },
+  // An answer is spent once the provider has seen it, refused or not.
+  resetCaptcha() {
+    this.captchaToken = "";
+    const api = window.turnstile || window.grecaptcha;
+    if (this.captchaWidget !== null && api && typeof api.reset === "function") {
+      api.reset(this.captchaWidget);
+    }
+  },
   async submit() {
     if (this.busy || this.locked > 0) {
+      return;
+    }
+    if (this.captcha && !this.captchaToken) {
+      this.error = t("login.captchaRequired");
       return;
     }
     this.busy = true;
     this.error = "";
     try {
-      await api("/api/auth/login", { method: "POST", body: { username: this.username, password: this.password } });
+      await api("/api/auth/login", {
+        method: "POST",
+        body: { username: this.username, password: this.password, captcha: this.captchaToken },
+      });
       location.assign(this.target);
     } catch (err) {
+      if (this.captcha) {
+        this.resetCaptcha();
+      }
       if (err.status === 429) {
         this.startClock((err.data && err.data.retryAfter) || 30);
       }

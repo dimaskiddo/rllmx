@@ -53,6 +53,7 @@ Outermost first: path check and rewrite, recover, request id, access log, securi
 | `GET /api/health` | Unauthenticated liveness |
 | `GET /api/init` | `{"initialized":true,"needsSetup":<no connection configured>}`. An unreadable count answers `needsSetup:false`, so a broken store never becomes a setup prompt |
 | `GET /api/version` | `{"currentVersion","commit","latestVersion":null,"hasUpdate":false}`. No registry lookup: the updater is out (design doc 22) |
+| `GET /metrics` | OpenMetrics text for a scraper, registered only when a `METRICS_*` credential is set; the handler checks it (doc 16, `docs/METRICS.md`) |
 | `/`, `/dashboard/*`, `/login`, `/setup` | Static dashboard |
 
 ### Path Rules & Rewrites

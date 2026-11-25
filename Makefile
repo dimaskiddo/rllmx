@@ -42,19 +42,19 @@ tidy:
 release:
 	make deps
 	make clean-dist
-	goreleaser release --parallelism 1 --clean --snapshot --skip=publish
+	goreleaser release --parallelism 1 --rm-dist --snapshot --skip=publish
 	echo "Release '$(SERVICE_NAME)' complete, please check dist directory."
 
 publish:
 	make deps
 	make clean-dist
-	GITHUB_TOKEN=$(GITHUB_TOKEN) goreleaser release --parallelism 1 --clean
+	GITHUB_TOKEN=$(GITHUB_TOKEN) goreleaser release --parallelism 1 --rm-dist
 	echo "Publish '$(SERVICE_NAME)' complete, please check your repository releases."
 
 build:
 	make deps
 	make init-dist
-	CGO_ENABLED=$(BUILD_CGO_ENABLED) go build -tags $(BUILD_TAGS) -ldflags="-s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT)" -trimpath -o dist/$(SERVICE_NAME) .
+	CGO_ENABLED=$(BUILD_CGO_ENABLED) go build -ldflags="-s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT)" -trimpath -a -tags $(BUILD_TAGS) -o dist/$(SERVICE_NAME) .
 	echo "Build '$(SERVICE_NAME)' complete."
 
 docker-build:

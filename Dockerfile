@@ -15,9 +15,8 @@ RUN go mod download \
     && CGO_ENABLED=0 \
         GOOS=linux \
         go build \
-          -tags nomsgpack \
           -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT}" \
-          -trimpath -o main .
+          -trimpath -a -tags nomsgpack -o main .
 
 RUN mkdir -p \
       /out/storage/app \
@@ -33,17 +32,18 @@ LABEL maintainer="Dimas Restu H <drh.dimasrestu@gmail.com>"
 ARG SERVICE_NAME="rllmx"
 
 ENV PATH=/usr/local/${SERVICE_NAME}:${PATH} \
+    DATA_DIR=/usr/local/${SERVICE_NAME}/storage/app \
     APP_ENV=production \
     APP_HOST=0.0.0.0 \
     APP_PORT=20128
 
 WORKDIR /usr/local/${SERVICE_NAME}
 
-COPY --from=go-builder --chown=65532:65532 /out/storage ./storage
-COPY --from=go-builder --chown=65532:65532 /usr/src/app/main ./rllmx
-COPY --from=go-builder --chown=65532:65532 /usr/src/app/.env.example ./.env
+COPY --from=go-builder --chown=1000:1000 /out/storage ./storage
+COPY --from=go-builder --chown=1000:1000 /usr/src/app/main ./rllmx
+COPY --from=go-builder --chown=1000:1000 /usr/src/app/.env.example ./.env
 
-USER 65532:65532
+USER 1000:1000
 
 EXPOSE 20128 1455
 

@@ -9,6 +9,7 @@ import (
 
 	"rllmx/app/gateway/account"
 	gatewaymedia "rllmx/app/gateway/media"
+	"rllmx/app/gateway/metrics"
 	mediamux "rllmx/app/llm/media/mux"
 	"rllmx/app/llm/media/voice"
 	"rllmx/app/platform/network"
@@ -90,7 +91,7 @@ func buildMedia(_ context.Context, app foundation.Application) (*gatewaymedia.Pi
 		Connections: store.Connections(),
 		Credentials: rotatedCredential{conns: store.Connections()},
 		Voices:      voice.List,
-		Usage:       writer,
+		Usage:       metrics.Sink{Next: writer, Reg: h.Meter},
 		Budget:      Budget(h.Limits, runner),
 		Log:         log,
 		Now:         time.Now,

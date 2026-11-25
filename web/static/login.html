@@ -24,9 +24,11 @@
         <input class="form-control" id="username" type="text" autocomplete="username" required x-bind:value="username" x-on:input="setUsername($event)">
         <label class="form-label" for="password" x-t="login.password"></label>
         <input class="form-control" id="password" type="password" autocomplete="current-password" autofocus required x-bind:value="password" x-on:input="setPassword($event)">
+        <div class="rl-captcha" x-ref="captcha"></div>
+        <p class="rl-error" x-show="captchaFailed" x-t="login.captchaLoadFailed"></p>
         <p class="rl-error" x-show="error" x-text="error"></p>
         <p class="rl-hint" x-show="locked > 0"><span x-t="login.locked"></span> <span x-text="locked"></span></p>
-        <button type="submit" class="btn btn-primary rl-block" x-bind:disabled="busy || locked > 0">
+        <button type="submit" class="btn btn-primary rl-block" x-bind:disabled="busy || locked > 0 || (captcha && !captchaToken)">
           <span x-show="locked === 0" x-t="login.submit"></span>
           <span x-show="locked > 0" x-text="locked"></span>
         </button>

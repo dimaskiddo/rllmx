@@ -108,7 +108,7 @@ Built: `saver`, `skill`, `combo`, `health`, `probe` and `app/git`. Planned, not 
 10. **Declarative skill logic.** Rules instead of scripts: no code execution, bounded regex, header denylist, access re-checked.
 11. **The socket peer decides, and the dialer proves the address.** Inbound, forwarding headers count only from a trusted proxy peer. `app/http/trust.go` is the one reader of `SERVER_TRUSTED_PROXIES`, and it decides HSTS, the limiter key and the cookie's `Secure` flag. Outbound, the guard resolves a name, classifies the addresses and dials the one it checked, so a check and a dial cannot disagree. Link-local and metadata addresses are always refused.
 12. **Read only what was verified.** The SAML verifier returns the assertion it proved, and every claim is read from that value rather than from the document it arrived in. The same rule guards the signature-wrapping attack that XML-DSig is famous for.
-13. **Embedded dashboard on vendored libraries.** Static files in the binary, the reference's API contract, and five pinned libraries (`Approved Web Assets`). No bundler, build step or runtime CDN, and a page policy with no inline or evaluated code, so Alpine runs as its CSP build.
+13. **Embedded dashboard on vendored libraries.** Static files in the binary, the reference's API contract, and five pinned libraries (`Approved Web Assets`). No bundler, build step or runtime CDN, and a page policy with no inline or evaluated code, so Alpine runs as its CSP build. One exception: the sign-in page loads the CAPTCHA provider's script while `AUTH_CAPTCHA_PROVIDER` is set, under a `/login`-only policy that adds that provider's hosts and nothing else (`design doc 2`).
 14. **Env-only configuration.** Process environment and `.env`; runtime behavior in the settings row.
 15. **SQLite and PostgreSQL** through the Goravel `DB` and `Schema` facades (`goravel/sqlite` and `goravel/postgres`), one test suite on both. No `database/sql` handle, pool, `sqlx` wrapper or migration runner of ours; `dialect.Rebind` is the only gap filler.
 16. **`os/exec` behind one filter gate.** `app/git` is deny-by-default and the only code that builds an `exec.Cmd`: `git`, only as `clone`, with a fixed flag set, a validated ref, an `https` URL from the admin's list that passes the guard, a directory inside the data area, a minimal environment, a 60 s timeout and size caps. A test fails if any other file imports `os/exec`. Any other spawned process is out.
@@ -206,7 +206,7 @@ Product code may use `Route`, `Http` (Gin), `Schedule`, `Cache`, `Log`, `DB`, `S
 | Group | Facades |
 |---|---|
 | Installed as a dependency only | `Orm`, `RateLimiter`, `Session`, `Storage`, `Validation`, `View` |
-| Not installed | `Auth`, `Crypt` (the sealed format is ours), `Queue`, `Mail`, `Event`, `Telemetry` |
+| Not installed | `Auth`, `Crypt` (the sealed format is ours), `Queue`, `Mail`, `Event`, `Telemetry` (metrics are our own OpenMetrics text at `GET /metrics`, `docs/METRICS.md`) |
 | Installed, unused | `Process` |
 
 Install a facade only for a use listed here.

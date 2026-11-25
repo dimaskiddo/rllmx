@@ -170,6 +170,8 @@
   "locale.failed": "Bahasa tidak dapat diganti",
   "locale.switch": "Ganti bahasa",
   "login.changeFromMachine": "Ganti kata sandi bawaan dari mesin itu sendiri sebelum masuk dari jarak jauh.",
+  "login.captchaLoadFailed": "CAPTCHA gagal dimuat. Muat ulang halaman.",
+  "login.captchaRequired": "Selesaikan pemeriksaan CAPTCHA.",
   "login.checking": "Memeriksa cara masuk…",
   "login.defaultPassword": "Kata sandi bawaan masih dipakai. Ganti sebelum server ini dibuka.",
   "login.locked": "Terlalu banyak percobaan. Tunggu",

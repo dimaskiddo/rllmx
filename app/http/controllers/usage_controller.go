@@ -332,7 +332,7 @@ func (c *UsageController) Logs(ctx contractshttp.Context) contractshttp.Response
 	}
 	var accounts map[string]string
 	if keys == nil {
-		accounts = c.accountNames(rc)
+		accounts = accountNames(rc, c.store())
 	}
 	nodes := nodeNames(rc, c.store())
 	lines := make([]string, 0, len(rows))
@@ -407,9 +407,9 @@ func (c *UsageController) build(ctx context.Context, w usageWindow, keys []strin
 	// usage is by key, and an account's name or address is the operator's.
 	var accounts map[string]string
 	if keys == nil {
-		accounts = c.accountNames(ctx)
+		accounts = accountNames(ctx, c.store())
 	}
-	names := usageNames{accounts: accounts, keys: c.keyNames(ctx), scoped: keys != nil}
+	names := usageNames{accounts: accounts, keys: keyNames(ctx, c.store()), scoped: keys != nil}
 
 	out := usageStats{
 		ByProvider:          map[string]usageProviderEntry{},
@@ -647,66 +647,7 @@ func (t *usageTotals) add(o usageTotals) {
 	t.Cost += o.Cost
 }
 
-// usageKeyName is what the usage answers may say about a stored key.
-type usageKeyName struct{ name, masked string }
-
-// keyNames reads the stored keys once, so an answer can name and mask a key
-// without ever holding the key itself.
-func (c *UsageController) keyNames(ctx context.Context) map[string]usageKeyName {
-	out := map[string]usageKeyName{}
-	st := c.store()
-	if st == nil {
-		return out
-	}
-	keys, err := st.APIKeys().List(ctx)
-	if err != nil {
-		return out
-	}
-	for _, k := range keys {
-		masked := auth.MaskKey(k.Key)
-		name := k.Name
-		if name == "" {
-			name = masked
-		}
-		out[k.ID] = usageKeyName{name: name, masked: masked}
-	}
-	return out
-}
-
 func (c *UsageController) store() *repository.Store { return storeOf(c.DB) }
-
-// accountNames maps a connection to the name the pages show.
-func (c *UsageController) accountNames(ctx context.Context) map[string]string {
-	out := map[string]string{}
-	st := c.store()
-	if st == nil {
-		return out
-	}
-	rows, err := st.Connections().List(ctx, repository.ConnFilter{})
-	if err != nil {
-		return out
-	}
-	for _, row := range rows {
-		out[row.ID] = connectionAccount(row)
-	}
-	return out
-}
-
-func connectionAccount(row repository.Connection) string {
-	if name := strings.TrimSpace(row.Name); name != "" {
-		return name
-	}
-	if email := strings.TrimSpace(row.Email); email != "" {
-		return email
-	}
-	if row.ID == "" {
-		return ""
-	}
-	if len(row.ID) <= 8 {
-		return "Account " + row.ID
-	}
-	return "Account " + text.CutBytes(row.ID, 8) + "..."
-}
 
 func (c *UsageController) providerName(raw string, nodes map[string]string) string {
 	if name, ok := nodes[raw]; ok {

@@ -1,4 +1,4 @@
-# Router-LLM — Roadmap
+# Router-LLM - Roadmap
 
 What Router-LLM does today and what is planned. One line per area; design detail lives in [`docs/design/`](docs/design/).
 
@@ -11,6 +11,7 @@ Status words: **built** (implemented and tested), **partial** (some behavior mis
 | HTTP server, routing, guard, CORS, deadlines, body limits | built |
 | Configuration, logging with redaction, maintenance jobs | built |
 | Password login, dashboard sessions, API keys | built |
+| CAPTCHA on the password form: Cloudflare Turnstile or Google reCAPTCHA v2, remote callers only, local callers exempt | built |
 | OIDC and SAML single sign-on | built |
 | API key management API | built |
 | Per-key model allow-lists | built |
@@ -26,6 +27,7 @@ Status words: **built** (implemented and tested), **partial** (some behavior mis
 | Import from an existing 9router database (config and usage history) | built |
 | Usage rows, pricing and cost | built |
 | Usage dashboard routes (stats, chart, history, logs, providers, live feed), per-connection quota readings with the two refill routes, and the client connection list | built |
+| OpenMetrics `GET /metrics` (requests, tokens, cost, latency, in-flight, key and account info) behind a bearer token or Basic pair, with a Prometheus/Grafana guide and a starter dashboard | built |
 
 ## Requests
 
@@ -63,7 +65,7 @@ Status words: **built** (implemented and tested), **partial** (some behavior mis
 | Video generation | built |
 | Web search and page fetch | built |
 | Compression (gzip, Brotli), security headers, HTTP/2 on the plain listener | built |
-| Web image and video providers | built for chatgpt-web, uc-web and veoaifree-web; grok-web, gemini-web and muse-web deferred |
+| Web image and video providers | built |
 
 ## Dashboard
 

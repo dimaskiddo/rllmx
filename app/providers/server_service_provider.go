@@ -19,6 +19,7 @@ import (
 	"github.com/goravel/framework/contracts/foundation"
 
 	"rllmx/app/access/auth"
+	"rllmx/app/access/captcha"
 	"rllmx/app/access/identity"
 	"rllmx/app/access/oidc"
 	"rllmx/app/access/saml"
@@ -26,6 +27,7 @@ import (
 	"rllmx/app/gateway/combo"
 	"rllmx/app/gateway/health"
 	"rllmx/app/gateway/hermes"
+	"rllmx/app/gateway/metrics"
 	"rllmx/app/gateway/skill"
 	apphttp "rllmx/app/http"
 	"rllmx/app/http/controllers"
@@ -92,6 +94,15 @@ type HTTP struct {
 	Freebuff *freebuff.Sessions
 	// OAuthSettings is the checked OAUTH_* configuration.
 	OAuthSettings *settings.OAuth
+	// Captcha verifies the challenge a remote sign-in passes. nil asks none.
+	Captcha *captcha.Verifier
+	// CaptchaKey is the public site key the sign-in page renders the widget with.
+	CaptchaKey string
+	// Metrics is the checked METRICS_* configuration.
+	Metrics *settings.Metrics
+	// Meter holds the counters GET /metrics serves. Every finished request
+	// records into it through the usage sink.
+	Meter *metrics.Registry
 	// ClaudeCLI is the claude-cli/x.y.z fingerprint the Claude channel carries.
 	ClaudeCLI *upstream.ClaudeCLI
 	// Pipe builds the request pipeline on first use; the probe runner shares
@@ -244,6 +255,14 @@ func buildHTTP(app foundation.Application) (*HTTP, error) {
 		Freebuff:      freebuff,
 		ClaudeCLI:     upstream.NewClaudeCLI(upstreamCfg.ClaudeCLIVersion),
 		OAuthSettings: rest.oauth,
+		Metrics:       rest.metrics,
+		Meter:         metrics.New(time.Now),
+	}
+	if rest.captcha.Enabled() {
+		h.CaptchaKey = rest.captcha.SiteKey
+		h.Captcha = captcha.New(rest.captcha.Provider, rest.captcha.Secret, network.NewClient(network.Options{
+			ConnectTimeout: upstreamCfg.ConnectTimeout, MaxRedirects: -1, BodyCap: 64 << 10,
+		}))
 	}
 	h.Quota = newQuotaReader(h)
 	h.Quota.Cache = cacheOrNil(app)
@@ -256,13 +275,15 @@ func buildHTTP(app foundation.Application) (*HTTP, error) {
 // serverSettings are the stream, login, media and saver settings, which only
 // their own consumers read.
 type serverSettings struct {
-	stream *settings.Stream
-	oauth  *settings.OAuth
-	media  *settings.Media
-	saver  *settings.Saver
+	stream  *settings.Stream
+	oauth   *settings.OAuth
+	media   *settings.Media
+	saver   *settings.Saver
+	captcha *settings.Captcha
+	metrics *settings.Metrics
 }
 
-// loadRest reads the four groups, refusing the start on the first bad value.
+// loadRest reads the groups, refusing the start on the first bad value.
 func loadRest(cfg config.Config) (serverSettings, error) {
 	var out serverSettings
 	var err error
@@ -273,6 +294,12 @@ func loadRest(cfg config.Config) (serverSettings, error) {
 		return out, err
 	}
 	if out.media, err = settings.LoadMedia(cfg); err != nil {
+		return out, err
+	}
+	if out.captcha, err = settings.LoadCaptcha(cfg); err != nil {
+		return out, err
+	}
+	if out.metrics, err = settings.LoadMetrics(cfg); err != nil {
 		return out, err
 	}
 	out.saver, err = settings.LoadSaver(cfg)

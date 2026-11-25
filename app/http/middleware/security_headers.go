@@ -3,6 +3,7 @@ package middleware
 import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 
+	"rllmx/app/access/captcha"
 	apphttp "rllmx/app/http"
 )
 
@@ -14,6 +15,9 @@ type SecurityHeaders struct {
 	// Trust decides whether the caller arrived over HTTPS, so HSTS is sent only
 	// where it can be honoured and a plain-HTTP caller is never told to upgrade.
 	Trust apphttp.Trust
+	// LoginPolicy is pagePolicy plus the CAPTCHA provider's hosts, sent to the
+	// sign-in page only. Empty leaves every page on pagePolicy.
+	LoginPolicy string
 }
 
 const (
@@ -26,6 +30,11 @@ const (
 	// permissions turns off every browser capability the dashboard has no use for.
 	permissions = "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
 )
+
+// LoginPolicy is the sign-in page's policy while a CAPTCHA provider is set: the
+// page policy plus the hosts the provider's script and frame need. An empty
+// provider returns "".
+func LoginPolicy(provider string) string { return captcha.Policy(pagePolicy, provider) }
 
 // isolate keeps a page and the dashboard API to their own origin: no other
 // window shares its browsing context, no other site embeds its answers, and no
@@ -54,6 +63,10 @@ func (m *SecurityHeaders) Handle(ctx contractshttp.Context) {
 		ctx.Response().Header("Cache-Control", "no-store")
 		isolate(ctx)
 	case apphttp.IsClientAPI(r.URL.Path):
+	case r.URL.Path == "/login" && m.LoginPolicy != "":
+		ctx.Response().Header("Content-Security-Policy", m.LoginPolicy)
+		ctx.Response().Header("Referrer-Policy", "no-referrer")
+		isolate(ctx)
 	default:
 		ctx.Response().Header("Content-Security-Policy", pagePolicy)
 		ctx.Response().Header("Referrer-Policy", "no-referrer")

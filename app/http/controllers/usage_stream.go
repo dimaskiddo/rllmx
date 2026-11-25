@@ -39,7 +39,7 @@ func (c *UsageController) Stream(ctx contractshttp.Context) contractshttp.Respon
 	// A standard user's feed carries only their own keys, the same narrowing
 	// the stats and the log take.
 	keys, _, _ := c.scope(ctx)
-	accounts := c.accountNames(rctx)
+	accounts := accountNames(rctx, c.store())
 	send := func(recent []usageRecent) error {
 		pending, active := c.live(accounts)
 		raw, err := json.Marshal(contractshttp.Json{

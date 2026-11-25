@@ -42,6 +42,9 @@ A value that contains a dollar sign must be wrapped in single quotes, because `$
 | `AUTH_COOKIE_SECURE` | `false` | `true` forces the Secure flag on the dashboard cookie. Leave it `false` when TLS ends at this process or at a proxy listed in `SERVER_TRUSTED_PROXIES`. |
 | `AUTH_REFUSE_DEFAULT_PASSWORD` | `false` | `true` refuses to start while the dashboard password is still a public default. |
 | `AUTH_SESSION_TTL` | `24h` | How long a dashboard session lasts before the next sign-in, as a duration such as `12h` or `90m`. 5m to 720h. A shorter value applies to new sessions. |
+| `AUTH_CAPTCHA_PROVIDER` | empty (off) | The challenge a remote password sign-in must pass: `turnstile` (Cloudflare) or `recaptcha` (Google v2 checkbox). Empty asks none. A local caller is never asked. The `/login` page is then allowed to load the provider's script and frame; no other page is. |
+| `AUTH_CAPTCHA_SITE_KEY` | empty | The public site key. Required with a provider, at most 256 printable characters. |
+| `AUTH_CAPTCHA_SECRET` | empty | The secret that verifies the answer. Required with a provider. Never logged. |
 
 ## Auth: single sign-on
 
@@ -103,7 +106,15 @@ The permission check runs at connect time on the address actually used, redirect
 
 | Variable | Default | Detail |
 |---|---|---|
-| `CATALOG_SYNC` | `true` | Refreshes the model catalog from models.dev (a first run a minute after start, then every 24 hours; a failed run retries in 30 minutes). It only adds capabilities and corrects a model's window where the gateway's published number differs from the built-in tables. `false` stops the timer; a catalog already synced into `DATA_DIR` is still loaded. `POST /api/models/catalog-sync` syncs on demand either way. |
+| `CATALOG_SYNC` | `false` | Refreshes the model catalog from models.dev (a first run a minute after start, then every 24 hours; a failed run retries in 30 minutes). It only adds capabilities and corrects a model's window where the gateway's published number differs from the built-in tables. `false` stops the timer; a catalog already synced into `DATA_DIR` is still loaded. `POST /api/models/catalog-sync` syncs on demand either way. |
+
+## Metrics
+
+| Variable | Default | Detail |
+|---|---|---|
+| `METRICS_TOKEN` | empty | A bearer token of at least 32 characters that `GET /metrics` accepts. Empty, with no username, serves no endpoint (404). `docs/METRICS.md` covers the export. |
+| `METRICS_USERNAME` | empty | An HTTP Basic user. Set with `METRICS_PASSWORD`, or neither. No colon. |
+| `METRICS_PASSWORD` | empty | At least 16 characters. Refused attempts count against the per-address limiter, so it cannot be guessed at line rate. |
 
 ## OAuth logins: client applications
 

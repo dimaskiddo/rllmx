@@ -43,7 +43,7 @@ No code reads rows marked *planned* yet, so setting one in `.env` fails startup 
 |---|---|
 | Server | `APP_PORT` (20128), `APP_HOST` (127.0.0.1), `HTTP_SERVER_READ_HEADER_TIMEOUT` (10s, 1s to 5m), `HTTP_SERVER_IDLE_TIMEOUT` (120s, 1s to 1h), `HTTP_SERVER_SHUTDOWN_GRACE` (30s, 1s to 10m; a second signal exits at once), `HTTP_COMPRESSION` (true; Brotli or gzip, D327), `HTTP_H2C` (false; HTTP/2 on the plain listener), `SERVER_MAX_BODY_MB` (128), `SERVER_TRUST_LOOPBACK` (true), `SERVER_TRUSTED_PROXIES` (empty: loopback only; addresses or CIDRs whose `X-Forwarded-For` and `X-Forwarded-Proto` are believed), `APP_URL` (empty; `http(s)://host[:port]`, no userinfo, path or query, http only for loopback; base for OAuth, OIDC and SAML callbacks) |
 | Data | `DATA_DIR` (`storage/app`) |
-| Auth | `JWT_SECRET` (generated into `jwt-secret`), `AUTH_ADMIN_USERNAME` (`admin`; the name the administrator signs in with, any other name is a standard user), `AUTH_INITIAL_PASSWORD`, `AUTH_API_KEY_SECRET`, `AUTH_MACHINE_ID_SALT`, `AUTH_COOKIE_SECURE` (false), `AUTH_REFUSE_DEFAULT_PASSWORD` (false), `AUTH_SSO_ADMIN` (empty: nobody is admin through SSO; exact addresses or `@domain`), `AUTH_MAX_USERS` (200; the standard-user cap, 1 to 100000), `AUTH_SESSION_TTL` (24h; how long a dashboard sign-in lasts, 5m to 720h, a Go duration) |
+| Auth | `JWT_SECRET` (generated into `jwt-secret`), `AUTH_ADMIN_USERNAME` (`admin`; the name the administrator signs in with, any other name is a standard user), `AUTH_INITIAL_PASSWORD`, `AUTH_API_KEY_SECRET`, `AUTH_MACHINE_ID_SALT`, `AUTH_COOKIE_SECURE` (false), `AUTH_REFUSE_DEFAULT_PASSWORD` (false), `AUTH_SSO_ADMIN` (empty: nobody is admin through SSO; exact addresses or `@domain`), `AUTH_MAX_USERS` (200; the standard-user cap, 1 to 100000), `AUTH_SESSION_TTL` (24h; how long a dashboard sign-in lasts, 5m to 720h, a Go duration), `AUTH_CAPTCHA_PROVIDER` (empty: no challenge; `turnstile` or `recaptcha`), `AUTH_CAPTCHA_SITE_KEY` and `AUTH_CAPTCHA_SECRET` (required with a provider, at most 256 printable characters; a provider without both fails the start) |
 | Database | `DB_CONNECTION` (`sqlite` by default, or `postgres`), `DB_DATABASE` (the SQLite file, empty: `DATA_DIR/db/data.sqlite`; the PostgreSQL database), `DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_SCHEMA` (`public`), `DB_SSLMODE` (`require`; PostgreSQL only), `DB_ENCRYPTION_SECRET` (required) |
 | Analytics | `DB_DATABASE_ANALYTICS` (empty: `DATA_DIR/db/analytics.sqlite`, or the schema `rllmx_analytics` on PostgreSQL), `ANALYTICS_RETENTION_DAYS` (90) |
 | Cache | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_DB` (empty `REDIS_HOST`: the memory store only) |
@@ -55,7 +55,8 @@ No code reads rows marked *planned* yet, so setting one in `.env` fails startup 
 | OAuth refresh | `OAUTH_BACKGROUND_REFRESH` (true) and `OAUTH_REFRESH_DELAY` (1500ms, 0s to 1m, pause between accounts), built. `OAUTH_REFRESH_GOOGLE_DELAY` (12s, 0s to 1m, the pause after an account of a provider that sets `slowRefresh`, plus 0 to 4 s of jitter), built |
 | Media | `MEDIA_VIDEO_TIMEOUT` (120s, 5s to 10m; one video create or poll), built. `MEDIA_SEARXNG_URL` (empty; an http or https address with a host), built |
 | Token savers | `SAVER_HEADROOM_URL` (empty; the settings row's `headroomUrl` wins, which is empty until set, then this value, then `http://localhost:8787`) |
-| Catalog | `CATALOG_SYNC` (true; `false` stops the timer, and a file already in `DATA_DIR` is still loaded), built |
+| Catalog | `CATALOG_SYNC` (false; `true` refreshes every 24 hours, and a file already in `DATA_DIR` is loaded either way), built |
+| Metrics | `METRICS_TOKEN` (empty; at least 32 characters), `METRICS_USERNAME` and `METRICS_PASSWORD` (empty; both or neither, password at least 16 characters, no colon in the name). With none set the scrape route is not registered; refused attempts count toward the sign-in limiter (`docs/METRICS.md`), built |
 
 | OAuth clients | `OAUTH_CLIENT_ID_<PROVIDER>` for antigravity, claude, codex, github, google, kimi, kimi_coding, minimax_code, muse, nous, trae, windsurf, xai; `OAUTH_CLIENT_SECRET_<PROVIDER>` only for antigravity, google, trae. Default empty, which disables that provider's login; `.env.example` carries working values. `google` serves Gemini and Gemini CLI, `minimax_code` both MiniMax Code regions, `xai` xAI and Grok CLI. Built: `OAUTH_CLIENT_ID_CLAUDE` and `OAUTH_CLIENT_ID_CODEX` (at most 256 characters, no spaces or control characters); adds `OAUTH_CLIENT_ID_GITHUB`; adds `OAUTH_CLIENT_ID_GOOGLE`, `OAUTH_CLIENT_SECRET_GOOGLE` (Gemini CLI), `OAUTH_CLIENT_ID_ANTIGRAVITY` and `OAUTH_CLIENT_SECRET_ANTIGRAVITY`; adds `OAUTH_CLIENT_ID_MINIMAX_CODE` (both MiniMax Code sites; CodeBuddy and GLM need none); adds `OAUTH_CLIENT_ID_KIMI`, `OAUTH_CLIENT_ID_MUSE`, `OAUTH_CLIENT_ID_NOUS` and `OAUTH_CLIENT_ID_XAI` (the Grok CLI login reads the xAI one; Kilo Code needs none). iflow is not built (D279), so it has no variable |
 | Provider overrides | `PROVIDER_AZURE_ENDPOINT`, `..._AZURE_DEPLOYMENT`, `..._AZURE_API_VERSION`, `..._AZURE_ORGANIZATION`, `..._MIMO_PLATFORM_URL`, `..._COMMANDCODE_BASE_URL`, deferred: the registry data carries each address today (doc 22) |
@@ -63,7 +64,7 @@ No code reads rows marked *planned* yet, so setting one in `.env` fails startup 
 ### Not Read
 
 - `REQUIRE_API_KEY` appears in the reference's example file but no code reads it. The `requireApiKey` setting is the control.
-- `ENABLE_REQUEST_LOGS` and `OBSERVABILITY_*` have no replacement: usage is always recorded and holds metadata only (design doc 16).
+- `ENABLE_REQUEST_LOGS` and `OBSERVABILITY_*` have no replacement: usage is always recorded and holds metadata only (design doc 16). The scrape's own credentials are `METRICS_*` (`docs/METRICS.md`).
 - Dropped with their feature: `NODE_ENV`, `NEXT_*`, cloud URLs, tunnel, MITM, proxy, updater, browser-pool and Devin variables. The `HTTP_PROXY` family is ignored.
 
 ### Settings Row
@@ -138,7 +139,7 @@ The status column is the v1 target, not the build state: behavior lands later. U
 | (browser-built redirect) | `OAUTH_CALLBACK_HOST` | new: fixed-port login listener bind address (default `127.0.0.1`; `0.0.0.0` in a container) |
 | `SEARXNG_URL` | `MEDIA_SEARXNG_URL` | built |
 | `HEADROOM_URL` | `SAVER_HEADROOM_URL` | done |
-| `MODEL_CATALOG_SYNC` (`off` disables) | `CATALOG_SYNC` | boolean: `false` stops the timer only; built |
+| `MODEL_CATALOG_SYNC` (`off` disables) | `CATALOG_SYNC` | boolean: our default is `false`; `true` starts the timer; built |
 | `AZURE_ENDPOINT`, `AZURE_DEPLOYMENT`, `AZURE_API_VERSION`, `AZURE_ORGANIZATION` | `PROVIDER_AZURE_*` | deferred (doc 22) |
 | `KIMI_OAUTH_CLIENT_ID`, `KIMI_CODING_OAUTH_CLIENT_ID` | `OAUTH_CLIENT_ID_KIMI`, `OAUTH_CLIENT_ID_KIMI_CODING` | |
 | `MIMO_PLATFORM_URL`, `COMMAND_CODE_API_BASE_URL` | `PROVIDER_MIMO_PLATFORM_URL`, `PROVIDER_COMMANDCODE_BASE_URL` | deferred (doc 22) |
@@ -160,7 +161,7 @@ The status column is the v1 target, not the build state: behavior lands later. U
 ---
 ### 3. New Variables
 
-No reference counterpart: `HTTP_SERVER_READ_HEADER_TIMEOUT`, `HTTP_SERVER_IDLE_TIMEOUT`, `HTTP_SERVER_SHUTDOWN_GRACE`, `SERVER_MAX_BODY_MB`, `SERVER_TRUST_LOOPBACK`, `SERVER_TRUSTED_PROXIES`, `AUTH_ADMIN_USERNAME`, `AUTH_SSO_ADMIN`, `AUTH_MAX_USERS`, `AUTH_SESSION_TTL`, `UPSTREAM_ALLOW_PRIVATE`, `DB_CONNECTION`, `DB_DATABASE`, `DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_SCHEMA`, `DB_ENCRYPTION_SECRET`, `LOG_CHANNEL`, `LOG_OUTPUT`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_DB`, `DB_DATABASE_ANALYTICS`, `DB_SSLMODE`, `ANALYTICS_RETENTION_DAYS`. Framework-owned `APP_KEY` (32 characters) and `APP_URL` (public gateway address, for OIDC and SAML) as Goravel defines them; `APP_NAME`, `APP_ENV`, `APP_DEBUG` too, no product meaning.
+No reference counterpart: `HTTP_SERVER_READ_HEADER_TIMEOUT`, `HTTP_SERVER_IDLE_TIMEOUT`, `HTTP_SERVER_SHUTDOWN_GRACE`, `SERVER_MAX_BODY_MB`, `SERVER_TRUST_LOOPBACK`, `SERVER_TRUSTED_PROXIES`, `AUTH_ADMIN_USERNAME`, `AUTH_SSO_ADMIN`, `AUTH_MAX_USERS`, `AUTH_SESSION_TTL`, `AUTH_CAPTCHA_PROVIDER`, `AUTH_CAPTCHA_SITE_KEY`, `AUTH_CAPTCHA_SECRET`, `METRICS_TOKEN`, `METRICS_USERNAME`, `METRICS_PASSWORD`, `UPSTREAM_ALLOW_PRIVATE`, `DB_CONNECTION`, `DB_DATABASE`, `DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_SCHEMA`, `DB_ENCRYPTION_SECRET`, `LOG_CHANNEL`, `LOG_OUTPUT`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_DB`, `DB_DATABASE_ANALYTICS`, `DB_SSLMODE`, `ANALYTICS_RETENTION_DAYS`. Framework-owned `APP_KEY` (32 characters) and `APP_URL` (public gateway address, for OIDC and SAML) as Goravel defines them; `APP_NAME`, `APP_ENV`, `APP_DEBUG` too, no product meaning.
 
 ---
 

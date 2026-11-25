@@ -42,11 +42,16 @@ func Boot(version, commit string) contractsfoundation.Application {
 		WithCommands(func() []console.Command { return Commands(version, commit) }).
 		WithMiddleware(func(m configuration.Middleware) {
 			h := providers.HTTPOf(facades.App())
+			challenge := ""
+			if h.Captcha != nil {
+				challenge = h.Captcha.Provider
+			}
 			middleware.Stack(m, middleware.Options{
-				Guard:   h.Guard,
-				Trust:   h.Trust,
-				Log:     facades.Log(),
-				MaxBody: int64(h.Settings.MaxBodyMB) << 20,
+				Guard:       h.Guard,
+				Trust:       h.Trust,
+				Log:         facades.Log(),
+				MaxBody:     int64(h.Settings.MaxBodyMB) << 20,
+				LoginPolicy: middleware.LoginPolicy(challenge),
 			})
 		}).
 		WithRouting(func() { declareRoutes(version, commit) }).
@@ -74,6 +79,8 @@ func declareRoutes(version, commit string) {
 	db := func() *repository.Store { return providers.DataOf(facades.App()).Runner.Store() }
 	base := routeBase(version, commit)
 	base.Auth = controllers.NewAuthController(h.Auth, h.Trust)
+	base.Auth.Captcha, base.Auth.CaptchaKey = h.Captcha, h.CaptchaKey
+	base.Auth.Log = facades.Log()
 	base.OIDC = oidcController(h)
 	base.SAML = samlController(h)
 	base.Providers = &controllers.ProvidersController{Registry: h.Registry, OAuth: h.OAuth, DB: db, Checker: h.Checker, Refresher: h.Refresher, Enqueue: h.Probes.Enqueue, Probe: h.Probes.Prober, ClaudeCLI: h.ClaudeCLI,
@@ -96,6 +103,13 @@ func declareRoutes(version, commit string) {
 		Restart: restartBinary,
 	}
 	base.Logs = &controllers.LogsController{Book: config.ConsoleLog()}
+	if h.Metrics.Enabled() {
+		base.Metrics = &controllers.MetricsController{
+			Reg: h.Meter, Token: h.Metrics.Token, Username: h.Metrics.Username, Password: h.Metrics.Password,
+			Inflight: h.Inflight, DB: db, Users: h.Auth.Users, Version: version, Commit: commit,
+			Trust: h.Trust, Limiter: h.Auth.Limiter,
+		}
+	}
 	base.Keys = keysController(h, db)
 	clientRoutes(&base, h, db)
 	dashboardRoutes(&base, h, db, skills, dir)

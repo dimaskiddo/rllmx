@@ -33,6 +33,18 @@ When a request completes, the pipeline enqueues one row to the analytics writer.
 
 **Page.** `/dashboard/usage` reads the totals, the chart and the log for every role, and the live feed, the active count and the latency stream only for an admin, because the server refuses those three to a standard user. Period and tab live in the URL. The topology, the two bar charts and the breakdown table are drawn from the same stats answer, so a period switch is one read (doc 18, D427).
 
+### Metrics endpoint (`app/gateway/metrics`, `GET /metrics`; built)
+
+The analytics writer is wrapped by `metrics.Sink`, so every finished request — chat and media alike — is counted before the row is queued. The registry is in memory, holds the same tuple the rollups group by (`provider`, `model`, `connectionId`, `apiKeyId`, `endpoint`), and serves it as OpenMetrics 1.0 text from its own handler; no other module imports it.
+
+- Counters: requests (by status class and cache), tokens (five kinds), spend where the price is known, and the count with no price.
+- Histograms: request time and time to first token, per provider and model, in ten buckets.
+- Read at scrape time: the in-flight table, one `_info` series per key (name and owning user, never the key) and per account (the page's own account name), the build, and the process and Go gauges.
+- Names stay out of the counters, so a rename does not split a series.
+- At most 20000 tuples; past it a tuple keeps its provider and model and files the rest under `other`, counted in a fold family.
+- `METRICS_TOKEN` or `METRICS_USERNAME` plus `METRICS_PASSWORD` gates the route; with neither it is not registered (404). A refusal counts toward the sign-in limiter.
+- `docs/METRICS.md` is the operator guide — how to connect Prometheus and Grafana, every family, the query cookbook — and a test fails when the guide and the registry name different families.
+
 ### Pricing (`app/llm/upstream/pricing.go`, data `app/llm/upstream/data/pricing/prices.json`; built)
 
 Rates are dollars per million tokens: input, output, cached, reasoning, cache creation. A missing cached or cache-creation rate means the input rate; a missing reasoning rate means the output rate.
@@ -88,6 +100,7 @@ MiniMax Code (signed account calls, its key configured not literal, D456), Xiaom
 | `/api/usage/{connectionId}`, `claude-reset`, `codex-reset-credits` | `app/llm/quota`, `app/http/controllers` | done (diverged); MiniMax Code, Xiaomi MiMo and Qoder built (4.20) |
 | `/api/providers/client` | `app/http/controllers` | done (`design doc 4`) |
 | `/api/usage/request-details` | none | out (stored bodies) |
+| `/metrics` | `app/gateway/metrics`, `app/http/controllers` | done (our own; OpenMetrics text, no reference route) |
 
 ---
 

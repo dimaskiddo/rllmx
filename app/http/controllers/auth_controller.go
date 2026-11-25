@@ -1,6 +1,8 @@
 package controllers
 
 import (
+	"errors"
+	"net"
 	"net/http"
 	"runtime"
 	"strconv"
@@ -8,8 +10,10 @@ import (
 	"time"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
+	"github.com/goravel/framework/contracts/log"
 
 	"rllmx/app/access/auth"
+	"rllmx/app/access/captcha"
 	apphttp "rllmx/app/http"
 )
 
@@ -25,6 +29,12 @@ const (
 type AuthController struct {
 	Auth  *auth.Authenticator
 	Trust apphttp.Trust
+	// Captcha verifies the challenge a remote sign-in passes. nil asks none.
+	Captcha *captcha.Verifier
+	// CaptchaKey is the public site key the sign-in page renders the widget with.
+	CaptchaKey string
+	// Log records a provider the challenge check could not reach. nil is silent.
+	Log log.Log
 	// Now is the clock the limiter reads; tests replace it.
 	Now func() time.Time
 	// Slots bounds the concurrent comparisons. nil means the default of one per
@@ -55,6 +65,7 @@ func (c *AuthController) Login(ctx contractshttp.Context) contractshttp.Response
 	var body struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
+		Captcha  string `json:"captcha"`
 	}
 	if err := ctx.Request().Bind(&body); err != nil {
 		return flat(ctx, http.StatusBadRequest, "Invalid request body")
@@ -68,6 +79,9 @@ func (c *AuthController) Login(ctx contractshttp.Context) contractshttp.Response
 	if wait := c.Auth.Limiter.Locked(key, c.Now()); wait > 0 {
 		return tooMany(ctx, wait)
 	}
+	if refused := c.challenge(ctx, r, body.Captcha, key); refused != nil {
+		return refused
+	}
 
 	name := strings.TrimSpace(body.Username)
 	if name == "" {
@@ -77,6 +91,43 @@ func (c *AuthController) Login(ctx contractshttp.Context) contractshttp.Response
 		return c.loginAdmin(ctx, r, body.Password, key)
 	}
 	return c.loginUser(ctx, r, name, body.Password, key)
+}
+
+// challenge checks the sign-in page's answer before any password is compared.
+// A local caller skips it, so the machine keeps a way in when the provider is
+// unreachable; every other caller fails closed. A refused answer counts against
+// the limiter like a wrong password; an unreachable provider does not, since the
+// caller did nothing wrong.
+func (c *AuthController) challenge(ctx contractshttp.Context, r *http.Request, token, key string) contractshttp.Response {
+	if c.Captcha == nil || apphttp.IsLocalRequest(r, c.Auth.TrustLoopback) {
+		return nil
+	}
+	switch err := c.Captcha.Verify(r.Context(), token, clientIP(c.Trust.ClientAddr(r))); {
+	case err == nil:
+		return nil
+	case errors.Is(err, captcha.ErrUnavailable):
+		if c.Log != nil {
+			c.Log.Warning("captcha: the provider could not be reached: %v", err)
+		}
+		return flat(ctx, http.StatusServiceUnavailable, "The CAPTCHA check could not be completed; try again")
+	default:
+		c.Auth.Limiter.Fail(key, c.Now())
+		if wait := c.Auth.Limiter.Locked(key, c.Now()); wait > 0 {
+			return tooMany(ctx, wait)
+		}
+		return ctx.Response().Json(http.StatusForbidden, contractshttp.Json{
+			"error": "Complete the CAPTCHA check", "captcha": true,
+		})
+	}
+}
+
+// clientIP drops the port from the address the verifier is told the answer came
+// from.
+func clientIP(addr string) string {
+	if host, _, err := net.SplitHostPort(addr); err == nil {
+		return host
+	}
+	return addr
 }
 
 // loginAdmin checks the operator's password and issues the admin session.
@@ -203,6 +254,13 @@ func (c *AuthController) Status(ctx contractshttp.Context) contractshttp.Respons
 	if (session && who.Admin()) || (!session && apphttp.IsLocalRequest(r, c.Auth.TrustLoopback)) {
 		out["hasPassword"] = st.Password != ""
 		out["defaultPassword"] = c.Auth.Pass.WellKnown(st.Password)
+	}
+	if c.Captcha != nil && !apphttp.IsLocalRequest(r, c.Auth.TrustLoopback) {
+		out["captcha"] = contractshttp.Json{
+			"provider": c.Captcha.Provider,
+			"siteKey":  c.CaptchaKey,
+			"script":   captcha.Script(c.Captcha.Provider),
+		}
 	}
 	return ctx.Response().Json(http.StatusOK, out)
 }

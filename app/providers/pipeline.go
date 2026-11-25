@@ -10,6 +10,7 @@ import (
 
 	"rllmx/app/gateway/account"
 	"rllmx/app/gateway/conversation"
+	"rllmx/app/gateway/metrics"
 	"rllmx/app/gateway/pipeline"
 	"rllmx/app/gateway/prefetch"
 	"rllmx/app/gateway/saver"
@@ -95,7 +96,7 @@ func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.P
 		Prices:        priceReader{src: h.Prices},
 		Health:        h.Health,
 		Inflight:      h.Inflight,
-		Usage:         writer,
+		Usage:         metrics.Sink{Next: writer, Reg: h.Meter},
 		Budget:        Budget(h.Limits, runner),
 		Rotation:      h.Rotation,
 		Sticky:        h.Sticky,

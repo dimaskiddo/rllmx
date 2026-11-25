@@ -33,5 +33,12 @@ func init() {
 		"max_users": config.Env("AUTH_MAX_USERS", 200),
 		// How long a dashboard session lasts before the next sign-in.
 		"session_ttl": config.Env("AUTH_SESSION_TTL", "24h"),
+		// The challenge a remote password sign-in must pass: "turnstile" or
+		// "recaptcha". Empty asks none.
+		"captcha_provider": config.Env("AUTH_CAPTCHA_PROVIDER", ""),
+		// The public site key the sign-in page renders the widget with.
+		"captcha_site_key": config.Env("AUTH_CAPTCHA_SITE_KEY", ""),
+		// The secret that verifies an answer with the provider.
+		"captcha_secret": config.Env("AUTH_CAPTCHA_SECRET", ""),
 	})
 }

@@ -119,7 +119,7 @@ Full wording and reasons for the Go rules: `docs/ARCHITECTURE.md`, Go Convention
 - Anything else needs maintainer approval, an entry in the approved-module list in `docs/ARCHITECTURE.md`, and the reason recorded there before `go.mod` changes. Pin releases whose `go` directive is not newer than `go.mod`. `./artisan package:install` needs approval.
 
 ### Web Dashboard & Artifacts
-- Plain HTML, ES modules, CSS, plus the vendored libraries on the approved list in `docs/ARCHITECTURE.md` (Alpine.js CSP build, Tabler CSS, Lucide, Chart.js, Sortable.js), each pinned and hash-checked in `web/static/lib/VERSIONS.json`. No bundler, build step, runtime CDN, `unsafe-inline` or `unsafe-eval`. Escape dynamic text; no `innerHTML` or `x-html` from data (`design doc 18`).
+- Plain HTML, ES modules, CSS, plus the vendored libraries on the approved list in `docs/ARCHITECTURE.md` (Alpine.js CSP build, Tabler CSS, Lucide, Chart.js, Sortable.js), each pinned and hash-checked in `web/static/lib/VERSIONS.json`. No bundler, build step, runtime CDN (one exception: the sign-in page loads the CAPTCHA provider's script while `AUTH_CAPTCHA_PROVIDER` is set, under a `/login`-only CSP; `design doc 2`), `unsafe-inline` or `unsafe-eval`. Escape dynamic text; no `innerHTML` or `x-html` from data (`design doc 18`).
 - Output to `dist/` via the Makefile. `tools/mutant.sh <label> <file> <old> <new>` prints CAUGHT, MISSED, BUILD or NOOP.
 
 ---
@@ -142,11 +142,12 @@ Full wording and reasons for the Go rules: `docs/ARCHITECTURE.md`, Go Convention
 | `tools/mutant.sh` | Mutation check |
 | `references/` | Read-only 9router sources (git-ignored; Clean-Room) |
 | `docs/design/` | One design doc per area: status, design, parity rows, divergences, findings. **Design authority**; index in `docs/design/README.md` |
+| `.env.example` | Every variable with its default |
+| `ROADMAP.md` | What is built, partial and planned, written for readers |
 | `docs/ARCHITECTURE.md` | Module map, design decisions, approved modules, Go conventions, terminal commands |
 | `docs/PARITY.md`, `docs/DIVERGENCES.md` | Pinned references and status vocabulary; divergence index |
 | `docs/WORKFLOWS.md` | Pipeline, startup order and operator procedures |
 | `docs/MIGRATING.md` | Moving from 9Router to Router-LLM and back, step by step |
-| `ROADMAP.md` | What is built, partial and planned, written for readers |
-| `.env.example` | Every variable with its default (`design doc 17`) |
 | `docs/ENVIRONMENT.md` | The same variables as an operator reference, in `.env.example` order |
+| `docs/METRICS.md` | The `GET /metrics` export: how to connect Prometheus and Grafana, every family, the query cookbook |
 | `Makefile`, `Dockerfile`, `.goreleaser.yml` | Build, container, release |

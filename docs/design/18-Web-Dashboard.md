@@ -8,7 +8,7 @@
 
 The stack is decided in step 4.0. Alpine.js (CSP build) holds the state and binds the markup, Tabler CSS gives the layout and controls, `theme.css` and `components.css` give the flat Basecoat-like look, Lucide gives the icons, Chart.js the charts and Sortable.js the drag order. All five are vendored and pinned (`docs/ARCHITECTURE.md`, Approved Web Assets).
 
-There is no bundler, build step or runtime CDN. Pages call the same `/api/*` paths and JSON shapes as the reference dashboard. The page table is below.
+There is no bundler, build step or runtime CDN, with one exception: the sign-in page loads the CAPTCHA provider's own script while `AUTH_CAPTCHA_PROVIDER` is set, under the sign-in page policy below (doc 2). Pages call the same `/api/*` paths and JSON shapes as the reference dashboard. The page table is below.
 
 | Area | Pages |
 |---|---|
@@ -30,6 +30,7 @@ There is no bundler, build step or runtime CDN. Pages call the same `/api/*` pat
 | Icons | `x-icon="name"` reads the raw word and looks it up in `js/ui/icons.js`; the name maps to one vendored `lucide/icons/<name>.mjs`. A name that is not mapped is a test failure |
 | Expressions | The Go scan refuses `=>`, a template literal, spread and the `window`, `document`, `JSON` and `Math` globals inside an Alpine attribute, because the CSP build cannot parse them |
 | Page policy | `default-src 'self'; img-src 'self' data:`. No inline script, import map, `style` attribute or `eval`. A page is a static file plus a script file; the theme bootstrap is a script file, not a snippet |
+| Sign-in page policy | When `AUTH_CAPTCHA_PROVIDER` is set, `/login` alone adds the provider's hosts to `script-src` (with `'self'` and nothing else) and `frame-src`, because the challenge widget is loaded from Cloudflare or Google at runtime. The server sends the loader's address in `/api/auth/status`, so no page file names another origin. Every other page keeps the policy above, and neither policy allows inline or evaluated code (doc 2) |
 | Alpine | The CSP build. Expressions are property reads, comparisons, ternaries, literals and method calls (arguments are evaluated by the same rules). No arrow function, template literal, spread, global (`window`, `Math`, `JSON`) or property assignment inside `@event`. Anything longer is a method of an `Alpine.data` component. Style bindings use the object form, `:style="{ width: w }"`, never a string |
 | Directives | `js/ui/directives.js` registers `x-t`, `x-icon` and `x-tip`, which sets the hover text of an icon-only button from a key. A page served on its own, `login.html` or the shell, loads a script that imports it, because an unregistered directive is a silent no-op and the page renders without text. A test pairs every such page with the import |
 | Search | A search box carries `x-on:input.debounce.250ms`, so the list re-renders after a pause and not on every character. A test fails a `type="search"` without it |

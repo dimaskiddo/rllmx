@@ -11,6 +11,7 @@ import (
 	contractshttp "github.com/goravel/framework/contracts/http"
 	goravelgin "github.com/goravel/gin"
 
+	"rllmx/app/access/captcha"
 	apphttp "rllmx/app/http"
 	"rllmx/app/platform/failure"
 )
@@ -119,6 +120,26 @@ func TestThePagePolicyAllowsNoInlineOrEvaluatedCode(t *testing.T) {
 		if strings.Contains(csp, bad) {
 			t.Errorf("the page policy holds %q, which loosens what default-src 'self' forbids: %s", bad, csp)
 		}
+	}
+}
+
+func TestTheSignInPageGetsTheProviderHostsAndNoOtherPageDoes(t *testing.T) {
+	mw := &SecurityHeaders{LoginPolicy: LoginPolicy(captcha.Turnstile)}
+	login := getOnly(t, "/login", mw, nil).Header().Get("Content-Security-Policy")
+	if !strings.Contains(login, "script-src 'self' https://challenges.cloudflare.com") ||
+		!strings.Contains(login, "frame-src https://challenges.cloudflare.com") {
+		t.Fatalf("the sign-in page policy lacks the provider: %s", login)
+	}
+	for _, bad := range []string{"unsafe-inline", "unsafe-eval", "*", "script-src *"} {
+		if strings.Contains(login, bad) {
+			t.Errorf("the sign-in page policy holds %q: %s", bad, login)
+		}
+	}
+	if got := getOnly(t, "/dashboard/home", mw, nil).Header().Get("Content-Security-Policy"); got != pagePolicy {
+		t.Errorf("another page took the sign-in policy: %s", got)
+	}
+	if got := getOnly(t, "/login", &SecurityHeaders{}, nil).Header().Get("Content-Security-Policy"); got != pagePolicy {
+		t.Errorf("a sign-in with no provider got another policy: %s", got)
 	}
 }
 

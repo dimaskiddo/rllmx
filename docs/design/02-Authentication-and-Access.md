@@ -87,11 +87,22 @@ Built as `middleware.SameOrigin` (design doc 1), before the guard. A POST, PUT, 
 |---|---|
 | `POST /api/auth/login` | Password login |
 | `POST /api/auth/logout` | `{"everywhere":true}` also ends other sessions, and only with a session |
-| `GET /api/auth/status` | `hasPassword` and `defaultPassword` only for a local or signed-in caller; `oidc`, `saml` and the two login labels for everyone, because the sign-in page draws its buttons before it has a session |
+| `GET /api/auth/status` | `hasPassword` and `defaultPassword` only for a local or signed-in caller; `oidc`, `saml` and the two login labels for everyone, because the sign-in page draws its buttons before it has a session; `captcha` for a remote caller while a provider is configured |
 | `GET /api/settings/require-login` | The flag only |
 | `POST /api/auth/change-password` | Always protected. Judges the new password, then the current one under the limiter, stores the hash, re-issues the cookie |
 
 No route resets a password over HTTP.
+
+### Login CAPTCHA (`app/access/captcha`)
+
+A remote password sign-in can be asked to pass Cloudflare Turnstile or Google reCAPTCHA v2 (checkbox). `AUTH_CAPTCHA_PROVIDER` names one; `AUTH_CAPTCHA_SITE_KEY` and `AUTH_CAPTCHA_SECRET` are required with it, and an unknown provider or a half setting stops the start. Empty asks nothing.
+
+- **Order.** The challenge runs after the limiter's lock check and before any bcrypt work. A missing or refused answer answers 403 `{"captcha":true}` and counts toward the limiter; an unreachable provider answers 503 and does not, because the caller did nothing wrong. A 429 still wins.
+- **Local callers skip it** (`apphttp.IsLocalRequest`), the same rule the default-password guard uses, so the machine keeps a way in when the provider is unreachable. `password:reset` from the terminal remains the other.
+- **The page learns it from the server.** `/api/auth/status` carries `captcha: {provider, siteKey, script}` to a remote caller only; no web file names another origin's address. The page defines the loader's `onload` hook, appends the script it was given, renders into its slot once the hook fires, and sends the answer as `captcha`. Both providers render and reset through the same call, and an answer is reset after a refused attempt because it is single-use.
+- **Script and check only.** The verify request is a form POST to the provider's own siteverify address through the guarded client, with no redirects and a 64 KiB reply cap; the secret is never logged. A token over 8 KiB or empty is refused without a request.
+- **CSP.** `/login` alone adds the provider's hosts to `script-src` and `frame-src` while a provider is configured; every other page keeps the `'self'`-only policy, and neither policy allows inline or evaluated code. This is the one approved exception to the no-runtime-CDN rule (`docs/ARCHITECTURE.md`).
+- The passwordless paths are untouched: OIDC, SAML and `change-password` ask no challenge.
 
 ### Login Limiter
 
