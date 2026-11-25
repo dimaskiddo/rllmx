@@ -3,6 +3,7 @@
   "id": "opencode",
   "alias": "oc",
   "category": "free",
+  "noAuth": true,
   "display": {
     "name": "OpenCode Free"
   },

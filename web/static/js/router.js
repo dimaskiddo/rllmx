@@ -58,6 +58,7 @@ const navRoots = [
   "/dashboard/pricing",
   "/dashboard/users",
   "/dashboard/settings",
+  "/dashboard/about",
   "/dashboard/console-log",
 ];
 

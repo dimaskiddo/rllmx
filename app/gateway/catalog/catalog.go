@@ -68,6 +68,17 @@ type Catalog struct {
 	Created int64
 }
 
+// hasNoAuth reports whether any provider serves without a credential, so a
+// store with no connection still has something to list.
+func (c *Catalog) hasNoAuth() bool {
+	for _, e := range c.Registry.All() {
+		if e.NoAuth {
+			return true
+		}
+	}
+	return false
+}
+
 // List returns the models the caller can call, in provider order.
 func (c *Catalog) List(ctx context.Context, caller identity.Caller) ([]Entry, error) {
 	active := true
@@ -82,7 +93,7 @@ func (c *Catalog) List(ctx context.Context, caller identity.Caller) ([]Entry, er
 		}
 		byProvider[cn.Provider] = append(byProvider[cn.Provider], cn)
 	}
-	if len(byProvider) == 0 {
+	if len(byProvider) == 0 && !c.hasNoAuth() {
 		return []Entry{}, nil
 	}
 	custom, err := c.KV.List(ctx, repository.ScopeCustomModels)
@@ -98,7 +109,12 @@ func (c *Catalog) List(ctx context.Context, caller identity.Caller) ([]Entry, er
 	for _, e := range c.Registry.All() {
 		cs := byProvider[e.ID]
 		if len(cs) == 0 {
-			continue
+			if !e.NoAuth {
+				continue
+			}
+			// A provider that needs no credential is served by a virtual account,
+			// so its models are offered with nothing connected.
+			cs = []repository.Connection{{ID: "noauth", Provider: e.ID, Name: "Public", IsActive: true}}
 		}
 		names := entryOwners(e)
 		off, err := disabledSet(ctx, c.KV, names)

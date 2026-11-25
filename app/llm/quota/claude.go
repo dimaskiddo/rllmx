@@ -128,36 +128,50 @@ func utilWindow(w gjson.Result) bool {
 	return w.IsObject() && w.Get("utilization").Type == gjson.Number
 }
 
-// claudeGrants reads the free refills an account holds.
+// claudeGrants reads the free refills an account holds. Every grant is listed,
+// paused and spent ones included, so the page can say why one cannot be used;
+// only the usable ones count.
 func claudeGrants(block gjson.Result) *ResetCredits {
 	if !block.Get("eligible").Bool() || !block.Get("grants").IsArray() {
 		return nil
 	}
-	out := &ResetCredits{}
-	next := block.Get("next_grant_id").String()
+	out := &ResetCredits{
+		NextGrantID:    block.Get("next_grant_id").String(),
+		CooldownUntil:  stamp(stampOf(block.Get("cooldown_until"))),
+		WeeklyResetsAt: stamp(stampOf(block.Get("weekly_resets_at"))),
+	}
 	for _, g := range block.Get("grants").Array() {
-		if g.Get("id").String() == "" || g.Get("paused").Bool() {
+		id := g.Get("id").String()
+		if id == "" {
 			continue
 		}
-		left := g.Get("resets_left").Int()
-		if left <= 0 {
-			continue
+		left := int(g.Get("resets_left").Int())
+		paused := g.Get("paused").Bool()
+		c := Credit{
+			ID: id, Label: g.Get("label").String(),
+			ResetsLeft: left, ResetsTotal: int(g.Get("resets_total").Int()),
+			Paused: paused, UsableNow: g.Get("usable_now").Bool(),
+			UseRequiresLimit: g.Get("use_requires_limit").Bool(),
+			StartsAt:         stamp(stampOf(g.Get("starts_at"))),
+			EndsAt:           stamp(stampOf(g.Get("ends_at"))),
 		}
-		out.AvailableCount += int(left)
-		out.Credits = append(out.Credits, Credit{
-			Status:    g.Get("id").String(),
-			GrantedAt: stamp(stampOf(g.Get("starts_at"))),
-			ExpiresAt: stamp(stampOf(g.Get("ends_at"))),
-		})
+		for _, clear := range g.Get("clears").Array() {
+			if v := clear.String(); v != "" {
+				c.Clears = append(c.Clears, v)
+			}
+		}
+		if !paused && left > 0 {
+			out.AvailableCount += left
+		}
+		out.Credits = append(out.Credits, c)
 	}
 	if out.AvailableCount == 0 {
 		return nil
 	}
-	if next != "" && len(out.Credits) > 0 {
-		// The grant the dashboard offers first is the one the service names.
+	if out.NextGrantID != "" {
 		for i := range out.Credits {
-			if out.Credits[i].Status == next {
-				out.Credits[0], out.Credits[i] = out.Credits[i], out.Credits[0]
+			if out.Credits[i].ID == out.NextGrantID {
+				out.ExpiresAt = out.Credits[i].EndsAt
 				break
 			}
 		}

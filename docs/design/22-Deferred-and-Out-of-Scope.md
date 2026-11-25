@@ -11,7 +11,8 @@
 | MiniMax lease broker | Deferred | Reads another desktop app's data; revisit later |
 | Legacy `db.json`/`usage.json` import | Out | Only 9router databases that already migrated are supported |
 | Cloud sync | Out | Removed from the reference as well |
-| Install commands stored in skills, self-updater, autostart, the Hermes process manager and installer, devin-cli, headroom installer | Out | Spawn processes; only the `git clone` behind the `app/git` filter gate may |
+| Install commands stored in skills, autostart, the Hermes process manager and installer, devin-cli, headroom installer | Out | Spawn processes; only the `git clone` behind the `app/git` filter gate may |
+| Self-update (`rllmx artisan upgrade`, the About page's admin action) | In, bounded | Downloads this repository's release for the platform, verifies the published checksum, swaps its own binary and re-executes it with a fixed argv; no shell, no child command, no process manager. A `dev` build refuses (D454) |
 | System tray, TUI | Out | Not a server concern |
 | The reference's "REA allow" saver (drops the system-prompt paragraphs that carry an assistant's refusal and dual-use guidance) | Out | It removes safety guidance a client or an operator wrote into the prompt, which is not a token saving |
 

@@ -13,6 +13,7 @@ import (
 	"github.com/goravel/framework/contracts/log"
 
 	"rllmx/app/access/auth"
+	"rllmx/app/access/identity"
 	"rllmx/app/gateway/health"
 	apphttp "rllmx/app/http"
 	"rllmx/app/llm/upstream"
@@ -447,7 +448,10 @@ func (u *usageStats) add(s analytics.Sum, n usageNames, stamp string) {
 	u.ByAccount[ak] = a
 
 	k := usageKeyName{}
-	if stored, ok := n.keys[s.APIKeyID]; ok {
+	if s.APIKeyID == identity.Probe().ID {
+		probe := identity.Probe()
+		k = usageKeyName{name: probe.Name, masked: probe.ID}
+	} else if stored, ok := n.keys[s.APIKeyID]; ok {
 		k = stored
 	} else if s.APIKeyID != "" {
 		short := text.CutBytes(s.APIKeyID, 8)
@@ -703,9 +707,9 @@ func usageLogLine(r analytics.Request, provider, account string, loc *time.Locat
 	if r.Status >= 400 {
 		status = strconv.FormatInt(r.Status, 10)
 	}
-	line := fmt.Sprintf("%s | %s | %s | %s | %d | %d | %s",
+	line := fmt.Sprintf("%s | %s | %s | %s | %s | %d | %d | %s",
 		r.Time.In(loc).Format("02-01-2006 15:04:05"),
-		usageField(r.Model), usageField(provider), usageField(account),
+		usageField(r.Model), usageField(provider), usageField(account), usageField(r.APIKeyName),
 		r.Prompt, r.Completion, status)
 	// Two trailing fields, each present only when something acted, in the
 	// reference's order: the skills, then the token savers.

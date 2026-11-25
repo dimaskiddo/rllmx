@@ -281,6 +281,49 @@ func TestTheSkillsListCarriesTheStoredConfigValues(t *testing.T) {
 	}
 }
 
+// The page shows a row's edit and delete controls only for a folder this router
+// may rewrite, so the list has to say which those are.
+func TestTheSkillsListSaysWhichFoldersItMayRewrite(t *testing.T) {
+	m := newMgmtRig(t)
+	seededSettings(t, m)
+	dir := t.TempDir()
+	reg := skill.NewRegistry(filepath.Join(dir, "skills"), skill.Builtin())
+	c := &SkillsController{DB: func() *repository.Store { return m.st.Store }, Reg: reg, Dir: dir}
+	studioRoutes(m, c)
+
+	body := `{"name":"Mine","description":"a custom skill","hook":"system-prompt","prompt_template":"p"}`
+	code, made, raw := m.call(nethttp.MethodPost, "/api/skills", body, true)
+	if code != 201 {
+		t.Fatalf("create: %d %s", code, raw)
+	}
+	id, _ := made["id"].(string)
+	code, out, raw := m.call(nethttp.MethodGet, "/api/skills", "", true)
+	if code != 200 {
+		t.Fatalf("list: %d %s", code, raw)
+	}
+	seen := 0
+	for _, item := range out["skills"].([]any) {
+		row, _ := item.(map[string]any)
+		editable, ok := row["editable"].(bool)
+		if !ok {
+			t.Fatalf("a row carries no editable: %v", row)
+		}
+		seen++
+		if row["id"] == id {
+			if !editable {
+				t.Fatalf("a custom skill is not marked editable: %v", row)
+			}
+			continue
+		}
+		if editable {
+			t.Fatalf("a folder this router does not own is editable: %v", row)
+		}
+	}
+	if seen == 0 {
+		t.Fatal("the list is empty")
+	}
+}
+
 // A skill's own switch is written through PATCH /api/settings, which answers
 // with the settings view; the view has no field for it. The Token Saver page
 // therefore reads it from the skills list, and this is the round trip it makes.

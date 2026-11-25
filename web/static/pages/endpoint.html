@@ -73,6 +73,7 @@
   </section>
 
   <dialog class="rl-dialog" x-ref="createDlg" aria-labelledby="dlg-createDlg-title">
+    <button type="button" class="btn btn-sm btn-ghost rl-dialog-close" x-tip="common.close" x-on:click="$el.closest('dialog').close()"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.close"></span></button>
     <form x-on:submit.prevent="createKey()">
       <h2 id="dlg-createDlg-title" x-t="keys.createTitle"></h2>
       <label class="form-label" for="key-name" x-t="keys.name"></label>
@@ -91,6 +92,7 @@
   </dialog>
 
   <dialog class="rl-dialog" x-ref="createdDlg" x-on:close="forgetCreated()" aria-labelledby="dlg-createdDlg-title">
+    <button type="button" class="btn btn-sm btn-ghost rl-dialog-close" x-tip="common.close" x-on:click="$el.closest('dialog').close()"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.close"></span></button>
     <h2 id="dlg-createdDlg-title" x-t="keys.createdTitle"></h2>
     <p x-t="keys.createdBody"></p>
     <code class="rl-code rl-key" x-text="created ? created.key : ''"></code>
@@ -101,6 +103,7 @@
   </dialog>
 
   <dialog class="rl-dialog" x-ref="editDlg" aria-labelledby="dlg-editDlg-title">
+    <button type="button" class="btn btn-sm btn-ghost rl-dialog-close" x-tip="common.close" x-on:click="$el.closest('dialog').close()"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.close"></span></button>
     <form x-on:submit.prevent="saveEdit()">
       <h2 id="dlg-editDlg-title" x-t="keys.editTitle"></h2>
       <label class="form-label" for="edit-name" x-t="keys.name"></label>

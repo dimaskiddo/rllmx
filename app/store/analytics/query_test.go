@@ -203,6 +203,9 @@ func TestRecentIsNewestFirstAndCapped(t *testing.T) {
 	if len(rows) != 2 || rows[0].Model != "m2" || rows[1].Status != 500 {
 		t.Fatalf("rows %+v", rows)
 	}
+	if rows[0].APIKeyName != "key" {
+		t.Fatalf("the row's key name %q, want key", rows[0].APIKeyName)
+	}
 	if rows[0].Time != dayB.Add(2*time.Hour) {
 		t.Fatalf("time %v", rows[0].Time)
 	}

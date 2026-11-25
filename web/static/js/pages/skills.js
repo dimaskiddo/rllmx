@@ -30,6 +30,9 @@ window.Alpine.data("skillsPage", () => Object.assign({
   problems: [],
   settings: {},
   globalOn: true,
+  eccOn: false,
+  eccConfidence: 0.35,
+  eccMax: 1,
   combos: [],
   search: "",
   hook: "all",
@@ -50,6 +53,9 @@ window.Alpine.data("skillsPage", () => Object.assign({
       this.problems = list.problems || [];
       this.settings = settings;
       this.globalOn = settings.globalSkillsEnabled !== false;
+      this.eccOn = settings.ecc_auto_skill_routerEnabled === true;
+      this.eccConfidence = settings.ecc_auto_skill_routerConfidence || 0.35;
+      this.eccMax = settings.ecc_auto_skill_routerMaxSkills || 1;
       this.plan = planForm(settings);
       this.combos = combos.combos || [];
     } catch (err) {
@@ -85,36 +91,88 @@ window.Alpine.data("skillsPage", () => Object.assign({
     });
   },
 
-  // groups splits the visible skills by what they are: a built-in prompt, a hook
-  // rule, an imported catalog entry or an operator's own skill.
-  groups() {
-    const buckets = [
-      { key: "prompt", rows: [] },
-      { key: "rules", rows: [] },
-      { key: "ecc", rows: [] },
-      { key: "custom", rows: [] },
-    ];
+  // cards splits the visible skills into the three panels the page shows: the
+  // built-in prompts and rules behind the master switch, the imported catalog
+  // behind its own router switch, and the operator's own skills. Each panel
+  // carries the switch it writes; null means the panel has none.
+  cards() {
+    const buckets = { prompt: [], rules: [], ecc: [], custom: [] };
     for (const skill of this.visible()) {
-      let bucket = buckets[0];
+      let bucket = buckets.prompt;
       if (skill.source === "custom") {
-        bucket = buckets[3];
+        bucket = buckets.custom;
       } else if (skill.source === "ecc") {
-        bucket = buckets[2];
+        bucket = buckets.ecc;
       } else if (skill.hook === "pre-route" || skill.hook === "pre-request") {
-        bucket = buckets[1];
+        bucket = buckets.rules;
       }
-      bucket.rows.push(skill);
+      bucket.push(skill);
     }
-    return buckets.filter((bucket) => bucket.rows.length > 0);
+    const cards = [
+      {
+        key: "builtin",
+        title: t("skills.builtinTitle"),
+        on: this.globalOn,
+        subgroups: [
+          { key: "prompt", title: "", rows: buckets.prompt },
+          { key: "rules", title: t("skills.groupRules"), rows: buckets.rules },
+        ].filter((subgroup) => subgroup.rows.length > 0),
+      },
+    ];
+    if (buckets.custom.length > 0) {
+      cards.push({
+        key: "custom",
+        title: t("skills.groupCustom"),
+        on: null,
+        subgroups: [{ key: "custom", title: "", rows: buckets.custom }],
+      });
+    }
+    cards.push({
+      key: "catalog",
+      title: t("skills.catalogTitle"),
+      on: this.eccOn,
+      subgroups: [{ key: "ecc", title: "", rows: buckets.ecc }],
+    });
+    return cards;
   },
 
-  async toggleGlobal(event) {
+  // toggleCard writes the switch a card owns and puts it back when the save is
+  // refused.
+  async toggleCard(card, event) {
     const box = event.target;
-    if (await this.patch({ globalSkillsEnabled: box.checked })) {
-      this.globalOn = box.checked;
+    const catalog = card.key === "catalog";
+    const key = catalog ? "ecc_auto_skill_routerEnabled" : "globalSkillsEnabled";
+    if (await this.patch({ [key]: box.checked })) {
+      if (catalog) {
+        this.eccOn = box.checked;
+      } else {
+        this.globalOn = box.checked;
+      }
     } else {
       box.checked = !box.checked;
     }
+  },
+
+  eccPercent() {
+    return Math.round(this.eccConfidence * 100) + "%";
+  },
+
+  async setEccConfidence(event) {
+    const value = Math.round(parseFloat(event.target.value) * 20) / 20;
+    if (isNaN(value)) {
+      return;
+    }
+    const clamped = Math.min(0.9, Math.max(0.1, value));
+    this.eccConfidence = clamped;
+    event.target.value = clamped;
+    await this.patch({ ecc_auto_skill_routerConfidence: clamped });
+  },
+
+  async setEccMax(event) {
+    const value = clampInt(event.target.value, 1, 3) ?? 1;
+    this.eccMax = value;
+    event.target.value = value;
+    await this.patch({ ecc_auto_skill_routerMaxSkills: value });
   },
 
   setSearch(event) {

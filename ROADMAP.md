@@ -74,6 +74,10 @@ Status words: **built** (implemented and tested), **partial** (some behavior mis
 | Endpoint and API keys page (base URL, key guard, keys, access list, budgets with their spend, response cache) | built |
 | Dashboard roles: an admin, and standard users who see only their assigned keys and those keys' usage; the Users page and the key owner select | built |
 | Dashboard part 2: combos with auto-suggest and the vision/audio adapter, usage with charts and a live topology, quota, console log, settings and single sign-on, pricing, skills Studio, auto plan, token savers | built |
+| About page: version and commit, an on-demand check of this repository's GitHub releases, a verified self-update (`rllmx upgrade` or the admin action), credits to 9Router and 9Router-Extended, and the MIT license | built |
+| Providers that need no credential: opencode is served through a virtual account, so it needs no key and no login | built |
+| Quota: reset credits name their grant, both providers list their credits and expiry, and an auto-ping runner warms a reset window | built |
+| Maintenance: optimize, checkpoint, analyse and an incremental vacuum of the configuration file, plus the usage store's own jobs | built |
 | Dashboard sign-in: `AUTH_ADMIN_USERNAME` (default `admin`) is the administrator's name, required at sign-in and reserved from every user | built |
 | Single sign-on roles: `AUTH_SSO_ADMIN` names the admins, any other account the provider authenticates is provisioned as a standard user (first password set from that session), `AUTH_MAX_USERS` caps the list; an address taken from an editable claim (`preferred_username`) never signs in as a standard user | built |
 | Web stack (Alpine.js, Tabler CSS, Lucide, Chart.js, Sortable.js: all vendored and pinned) and the `/static` route | built |

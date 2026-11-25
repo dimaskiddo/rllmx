@@ -107,6 +107,20 @@ func (c *ProvidersController) List(ctx contractshttp.Context) contractshttp.Resp
 		}
 		out = append(out, v)
 	}
+	// A provider that needs no credential is served by a virtual account, so it
+	// reads Active on the page without a stored row.
+	stored := map[string]bool{}
+	for _, conn := range conns {
+		stored[conn.Provider] = true
+	}
+	for _, e := range c.Registry.All() {
+		if !e.NoAuth || stored[e.ID] {
+			continue
+		}
+		out = append(out, map[string]any{
+			"id": "noauth", "provider": e.ID, "name": "Public", "isActive": true, "noAuth": true,
+		})
+	}
 	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"connections": out})
 }
 

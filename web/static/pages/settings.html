@@ -11,19 +11,17 @@
       <h2 class="rl-card-title" x-t="settings.security"></h2>
     </div>
     <div class="card-body">
-      <div class="rl-fields">
-        <div>
-          <div class="form-check form-switch rl-switch">
-            <input class="form-check-input" type="checkbox" id="require-login" role="switch" x-bind:checked="form.requireLogin" x-on:change="setBool('form.requireLogin', $event)">
-            <label class="form-check-label" for="require-login" x-t="settings.requireLogin"></label>
-          </div>
-          <p class="rl-hint" x-t="settings.requireLoginHint"></p>
-          <p class="rl-warning" x-show="!form.requireLogin"><span class="rl-icon" x-icon="triangle-exclamation-point"></span><span x-t="settings.loginOffWarning"></span></p>
+      <div>
+        <div class="form-check form-switch rl-switch">
+          <input class="form-check-input" type="checkbox" id="require-login" role="switch" x-bind:checked="form.requireLogin" x-on:change="setBool('form.requireLogin', $event)">
+          <label class="form-check-label" for="require-login" x-t="settings.requireLogin"></label>
         </div>
-        <div class="rl-password-row">
-          <div class="rl-list-title" x-text="settings.defaultPassword === true ? label('settings.passwordDefault') : label('settings.passwordSet')"></div>
-          <button type="button" class="btn btn-sm" x-on:click="$dispatch('open-password')" x-text="settings.defaultPassword === true ? label('settings.setPassword') : label('settings.changePassword')"></button>
-        </div>
+        <p class="rl-hint" x-t="settings.requireLoginHint"></p>
+        <p class="rl-warning" x-show="!form.requireLogin"><span class="rl-icon" x-icon="triangle-exclamation-point"></span><span x-t="settings.loginOffWarning"></span></p>
+      </div>
+      <div class="rl-password-row">
+        <div class="rl-list-title" x-text="settings.defaultPassword === true ? label('settings.passwordDefault') : label('settings.passwordSet')"></div>
+        <button type="button" class="btn btn-sm" x-on:click="$dispatch('open-password')" x-text="settings.defaultPassword === true ? label('settings.setPassword') : label('settings.changePassword')"></button>
       </div>
       <div class="rl-actions">
         <button type="button" class="btn btn-primary" x-bind:disabled="busy === true" x-on:click="savedSecurity()" x-t="common.save"></button>

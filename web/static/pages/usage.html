@@ -139,9 +139,9 @@
         </div>
       </div>
       <div class="card-body">
-        <p class="rl-hint" x-show="rows().length === 0" x-t="usage.empty"></p>
+        <p class="rl-hint" x-show="groups().length === 0" x-t="usage.empty"></p>
         <div class="rl-table-wrap">
-          <table class="table" x-show="rows().length > 0">
+          <table class="table" x-show="groups().length > 0">
             <caption class="visually-hidden" x-t="usage.breakdown"></caption>
             <thead>
               <tr>
@@ -153,18 +153,32 @@
                 <th scope="col" class="text-end" x-bind:aria-sort="sortLabel(costOrTotal())"><button type="button" class="btn btn-sm btn-ghost" x-on:click="setSort(costOrTotal())" x-text="costMode ? label('usage.cost') : label('usage.totalTokens')"></button></th>
               </tr>
             </thead>
-            <tbody>
-              <template x-for="row in rows()" x-bind:key="row.key">
+            <template x-for="row in groups()" x-bind:key="row.key">
+              <tbody>
                 <tr>
-                  <td><span x-text="row.name"></span><span class="text-secondary" x-show="row.detail !== ''" x-text="row.detail !== '' ? ' · ' + row.detail : ''"></span></td>
+                  <td>
+                    <button type="button" class="rl-disclosure" x-bind:aria-expanded="isOpen(row) ? 'true' : 'false'" x-on:click="toggle(row)">
+                      <span x-text="row.name"></span><span class="text-secondary" x-show="row.detail !== ''" x-text="row.detail !== '' ? ' · ' + row.detail : ''"></span>
+                    </button>
+                  </td>
                   <td class="text-end" x-text="num(row.requests)"></td>
                   <td class="text-end" x-text="num(row.promptTokens)"></td>
                   <td class="text-end" x-text="num(row.cachedTokens)"></td>
                   <td class="text-end" x-text="num(row.completionTokens)"></td>
                   <td class="text-end" x-text="costMode ? money(row.cost) : num(totalOf(row))"></td>
                 </tr>
-              </template>
-            </tbody>
+                <template x-for="item in openItems(row)" x-bind:key="item.key">
+                  <tr class="rl-usage-item">
+                    <td><span x-text="item.name"></span><span class="text-secondary" x-show="item.detail !== ''" x-text="item.detail !== '' ? ' · ' + item.detail : ''"></span></td>
+                    <td class="text-end" x-text="num(item.requests)"></td>
+                    <td class="text-end" x-text="num(item.promptTokens)"></td>
+                    <td class="text-end" x-text="num(item.cachedTokens)"></td>
+                    <td class="text-end" x-text="num(item.completionTokens)"></td>
+                    <td class="text-end" x-text="costMode ? money(item.cost) : num(totalOf(item))"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </template>
           </table>
         </div>
       </div>
@@ -190,11 +204,12 @@
       <div class="card-body">
         <p class="rl-hint" x-show="logRows().length === 0" x-t="usage.logEmpty"></p>
         <div class="rl-table-wrap">
-          <table class="table table-sm" x-show="logRows().length > 0">
+          <table class="table table-sm rl-log-table" x-show="logRows().length > 0">
             <caption class="visually-hidden" x-t="usage.logsTab"></caption>
             <thead>
               <tr>
                 <th scope="col" x-t="usage.time"></th>
+                <th scope="col" x-t="usage.apiKey"></th>
                 <th scope="col" x-t="usage.model"></th>
                 <th scope="col" x-t="usage.provider"></th>
                 <th scope="col" x-t="usage.account"></th>
@@ -208,6 +223,7 @@
               <template x-for="(row, index) in logRows()" x-bind:key="index">
                 <tr>
                   <td x-text="row.time"></td>
+                  <td x-text="row.key"></td>
                   <td x-text="row.model"></td>
                   <td x-text="row.provider"></td>
                   <td x-text="row.account"></td>

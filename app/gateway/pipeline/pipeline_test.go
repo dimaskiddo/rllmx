@@ -150,6 +150,7 @@ func newRig(t *testing.T, steps ...tests.Reply) *rig {
 		`"oauth":{"flow":"code-pkce","authorizeUrl":"https://a.example/authorize","tokenUrl":"https://a.example/token","scope":"s","redirect":"local","exchange":"json",` +
 		`"refresh":{"encoding":"json","leadSeconds":300},"identity":{"originator":"codex_cli_rs","User-Agent":"codex_cli_rs/9.9.9","version":"9.9.9"},` +
 		`"session":{"name":"session_id","keyed":true},"account":{"name":"ChatGPT-Account-ID","from":["workspaceId","chatgptAccountId","accountId"]}},"models":[{"id":"x1"}]}`
+	free := `{"id":"free","category":"free","noAuth":true,"display":{"name":"F"},"transport":{"baseUrl":"` + up.URL + `/v1/chat/completions","format":"openai"},"models":[{"id":"fm"}]}`
 	wire := `{"id":"wire","category":"apikey","display":{"name":"W"},"transport":{"baseUrl":"` + up.URL + `/v1/chat/completions","format":"openai","urlSuffix":"?v=1",` +
 		`"headers":{"X-Title":"rllmx"},"retry":{"429":{"attempts":1,"delayMs":10}},"reasoningInject":"all"},` +
 		`"auth":{"scheme":"bearer","header":"Authorization"},"models":[{"id":"short","upstreamId":"vendor/long-name"}]}`
@@ -212,7 +213,7 @@ func newRig(t *testing.T, steps ...tests.Reply) *rig {
 		"data/gcl.json": {Data: []byte(gcl)}, "data/antigravity.json": {Data: []byte(agy)}, "data/cbn.json": {Data: []byte(cbn)}, "data/mmx.json": {Data: []byte(mmx)},
 		"data/cdx.json": {Data: []byte(cdx)}, "data/grk.json": {Data: []byte(grk)},
 		"data/forced.json": {Data: []byte(forced)}, "data/gem.json": {Data: []byte(gem)}, "data/sub.json": {Data: []byte(sub)}, "data/subx.json": {Data: []byte(subx)},
-		"data/wire.json": {Data: []byte(wire)}, "data/acct.json": {Data: []byte(acct)},
+		"data/wire.json": {Data: []byte(wire)}, "data/acct.json": {Data: []byte(acct)}, "data/free.json": {Data: []byte(free)},
 	}, "data")
 	if err != nil {
 		t.Fatal(err)
@@ -285,6 +286,26 @@ func (r *rig) last() analytics.Record {
 }
 
 func auth(c tests.Call) string { return c.Header.Get("Authorization") }
+
+// A provider that needs no credential is served through a virtual account, so
+// a request reaches it with nothing stored and no account locked.
+func TestAProviderThatNeedsNoCredentialIsServed(t *testing.T) {
+	r := newRig(t, tests.Reply{ContentType: "application/json", Body: okJSON})
+	out, _ := r.do("/v1/chat/completions", `{"model":"free/fm","messages":[{"role":"user","content":"hi"}]}`)
+	if out.Status != 200 {
+		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+	calls := r.up.Calls()
+	if len(calls) != 1 || calls[0].Path != "/v1/chat/completions" {
+		t.Fatalf("calls %v", calls)
+	}
+	if got := auth(calls[0]); got != "" {
+		t.Fatalf("a no-credential provider carried %q", got)
+	}
+	if row := r.last(); row.ConnectionID != "noauth" {
+		t.Fatalf("the row names %q", row.ConnectionID)
+	}
+}
 
 func TestNonStreamAnswerAndRow(t *testing.T) {
 	r := newRig(t, tests.Reply{ContentType: "application/json", Body: okJSON})

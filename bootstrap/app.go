@@ -3,7 +3,11 @@ package bootstrap
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	nethttp "net/http"
+	"os"
+	"time"
 
 	"github.com/goravel/framework/contracts/console"
 	contractsschema "github.com/goravel/framework/contracts/database/schema"
@@ -21,6 +25,7 @@ import (
 	"rllmx/app/http/controllers"
 	"rllmx/app/http/middleware"
 	"rllmx/app/platform/network"
+	"rllmx/app/platform/upgrade"
 	"rllmx/app/providers"
 	"rllmx/app/store/data"
 	"rllmx/app/store/repository"
@@ -81,6 +86,12 @@ func declareRoutes(version, commit string) {
 	dir := providers.DataOf(facades.App()).Settings.DataDir
 	skills := h.Skills
 	base.Settings = &controllers.SettingsController{DB: db, Auth: h.Auth, Skills: skills, Secure: h.Trust.SecureRequest}
+	base.About = &controllers.AboutController{
+		Version: version, Commit: commit,
+		Fetch:   guardedFetch(version, "application/vnd.github+json", 64<<10),
+		Upgrade: func(ctx context.Context) (string, error) { return installRelease(version, ctx) },
+		Restart: restartThisBinary,
+	}
 	base.Logs = &controllers.LogsController{Book: config.ConsoleLog()}
 	base.Keys = keysController(h, db)
 	clientRoutes(&base, h, db)
@@ -161,6 +172,52 @@ func dashboardRoutes(base *routes.Base, h *providers.HTTP, db func() *repository
 	}
 	base.Skills = &controllers.SkillsController{DB: db, Dir: dir, Reg: skills, Log: facades.Log()}
 	base.Users = &controllers.UsersController{Users: h.Auth.Users, Pass: h.Auth.Pass, Log: facades.Log()}
+}
+
+// guardedFetch reads one https address through the guarded client. The cap is
+// the most it will hold; a release archive needs a large one, a release answer
+// a small one.
+func guardedFetch(version, accept string, cap int64) func(context.Context, string) ([]byte, error) {
+	client := network.NewClient(network.Options{
+		ConnectTimeout: 10 * time.Second, MaxRedirects: 4, BodyCap: cap, DisableKeepAlives: true,
+	})
+	return func(ctx context.Context, address string) ([]byte, error) {
+		req, err := nethttp.NewRequestWithContext(ctx, nethttp.MethodGet, address, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Accept", accept)
+		req.Header.Set("User-Agent", "rllmx/"+version)
+		res, err := client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer res.Body.Close()
+		if res.StatusCode != nethttp.StatusOK {
+			return nil, fmt.Errorf("fetch: status %d", res.StatusCode)
+		}
+		return io.ReadAll(io.LimitReader(res.Body, cap))
+	}
+}
+
+// installRelease replaces this binary with the newest release for this platform.
+func installRelease(version string, ctx context.Context) (string, error) {
+	res, err := upgrade.Install(ctx, upgrade.Options{
+		Version: version, Fetch: guardedFetch(version, "application/octet-stream", 64<<20),
+	})
+	if err != nil {
+		return "", err
+	}
+	return res.Latest, nil
+}
+
+// restartThisBinary replaces the running process with the swapped binary.
+func restartThisBinary() {
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	_ = upgrade.Restart(exe)
 }
 
 // headroomClient builds the guarded client for one sidecar host; the address is

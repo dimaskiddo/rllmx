@@ -22,8 +22,8 @@ export const loginMethods = {
   resetLogin(kind) {
     this.clearPoll();
     this.login = {
-      open: true, kind: kind, busy: false, error: "", state: "", authUrl: "", paste: false, input: "",
-      userCode: "", verificationUri: "", variant: "", mode: "",
+      open: true, kind: kind, busy: false, error: "", state: "", authUrl: "", input: "",
+      userCode: "", verificationUri: "", variant: "", mode: "", flow: "",
       app: { baseUrl: "", clientId: "", clientSecret: "" },
       token: "", baseUrl: "", email: "", fields: {}, bulk: "", results: null,
     };
@@ -36,6 +36,7 @@ export const loginMethods = {
       return;
     }
     const offer = this.loginOffer();
+    this.login.flow = offer.flow || "";
     if (offer.flow === "device") {
       this.startDevice();
       return;
@@ -79,6 +80,16 @@ export const loginMethods = {
     }
   },
 
+  // startLogin runs the offer the dialog opened with: a device offer asks for
+  // its code again, never a browser login it does not have.
+  startLogin() {
+    if (this.login.flow === "device") {
+      this.startDevice();
+      return;
+    }
+    this.startCode();
+  },
+
   async startCode() {
     const run = this.loginRun;
     this.login.error = "";
@@ -99,7 +110,6 @@ export const loginMethods = {
       }
       this.login.state = out.state;
       this.login.authUrl = out.authUrl;
-      this.login.paste = out.paste === true;
       this.login.mode = "code";
       this.openTab(out.authUrl);
       this.pollStatus(Date.now() + 600000, run);

@@ -15,7 +15,7 @@ func CommandsAllowlist() []string {
 		"package:install", "package:uninstall", "build", "vendor:publish", "env:encrypt", "env:decrypt", "up", "down",
 		"make:command", "make:controller", "make:filter", "make:middleware", "make:migration", "make:package",
 		"make:provider", "make:request", "make:rule", "make:test", "make:view",
-		"health", "version",
+		"health", "version", "upgrade",
 		"db:backup", "db:check", "db:migrate", "db:vacuum", "db:import-analytics", "db:import-config", "db:export-plain",
 		"keys:create", "keys:list", "keys:revoke {id}", "password:reset", "auth:mode",
 		"skills:sync",

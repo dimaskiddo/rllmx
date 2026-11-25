@@ -22,7 +22,7 @@ The order is RTK, Headroom, caveman, ponytail, custom prompt. Each prompt is app
 
 **Activation modes.** `cavemanRoutingMode` and `ponytailRoutingMode` take `always` or `smart`. The defaults are the extended fork's: caveman `always`, ponytail `smart`.
 
-In `smart` mode the latest user text is scored against that saver's own triggers, keywords and description. The instruction is injected only above a threshold: 0.35 for caveman, 0.30 for ponytail. Greetings and bare arithmetic never match, and the scorer reads at most 4 KiB and 400 tokens.
+In `smart` mode the latest user text is scored against that saver's own triggers, keywords and description. The instruction is injected only above a threshold: 0.35 for caveman, 0.30 for ponytail. Greetings and bare arithmetic never match, and the scorer reads at most 4 KiB and 400 tokens. A saver that was on but did not match, and RTK with no tool text to compact, are named in the request's feature line as `CAVEMAN skipped`, `PONYTAIL skipped` and `RTK skipped`, so an absent saver is not mistaken for a disabled one; the usage row still lists only the savers that acted.
 
 **RTK details.** A block under 500 bytes or over 10 MiB is passed through, and the detector reads only its first 1 KiB. The most specific shape wins, and a filter's output is accepted only when it is non-empty and strictly shorter than its input. A tool result the client marked as failed is never touched.
 

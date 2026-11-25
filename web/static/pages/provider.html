@@ -75,20 +75,21 @@
         </li>
         <template x-for="(conn, index) in connections" x-bind:key="conn.id">
           <li class="rl-list-row" x-bind:data-paused="conn.isActive === false ? 'yes' : 'no'">
-            <input class="form-check-input" type="checkbox" x-bind:checked="isSelected(conn.id)" x-on:change="toggleSelect(conn.id)" x-bind:aria-label="title(conn)">
+            <input class="form-check-input" type="checkbox" x-show="conn.noAuth !== true" x-bind:checked="isSelected(conn.id)" x-on:change="toggleSelect(conn.id)" x-bind:aria-label="title(conn)">
             <div class="rl-list-main">
               <div class="rl-list-title">
                 <span x-text="title(conn)"></span>
-                <span class="badge" x-text="statusName(status(conn))"></span>
+                <span class="badge" x-bind:class="statusClass(conn)" x-text="statusName(status(conn))"></span>
                 <span class="badge" x-text="authLabel(conn)"></span>
                 <span class="badge badge-err" x-show="tag(conn)" x-text="tagLabel(tag(conn))"></span>
               </div>
               <p class="rl-hint" x-show="subtitle(conn)" x-text="subtitle(conn)"></p>
               <p class="rl-error" x-show="conn.lastError" x-bind:title="formatDate(conn.lastErrorAt)" x-text="conn.lastError"></p>
               <p class="rl-hint" x-show="cooldown(conn)"><span class="rl-icon" x-icon="clock"></span><span x-t="provider.cooldown"></span><span x-text="cooldown(conn)"></span></p>
-              <p class="rl-hint" x-bind:title="label('provider.priorityHint')"><span x-t="provider.priorityLabel"></span> <span x-text="conn.priority"></span><span x-show="conn.globalPriority !== undefined && conn.globalPriority !== null"> · <span x-t="provider.auto"></span> <span x-text="conn.globalPriority"></span></span></p>
+              <p class="rl-hint" x-show="conn.noAuth !== true" x-bind:title="label('provider.priorityHint')"><span x-t="provider.priorityLabel"></span> <span x-text="conn.priority"></span><span x-show="conn.globalPriority !== undefined && conn.globalPriority !== null"> · <span x-t="provider.auto"></span> <span x-text="conn.globalPriority"></span></span></p>
+              <p class="rl-hint" x-show="conn.noAuth === true" x-t="provider.noAuth"></p>
             </div>
-            <div class="rl-list-actions">
+            <div class="rl-list-actions" x-show="conn.noAuth !== true">
               <button type="button" class="btn btn-sm btn-ghost" x-bind:disabled="busy('move')" x-on:click="move(index, -1)" x-tip="provider.moveUp"><span class="rl-icon" x-icon="arrow-up"></span><span class="visually-hidden" x-t="provider.moveUp"></span></button>
               <button type="button" class="btn btn-sm btn-ghost" x-bind:disabled="busy('move')" x-on:click="move(index, 1)" x-tip="provider.moveDown"><span class="rl-icon" x-icon="arrow-down"></span><span class="visually-hidden" x-t="provider.moveDown"></span></button>
               <button type="button" class="btn btn-sm btn-ghost" x-bind:disabled="busy('test:' + conn.id)" x-on:click="test(conn)" x-tip="provider.test"><span class="rl-icon" x-icon="activity"></span><span class="visually-hidden" x-t="provider.test"></span></button>
@@ -180,6 +181,7 @@
   </section>
 
   <dialog class="rl-dialog" x-ref="resultsDlg" aria-labelledby="dlg-resultsDlg-title">
+    <button type="button" class="btn btn-sm btn-ghost rl-dialog-close" x-tip="common.close" x-on:click="$el.closest('dialog').close()"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.close"></span></button>
     <h2 id="dlg-resultsDlg-title" x-t="provider.modelsTitle"></h2>
     <ul class="rl-list">
       <template x-for="row in (results ? results.results : [])" x-bind:key="row.modelId || row.model">
@@ -198,6 +200,7 @@
   </dialog>
 
   <dialog class="rl-dialog" x-ref="addDlg" x-on:close="forgetAdd()" aria-labelledby="dlg-addDlg-title">
+    <button type="button" class="btn btn-sm btn-ghost rl-dialog-close" x-tip="common.close" x-on:click="$el.closest('dialog').close()"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.close"></span></button>
     <form x-on:submit.prevent="saveAdd()">
       <h2 id="dlg-addDlg-title" x-t="provider.addKeyTitle"></h2>
       <p class="rl-hint" x-t="provider.addKeyHint"></p>
@@ -248,6 +251,7 @@
   </dialog>
 
   <dialog class="rl-dialog" x-ref="bulkDlg" aria-labelledby="dlg-bulkDlg-title">
+    <button type="button" class="btn btn-sm btn-ghost rl-dialog-close" x-tip="common.close" x-on:click="$el.closest('dialog').close()"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.close"></span></button>
     <form x-on:submit.prevent="runBulk()">
       <h2 id="dlg-bulkDlg-title" x-t="provider.bulkTitle"></h2>
       <p class="rl-hint" x-t="provider.bulkHint"></p>
@@ -271,6 +275,7 @@
   </dialog>
 
   <dialog class="rl-dialog" x-ref="editDlg" x-on:close="forgetEdit()" aria-labelledby="dlg-editDlg-title">
+    <button type="button" class="btn btn-sm btn-ghost rl-dialog-close" x-tip="common.close" x-on:click="$el.closest('dialog').close()"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.close"></span></button>
     <form x-on:submit.prevent="saveEdit()" x-show="edit">
       <h2 id="dlg-editDlg-title" x-t="provider.editTitle"></h2>
       <label class="form-label" for="edit-name" x-t="provider.name"></label>
@@ -322,6 +327,7 @@
   </dialog>
 
   <dialog class="rl-dialog" x-ref="nodeDlg" aria-labelledby="dlg-nodeDlg-title">
+    <button type="button" class="btn btn-sm btn-ghost rl-dialog-close" x-tip="common.close" x-on:click="$el.closest('dialog').close()"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.close"></span></button>
     <form x-on:submit.prevent="saveNode()">
       <h2 id="dlg-nodeDlg-title" x-t="provider.nodeEdit"></h2>
       <label class="form-label" for="node-edit-name" x-t="providers.name"></label>
@@ -346,6 +352,7 @@
   </dialog>
 
   <dialog class="rl-dialog" x-ref="aliasDlg" aria-labelledby="dlg-aliasDlg-title">
+    <button type="button" class="btn btn-sm btn-ghost rl-dialog-close" x-tip="common.close" x-on:click="$el.closest('dialog').close()"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.close"></span></button>
     <form x-on:submit.prevent="saveAlias()">
       <h2 id="dlg-aliasDlg-title" x-t="models.aliasTitle"></h2>
       <p class="rl-hint"><code class="rl-code" x-text="aliasForm.open ? modelLabel(aliasForm.model) : ''"></code></p>
@@ -361,6 +368,7 @@
   </dialog>
 
   <dialog class="rl-dialog" x-ref="modelDlg" aria-labelledby="dlg-modelDlg-title">
+    <button type="button" class="btn btn-sm btn-ghost rl-dialog-close" x-tip="common.close" x-on:click="$el.closest('dialog').close()"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.close"></span></button>
     <form x-on:submit.prevent="addCustomModel()">
       <h2 id="dlg-modelDlg-title" x-t="models.addTitle"></h2>
       <label class="form-label" for="model-id" x-t="models.id"></label>
@@ -384,10 +392,12 @@
   </dialog>
 
   <dialog class="rl-dialog" x-ref="loginDlg" x-on:close="loginClosed()" aria-labelledby="dlg-loginDlg-title">
+    <button type="button" class="btn btn-sm btn-ghost rl-dialog-close" x-tip="common.close" x-on:click="$el.closest('dialog').close()"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.close"></span></button>
     <h2 id="dlg-loginDlg-title" x-t="provider.loginTitle"></h2>
 
     <div x-show="login.kind === 'oauth'">
       <div x-show="login.mode === ''">
+        <p class="rl-hint" x-show="loginOffer() && loginOffer().flow === 'device'" x-t="provider.loginDeviceHint"></p>
         <div x-show="loginOffer() && loginOffer().variants && loginOffer().variants.length > 0">
           <label class="form-label" for="login-variant" x-t="provider.loginVariant"></label>
           <select class="form-select" id="login-variant" x-on:change="setField('login.variant', $event)">
@@ -402,24 +412,20 @@
           <label class="form-label" for="login-client-secret" x-t="provider.loginClientSecret"></label>
           <input class="form-control" id="login-client-secret" type="password" autocomplete="off" x-bind:value="login.app.clientSecret" x-on:input="setLoginApp('clientSecret', $event)">
         </div>
-        <div class="rl-inline">
-          <button type="button" class="btn btn-primary" x-bind:disabled="login.busy" x-on:click="startCode()" x-t="provider.loginOpen"></button>
-        </div>
       </div>
 
       <div x-show="login.mode === 'code'">
         <p class="rl-hint" x-t="provider.loginWaiting"></p>
+        <label class="form-label" for="login-url" x-t="provider.loginAddress"></label>
         <div class="rl-inline">
-          <code class="rl-code rl-key" x-text="login.authUrl"></code>
-          <button type="button" class="btn btn-sm" x-on:click="openTab(login.authUrl)" x-tip="provider.loginOpen"><span class="rl-icon" x-icon="external-link"></span><span class="visually-hidden" x-t="provider.loginOpen"></span></button>
-          <button type="button" class="btn btn-sm" x-on:click="copyText(login.authUrl)" x-tip="common.copy"><span class="rl-icon" x-icon="copy"></span><span class="visually-hidden" x-t="common.copy"></span></button>
+          <input class="form-control" id="login-url" readonly x-bind:value="login.authUrl" x-on:focus="$event.target.select()">
+          <button type="button" class="btn btn-sm" x-on:click="copyText(login.authUrl)" x-t="common.copy"></button>
         </div>
-        <div x-show="login.paste">
-          <label class="form-label" for="login-paste" x-t="provider.loginPaste"></label>
+        <label class="form-label" for="login-paste" x-t="provider.loginPaste"></label>
+        <p class="rl-hint" x-t="provider.loginPasteHint"></p>
+        <div class="rl-inline">
           <input class="form-control" id="login-paste" x-bind:value="login.input" x-on:input="setField('login.input', $event)">
-          <div class="rl-inline">
-            <button type="button" class="btn" x-bind:disabled="login.busy" x-on:click="pasteLogin()" x-t="provider.loginPasteAction"></button>
-          </div>
+          <button type="button" class="btn" x-bind:disabled="login.busy" x-on:click="pasteLogin()" x-t="provider.loginPasteAction"></button>
         </div>
       </div>
 
@@ -428,7 +434,6 @@
         <div class="rl-inline">
           <code class="rl-code rl-key" x-text="login.userCode"></code>
           <button type="button" class="btn btn-sm" x-on:click="copyText(login.userCode)" x-tip="common.copy"><span class="rl-icon" x-icon="copy"></span><span class="visually-hidden" x-t="common.copy"></span></button>
-          <button type="button" class="btn btn-sm" x-on:click="openTab(login.verificationUri)"><span class="rl-icon" x-icon="external-link"></span><span x-t="provider.loginOpen"></span></button>
         </div>
         <p class="rl-hint" x-t="provider.loginWaiting"></p>
       </div>
@@ -475,6 +480,9 @@
 
     <p class="rl-error" x-show="login.error" x-text="login.error"></p>
     <div class="rl-dialog-actions">
+      <button type="button" class="btn btn-primary" x-show="login.kind === 'oauth' && login.mode === ''" x-bind:disabled="login.busy" x-on:click="startLogin()" x-t="provider.loginOpen"></button>
+      <button type="button" class="btn btn-primary" x-show="login.kind === 'oauth' && login.mode === 'code' && login.authUrl" x-on:click="openTab(login.authUrl)"><span class="rl-icon" x-icon="external-link"></span><span x-t="provider.loginOpen"></span></button>
+      <button type="button" class="btn btn-primary" x-show="login.kind === 'oauth' && login.mode === 'device' && login.verificationUri" x-on:click="openTab(login.verificationUri)"><span class="rl-icon" x-icon="external-link"></span><span x-t="provider.loginOpen"></span></button>
       <button type="button" class="btn" x-on:click="closeLogin()" x-t="common.close"></button>
     </div>
   </dialog>

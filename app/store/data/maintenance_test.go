@@ -12,7 +12,7 @@ import (
 	"rllmx/tests/store"
 )
 
-func TestTheMainStoreJobsAreOptimizeAndCheckpointEverySixHours(t *testing.T) {
+func TestTheMainStoreJobsAreUpkeepEverySixHours(t *testing.T) {
 	jobs := MainJobs(func() *repository.Store { return store.Migrated(t).Store })
 	names := map[string]Job{}
 	for _, j := range jobs {
@@ -21,7 +21,7 @@ func TestTheMainStoreJobsAreOptimizeAndCheckpointEverySixHours(t *testing.T) {
 			t.Errorf("job %s is incomplete: %+v", j.Name, j)
 		}
 	}
-	for _, want := range []string{"optimize", "checkpoint"} {
+	for _, want := range []string{"optimize", "checkpoint", "analyze", "incremental-vacuum"} {
 		if _, ok := names[want]; !ok {
 			t.Errorf("job %s missing", want)
 		}

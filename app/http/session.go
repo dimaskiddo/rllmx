@@ -40,6 +40,7 @@ var userRoutes = map[string]bool{
 	nethttp.MethodGet + " /api/usage/logs":             true,
 	nethttp.MethodGet + " /api/usage/request-logs":     true,
 	nethttp.MethodGet + " /api/usage/providers":        true,
+	nethttp.MethodGet + " /api/about/update":           true,
 	nethttp.MethodPost + " /api/locale":                true,
 }
 

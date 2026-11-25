@@ -9,6 +9,22 @@ import { clampInt } from "/static/js/ui/fields.js";
 
 const quotaPageSize = 10;
 
+// quotaRank orders the windows a provider reports: the shortest first, then the
+// week, then the month. A map loses the reader's order, so the name is read.
+function quotaRank(key) {
+  const k = key.toLowerCase();
+  if (k.includes("rolling") || k.includes("hourly") || k.includes("session") || k.includes("5h")) {
+    return 0;
+  }
+  if (k.includes("weekly") || k.includes("7d")) {
+    return 1;
+  }
+  if (k.includes("monthly") || k.includes("30d")) {
+    return 2;
+  }
+  return 3;
+}
+
 // readQuota reads one connection's limits without the shared api() helper: a
 // 401 here is the provider refusing the stored credential, not the dashboard
 // session ending, and api() would send the browser to the sign-in page.
@@ -46,6 +62,7 @@ window.Alpine.data("quotaPage", () => Object.assign({
   gone: false,
   pass: 0,
   resetting: {},
+  expiry: { open: false, provider: "", name: "", busy: false, error: "", rows: [] },
 
   init() {
     this.load();
@@ -140,7 +157,7 @@ window.Alpine.data("quotaPage", () => Object.assign({
       currency: row.currency || "",
       unit: row.unit || "",
       resetAt: row.resetAt || "",
-    }));
+    })).sort((a, b) => quotaRank(a.key) - quotaRank(b.key));
   },
 
   shown(conn) {
@@ -213,7 +230,95 @@ window.Alpine.data("quotaPage", () => Object.assign({
   },
 
   canReset(conn) {
-    return (conn.provider === "claude" || conn.provider === "codex") && this.resetCredits(conn) > 0;
+    if (this.resetCredits(conn) <= 0) {
+      return false;
+    }
+    if (conn.provider === "claude") {
+      return this.grantID(conn) !== "";
+    }
+    return conn.provider === "codex";
+  },
+
+  // grantID is the refill a reset names: the service's next grant, else the
+  // first grant that still has uses left.
+  grantID(conn) {
+    const reading = this.readings[conn.id];
+    if (!reading || !reading.resetCredits) {
+      return "";
+    }
+    if (reading.resetCredits.nextGrantId) {
+      return reading.resetCredits.nextGrantId;
+    }
+    for (const credit of reading.resetCredits.credits || []) {
+      if (credit.id && credit.paused !== true && (credit.resetsLeft || 0) > 0) {
+        return credit.id;
+      }
+    }
+    return "";
+  },
+
+  canExpiry(conn) {
+    return conn.provider === "claude" || conn.provider === "codex";
+  },
+
+  // left says how long a timestamp is away, in days and hours.
+  left(value) {
+    if (!value) {
+      return "";
+    }
+    const ms = new Date(value).getTime() - Date.now();
+    if (isNaN(ms) || ms <= 0) {
+      return "";
+    }
+    const hours = Math.floor(ms / 3600000);
+    const days = Math.floor(hours / 24);
+    return days > 0 ? days + "d " + (hours % 24) + "h" : hours + "h";
+  },
+
+  creditWord(credit) {
+    if (credit.usableNow === true) {
+      return t("quota.usableNow");
+    }
+    if (credit.paused === true) {
+      return t("quota.paused");
+    }
+    return (credit.resetsLeft || 0) > 0 ? t("quota.creditAvailable") : t("quota.creditExpired");
+  },
+
+  async openExpiry(conn) {
+    this.expiry = { open: true, provider: conn.provider, name: this.connectionName(conn), busy: true, error: "", rows: [] };
+    this.$refs.expiry.showModal();
+    try {
+      if (conn.provider === "codex") {
+        const out = await api("/api/usage/" + encodeURIComponent(conn.id) + "/codex-reset-credits");
+        this.expiry.rows = (out.credits || []).map((credit) => ({
+          status: credit.status || "",
+          grantedAt: this.formatDate(credit.grantedAt),
+          expiresAt: this.formatDate(credit.expiresAt),
+          remaining: this.left(credit.expiresAt),
+        }));
+      } else {
+        const reading = this.readings[conn.id] || emptyReading();
+        const credits = (reading.resetCredits && reading.resetCredits.credits) || [];
+        this.expiry.rows = credits.map((credit) => ({
+          status: this.creditWord(credit),
+          label: credit.label || credit.id || "",
+          left: (credit.resetsLeft || 0) + " / " + (credit.resetsTotal || 0),
+          refills: (credit.clears || []).join(", "),
+          useBy: this.formatDate(credit.endsAt),
+          remaining: this.left(credit.endsAt),
+        }));
+      }
+    } catch (err) {
+      this.expiry.error = err.message;
+    } finally {
+      this.expiry.busy = false;
+    }
+  },
+
+  closeExpiry() {
+    this.$refs.expiry.close();
+    this.expiry.open = false;
   },
 
   async reset(conn) {
@@ -225,7 +330,12 @@ window.Alpine.data("quotaPage", () => Object.assign({
     this.resetting = Object.assign({}, this.resetting, { [conn.id]: true });
     try {
       if (conn.provider === "claude") {
-        await api("/api/usage/" + encodeURIComponent(conn.id) + "/claude-reset", { method: "POST", body: {} });
+        const grantId = this.grantID(conn);
+        if (!grantId) {
+          toast().error(t("quota.noGrant"));
+          return;
+        }
+        await api("/api/usage/" + encodeURIComponent(conn.id) + "/claude-reset", { method: "POST", body: { grantId: grantId } });
       } else {
         await api("/api/usage/" + encodeURIComponent(conn.id) + "/codex-reset-credits", { method: "POST", body: {} });
       }

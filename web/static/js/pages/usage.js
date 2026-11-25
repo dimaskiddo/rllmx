@@ -15,6 +15,40 @@ function emptyStats() {
   };
 }
 
+// groupBy folds one flat server entry into its summary row. The server keys
+// an entry per model and provider, so a key, account, model or endpoint arrives
+// several times and the summary is their sum.
+const groupBy = {
+  byModel: {
+    key: (e) => e.rawModel,
+    name: (e) => e.rawModel,
+    detail: () => "",
+    itemName: (e) => e.provider,
+    itemDetail: (e) => e.rawModel,
+  },
+  byAccount: {
+    key: (e) => e.connectionId || e.accountName,
+    name: (e) => e.accountName,
+    detail: (e) => e.provider,
+    itemName: (e) => e.provider,
+    itemDetail: (e) => e.rawModel,
+  },
+  byApiKey: {
+    key: (e) => e.apiKeyKey,
+    name: (e) => e.keyName,
+    detail: (e) => e.apiKeyMasked,
+    itemName: (e) => e.provider,
+    itemDetail: (e) => e.rawModel,
+  },
+  byEndpoint: {
+    key: (e) => e.endpoint,
+    name: (e) => e.endpoint,
+    detail: () => "",
+    itemName: (e) => e.provider,
+    itemDetail: (e) => e.rawModel,
+  },
+};
+
 function parseLog(line) {
   const parts = line.split(" | ");
   return {
@@ -22,10 +56,11 @@ function parseLog(line) {
     model: parts[1] || "",
     provider: parts[2] || "",
     account: parts[3] || "",
-    inTokens: parts[4] || "",
-    outTokens: parts[5] || "",
-    status: parts[6] || "",
-    extra: parts.slice(7).join(" | "),
+    key: parts[4] || "",
+    inTokens: parts[5] || "",
+    outTokens: parts[6] || "",
+    status: parts[7] || "",
+    extra: parts.slice(8).join(" | "),
   };
 }
 
@@ -40,6 +75,7 @@ window.Alpine.data("usagePage", () => Object.assign({
   metric: "tokens",
   barMetric: "tokens",
   group: "byModel",
+  open: {},
   costMode: false,
   sortKey: "requests",
   sortDesc: true,
@@ -181,42 +217,71 @@ window.Alpine.data("usagePage", () => Object.assign({
     }
   },
 
-  // rows is the table for the chosen grouping. The server keeps one key entry
-  // per model and provider, and the table shows only the key, so entries naming
-  // the same key are summed into a single row.
-  rows() {
-    const table = this.stats[this.group] || {};
+  // groups is the breakdown under the chosen grouping: one summary row per key,
+  // account, model or endpoint, each holding the models it spent on.
+  groups() {
+    const rules = groupBy[this.group] || groupBy.byModel;
     const merged = new Map();
-    for (const [key, entry] of Object.entries(table)) {
-      const id = this.group === "byApiKey" && entry.apiKeyKey ? "key:" + entry.apiKeyKey : key;
-      let row = merged.get(id);
+    for (const entry of Object.values(this.stats[this.group] || {})) {
+      const key = rules.key(entry) || "";
+      let row = merged.get(key);
       if (!row) {
-        row = {
-          key: id,
-          name: entry.accountName || entry.keyName || entry.endpoint || entry.rawModel || key,
-          detail: entry.provider || entry.apiKeyMasked || "",
-          requests: 0,
-          promptTokens: 0,
-          cachedTokens: 0,
-          completionTokens: 0,
-          cost: 0,
-        };
-        merged.set(id, row);
+        row = { key: key, name: rules.name(entry) || t("usage.unknown"), detail: rules.detail(entry) || "", items: [] };
+        for (const field of ["requests", "promptTokens", "cachedTokens", "completionTokens", "cost"]) {
+          row[field] = 0;
+        }
+        merged.set(key, row);
       }
-      row.requests += entry.requests || 0;
-      row.promptTokens += entry.promptTokens || 0;
-      row.cachedTokens += entry.cachedTokens || 0;
-      row.completionTokens += entry.completionTokens || 0;
-      row.cost += entry.cost || 0;
+      const item = {
+        key: row.items.length,
+        name: rules.itemName(entry) || t("usage.unknown"),
+        detail: rules.itemDetail(entry) || "",
+        requests: entry.requests || 0,
+        promptTokens: entry.promptTokens || 0,
+        cachedTokens: entry.cachedTokens || 0,
+        completionTokens: entry.completionTokens || 0,
+        cost: entry.cost || 0,
+      };
+      row.items.push(item);
+      for (const field of ["requests", "promptTokens", "cachedTokens", "completionTokens", "cost"]) {
+        row[field] += item[field];
+      }
     }
+    const order = this.rowOrder();
     const rows = Array.from(merged.values());
     for (const row of rows) {
       row.total = row.promptTokens + row.completionTokens;
+      for (const item of row.items) {
+        item.total = item.promptTokens + item.completionTokens;
+      }
+      row.items.sort(order);
     }
+    rows.sort(order);
+    return rows;
+  },
+
+  // rowOrder compares by the header the reader chose; a name sorts as text and
+  // every other column as a number.
+  rowOrder() {
     const key = this.sortKey;
     const dir = this.sortDesc ? -1 : 1;
-    rows.sort((a, b) => dir * (key === "name" ? a.name.localeCompare(b.name) : a[key] - b[key]));
-    return rows;
+    return (a, b) => dir * (key === "name" ? a.name.localeCompare(b.name) : a[key] - b[key]);
+  },
+
+  // openItems is what shows under a summary row: its models while the row is
+  // open, nothing while it is closed.
+  openItems(row) {
+    return this.open[this.group + ":" + row.key] === true ? row.items : [];
+  },
+
+  isOpen(row) {
+    return this.open[this.group + ":" + row.key] === true;
+  },
+
+  // toggle copies the object: Alpine only sees a key change on a new reference.
+  toggle(row) {
+    const id = this.group + ":" + row.key;
+    this.open = Object.assign({}, this.open, { [id]: !this.open[id] });
   },
 
   // sortLabel is what a column header's aria-sort says about its own column.
@@ -409,7 +474,7 @@ window.Alpine.data("usagePage", () => Object.assign({
       if (!q) {
         return true;
       }
-      return [row.model, row.provider, row.account, row.extra].join(" ").toLowerCase().indexOf(q) >= 0;
+      return [row.model, row.provider, row.account, row.key, row.extra].join(" ").toLowerCase().indexOf(q) >= 0;
     });
   },
 

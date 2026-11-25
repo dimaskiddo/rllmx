@@ -34,9 +34,9 @@
               </div>
               <ul class="rl-chips">
                 <template x-for="model in modelsPreview(combo)" x-bind:key="model">
-                  <li class="rl-chip"><span x-text="model"></span><span class="rl-cap" x-show="capsOf(model) && capsOf(model).vision" x-tip="models.vision"><span class="rl-icon" x-icon="eye"></span><span class="visually-hidden" x-t="models.vision"></span></span><span class="rl-cap" x-show="capsOf(model) && capsOf(model).reasoning" x-tip="models.reasoning"><span class="rl-icon" x-icon="brain"></span><span class="visually-hidden" x-t="models.reasoning"></span></span><span class="rl-cap" x-show="capsOf(model) && capsOf(model).audio" x-tip="models.audio"><span class="rl-icon" x-icon="audio-lines"></span><span class="visually-hidden" x-t="models.audio"></span></span></li>
+                  <li class="rl-chip rl-chip-model"><span x-text="model"></span><span class="rl-cap" x-show="capsOf(model) && capsOf(model).vision" x-tip="models.vision"><span class="rl-icon" x-icon="eye"></span><span class="visually-hidden" x-t="models.vision"></span></span><span class="rl-cap" x-show="capsOf(model) && capsOf(model).reasoning" x-tip="models.reasoning"><span class="rl-icon" x-icon="brain"></span><span class="visually-hidden" x-t="models.reasoning"></span></span><span class="rl-cap" x-show="capsOf(model) && capsOf(model).audio" x-tip="models.audio"><span class="rl-icon" x-icon="audio-lines"></span><span class="visually-hidden" x-t="models.audio"></span></span></li>
                 </template>
-                <li class="rl-chip" x-show="moreCount(combo) > 0"><span x-text="'+' + moreCount(combo)"></span></li>
+                <li class="rl-chip rl-chip-model" x-show="moreCount(combo) > 0"><span x-text="'+' + moreCount(combo)"></span></li>
               </ul>
             </div>
             <div class="rl-inline rl-combo-strategy">
@@ -153,6 +153,7 @@
   </div>
 
   <dialog class="rl-dialog" x-ref="form" x-on:close="stopSortable()" aria-labelledby="combo-form-title">
+    <button type="button" class="btn btn-sm btn-ghost rl-dialog-close" x-tip="common.close" x-on:click="$el.closest('dialog').close()"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.close"></span></button>
     <form method="dialog" x-on:submit.prevent="saveForm()">
       <h2 id="combo-form-title" x-text="form.mode === 'edit' ? label('combos.editTitle') : label('combos.createTitle')"></h2>
       <label class="form-label" for="combo-name" x-t="combos.name"></label>
@@ -189,6 +190,7 @@
   </dialog>
 
   <dialog class="rl-dialog" x-ref="suggest" x-on:close="onSuggestClosed()" aria-labelledby="combo-suggest-title">
+    <button type="button" class="btn btn-sm btn-ghost rl-dialog-close" x-tip="common.close" x-on:click="$el.closest('dialog').close()"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.close"></span></button>
     <form method="dialog" x-on:submit.prevent="acceptSuggest()">
       <h2 id="combo-suggest-title" x-t="combos.suggestTitle"></h2>
       <p class="rl-hint" x-t="combos.suggestHint"></p>
@@ -244,7 +246,7 @@
         <h3 class="rl-card-title" x-t="combos.excluded"></h3>
         <ul class="rl-chips">
           <template x-for="row in excluded()" x-bind:key="row.model">
-            <li class="rl-chip"><span x-text="row.model"></span></li>
+            <li class="rl-chip rl-chip-model"><span x-text="row.model"></span></li>
           </template>
         </ul>
       </div>

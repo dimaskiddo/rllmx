@@ -53,6 +53,9 @@ type Stats struct {
 	CustomChars int
 	Headroom    bool
 	Note        string
+	// Skipped names the savers that were on but had nothing to act on, so a
+	// request's log line says why one is absent.
+	Skipped []string
 }
 
 // Changed reports whether anything was rewritten.
@@ -157,6 +160,9 @@ func applyRTK(r *translate.Request, st *Stats) {
 			}
 		}
 	}
+	if len(st.Filters) == 0 {
+		st.Skipped = append(st.Skipped, "rtk")
+	}
 }
 
 // applyPrompt injects one configured prompt, honouring its activation mode. The
@@ -167,6 +173,7 @@ func applyPrompt(r *translate.Request, p Prompt, level func(string) string, t pr
 		return
 	}
 	if p.Mode == "smart" && !t.Match(query, saverTopics...) {
+		st.Skipped = append(st.Skipped, label)
 		return
 	}
 	if r.AppendSystem(text) {

@@ -124,6 +124,59 @@ svg.rl-icon {
   padding: 0.625rem 0.75rem;
 }
 
+/* A cell holding a meter or a button is taller than its text neighbours; the
+   text sits in the middle of the row instead of at its top. */
+.table > tbody > tr > td {
+  vertical-align: middle;
+}
+
+/* A group row opens into the models under it. The marker is drawn, so the
+   vendored icon set gains no file for it. */
+/* The request log is read line by line, so its rows are roomier than the
+   dashboard's dense tables; the rule outranks .table-sm by load order. */
+.rl-log-table > :not(caption) > * > * {
+  padding-block: 0.625rem;
+}
+
+.rl-disclosure {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-weight: 500;
+  text-align: start;
+  cursor: pointer;
+}
+
+.rl-disclosure::before {
+  content: "";
+  flex: none;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-block-start: 2px solid currentColor;
+  border-inline-end: 2px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 0.15s ease;
+}
+
+.rl-disclosure[aria-expanded="true"]::before {
+  transform: rotate(135deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rl-disclosure::before {
+    transition: none;
+  }
+}
+
+.rl-usage-item > td:first-child {
+  padding-inline-start: 2rem;
+  color: var(--tblr-secondary-color);
+}
+
 td .form-control {
   min-width: 5rem;
 }
@@ -159,6 +212,29 @@ dialog.rl-dialog::backdrop {
 dialog.rl-dialog h2 {
   font-size: 1.125rem;
   margin-block-end: 0.75rem;
+  padding-inline-end: 1.75rem;
+}
+
+/* The title and the corner button share one line box, so their centres meet. */
+dialog.rl-dialog > h2:first-child,
+dialog.rl-dialog > form > h2:first-child {
+  display: flex;
+  align-items: center;
+  min-block-size: 1.75rem;
+}
+
+/* A dialog is fixed while modal and absolute otherwise, so it is the containing
+   block for its own corner button. */
+.rl-dialog-close {
+  position: absolute;
+  inset-block-start: 1.25rem;
+  inset-inline-end: 1.25rem;
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
 }
 
 .rl-actions,
@@ -350,6 +426,19 @@ dialog.rl-dialog h2 {
   margin-block-start: 1rem;
 }
 
+/* Cards that share a wrapper keep their own gap inside it; the wrapper carries
+   the gap to the next sibling card. */
+/* One stack owns the gap between its cards, so the space holds whatever the
+   first and last card are. */
+.rl-card-stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.rl-card-stack > .card + .card {
+  margin-block-start: 0;
+}
+
 .rl-inline {
   display: flex;
   flex-wrap: wrap;
@@ -457,6 +546,13 @@ dialog.rl-dialog h2 {
   min-width: 0;
 }
 
+/* A row with actions stops its content at nine of twelve columns, so the
+   content never runs into a switch and the space before the actions reads as a
+   spacer. A row without actions keeps the full width. */
+.rl-list-row:has(> .rl-list-actions) > .rl-list-main {
+  max-width: 75%;
+}
+
 .rl-list-title {
   display: flex;
   flex-wrap: wrap;
@@ -484,12 +580,23 @@ dialog.rl-dialog h2 {
 }
 
 .form-label:first-child,
-h2 + .form-label,
-.rl-password-row {
+h2 + .form-label {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem 1rem;
+}
+
+/* The password state and the button that changes it are two steps, not one
+   line: the reader sees what is set before the action. */
+.rl-password-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-block-start: 0.75rem;
+  padding-block-start: 0.75rem;
+  border-block-start: 1px solid var(--tblr-border-color);
 }
 
 .rl-fields .form-label,
@@ -513,6 +620,45 @@ h2 + .form-label,
   .rl-fields {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* A skill's fields stack: its config first, the routing mode last, so a slider
+   is not paired with a select of a different height. */
+.rl-skill-fields {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* A bucket of skills starts a group, so neither a block above it nor another
+   bucket runs straight on into its first row. The first div in a card body is
+   the block itself only when it opens the card. */
+.rl-skill-group {
+  margin-block-start: 1.25rem;
+  padding-block-start: 1rem;
+  border-block-start: 1px solid var(--tblr-border-color);
+}
+
+.rl-skill-group:first-of-type {
+  margin-block-start: 0;
+  padding-block-start: 0;
+  border-block-start: 0;
+}
+
+.rl-skill-group-title {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin: 0 0 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--tblr-secondary);
+}
+
+.rl-skill-count {
+  font-weight: 400;
+  letter-spacing: 0;
+  opacity: 0.8;
 }
 
 /* A slider reads its value and its ends out, so the number is visible while it
@@ -551,6 +697,10 @@ h2 + .form-label,
     flex-wrap: wrap;
   }
 
+  .rl-list-row:has(> .rl-list-actions) > .rl-list-main {
+    max-width: 100%;
+  }
+
   .rl-list-actions {
     justify-content: flex-start;
   }
@@ -573,6 +723,12 @@ h2 + .form-label,
   background: var(--rl-hover);
   border-radius: var(--tblr-border-radius-sm);
   font-size: 0.8125rem;
+}
+
+/* A chip that ends its own line has no ghost button on the right, so its text
+   gets the same room as its left edge. */
+.rl-chip-model {
+  padding: 0.125rem 0.5rem;
 }
 
 /* A set of choices the reader picks one of: roomier than a tag, and a target
@@ -726,6 +882,14 @@ h2 + .form-label,
   gap: 0.75rem;
 }
 
+/* The page's own controls sit under the cards, clear of the last row. */
+.rl-provider-more {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block-start: 1rem;
+}
+
 .rl-provider-card {
   display: flex;
   flex-direction: column;
@@ -818,6 +982,7 @@ h2 + .form-label,
   border-color: currentColor;
 }
 
+.badge-warn,
 .badge[data-ok="changed"] {
   color: var(--rl-warn);
   border-color: currentColor;
@@ -1047,6 +1212,17 @@ h2 + .form-label,
   padding: 0.5rem 0.75rem;
   background: #161b22;
   border-block-end: 1px solid #30363d;
+}
+
+/* The bar already spaces its row; the shared inline block would add a second
+   gap and push the buttons onto their own line at phone width. */
+.rl-terminal-bar .rl-inline {
+  flex-wrap: nowrap;
+  margin-block-start: 0;
+}
+
+.rl-terminal-bar .form-control {
+  flex: 0 1 14rem;
 }
 
 .rl-terminal-status {

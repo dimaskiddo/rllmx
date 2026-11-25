@@ -133,7 +133,9 @@ func (c *call) destinationOf(ctx context.Context, t routing.Target) (destination
 			// a lane carries its own.
 			d.entry.Transport.Headers = l.Headers
 		}
-		if d.auth == nil {
+		// A provider that needs no credential sends none: the default bearer
+		// block would make the executor refuse a request with no key.
+		if d.auth == nil && !e.NoAuth {
 			d.auth = defaultAuth(d.format)
 		}
 		return d, Output{}, true

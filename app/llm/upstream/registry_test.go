@@ -116,6 +116,7 @@ func TestTheLoaderRefusesBrokenData(t *testing.T) {
 		"unknown category":                {map[string]string{"data/a.json": strings.Replace(entry("a", ""), "apikey", "magic", 1)}, "category"},
 		"unknown format":                  {map[string]string{"data/a.json": strings.Replace(entry("a", ""), `"baseUrl"`, `"format":"smoke","baseUrl"`, 1)}, "format"},
 		"unknown executor":                {map[string]string{"data/a.json": entry("a", `,"executor":"mystery"`)}, "executor"},
+		"no-auth with a credential block": {map[string]string{"data/a.json": `{"id":"a","category":"free","noAuth":true,"transport":{"baseUrl":"https://x.example/v1"},"auth":{"scheme":"bearer","header":"Authorization"},"models":[]}`}, "no-auth"},
 		"duplicate model":                 {map[string]string{"data/a.json": strings.Replace(entry("a", ""), `"models":[]`, `"models":[{"id":"m"},{"id":"m"}]`, 1)}, "duplicate model"},
 		"bad id":                          {map[string]string{"data/A_B.json": entry("A_B", "")}, "id must be"},
 		"two values":                      {map[string]string{"data/a.json": entry("a", "") + entry("a", "")}, "more than one"},
@@ -148,6 +149,28 @@ func TestTheLoaderErrorNamesNoFileContent(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), secret) {
 		t.Fatalf("the error repeats file content: %v", err)
+	}
+}
+
+// The free lane is served without a credential, so the shipped table has to say
+// so; a provider that needs a login does not.
+func TestOnlyTheFreeLaneNeedsNoCredential(t *testing.T) {
+	reg, err := Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	free, ok := reg.ByID("opencode")
+	if !ok || !free.NoAuth {
+		t.Fatal("opencode is not marked as needing no credential")
+	}
+	for _, id := range []string{"gemini-cli", "kiro", "freebuff"} {
+		e, ok := reg.ByID(id)
+		if !ok {
+			t.Fatalf("%s is missing", id)
+		}
+		if e.NoAuth {
+			t.Errorf("%s needs a login but is marked no-auth", id)
+		}
 	}
 }
 

@@ -57,7 +57,10 @@ func (c *TokenClient) Device(ctx context.Context, f Flow, deviceID string) (Devi
 	if d, ok := c.dials().Device[f.Dialect]; ok {
 		return d.Start(ctx, c, f, h)
 	}
-	fields := map[string]string{"scope": f.Scope}
+	fields := map[string]string{}
+	if f.Scope != "" {
+		fields["scope"] = f.Scope
+	}
 	if !f.NoClient {
 		fields["client_id"] = f.ClientID
 	}

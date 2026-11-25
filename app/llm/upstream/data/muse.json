@@ -14,7 +14,6 @@
     "flow": "device",
     "deviceUrl": "https://auth.meta.com/oidc/device/authorization/",
     "tokenUrl": "https://auth.meta.com/oidc/device/token/",
-    "scope": "muse",
     "hook": "muse",
     "endpoints": {
       "key": "https://api.meta.ai/muse-code/key"

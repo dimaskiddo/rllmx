@@ -111,6 +111,9 @@ func (c *call) featureLine() string {
 	for _, id := range c.skillStats.Skills {
 		parts = append(parts, "SKILL "+logName(id)+"("+logName(c.skillStats.Via[id])+")")
 	}
+	for _, name := range st.Skipped {
+		parts = append(parts, strings.ToUpper(logName(name))+" skipped")
+	}
 	for _, id := range c.skillStats.Reminded {
 		parts = append(parts, "SKILL "+logName(id)+"(reminded)")
 	}

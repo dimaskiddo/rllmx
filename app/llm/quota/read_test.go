@@ -12,6 +12,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/tidwall/gjson"
+
 	"rllmx/app/llm/upstream"
 	"rllmx/app/platform/cache"
 	"rllmx/app/store/repository"
@@ -518,5 +520,50 @@ func TestAClaudeResetAnswerIsCutBeforeItReachesTheDashboard(t *testing.T) {
 		if len(v) > maxUpstreamText || !utf8.ValidString(v) {
 			t.Errorf("%s is %d bytes, valid=%v", name, len(v), utf8.ValidString(v))
 		}
+	}
+}
+
+// Every grant is listed so the page can say why one cannot be spent; only the
+// usable ones count.
+func TestClaudeGrantsListEveryGrantAndCountTheUsableOnes(t *testing.T) {
+	block := gjson.Parse(`{"eligible":true,"next_grant_id":"g2","cooldown_until":"2026-12-01T00:00:00Z",` +
+		`"weekly_resets_at":"2026-11-28T00:00:00Z","grants":[` +
+		`{"id":"g1","label":"One","resets_left":0,"resets_total":1,"paused":false,"clears":["session","weekly"],` +
+		`"starts_at":"2026-11-01T00:00:00Z","ends_at":"2026-12-01T00:00:00Z"},` +
+		`{"id":"g2","label":"Two","resets_left":2,"resets_total":2,"usable_now":true,"clears":["session"],` +
+		`"starts_at":"2026-12-01T00:00:00Z","ends_at":"2027-01-01T00:00:00Z"},` +
+		`{"id":"g3","resets_left":1,"paused":true}]}`)
+	out := claudeGrants(block)
+	if out == nil || out.AvailableCount != 2 || len(out.Credits) != 3 {
+		t.Fatalf("%+v", out)
+	}
+	if out.NextGrantID != "g2" || out.CooldownUntil == nil || out.WeeklyResetsAt == nil {
+		t.Fatalf("the block's own fields are missing: %+v", out)
+	}
+	if out.Credits[1].UsableNow != true || len(out.Credits[1].Clears) != 1 || out.Credits[1].ResetsTotal != 2 {
+		t.Fatalf("the grant's fields are missing: %+v", out.Credits[1])
+	}
+	if out.Credits[2].Paused != true || out.Credits[2].ResetsLeft != 1 {
+		t.Fatalf("a paused grant is lost: %+v", out.Credits[2])
+	}
+	if out.ExpiresAt == nil || !out.ExpiresAt.Equal(time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("the next grant's end is %v", out.ExpiresAt)
+	}
+}
+
+// The Codex answer may spell its fields either way.
+func TestCodexCreditsReadBothSpellings(t *testing.T) {
+	s := newStub().on("chatgpt.com", "/backend-api/wham/rate-limit-reset-credits",
+		`{"available_count":1,"credits":[{"status":"available","granted_at":"2026-11-01T00:00:00Z","expires_at":"2026-12-01T00:00:00Z"}]}`)
+	conn := connOf("codex", "oauth", "")
+	out, err := testReader(s, conn, "t").CodexCredits(context.Background(), conn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.AvailableCount != 1 || len(out.Credits) != 1 {
+		t.Fatalf("%+v", out)
+	}
+	if out.Credits[0].GrantedAt == nil || out.Credits[0].ExpiresAt == nil {
+		t.Fatalf("a snake_case credit lost its stamps: %+v", out.Credits[0])
 	}
 }

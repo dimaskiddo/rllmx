@@ -9,7 +9,7 @@ import { toast } from "/static/js/ui/toast.js";
 import { formatMethods } from "/static/js/ui/format.js";
 import { setPath } from "/static/js/ui/fields.js";
 import { fieldMethods } from "/static/js/ui/fields.js";
-import { loadModelChoices } from "./model-choices.js";
+import { invalidateModelChoices, loadModelChoices } from "./model-choices.js";
 
 function budgetWindowKey(window) {
   return { day: "keys.perDay", month: "keys.perMonth", total: "keys.allTime" }[window];
@@ -52,6 +52,7 @@ window.Alpine.data("endpointPage", () => Object.assign({
   },
 
   async init() {
+    invalidateModelChoices();
     await this.load();
   },
 

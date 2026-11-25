@@ -174,6 +174,29 @@ func TestOnlyAProviderWithAnUsableConnectionIsListed(t *testing.T) {
 	}
 }
 
+// A provider that needs no credential is offered with nothing connected: the
+// request reaches it through a virtual account.
+func TestAProviderThatNeedsNoCredentialIsListedWithNothingConnected(t *testing.T) {
+	const freeLane = `{"id":"free","category":"free","noAuth":true,"display":{"name":"F"},` +
+		`"transport":{"baseUrl":"https://f.example/v1/chat/completions","format":"openai"},"models":[{"id":"fm"}]}`
+	reg, err := upstream.Load(fstest.MapFS{"data/free.json": {Data: []byte(freeLane)}}, "data")
+	if err != nil {
+		t.Fatal(err)
+	}
+	caps, err := upstream.LoadCapabilities(reg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &rig{t: t, kv: &fakeKV{scopes: map[string]map[string]string{}, disabled: map[string][]string{}}, conns: &fakeConns{}, nodes: &fakeNodes{}}
+	r.c = &Catalog{
+		Registry: reg, Caps: caps, Conns: r.conns, Nodes: r.nodes, KV: r.kv, Created: 1700000000,
+		Resolver: &routing.Resolver{Registry: reg, Snapshot: routing.NewSnapshot(routingSource{r}, nil)},
+	}
+	if got := r.ids(anyone); len(got) != 1 || got[0] != "free/fm" {
+		t.Fatalf("%v", got)
+	}
+}
+
 func TestAProviderWithNoConnectionIsAbsentWhileAnotherIsListed(t *testing.T) {
 	r := newRig(t)
 	r.conns.list = []repository.Connection{conn("c1", "codex", `{"apiKey":"k"}`)}

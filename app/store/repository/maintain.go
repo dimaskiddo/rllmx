@@ -39,3 +39,34 @@ func (s *Store) Checkpoint(ctx context.Context) error {
 func (s *Store) Vacuum(ctx context.Context) error {
 	return s.on(ctx).Statement(`VACUUM`)
 }
+
+// Analyze refreshes the planner's statistics. SQLite samples a bounded number
+// of rows, so the pass stays short on a large usage file.
+func (s *Store) Analyze(ctx context.Context) error {
+	if s.dialect != dialect.SQLite {
+		return s.on(ctx).Statement(`ANALYZE`)
+	}
+	if err := s.on(ctx).Statement(`PRAGMA analysis_limit=400`); err != nil {
+		return err
+	}
+	return s.on(ctx).Statement(`ANALYZE`)
+}
+
+// IncrementalVacuum returns free pages when the file was built with
+// auto_vacuum=incremental. Any other mode makes it a no-op: a full VACUUM needs
+// exclusive use and stays the db:vacuum command.
+func (s *Store) IncrementalVacuum(ctx context.Context) error {
+	if s.dialect != dialect.SQLite {
+		return nil
+	}
+	var mode []struct {
+		Value int `db:"auto_vacuum"`
+	}
+	if err := s.on(ctx).Select(&mode, `PRAGMA auto_vacuum`); err != nil {
+		return err
+	}
+	if len(mode) == 0 || mode[0].Value != 2 {
+		return nil
+	}
+	return s.on(ctx).Statement(`PRAGMA incremental_vacuum`)
+}

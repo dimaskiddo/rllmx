@@ -48,9 +48,13 @@ export function errorTag(conn) {
 }
 
 // effectiveStatus treats a connection marked unavailable as active when no
-// lock still holds it, the way the reference does.
+// lock still holds it, the way the reference does. A key that was never tried is
+// active until a call fails: the first refusal marks it.
 export function effectiveStatus(conn, now) {
   const status = conn.testStatus || "unknown";
+  if (status === "unknown") {
+    return "active";
+  }
   if (status !== "unavailable") {
     return status;
   }
@@ -58,17 +62,22 @@ export function effectiveStatus(conn, now) {
 }
 
 
-// statsOf counts one provider's connections and names its latest failure.
+// statsOf counts one provider's connections and names its latest failure. A
+// key serving out a lock is cooling down, not failing.
 function statsOf(connections, now) {
   let connected = 0;
   let failed = 0;
+  let cooling = 0;
   let latest = null;
   for (const conn of connections) {
     const status = effectiveStatus(conn, now);
     if (status === "active" || status === "success") {
       connected++;
     }
-    if (status === "error" || status === "expired" || status === "unavailable") {
+    if (status === "unavailable") {
+      cooling++;
+    }
+    if (status === "error" || status === "expired") {
       failed++;
     }
     if (conn.lastErrorAt && (!latest || conn.lastErrorAt > latest.lastErrorAt)) {
@@ -80,7 +89,9 @@ function statsOf(connections, now) {
     total: connections.length,
     connected: connected,
     failed: failed,
+    cooling: cooling,
     allDisabled: allDisabled,
+    noAuth: connections.some((conn) => conn.noAuth === true),
     tag: latest ? errorTag(latest) : "",
     errorAt: latest ? latest.lastErrorAt : "",
   };
@@ -207,7 +218,8 @@ window.Alpine.data("providersPage", () => Object.assign({
     }
     const cardFor = (entry) => {
       const conns = byProvider.get(entry.id) || [];
-      return Object.assign({ entry: entry, connectionIds: conns.map((c) => c.id) }, statsOf(conns, now));
+      const stored = conns.filter((c) => c.noAuth !== true);
+      return Object.assign({ entry: entry, connectionIds: stored.map((c) => c.id) }, statsOf(conns, now));
     };
     const section = (categories) => this.providers
       .filter((p) => categories.indexOf(p.category) >= 0 && p.kinds.indexOf("llm") >= 0)
@@ -231,6 +243,12 @@ window.Alpine.data("providersPage", () => Object.assign({
     };
   },
 
+  // needsStatus shows the neutral badge when no count badge speaks for the
+  // card: no connections at all, or only states it does not count.
+  needsStatus(card) {
+    return card.total === 0 || (!card.allDisabled && card.connected === 0 && card.failed === 0 && card.cooling === 0);
+  },
+
   statusKey(card) {
     if (card.allDisabled) {
       return "providers.disabled";
@@ -240,6 +258,9 @@ window.Alpine.data("providersPage", () => Object.assign({
     }
     if (card.total === 0) {
       return "providers.noneYet";
+    }
+    if (card.failed === 0 && card.connected === 0) {
+      return "providers.ready";
     }
     return "";
   },

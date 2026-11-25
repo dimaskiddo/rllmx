@@ -193,9 +193,11 @@ Jobs are registered with `WithSchedule` in `bootstrap/app.go`. They run in the s
 | Job | Schedule | Work |
 |---|---|---|
 | Optimize, checkpoint | Every 6 h and at start | `PRAGMA optimize`, WAL checkpoint on both SQLite files |
+| Analyze | Every 6 h, offset 13 min | `PRAGMA analysis_limit=400; ANALYZE` on SQLite, `ANALYZE` on PostgreSQL |
+| Incremental vacuum | Every 6 h, offset 25 min | `PRAGMA incremental_vacuum` when the file was built `auto_vacuum=incremental`; otherwise a no-op, because the mode is never changed at run time |
 | Prune, vacuum, analyze | Daily and at start | Prune and incremental vacuum on the analytics file; `ANALYZE` on PostgreSQL analytics tables |
 
-Job names: `optimize`, `checkpoint` (main), `analytics-optimize`, `analytics-checkpoint` (usage store, every 6 h), `analytics-prune`, `analytics-analyze` (daily). Each takes its own start offset, since the Schedule facade has no jitter.
+Job names: `optimize`, `checkpoint`, `analyze`, `incremental-vacuum` (main), `analytics-optimize`, `analytics-checkpoint` (usage store, every 6 h), `analytics-prune`, `analytics-analyze` (daily). Each takes its own start offset, since the Schedule facade has no jitter.
 
 A failing job never blocks start. The main file never switches `auto_vacuum`.
 

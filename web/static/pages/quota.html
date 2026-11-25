@@ -43,6 +43,7 @@
           <button type="button" class="btn btn-sm btn-ghost" x-show="conn.isActive === true" x-on:click="toggleActive(conn)" x-tip="quota.deactivate"><span class="rl-icon" x-icon="pause"></span><span class="visually-hidden" x-t="quota.deactivate"></span></button>
           <button type="button" class="btn btn-sm btn-ghost" x-show="conn.isActive !== true" x-on:click="toggleActive(conn)" x-tip="quota.activate"><span class="rl-icon" x-icon="play"></span><span class="visually-hidden" x-t="quota.activate"></span></button>
           <button type="button" class="btn btn-sm btn-outline-danger" x-show="canReset(conn)" x-bind:disabled="resetting[conn.id] === true" x-on:click="reset(conn)" x-tip="quota.reset"><span class="rl-icon" x-icon="gauge"></span><span x-text="resetCredits(conn)"></span><span class="visually-hidden" x-t="quota.reset"></span></button>
+          <button type="button" class="btn btn-sm btn-ghost" x-show="canExpiry(conn)" x-on:click="openExpiry(conn)" x-tip="quota.expiry"><span class="rl-icon" x-icon="clock"></span><span class="visually-hidden" x-t="quota.expiry"></span></button>
         </div>
       </div>
       <div class="card-body">
@@ -92,4 +93,61 @@
     <span class="text-secondary" x-text="pagination.page + ' / ' + pagination.totalPages"></span>
     <button type="button" class="btn btn-sm" x-bind:disabled="pagination.page >= pagination.totalPages" x-on:click="turnClientPage(1)" x-t="quota.next"></button>
   </div>
+  <dialog class="rl-dialog" x-ref="expiry" aria-labelledby="quota-expiry-title">
+    <button type="button" class="btn btn-sm btn-ghost rl-dialog-close" x-tip="common.close" x-on:click="closeExpiry()"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.close"></span></button>
+    <h2 id="quota-expiry-title" x-t="quota.expiryTitle"></h2>
+    <p class="text-secondary" x-text="expiry.name"></p>
+    <p class="rl-hint" x-show="expiry.busy" x-t="common.loading"></p>
+    <p class="rl-error" x-show="expiry.error" x-text="expiry.error"></p>
+    <div x-show="!expiry.busy && expiry.error === '' && expiry.rows.length > 0">
+      <div class="rl-table-wrap" x-show="expiry.provider === 'claude'">
+      <table class="table table-sm">
+        <caption class="visually-hidden" x-t="quota.expiryTitle"></caption>
+        <thead>
+          <tr>
+            <th scope="col" x-t="quota.expiry"></th>
+            <th scope="col" x-t="quota.left"></th>
+            <th scope="col" x-t="quota.refills"></th>
+            <th scope="col" x-t="quota.useBy"></th>
+            <th scope="col" x-t="quota.remaining"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="(row, index) in expiry.rows" x-bind:key="index">
+            <tr>
+              <td><span x-text="row.label"></span> <span class="badge" x-text="row.status"></span></td>
+              <td x-text="row.left"></td>
+              <td x-text="row.refills"></td>
+              <td x-text="row.useBy"></td>
+              <td x-text="row.remaining"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+      </div>
+      <div class="rl-table-wrap" x-show="expiry.provider === 'codex'">
+      <table class="table table-sm">
+        <caption class="visually-hidden" x-t="quota.expiryTitle"></caption>
+        <thead>
+          <tr>
+            <th scope="col" x-t="quota.status"></th>
+            <th scope="col" x-t="quota.grantedAt"></th>
+            <th scope="col" x-t="quota.expiresAt"></th>
+            <th scope="col" x-t="quota.remaining"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="(row, index) in expiry.rows" x-bind:key="index">
+            <tr>
+              <td x-text="row.status"></td>
+              <td x-text="row.grantedAt"></td>
+              <td x-text="row.expiresAt"></td>
+              <td x-text="row.remaining"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </dialog>
 </section>

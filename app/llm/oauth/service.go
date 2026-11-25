@@ -126,6 +126,10 @@ func (s *Service) Start(req StartRequest) (Started, error) {
 	if err != nil {
 		return Started{}, err
 	}
+	// A device login has no authorize URL; its own call starts it.
+	if f.Flow == upstream.FlowDevice {
+		return Started{}, ErrUnsupported
+	}
 	d := s.dials().Code[f.Dialect]
 	if d.Variant != nil {
 		if f, err = d.Variant(f, req.Variant); err != nil {

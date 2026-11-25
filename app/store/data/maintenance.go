@@ -15,9 +15,10 @@ const (
 	daily = "0 3 * * *"
 )
 
-// MainJobs is the upkeep of the configuration database. The main file's
-// auto_vacuum is never touched; a full vacuum stays the explicit db:vacuum
-// command. Each job starts a little after the hour, the second one later than
+// MainJobs is the upkeep of the configuration database: optimize, checkpoint,
+// refresh statistics and, on a file built incremental, return free pages. The
+// main file's auto_vacuum is never changed; a full vacuum stays the explicit
+// db:vacuum command. Each job starts a little after the hour, the second one later than
 // the first, because the Schedule facade has no jitter. The jobs are declared
 // before the store is open, so they ask for it when they run; with no store yet
 // they do nothing.
@@ -37,6 +38,12 @@ func MainJobs(store func() *repository.Store) []Job {
 		})},
 		{Name: "checkpoint", Cron: sixHours, Offset: 19 * time.Minute, Run: on(func(ctx context.Context, s *repository.Store) error {
 			return s.Checkpoint(ctx)
+		})},
+		{Name: "analyze", Cron: sixHours, Offset: 13 * time.Minute, Run: on(func(ctx context.Context, s *repository.Store) error {
+			return s.Analyze(ctx)
+		})},
+		{Name: "incremental-vacuum", Cron: sixHours, Offset: 25 * time.Minute, Run: on(func(ctx context.Context, s *repository.Store) error {
+			return s.IncrementalVacuum(ctx)
 		})},
 	}
 }

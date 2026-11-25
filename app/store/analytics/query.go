@@ -42,6 +42,7 @@ type Request struct {
 	Provider     string
 	Model        string
 	ConnectionID string
+	APIKeyName   string
 	Prompt       int64
 	Completion   int64
 	Cached       int64
@@ -327,6 +328,7 @@ func (s *Store) recent(ctx context.Context, from time.Time, limit int, cond stri
 		Provider     string `db:"provider"`
 		Model        string `db:"model"`
 		ConnectionID string `db:"connectionId"`
+		APIKeyName   string `db:"apiKeyName"`
 		Prompt       int64  `db:"promptTokens"`
 		Completion   int64  `db:"completionTokens"`
 		Cached       int64  `db:"cachedTokens"`
@@ -335,7 +337,7 @@ func (s *Store) recent(ctx context.Context, from time.Time, limit int, cond stri
 		Savers       string `db:"savers"`
 		Skills       string `db:"skills"`
 	}
-	err := s.db.WithContext(ctx).Select(&rows, s.q(`SELECT "ts","provider","model","connectionId","promptTokens",`+
+	err := s.db.WithContext(ctx).Select(&rows, s.q(`SELECT "ts","provider","model","connectionId","apiKeyName","promptTokens",`+
 		`"completionTokens","cachedTokens","status","errorClass","savers","skills" FROM "requests"`+where+` ORDER BY "ts" DESC, "id" DESC LIMIT ?`),
 		append(args, limit)...)
 	if err != nil {
@@ -344,7 +346,7 @@ func (s *Store) recent(ctx context.Context, from time.Time, limit int, cond stri
 	out := make([]Request, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, Request{
-			Time: time.UnixMilli(r.TS).UTC(), Provider: r.Provider, Model: r.Model, ConnectionID: r.ConnectionID,
+			Time: time.UnixMilli(r.TS).UTC(), Provider: r.Provider, Model: r.Model, ConnectionID: r.ConnectionID, APIKeyName: r.APIKeyName,
 			Prompt: r.Prompt, Completion: r.Completion, Cached: r.Cached, Status: r.Status, ErrorClass: r.ErrorClass,
 			Savers: r.Savers, Skills: r.Skills,
 		})

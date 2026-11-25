@@ -43,4 +43,4 @@ func AnonymousLocal() Caller {
 // Probe is the caller of an internal model probe. It is not a key, so no
 // budget and no allow-list applies; its warm-up calls do spend, so they write
 // usage rows like any other request.
-func Probe() Caller { return Caller{ID: probeID, Name: "probe"} }
+func Probe() Caller { return Caller{ID: probeID, Name: "System Probe"} }

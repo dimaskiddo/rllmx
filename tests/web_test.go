@@ -838,6 +838,146 @@ func TestTheModelListSortsBuiltInFirst(t *testing.T) {
 	}
 }
 
+// An alias key is a name no provider owns, so a picker that offers one shows a
+// model that cannot be told apart from another provider's.
+func TestTheModelPickerNeverOffersABareAliasAsAModel(t *testing.T) {
+	js := readWeb(t, "static/js/pages/model-choices.js")
+	if strings.Contains(js, "Object.keys(aliases") {
+		t.Error("model-choices.js offers the alias keys, so a bare alias name reaches the picker")
+	}
+	if !strings.Contains(js, "Object.values(aliases") {
+		t.Error("model-choices.js drops every alias target as well as its keys")
+	}
+	for _, want := range []string{`api("/api/models")`, `api("/api/providers")`, "combos.combos", "= liveModels(", "fullModel"} {
+		if !strings.Contains(js, want) {
+			t.Errorf("model-choices.js lacks %q", want)
+		}
+	}
+	if !strings.Contains(js, "c.trim())") || !strings.Contains(js, ".filter(Boolean)") {
+		t.Error("a name reaches the datalist without being trimmed, so a padded one shows up padded")
+	}
+}
+
+// The Auto plan card follows the card wrapper, so the card gap has to come from
+// the wrapper instead of the sibling rule.
+func TestTheSkillsCardStackKeepsItsGap(t *testing.T) {
+	page := readWeb(t, "static/pages/skills.html")
+	css := readWeb(t, "static/css/components.css")
+	if !strings.Contains(page, `class="rl-card-stack"`) {
+		t.Error("the skills cards are wrapped without the class that carries their gap")
+	}
+	stack := strings.Index(css, ".rl-card-stack {")
+	if stack < 0 || !strings.Contains(css[stack:min(stack+200, len(css))], "display: grid") || !strings.Contains(css[stack:min(stack+200, len(css))], "gap: 1rem") {
+		t.Error("components.css gives the card wrapper no grid gap")
+	}
+	if !strings.Contains(css, ".rl-skill-group:first-of-type") {
+		t.Error("every skill group draws a line, including the first one under a card header")
+	}
+	// A row's content stops short of its actions, so a switch does not sit
+	// against the last line of text.
+	if !strings.Contains(css, ".rl-list-row:has(> .rl-list-actions)") || !strings.Contains(css, "max-width: 75%") {
+		t.Error("a list row runs its content into its actions")
+	}
+}
+
+// A modal is left by its × as well as its footer: the × closes the same way a
+// Cancel does, so every dialog carries one.
+func TestEveryDialogOffersACloseButton(t *testing.T) {
+	for _, name := range []string{
+		"static/pages/combos.html", "static/pages/endpoint.html", "static/pages/provider.html",
+		"static/pages/providers.html", "static/pages/skills.html", "static/pages/users.html",
+		"static/shell.html",
+	} {
+		body := readWeb(t, name)
+		dialogs := strings.Count(body, "<dialog")
+		closes := strings.Count(body, "rl-dialog-close")
+		if dialogs == 0 {
+			t.Errorf("%s holds no dialog", name)
+			continue
+		}
+		if closes != dialogs {
+			t.Errorf("%s has %d dialogs and %d close buttons", name, dialogs, closes)
+		}
+		if !strings.Contains(body, "$el.closest('dialog').close()") {
+			t.Errorf("%s: a close button does not close its dialog", name)
+		}
+	}
+	css := readWeb(t, "static/css/components.css")
+	if !strings.Contains(css, ".rl-dialog-close {") {
+		t.Error("components.css places no close button")
+	}
+	h2 := strings.Index(css, "dialog.rl-dialog h2 {")
+	if h2 < 0 || !strings.Contains(css[h2:min(h2+200, len(css))], "padding-inline-end") {
+		t.Error("a dialog title can run under its close button")
+	}
+	// The title and the button share one 1.75rem line box, so their centres meet.
+	if !strings.Contains(css, "min-block-size: 1.75rem") {
+		t.Error("a dialog title and its close button have different line boxes")
+	}
+	close := strings.Index(css, ".rl-dialog-close {")
+	if close < 0 || !strings.Contains(css[close:min(close+240, len(css))], "block-size: 1.75rem") {
+		t.Error("the close button has no fixed box to align with the title")
+	}
+}
+
+// A log line names the key that called it, so the page needs a column for it
+// and has to read the field at its new index.
+func TestTheRequestLogNamesTheKeyThatCalled(t *testing.T) {
+	page := readWeb(t, "static/pages/usage.html")
+	js := readWeb(t, "static/js/pages/usage.js")
+	css := readWeb(t, "static/css/components.css")
+	if !strings.Contains(page, `x-t="usage.apiKey"`) || !strings.Contains(page, `x-text="row.key"`) {
+		t.Error("the request log has no key column")
+	}
+	time := strings.Index(page, `x-t="usage.time"`)
+	if time < 0 {
+		t.Fatal("the request log has no time column")
+	}
+	log := page[time:]
+	key, model := strings.Index(log, `x-t="usage.apiKey"`), strings.Index(log, `x-t="usage.model"`)
+	if key < 0 || model < key {
+		t.Error("the key column does not follow the time column")
+	}
+	for _, want := range []string{"key: parts[4]", "inTokens: parts[5]", "outTokens: parts[6]", "status: parts[7]", "parts.slice(8)"} {
+		if !strings.Contains(js, want) {
+			t.Errorf("parseLog does not read %q", want)
+		}
+	}
+	if !strings.Contains(methodBody(js, "logRows"), "row.key") {
+		t.Error("a search cannot find a line by its key")
+	}
+	if !strings.Contains(page, `class="table table-sm rl-log-table"`) {
+		t.Error("the request log does not carry its own table class")
+	}
+	rule := strings.Index(css, ".rl-log-table > :not(caption) > * > * {")
+	if rule < 0 || !strings.Contains(css[rule:min(rule+200, len(css))], "padding-block") {
+		t.Error("the request log keeps the dense table padding")
+	}
+}
+
+// Stacked fields live in a two-column grid; the password line belongs under the
+// switch, not beside it.
+func TestTheSecurityCardGivesThePasswordItsOwnRow(t *testing.T) {
+	page := readWeb(t, "static/pages/settings.html")
+	css := readWeb(t, "static/css/components.css")
+	start := strings.Index(page, `x-t="settings.security"`)
+	end := strings.Index(page[start:], "</section>")
+	if start < 0 || end < 0 {
+		t.Fatal("settings.html has no security card")
+	}
+	card := page[start : start+end]
+	if strings.Contains(card, `class="rl-fields"`) {
+		t.Error("the password row sits in the two-column fields grid")
+	}
+	if !strings.Contains(card, `class="rl-password-row"`) {
+		t.Error("the security card lost its password row")
+	}
+	rule := strings.Index(css, ".rl-password-row {")
+	if rule < 0 || !strings.Contains(css[rule:min(rule+400, len(css))], "border-block-start") {
+		t.Error("the password row has no rule above it")
+	}
+}
+
 func TestTheModelWhitelistOffersEveryLiveModel(t *testing.T) {
 	js := readWeb(t, "static/js/pages/model-choices.js")
 	for _, want := range []string{"export function liveModels", `api("/api/models")`, `api("/api/providers")`, "= liveModels("} {
@@ -985,6 +1125,19 @@ func TestEveryProviderCardShowsAnIconWithAFallback(t *testing.T) {
 		if !strings.Contains(icon, "iconSrc(card)") || !strings.Contains(icon, "x-on:error") {
 			t.Errorf("an icon span has no image or no fallback: %s", icon)
 		}
+	}
+}
+
+// The Show all button sits under the provider grid, not against the last card.
+func TestTheProvidersShowAllButtonClearsTheGrid(t *testing.T) {
+	body := readWeb(t, "static/pages/providers.html")
+	css := readWeb(t, "static/css/components.css")
+	if !strings.Contains(body, `class="rl-provider-more"`) {
+		t.Error("the Show all buttons sit loose under the provider grid")
+	}
+	rule := strings.Index(css, ".rl-provider-more {")
+	if rule < 0 || !strings.Contains(css[rule:min(rule+160, len(css))], "margin-block-start") {
+		t.Error("the Show all row has no gap above it")
 	}
 }
 
@@ -1263,6 +1416,9 @@ func TestASetPasswordDialogAsksNoCurrentPasswordWhenNoneIsKnown(t *testing.T) {
 // so a scan can look inside it without matching the rest of the file.
 func methodBody(body, name string) string {
 	start := strings.Index(body, "\n  "+name+"(")
+	if start < 0 {
+		start = strings.Index(body, "\n  async "+name+"(")
+	}
 	if start < 0 {
 		return ""
 	}
@@ -1592,6 +1748,66 @@ func TestTheSkillsPageWritesOnlyAllowedKeys(t *testing.T) {
 	if !strings.Contains(js, "globalSkillsEnabled") || !strings.Contains(controller, `"globalSkillsEnabled"`) {
 		t.Error("the global skills switch is not written or not accepted")
 	}
+	for _, key := range []string{"ecc_auto_skill_routerEnabled", "ecc_auto_skill_routerConfidence", "ecc_auto_skill_routerMaxSkills"} {
+		if !strings.Contains(js, key) {
+			t.Errorf("skills.js never writes %s", key)
+		}
+		if !strings.Contains(controller, `"`+key+`"`) {
+			t.Errorf("settingsRules does not accept %s", key)
+		}
+	}
+}
+
+// The built-in list, the imported catalog and the operator's own skills each get
+// a card; the catalog's switch is the auto-router's, not the master one.
+func TestTheSkillsPageSeparatesTheCatalogFromTheBuiltInList(t *testing.T) {
+	page := readWeb(t, "static/pages/skills.html")
+	js := readWeb(t, "static/js/pages/skills.js")
+	if !strings.Contains(page, `x-for="card in cards()"`) {
+		t.Error("skills.html does not draw one card per list")
+	}
+	// The plan card opens the page, and every card shares one stack so the gap
+	// between them comes from one rule.
+	plan := strings.Index(page, "skills.planTitle")
+	drawn := strings.Index(page, `x-for="card in cards()"`)
+	if plan < 0 || drawn < 0 || plan > drawn {
+		t.Error("the Auto-Plan card does not open the card stack")
+	}
+	if !strings.Contains(page, `class="rl-card-stack"`) || strings.Contains(page, `class="rl-card-stack" x-show=`) {
+		t.Error("the card stack is conditional, so the plan card cannot live in it")
+	}
+	if !strings.Contains(page, `<section class="card" x-show="!loading && visible().length > 0">`) {
+		t.Error("a list card renders while the list has no rows")
+	}
+	for _, want := range []string{"skills.builtinTitle", "skills.catalogTitle", "skills.groupCustom", "cards()"} {
+		if !strings.Contains(js, want) {
+			t.Errorf("skills.js lacks %s", want)
+		}
+	}
+	cards := methodBody(js, "cards")
+	if !strings.Contains(cards, "subgroups") {
+		t.Error("skills.js builds no card with its subgroups")
+	}
+	if strings.Contains(cards, "skills.groupPrompt") {
+		t.Error("the built-in card repeats its own title over the first list")
+	}
+	if custom, catalog := strings.Index(cards, "custom"), strings.Index(cards, "catalog"); custom < 0 || catalog < 0 || custom > catalog {
+		t.Error("the custom skills card does not come before the catalog's")
+	}
+	for name, want := range map[string]string{
+		"static/i18n/en.json": `"ECC Catalog skills"`,
+		"static/i18n/id.json": `"Skill katalog ECC"`,
+	} {
+		if !strings.Contains(readWeb(t, name), want) {
+			t.Errorf("%s lacks %s", name, want)
+		}
+	}
+	body := methodBody(js, "toggleCard")
+	for _, want := range []string{"globalSkillsEnabled", "ecc_auto_skill_routerEnabled"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the card switch never writes %s", want)
+		}
+	}
 }
 
 // The catalog sync asks for no repository: the server fixes the official one,
@@ -1787,6 +2003,46 @@ func TestTheUsageBreakdownSortsWhatItShows(t *testing.T) {
 	}
 }
 
+// A key's spend is only useful split by model, and two accounts that share a
+// label are still two accounts.
+func TestTheUsageBreakdownOpensAGroupIntoItsModels(t *testing.T) {
+	js := readWeb(t, "static/js/pages/usage.js")
+	html := readWeb(t, "static/pages/usage.html")
+	for _, want := range []string{"apiKeyKey", "connectionId", "rawModel"} {
+		if !strings.Contains(js, want) {
+			t.Errorf("usage.js never reads %s", want)
+		}
+	}
+	if !strings.Contains(methodBody(js, "groups"), "groupBy") {
+		t.Error("usage.js groups without a rule per selector")
+	}
+	if !strings.Contains(js, "this.open") || !strings.Contains(methodBody(js, "toggle"), "this.open") {
+		t.Error("a usage group cannot be opened")
+	}
+	if !strings.Contains(js, "itemName: (e) => e.provider") || !strings.Contains(js, "itemDetail: (e) => e.rawModel") {
+		t.Error("an opened usage row reads the model before the provider")
+	}
+	for _, want := range []string{"aria-expanded", "openItems(row)", "rl-disclosure"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("usage.html lacks %s", want)
+		}
+	}
+}
+
+// The picker was handed the two lists inside the statement that read them, so
+// the page stopped on "Cannot access 'models' before initialization".
+func TestTheComboPageReadsTheListsBeforeItHandsThemToThePicker(t *testing.T) {
+	body := methodBody(readWeb(t, "static/js/pages/combos.js"), "async load")
+	call := strings.Index(body, "const choices = await loadModelChoices(")
+	reads := strings.Index(body, "await Promise.all(")
+	if call < 0 {
+		t.Fatal("combos load() never builds its model choices")
+	}
+	if reads < 0 || call < reads {
+		t.Error("loadModelChoices runs inside the statement that declares the lists it is given")
+	}
+}
+
 // A reset spends a credit, so a second confirmation while the first call is in
 // flight must not spend another; a reading pass must also stop with its page.
 func TestTheQuotaResetAndReadingPassAreGuarded(t *testing.T) {
@@ -1802,6 +2058,19 @@ func TestTheQuotaResetAndReadingPassAreGuarded(t *testing.T) {
 	}
 	if !strings.Contains(methodBody(js, "destroy"), "this.gone = true") {
 		t.Error("destroy() does not stop a running reading pass")
+	}
+	// The Claude reset names the grant it spends; the page also lists the
+	// credits and their expiry.
+	if !strings.Contains(reset, "grantId") || !strings.Contains(methodBody(js, "grantID"), "nextGrantId") {
+		t.Error("the Claude reset sends no grant to spend")
+	}
+	if !strings.Contains(js, "/codex-reset-credits") || !strings.Contains(methodBody(js, "async openExpiry"), "/codex-reset-credits") {
+		t.Error("the expiry dialog never reads the Codex credits")
+	}
+	for _, want := range []string{`x-ref="expiry"`, "quota.useBy", "quota.refills", "quota.grantedAt", "quota.expiresAt"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("quota.html lacks %s", want)
+		}
 	}
 }
 
@@ -2347,7 +2616,7 @@ func TestASkillSwitchNamesItsSkill(t *testing.T) {
 func TestTheSidebarOrderMatchesTheRouter(t *testing.T) {
 	want := []string{
 		"/dashboard/endpoint", "/dashboard/providers", "/dashboard/combos", "/dashboard/token-saver", "/dashboard/skills",
-		"/dashboard/usage", "/dashboard/quota", "/dashboard/pricing", "/dashboard/users", "/dashboard/settings", "/dashboard/console-log",
+		"/dashboard/usage", "/dashboard/quota", "/dashboard/pricing", "/dashboard/users", "/dashboard/settings", "/dashboard/about", "/dashboard/console-log",
 	}
 	shell := readWeb(t, "static/shell.html")
 	navStart := strings.Index(shell, "<nav")
@@ -2381,6 +2650,57 @@ func TestTheSidebarOrderMatchesTheRouter(t *testing.T) {
 	}
 	if strings.Join(roots, " ") != strings.Join(want, " ") {
 		t.Errorf("navRoots is %v, want %v", roots, want)
+	}
+}
+
+// A provider served without a credential has no key to add, no switch to pause
+// and nothing to edit or delete.
+func TestANoCredentialProviderHasNoKeyPath(t *testing.T) {
+	page := readWeb(t, "static/pages/provider.html")
+	if !strings.Contains(page, `x-t="provider.noAuth"`) {
+		t.Error("the provider page does not say a connection is unnecessary")
+	}
+	if !strings.Contains(page, `x-show="conn.noAuth !== true"`) {
+		t.Error("a virtual account offers its controls")
+	}
+	if !strings.Contains(readWeb(t, "static/pages/providers.html"), "card.noAuth !== true") {
+		t.Error("a no-credential provider offers a switch it cannot use")
+	}
+	if !strings.Contains(readWeb(t, "static/js/pages/providers.js"), "conn.noAuth === true") {
+		t.Error("the provider cards do not read the virtual account")
+	}
+}
+
+// The About page names the build and asks GitHub for the newest release only
+// when the reader asks, from a menu entry after Settings.
+func TestTheAboutPageOffersAnUpdateCheck(t *testing.T) {
+	if !strings.Contains(readWeb(t, "static/js/routes.json"), `"/dashboard/about"`) {
+		t.Fatal("routes.json has no About page")
+	}
+	page := readWeb(t, "static/pages/about.html")
+	for _, want := range []string{`x-t="about.title"`, `x-t="about.versionTitle"`, `x-t="about.check"`, `x-t="about.creditsTitle"`, `x-t="about.licenseTitle"`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("about.html lacks %s", want)
+		}
+	}
+	js := readWeb(t, "static/js/pages/about.js")
+	if !strings.Contains(js, `Alpine.data("aboutPage"`) || !strings.Contains(js, `api("/api/about/update")`) {
+		t.Error("the About page never asks the router to check for updates")
+	}
+	for _, want := range []string{`x-t="about.updateHow"`, `x-t="about.updateNow"`, `x-show="admin"`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("about.html lacks %s", want)
+		}
+	}
+	if !strings.Contains(js, `api("/api/about/upgrade"`) || !strings.Contains(js, "session()") {
+		t.Error("the About page offers no upgrade action, or cannot tell who may run it")
+	}
+	shell := readWeb(t, "static/shell.html")
+	settings := strings.Index(shell, `href="/dashboard/settings"`)
+	about := strings.Index(shell, `href="/dashboard/about"`)
+	console := strings.Index(shell, `href="/dashboard/console-log"`)
+	if about < 0 || settings < 0 || console < 0 || about < settings || about > console {
+		t.Error("the About entry does not sit between Settings and Console Log")
 	}
 }
 
@@ -2529,7 +2849,7 @@ func TestEveryModelPickerIsFilledFromTheSharedList(t *testing.T) {
 			return
 		}
 		js := readWeb(t, "static/js/pages/"+strings.TrimSuffix(strings.TrimPrefix(name, "static/pages/"), ".html")+".js")
-		if !strings.Contains(js, "choices: []") || !strings.Contains(js, "loadModelChoices()") {
+		if !strings.Contains(js, "choices: []") || !strings.Contains(js, "loadModelChoices(") {
 			t.Errorf("%s offers model names from `choices`, but its script does not declare and fill them", name)
 		}
 	})

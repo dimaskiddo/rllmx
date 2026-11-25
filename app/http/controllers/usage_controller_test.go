@@ -15,6 +15,7 @@ import (
 	"github.com/tidwall/gjson"
 
 	"rllmx/app/access/auth"
+	"rllmx/app/access/identity"
 	"rllmx/app/gateway/health"
 	apphttp "rllmx/app/http"
 	"rllmx/app/llm/upstream"
@@ -227,6 +228,23 @@ func TestAKeyThatIsNoLongerStoredIsNamedByAShortIdAndNeverInFull(t *testing.T) {
 	}
 }
 
+// The health probe is a caller, not a stored key: its spend is read under its
+// own name rather than the first eight bytes of its id.
+func TestTheProbeKeyIsNamedInFull(t *testing.T) {
+	r := newUsageRig(t)
+	a, _ := r.sums()
+	a.APIKeyID = identity.Probe().ID
+	r.f.sums = []analytics.Sum{a}
+	code, _, raw := r.m.call("GET", "/api/usage/stats?period=all", "", true)
+	if code != 200 {
+		t.Fatalf("%d %s", code, raw)
+	}
+	entry := gjson.Get(raw, `byApiKey.`+identity.Probe().ID+`\|gpt-4o\|openai`)
+	if entry.Get("keyName").String() != "System Probe" || entry.Get("apiKeyMasked").String() != identity.Probe().ID {
+		t.Fatalf("the probe's entry: %s", entry.Raw)
+	}
+}
+
 func TestUsageStatsCarryTheLiveRequests(t *testing.T) {
 	r := newUsageRig(t)
 	release := r.flights.Start("openai", "gpt-4o", r.conn.ID)
@@ -325,7 +343,7 @@ func TestAnUnknownPeriodIsRefusedOnEveryRoute(t *testing.T) {
 func TestUsageLogsAreOneLinePerRow(t *testing.T) {
 	r := newUsageRig(t)
 	r.f.recent = []analytics.Request{
-		{Time: time.Date(2026, 11, 17, 9, 5, 6, 0, time.UTC), Provider: "openai", Model: "gpt-4o", ConnectionID: r.conn.ID, Prompt: 12, Completion: 7, Status: 200},
+		{Time: time.Date(2026, 11, 17, 9, 5, 6, 0, time.UTC), Provider: "openai", Model: "gpt-4o", ConnectionID: r.conn.ID, APIKeyName: "ci", Prompt: 12, Completion: 7, Status: 200},
 		{Time: time.Date(2026, 11, 17, 9, 6, 0, 0, time.UTC), Provider: "cc", ConnectionID: "missing", Prompt: 1, Status: 502, ErrorClass: "upstream_5xx"},
 	}
 	code, _, raw := r.m.call("GET", "/api/usage/logs", "", true)
@@ -336,10 +354,10 @@ func TestUsageLogsAreOneLinePerRow(t *testing.T) {
 	if len(lines) != 2 {
 		t.Fatalf("lines %s", raw)
 	}
-	if got := lines[0].String(); got != "17-11-2026 16:05:06 | gpt-4o | OPENAI | work | 12 | 7 | ok" {
+	if got := lines[0].String(); got != "17-11-2026 16:05:06 | gpt-4o | OPENAI | work | ci | 12 | 7 | ok" {
 		t.Fatalf("first line %q", got)
 	}
-	if got := lines[1].String(); got != "17-11-2026 16:06:00 | - | Claude Code | - | 1 | 0 | 502" {
+	if got := lines[1].String(); got != "17-11-2026 16:06:00 | - | Claude Code | - | - | 1 | 0 | 502" {
 		t.Fatalf("second line %q", got)
 	}
 }

@@ -61,6 +61,9 @@ type Base struct {
 	// Skills serves the installed skills and the catalog sync; nil leaves them
 	// out.
 	Skills *controllers.SkillsController
+	// About answers the update check the About page asks for; nil leaves its
+	// route out.
+	About *controllers.AboutController
 }
 
 // Web declares the route tables. Every route goes through guard.Handle, which
@@ -219,6 +222,11 @@ func webClient(router route.Route, guard *apphttp.Guard, base Base) {
 
 // webDashboard declares the dashboard's own reads and settings.
 func webDashboard(router route.Route, guard *apphttp.Guard, base Base) {
+	if a := base.About; a != nil {
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/about/update", a.Update)
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodPost, "/api/about/upgrade", a.RunUpgrade)
+	}
+
 	if cb := base.Combos; cb != nil {
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/combos", cb.List)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPost, "/api/combos", cb.Create)

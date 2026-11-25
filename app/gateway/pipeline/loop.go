@@ -48,6 +48,19 @@ func (c *call) beginAttempt(connID string, movedOn bool) {
 	}
 }
 
+// noAuthConn is the virtual account of a provider that needs no credential: it
+// is never stored, so no counter, lock or failure report touches it.
+func (c *call) noAuthConn() *repository.Connection {
+	if c.p == nil || c.p.d.Registry == nil {
+		return nil
+	}
+	e, ok := c.p.d.Registry.ByID(c.dest.provider)
+	if !ok || !e.NoAuth {
+		return nil
+	}
+	return &repository.Connection{ID: "noauth", Provider: e.ID, Name: "Public", IsActive: true}
+}
+
 // serveFail is serve that also says why it stopped, for a combo that decides
 // whether the next member may answer. A nil fail is a served answer.
 func (c *call) serveFail(ctx context.Context) (Output, *accountFail) {
@@ -55,19 +68,26 @@ func (c *call) serveFail(ctx context.Context) (Output, *accountFail) {
 	var last *accountFail
 	sawExpired := false
 	tried := 0
+	noAuth := c.noAuthConn()
 	for {
-		sel, err := c.p.d.Selector.Select(ctx, account.Request{
-			Provider: c.dest.provider, Model: c.dest.model, RequestedModel: c.requested, Exclude: exclude,
-			Hold: c.hold(), Prefer: c.in.Connection,
-		})
-		if err != nil {
-			out := c.noAccount(ctx, err, last, sawExpired)
-			// A request that found no account did not answer, so a combo moves to
-			// its next member rather than treating it as served.
-			if last == nil {
-				last = &accountFail{status: out.Status, class: "no_account"}
+		var sel account.Selection
+		if noAuth != nil {
+			sel = account.Selection{Conn: *noAuth}
+		} else {
+			found, err := c.p.d.Selector.Select(ctx, account.Request{
+				Provider: c.dest.provider, Model: c.dest.model, RequestedModel: c.requested, Exclude: exclude,
+				Hold: c.hold(), Prefer: c.in.Connection,
+			})
+			if err != nil {
+				out := c.noAccount(ctx, err, last, sawExpired)
+				// A request that found no account did not answer, so a combo moves to
+				// its next member rather than treating it as served.
+				if last == nil {
+					last = &accountFail{status: out.Status, class: "no_account"}
+				}
+				return out, last
 			}
-			return out, last
+			sel = found
 		}
 		if c.in.Connection != "" && sel.Conn.ID != c.in.Connection {
 			// The pinned connection is not a candidate, and a pinned request never
@@ -103,6 +123,10 @@ func (c *call) serveFail(ctx context.Context) (Output, *accountFail) {
 		out, f := c.attempted(ctx, sel.Conn)
 		if f == nil {
 			return out, nil
+		}
+		if noAuth != nil {
+			// There is no row to lock and no other account to try.
+			return c.upstreamFail(f), f
 		}
 		if f.expired {
 			exclude[sel.Conn.ID] = true

@@ -84,17 +84,30 @@ func (r *modelsRig) openai(key string) {
 	}
 }
 
-func TestModelsListIsEmptyWithoutAConnectionAndShapedWithOne(t *testing.T) {
+func TestModelsListCarriesTheFreeLaneWithoutAConnectionAndTheRestWithOne(t *testing.T) {
 	r := newModelsRig(t, identity.Caller{ID: "k"})
 	rec := r.call("/v1/models")
-	if rec.Code != 200 || gjson.Get(rec.Body.String(), "object").String() != "list" || gjson.Get(rec.Body.String(), "data.#").Int() != 0 {
+	if rec.Code != 200 || gjson.Get(rec.Body.String(), "object").String() != "list" {
 		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+	// The free lane needs no credential, so its models are offered with nothing
+	// connected; no other provider is.
+	if first := gjson.Get(rec.Body.String(), "data.0.id").String(); !strings.HasPrefix(first, "oc/") {
+		t.Fatalf("without a connection the list is not the free lane: %s", rec.Body.String())
 	}
 	r.openai("sk-test")
 	rec = r.call("/v1/models")
-	first := gjson.Get(rec.Body.String(), "data.0")
-	if rec.Code != 200 || !strings.HasPrefix(rec.Header().Get("Content-Type"), "application/json") ||
-		!strings.HasPrefix(first.Get("id").String(), "openai/") || first.Get("object").String() != "model" ||
+	if rec.Code != 200 || !strings.HasPrefix(rec.Header().Get("Content-Type"), "application/json") {
+		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+	var first gjson.Result
+	for _, item := range gjson.Get(rec.Body.String(), "data").Array() {
+		if strings.HasPrefix(item.Get("id").String(), "openai/") {
+			first = item
+			break
+		}
+	}
+	if !first.Exists() || first.Get("object").String() != "model" ||
 		first.Get("created").Int() != 1700000000 || first.Get("owned_by").String() != "openai" ||
 		first.Get("context_length").Int() <= 0 || first.Get("max_completion_tokens").Int() <= 0 || !first.Get("capabilities.tools").Exists() {
 		t.Fatalf("%d %s", rec.Code, rec.Body.String())

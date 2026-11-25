@@ -303,6 +303,8 @@ func (c *OAuthController) DeviceCode(ctx contractshttp.Context) contractshttp.Re
 		return flat(ctx, nethttp.StatusBadRequest, "This login is switched off: its client id is not configured")
 	case oauth.ClassOf(err) == oauth.ClassTransport:
 		return flat(ctx, nethttp.StatusBadGateway, "The provider could not be reached")
+	case oauth.ClassOf(err) == oauth.ClassRejected:
+		return flat(ctx, nethttp.StatusBadGateway, "The provider refused the login")
 	case err != nil:
 		return flat(ctx, nethttp.StatusServiceUnavailable, "The login could not be started")
 	}

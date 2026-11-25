@@ -31,7 +31,7 @@ The scorer is our own copy, not a shared package. `tests/imports_test.go` forbid
 | Router | Behavior | Bypass header |
 |---|---|---|
 | Local skill router | A routable skill in `smart` mode is injected when its own TF-IDF score clears its own threshold, at most two per request. An `always` skill is injected on every request. | `x-9router-local-skill-router: off` |
-| ECC auto router | Skills with `source: "ecc"` are scored with id x5, name x4, keywords x3, triggers x3 and description x1. Settings: `ecc_auto_skill_routerEnabled`, `...Confidence` (0.35), `...MaxSkills` (1, clamped to 1-5). | `x-9router-skill-router: off` |
+| ECC auto router | Skills with `source: "ecc"` are scored with id x5, name x4, keywords x3, triggers x3 and description x1. Settings: `ecc_auto_skill_routerEnabled`, `...Confidence` (0.35), `...MaxSkills` (1, clamped to 1-5). The Skills page's Catalog card writes all three: the switch for the router, a threshold from 10% to 90% and a count from 1 to 3. | `x-9router-skill-router: off` |
 
 Scoring is TF-IDF over lower-cased, stemmed words. A score is `min(1, dot x 1.8 + 0.35 trigger boost)`; a greeting or a bare sum is skipped; the query is cut at 4 KiB and 400 tokens.
 
@@ -188,7 +188,7 @@ An error at any step fails open. Bypass: `x-9router-auto-plan: off`. The outcome
 | Hermes Agent memory (MEMORY.md and USER.md injected by the `hermes-toolkit` skill, `HERMES_HOME`, bypass header `x-9router-hermes-memory`) | `src/lib/plugins/hermes/memory.js` | `app/gateway/hermes`, `app/gateway/skill` | done (read and inject; auto-save by LLM extraction is not built) |
 | Hermes process manager, installer and Telegram bridge | `src/lib/plugins/hermes/{process,install,telegram}.js` | none | out |
 | Native autostart | `src/lib/autostart.js` | none | out |
-| Self-updater, update check | `src/lib/updater`, `updateCheck.js` | none | out |
+| Update check, self-update | `src/lib/updater`, `updateCheck.js` | `about_controller.go`, `app/platform/upgrade` | done: the check is on demand and the upgrade is an explicit act (doc 18, doc 22) |
 | Headroom auto-setup, watchdog | `src/lib/headroom/*` | none | out |
 
 ---

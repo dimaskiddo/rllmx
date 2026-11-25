@@ -40,6 +40,9 @@ type skillItem struct {
 	skill.Manifest
 	Enabled bool   `json:"enabled"`
 	Mode    string `json:"mode"`
+	// Editable says this router may rewrite the folder, so the page offers the
+	// Studio's edit and delete for it.
+	Editable bool `json:"editable"`
 	// Values is each config field's stored value by field key. A field nobody
 	// set is absent, so the page shows the manifest's default.
 	Values map[string]any `json:"values,omitempty"`
@@ -106,7 +109,10 @@ func (c *SkillsController) List(ctx contractshttp.Context) contractshttp.Respons
 	items := make([]skillItem, 0, 16)
 	for _, m := range c.Reg.List() {
 		enabled, mode := skill.Switch(m, get, legacy)
-		items = append(items, skillItem{Manifest: m, Enabled: enabled, Mode: mode, Values: storedValues(m, doc.GetRaw)})
+		items = append(items, skillItem{
+			Manifest: m, Enabled: enabled, Mode: mode,
+			Editable: skill.Editable(m), Values: storedValues(m, doc.GetRaw),
+		})
 	}
 	ctx.Response().Header("Cache-Control", "no-store")
 	return ctx.Response().Json(nethttp.StatusOK, skillList{Skills: items, Problems: c.Reg.Problems()})

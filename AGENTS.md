@@ -61,7 +61,7 @@ Full wording and reasons for the Go rules: `docs/ARCHITECTURE.md`, Go Convention
 ### Build
 - `CGO_ENABLED=0` always, except `make test-race` and `make test-pg`, which set it to 1 because `go test -race` requires cgo; no binary is built that way. Linux, macOS, Windows, amd64 and arm64. Go 1.26 (`go.mod`), `GOTOOLCHAIN=local`; a `go` directive bump is its own decision.
 - Build through the Makefile (`./artisan build` for a one-off). Dockerfile: pinned base, non-root, no `.env`.
-- `os/exec` only through `app/git`, the one deny-by-default gate; a test fails any other importer. Anything else needing a process is out (`design doc 11`, `design doc 22`).
+- `os/exec` only through `app/git`, the one deny-by-default gate; a test fails any other importer. Anything else needing a process is out (`design doc 11`, `design doc 22`). The one exception is the upgrade: `rllmx artisan upgrade` and the About page's admin action replace this program's own binary after verifying the release checksum and re-execute it with a fixed argv of its own path (`syscall.Exec`, `os.StartProcess` on Windows) — never a shell, a child command or a process manager (`design doc 22`).
 
 ### Goravel
 - Framework first (`DB`/`Schema`, `Cache`, `Log`, `Config`, `Schedule`, `Artisan`, `Hash`). A helper only for a gap the facade cannot fill, and it wraps the facade. Before building infrastructure read `./artisan list | grep make:` and `goravel/framework/contracts/`.

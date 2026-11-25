@@ -290,6 +290,12 @@ func TestOptimizeAndMaintenanceDoNotChangeTheData(t *testing.T) {
 	if err := s.Checkpoint(ctx); err != nil {
 		t.Fatal(err)
 	}
+	if err := s.Analyze(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.IncrementalVacuum(ctx); err != nil {
+		t.Fatal(err)
+	}
 	after := dumpTables(t, s.SQ.File)
 	delete(before, "sqlite_stat1")
 	delete(after, "sqlite_stat1")

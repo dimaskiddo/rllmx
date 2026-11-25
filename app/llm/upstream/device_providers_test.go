@@ -139,15 +139,20 @@ func TestCallHeadersBelongToTheDeviceAndCodePKCEFlowsOnly(t *testing.T) {
 	}
 }
 
-func TestADialectMayLeaveTheScopeOutAndOtherLoginsMayNot(t *testing.T) {
+func TestADeviceFlowMayLeaveTheScopeOutAndACodeFlowMayNot(t *testing.T) {
 	bare := func(extra string) string {
 		return entry("p", `,"oauth":{"flow":"device","deviceUrl":"https://a.example/d","tokenUrl":"https://a.example/t"`+extra+`}`)
 	}
 	if _, err := Load(fstest.MapFS{"data/p.json": file(bare(`,"dialect":"kilocode"`))}, "data"); err != nil {
 		t.Errorf("a dialect with no scope: %v", err)
 	}
-	if _, err := Load(fstest.MapFS{"data/p.json": file(bare(``))}, "data"); err == nil || !strings.Contains(err.Error(), "scope") {
-		t.Errorf("a plain device login with no scope: %v", err)
+	if _, err := Load(fstest.MapFS{"data/p.json": file(bare(``))}, "data"); err != nil {
+		t.Errorf("a device login with no scope: %v", err)
+	}
+	code := entry("p", `,"oauth":{"flow":"code","authorizeUrl":"https://a.example/a","tokenUrl":"https://a.example/t",`+
+		`"redirect":"local","refresh":{"encoding":"json","leadSeconds":300}}`)
+	if _, err := Load(fstest.MapFS{"data/p.json": file(code)}, "data"); err == nil || !strings.Contains(err.Error(), "scope") {
+		t.Errorf("a code login with no scope: %v", err)
 	}
 }
 

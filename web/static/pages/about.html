@@ -1,0 +1,59 @@
+<section x-data="aboutPage">
+  <div class="rl-page-head">
+    <h1 class="rl-page-title" x-t="about.title"></h1>
+  </div>
+  <p class="text-secondary" x-t="about.intro"></p>
+  <p class="rl-error" x-show="error" x-text="error"></p>
+
+  <div class="rl-card-stack">
+    <section class="card" x-show="!loading">
+      <div class="card-header rl-card-head">
+        <h2 class="rl-card-title" x-t="about.versionTitle"></h2>
+        <button type="button" class="btn btn-sm" x-bind:disabled="check.busy" x-on:click="checkNow()">
+          <span class="rl-icon" x-icon="refresh-cw"></span>
+          <span x-show="check.busy !== true" x-t="about.check"></span>
+          <span x-show="check.busy === true" x-t="about.checking"></span>
+        </button>
+      </div>
+      <div class="card-body">
+        <dl class="rl-kv">
+          <dt x-t="about.versionTitle"></dt><dd><code class="rl-code" x-text="version === '' ? '—' : version"></code></dd>
+          <dt x-t="about.commit"></dt><dd><code class="rl-code" x-text="commit === '' ? '—' : commit"></code></dd>
+        </dl>
+        <p class="rl-error" x-show="check.error" x-text="check.error"></p>
+        <p class="rl-hint" x-show="check.done && check.hasUpdate !== true" x-t="about.upToDate"></p>
+        <div x-show="check.done && check.hasUpdate === true">
+          <p class="rl-list-title" x-t="about.updateAvailable"></p>
+          <p class="rl-hint"><span x-t="about.latest"></span> <a x-bind:href="check.url" target="_blank" rel="noopener" x-text="check.latest"></a><span x-show="check.releasedOn !== ''" x-text="' · ' + label('about.released') + ' ' + check.releasedOn"></span></p>
+          <p class="rl-hint" x-t="about.updateHow"></p>
+          <p class="rl-hint"><code class="rl-code">rllmx artisan upgrade</code></p>
+          <div class="rl-actions" x-show="admin">
+            <button type="button" class="btn btn-sm btn-primary" x-bind:disabled="upgrading" x-on:click="upgrade()"><span x-t="about.updateNow"></span></button>
+          </div>
+          <p class="rl-error" x-show="upgradeError" x-text="upgradeError"></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-header rl-card-head">
+        <h2 class="rl-card-title" x-t="about.creditsTitle"></h2>
+      </div>
+      <div class="card-body">
+        <p x-t="about.creditsBody"></p>
+        <p class="rl-hint"><code class="rl-code">github.com/decolua/9router</code></p>
+        <p class="rl-hint"><code class="rl-code">github.com/thunderkex/9router-extended</code></p>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-header rl-card-head">
+        <h2 class="rl-card-title" x-t="about.licenseTitle"></h2>
+      </div>
+      <div class="card-body">
+        <p x-t="about.licenseBody"></p>
+        <p class="rl-hint"><span x-t="about.repository"></span> <code class="rl-code">github.com/dimaskiddo/rllmx</code><span> · LICENSE · MIT</span></p>
+      </div>
+    </section>
+  </div>
+</section>

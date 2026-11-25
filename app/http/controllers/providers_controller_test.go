@@ -102,6 +102,25 @@ func newMgmtRig(t *testing.T) *mgmtRig {
 	return &mgmtRig{route: r, router: r, auth: a, st: st, cookie: cookie.Value, guard: g, pc: pc}
 }
 
+// A provider that needs no credential reads as connected without a stored row.
+func TestAProviderThatNeedsNoCredentialReadsActive(t *testing.T) {
+	m := newMgmtRig(t)
+	code, out, raw := m.call(nethttp.MethodGet, "/api/providers", "", true)
+	if code != 200 {
+		t.Fatalf("%d %s", code, raw)
+	}
+	for _, item := range out["connections"].([]any) {
+		row, _ := item.(map[string]any)
+		if row["id"] == "noauth" && row["provider"] == "opencode" {
+			if row["isActive"] != true || row["noAuth"] != true || row["name"] != "Public" {
+				t.Fatalf("the virtual connection reads %v", row)
+			}
+			return
+		}
+	}
+	t.Fatalf("no virtual connection in %s", raw)
+}
+
 func (m *mgmtRig) call(method, path, body string, signedIn bool) (int, map[string]any, string) {
 	var req *nethttp.Request
 	if body == "" {

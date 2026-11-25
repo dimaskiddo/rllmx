@@ -26,7 +26,7 @@ Serialized per provider by a mutex, so the usage counters it writes cannot race 
 
 **No candidate left:** if every candidate is locked, the error is `*AllLockedError` with the earliest lock end that applies to the model, "reset after 2m 30s" text, and the first such connection's last error and code. It becomes a 503 with `retryAfter`. No candidates, or locks without a future end, is `ErrNoConnections`.
 
-**Not in the selector:** credential-less providers (a virtual connection) and the Freebuff model-assignment hook. A provider with no stored connection answers "No active credentials", and the executors do their own session work for the accounts that exist (`design doc 8`).
+**Not in the selector:** the Freebuff model-assignment hook. A provider whose data says `noAuth` (today only `opencode`) is served through a virtual `noauth` account that is never stored, selected, counted, locked or reported, so its requests reach the executor with nothing connected; any other provider with no stored connection still answers "No active credentials" (`design doc 8`).
 
 The circuit breaker is not here either, and never can be: it is per provider while `Select` serves one provider, so there is no second candidate to skip to. Combo ordering moves an open provider's members last instead (`design doc 12`).
 
@@ -83,7 +83,7 @@ flowchart TD
 - [x] Called from the account loop
 - [x] Exclusion hook for Antigravity quota (`Request.Hold`,)
 - [x] The circuit breaker is not a selector concern; combo order reads it (`design doc 12`)
-- [x] Credential-less providers: the only ones in the set are media-only (`veoaifree-web`), and media serves them with no connection; no chat provider is credential-less, so no virtual connection is built
+- [x] Credential-less providers: `opencode` is chat and needs none, so a request to it is served with a virtual `noauth` account (never stored); media providers with `noAuth` or `authType: none` are served with no connection the same way
 
 ---
 

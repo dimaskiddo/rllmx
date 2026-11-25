@@ -61,13 +61,29 @@ type Quota struct {
 type ResetCredits struct {
 	AvailableCount int      `json:"availableCount"`
 	Credits        []Credit `json:"credits,omitempty"`
+	// NextGrantID is the grant the service offers first, which a reset names.
+	NextGrantID    string     `json:"nextGrantId,omitempty"`
+	ExpiresAt      *time.Time `json:"expiresAt,omitempty"`
+	CooldownUntil  *time.Time `json:"cooldownUntil,omitempty"`
+	WeeklyResetsAt *time.Time `json:"weeklyResetsAt,omitempty"`
 }
 
 // Credit is one refill an account holds.
 type Credit struct {
-	Status    string     `json:"status,omitempty"`
-	GrantedAt *time.Time `json:"grantedAt,omitempty"`
-	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+	// ID is the grant a reset names; a Codex credit carries none.
+	ID               string     `json:"id,omitempty"`
+	Status           string     `json:"status,omitempty"`
+	Label            string     `json:"label,omitempty"`
+	ResetsLeft       int        `json:"resetsLeft,omitempty"`
+	ResetsTotal      int        `json:"resetsTotal,omitempty"`
+	UsableNow        bool       `json:"usableNow,omitempty"`
+	Paused           bool       `json:"paused,omitempty"`
+	UseRequiresLimit bool       `json:"useRequiresLimit,omitempty"`
+	StartsAt         *time.Time `json:"startsAt,omitempty"`
+	EndsAt           *time.Time `json:"endsAt,omitempty"`
+	Clears           []string   `json:"clears,omitempty"`
+	GrantedAt        *time.Time `json:"grantedAt,omitempty"`
+	ExpiresAt        *time.Time `json:"expiresAt,omitempty"`
 }
 
 // ResetResult is the outcome of spending one refill, as the route answers it.

@@ -19,8 +19,8 @@ When a request completes, the pipeline enqueues one row to the analytics writer.
 - `today` and `24h` read the hour rollups, which live inside the request retention. Longer periods read the day rollups for the days before the oldest kept hour and the hour rollups from that day on, so a day whose hours were pruned is still counted once, whole.
 - The reporting zone is the server's own (`TZ`, `time.Local`); a day taken from the day rollups can only keep its UTC date (D360). `24h` is the 24 clock hours ending now (D361).
 - `history` answers the all-time totals, as the reference does, and `request-details` stays out because it serves stored bodies.
-- `logs` and `request-logs` are the 200 newest rows at or after the period's start (seven days by default), one line each, newest by time (D434).
-- The breakdown's API key grouping is one row per key: the server keeps an entry per key, model and provider, and the page sums the entries of one key, so a 60-day range does not list the same key once per model (D442). A read a client abandoned, a poll cancelled by a reload, is not logged as a failure, at the handler or at the database logger (D442).
+- `logs` and `request-logs` are the 200 newest rows at or after the period's start (seven days by default), one line each, newest by time (D434). A line reads time, model, provider, account, API key, in, out, status, then the skills and savers when set (D451).
+- The breakdown's API key grouping is one summary row per key that opens into the models under it: the server keeps an entry per key, model and provider, and the page folds the entries of one key into one row, so a 60-day range does not list the same key once per model (D442). An opened row reads the provider first and the model second, in all four groupings. A key that is not a stored row but a caller of ours is read under its own name: the health probe's spend reads System Probe, from the identity, not the id prefix. A read a client abandoned, a poll cancelled by a reload, is not logged as a failure, at the handler or at the database logger (D442).
 - `providers` is the distinct provider list from the day rollups, named by node then registry.
 - `byApiKey` is keyed by the key's id and shows the masked key, never the key (D362).
 - `last10Minutes`, the recent list's de-duplication and the log line's skills suffix are left out (D366).
@@ -68,7 +68,7 @@ The key-only readers added with the 0.5.123 sync: Synthetic (`/v2/quotas`: two r
 - Every call has an 8 s deadline and a 1 MiB cap, and a whole reading 25 s, under the dashboard's 60 s write deadline (D370).
 - A failure answers the provider and its status, never the upstream body (D371).
 
-**Refills.** `POST /api/usage/{connectionId}/claude-reset` spends one of Anthropic's free grants and `GET`/`POST .../codex-reset-credits` lists and spends one of Codex's. Both are irreversible and sit behind a dashboard session. A grant id is checked against its own shape before any call, and a missing or bad one is a 400 (D378).
+**Refills.** `POST /api/usage/{connectionId}/claude-reset` spends one of Anthropic's free grants and `GET`/`POST .../codex-reset-credits` lists and spends one of Codex's. Both are irreversible and sit behind a dashboard session. A grant id is checked against its own shape before any call, and a missing or bad one is a 400 (D378). A reading lists every grant with its label, uses left and total, pause, usable-now, start and end, the windows it clears, the next grant id and its cooldown; Codex's credit answer is read in either spelling. The page sends the next grant id and lists both providers' credits in a dialog.
 
 **Providers.** Read: GitHub, Gemini CLI, Antigravity (through the selector's own fetcher), Claude, Codex, Kiro, GLM, MiniMax, Kimi, DeepSeek, OpenCode, Zed, Cursor, Grok CLI, CodeBuddy, Cline, Freebuff, Groq, Ollama, Vercel AI Gateway and Command Code.
 
@@ -76,7 +76,7 @@ Deferred until their handshake is designed: MiniMax Code (a signed account API),
 
 **Page.** `/dashboard/quota` lists the connections `/api/providers/client` says a reading answers for, reads one card per connection through `/api/usage/{id}`, and offers the two refill routes and the active switch behind a confirmation. A reading's 401 is the provider refusing the stored credential and is shown on the card, never treated as a session end. Hidden rows (`quotaVisibility`) and the bulk enable/disable actions are not offered (doc 18, D429).
 
-**Auto-ping.** The two settings are read and written in the reference's shape — a switch, or an object of opted-in connections and their anchored schedules — and nothing pings yet; the scheduler is its own step (D380).
+**Auto-ping.** A runner ticks once a minute; with `claudeAutoPing` or `codexAutoPing` on, an active login of that provider whose short window has passed its reset, and which it has not warmed yet, gets one tiny request through the pipeline (`System Probe`, 1 token, the registry's first chat model). One ping per window, a 15-minute cooldown after a failure, and the switch is read every tick. The reference's anchored slot schedule is not built (D453).
 
 ---
 
@@ -100,7 +100,7 @@ A standard user's read is narrowed to the keys assigned to them inside the query
 - [x] Pricing lookup over the embedded baseline and the `pricing` overrides; the pipeline's usage hook calls it
 - [x] Per-key request, token and cost budgets with the day, month and total windows, checked before dispatch (step 2.3, `design doc 21`)
 - [x] `/api/usage/{connectionId}` and the two refill routes, 22 providers; MiniMax Code, Xiaomi MiMo and Qoder await a handshake design (D379)
-- [ ] Quota auto-ping: the runner, its anchored slots and the tiny request that warms a window (the settings shape is done, D380)
+- [x] Quota auto-ping: the runner and the tiny request that warms a window; the anchored slots stay out (D453)
 
 ---
 
@@ -127,6 +127,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 364 | A request holds its in-flight slot until its answer, a stream included, is finished; the release is idempotent; a provider with no connection is counted too | The reference zeroes a counter after 60 s while the stream still runs and a double end can drive another request's count down |
 | 365 | `providers` comes from the day rollups | The reference reads a `requestDetails` table this build does not have, and its filter forgets a provider once that table is pruned |
 | 366 | No `last10Minutes`, no de-duplication of the recent list **(scope cut; the skills suffix was added later)** | No page reads the first, and one row per request already rules out the second. The requests table now carries `savers` and `skills` as names only, and the log line appends them when set |
+| 451 | The log line names the API key after the account: time, model, provider, account, key, in, out, status, then the skills and savers when set | The reference's line stops at the status, so a reader cannot tell which key made a call |
 | 355 | Every pricing route answers the merged table: the embedded provider rows with the overrides laid over them, and a write applies to the next request through the reloaded source **(built)** | The reference's PATCH answers only the overrides while GET answers a merged map of two providers, and its edit form sends the whole map back, turning every default into a stored override |
 | 367 | A refused credential is retried once when the fetcher saw a 401 or 403, and the refusal is typed, not read out of a message **(built)** | The reference retries when the answer's message contains `expired`, `authentication`, `unauthorized`, `401` or `re-authorize`, so a provider's wording decides whether a token is renewed |
 | 368 | One unit per field: a window counts in the provider's own numbers, a balance is `isCreditBalance` with a `unit`, and the share left is always `remainingPercentage` **(built)** | The reference's `remaining` is a count for GitHub, Kiro and Qoder, a percentage for Claude and Codex, and unclamped for Vercel, so the page cannot render one bar rule |
@@ -143,9 +144,10 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 379 | MiniMax Code, Xiaomi MiMo and Qoder have no reading: their calls need a signed account API, a cookie SSO chain and a pasted token exchanged for a job token **(scope cut)** | Each is a handshake of its own; the three land together with the design that covers them |
 | 393 | Kiro's quota is read from CodeWhisperer's GET, then its POST (`x-amz-target`), then the Q host's GET, and the first answer wins; a refusal on all three is a message that says chat may still work, not an error that triggers a renewal **(built)** | The reference reads the same three and words its messages by sign-in method; this build had tried one host and built a second it never called. The live endpoints were never called here, so the POST attempt is unverified |
 | 394 | Text a provider returns in a Claude reset answer is cut to 200 bytes on a character boundary before it reaches the dashboard **(built)** | The reference passes `result`, `reason` and `error.message` through uncut, so one long answer from the vendor fills the page |
-| 380 | Quota auto-ping is not built; the settings are read and written in the reference's shape only **(scope cut)** | The scheduler needs its own design pass (tick ownership, restart dedupe, which call starts a window); the settings shape had to land now so a reference database round-trips |
+| 380 | Quota auto-ping is not built; the settings are read and written in the reference's shape only **(retired: built in 4.18 as D453)** | The scheduler needed its own design pass; it now has one |
+| 453 | Auto-ping runs a one-minute tick and pings once per window after its reset, with a 15-minute failure cooldown and the registry's first chat model; the reference's anchored per-account schedule, its pinned ping models and its plan-window checks are not built | One switch per provider, one ping per window, nothing scheduled per account; a pinned model id rots, a registry model is one the account can call |
 | 434 | The log read is bounded by the page's period, seven days by default, and ordered by time rather than by row id | The reference returns the 200 newest rows with no bound, so a month-old import fills the list; ordering by id lets an imported old row outrank a newer live one |
-| 442 | The usage table groups an API key's rows into one, summing its requests, tokens and cost across models and providers, and a read a client abandoned is not logged as a failure, at the handler or at the database logger. The reference's table has one row per key, model and provider. **(built)** | One key shown as several rows made a 60-day total look like several keys, and a poll cancelled by a reload filled the log with errors that meant nothing |
+| 442 | The usage table folds an API key's rows into one summary row, summing its requests, tokens and cost across models and providers, and opens that row into the per-model detail (doc 18); a read a client abandoned is not logged as a failure, at the handler or at the database logger. The reference's table has one row per key, model and provider. **(built)** | One key shown as several rows made a 60-day total look like several keys, and a poll cancelled by a reload filled the log with errors that meant nothing |
 
 ---
 

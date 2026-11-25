@@ -193,19 +193,109 @@ func frontmatter(raw string) (name, desc, body string, err error) {
 	if end < 0 {
 		return "", "", "", errors.New("SKILL.md frontmatter is not closed")
 	}
-	for _, line := range lines[1:end] {
+	for i := 1; i < end; i++ {
+		line := lines[i]
+		// Only a key at column 0 is one: a nested map's name or description must
+		// not replace the skill's own.
+		if line == "" || line[0] == ' ' || line[0] == '\t' {
+			continue
+		}
 		key, value, ok := strings.Cut(line, ":")
 		if !ok {
 			continue
 		}
 		switch strings.TrimSpace(key) {
-		case "name":
-			name = unquote(strings.TrimSpace(value))
-		case "description":
-			desc = unquote(strings.TrimSpace(value))
+		case "name", "description":
+			v := strings.TrimSpace(value)
+			if style, chomp, block := blockStart(v); block {
+				i++
+				v = blockValue(lines, &i, end, style, chomp)
+			} else {
+				v = unquote(v)
+			}
+			if strings.TrimSpace(key) == "name" {
+				name = v
+			} else {
+				desc = v
+			}
 		}
 	}
 	return name, desc, strings.TrimSpace(strings.Join(lines[end+1:], "\n")), nil
+}
+
+// blockStart reports a YAML block scalar's style and chomping indicator: > or |
+// with an optional - or + after it.
+func blockStart(v string) (style, chomp byte, ok bool) {
+	if v == "" || (v[0] != '>' && v[0] != '|') {
+		return 0, 0, false
+	}
+	switch v[1:] {
+	case "":
+		return v[0], 0, true
+	case "-", "+":
+		return v[0], v[1], true
+	}
+	return 0, 0, false
+}
+
+// blockValue reads a block scalar's indented lines from i. Folded (>) joins a
+// run of lines with a space and keeps a blank line as a newline; literal (|)
+// keeps every newline. The chomp decides the trailing ones.
+func blockValue(lines []string, i *int, end int, style, chomp byte) string {
+	var raw []string
+	for *i < end {
+		line := lines[*i]
+		if strings.TrimSpace(line) == "" {
+			raw = append(raw, "")
+			*i++
+			continue
+		}
+		if line[0] != ' ' && line[0] != '\t' {
+			break
+		}
+		raw = append(raw, strings.TrimLeft(line, " \t"))
+		*i++
+	}
+	trail := 0
+	for len(raw) > 0 && raw[len(raw)-1] == "" {
+		raw = raw[:len(raw)-1]
+		trail++
+	}
+	var s string
+	if style == '>' {
+		var b strings.Builder
+		pending := 0
+		for j, l := range raw {
+			if l == "" {
+				pending++
+				continue
+			}
+			if j > 0 && b.Len() > 0 {
+				if pending == 0 {
+					b.WriteByte(' ')
+				} else {
+					b.WriteString(strings.Repeat("\n", pending))
+				}
+			}
+			b.WriteString(l)
+			pending = 0
+		}
+		s = b.String()
+	} else {
+		s = strings.Join(raw, "\n")
+	}
+	switch chomp {
+	case '-':
+	case '+':
+		if s != "" {
+			s += strings.Repeat("\n", trail+1)
+		}
+	default:
+		if s != "" {
+			s += "\n"
+		}
+	}
+	return s
 }
 
 func unquote(s string) string {

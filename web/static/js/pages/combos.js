@@ -9,7 +9,7 @@ import { formatMethods } from "/static/js/ui/format.js";
 import { setPath } from "/static/js/ui/fields.js";
 import { modelEditorMethods } from "./combo-models.js";
 import { fieldMethods } from "/static/js/ui/fields.js";
-import { loadModelChoices } from "./model-choices.js";
+import { invalidateModelChoices, loadModelChoices, normalizeModelID } from "./model-choices.js";
 
 const emptyWeights = { reliability: 0.4, latency: 0.3, cost: 0.2, quality: 0.1 };
 
@@ -38,6 +38,7 @@ window.Alpine.data("combosPage", () => Object.assign({
 
 
   async init() {
+    invalidateModelChoices();
     await this.load();
   },
 
@@ -47,12 +48,12 @@ window.Alpine.data("combosPage", () => Object.assign({
   async load() {
     this.error = "";
     try {
-      const [combos, settings, models, choices] = await Promise.all([
+      const [combos, settings, models] = await Promise.all([
         api("/api/combos"),
         api("/api/settings"),
         api("/api/models").catch(() => ({ models: [] })),
-        loadModelChoices(),
       ]);
+      const choices = await loadModelChoices({ models: models.models || [], combos: combos.combos || [] });
       const capsBy = {};
       for (const m of models.models || []) {
         if (!m.caps) {
@@ -96,7 +97,7 @@ window.Alpine.data("combosPage", () => Object.assign({
       }
       out[kind].enabled = entry.enabled === true;
       out[kind].roundRobin = entry.roundRobin === true;
-      out[kind].models = Array.isArray(entry.models) ? entry.models.slice() : [];
+      out[kind].models = Array.isArray(entry.models) ? entry.models.map(normalizeModelID) : [];
     }
     return out;
   },
@@ -141,7 +142,7 @@ window.Alpine.data("combosPage", () => Object.assign({
   },
 
   async addAdapterModel(kind) {
-    const value = (this.adapterAdd[kind] || "").trim();
+    const value = normalizeModelID((this.adapterAdd[kind] || "").trim());
     if (!value || this.adapter[kind].models.indexOf(value) >= 0) {
       return;
     }
@@ -323,7 +324,7 @@ window.Alpine.data("combosPage", () => Object.assign({
   },
 
   openEdit(combo) {
-    this.form = { mode: "edit", id: combo.id, name: combo.name, models: combo.models.slice(), add: "", error: "", busy: false };
+    this.form = { mode: "edit", id: combo.id, name: combo.name, models: combo.models.map(normalizeModelID), add: "", error: "", busy: false };
     this.$refs.form.showModal();
     this.$nextTick(() => this.sortModels());
   },
@@ -347,13 +348,14 @@ window.Alpine.data("combosPage", () => Object.assign({
     }
     this.form.busy = true;
     try {
-      const body = { name: name, models: this.form.models };
+      const body = { name: name, models: this.form.models.map(normalizeModelID) };
       if (this.form.mode === "edit") {
         await api("/api/combos/" + encodeURIComponent(this.form.id), { method: "PUT", body: body });
       } else {
         await api("/api/combos", { method: "POST", body: body });
       }
       this.closeForm();
+      invalidateModelChoices();
       await this.load();
       toast().success(t("combos.saved"));
     } catch (err) {
@@ -370,6 +372,7 @@ window.Alpine.data("combosPage", () => Object.assign({
     }
     try {
       await api("/api/combos/" + encodeURIComponent(combo.id), { method: "DELETE" });
+      invalidateModelChoices();
       await this.load();
       toast().success(t("combos.deleted"));
     } catch (err) {
@@ -445,6 +448,7 @@ window.Alpine.data("combosPage", () => Object.assign({
     try {
       const created = await api("/api/combos/suggest/accept", { method: "POST", body: { name: this.suggest.name.trim(), models: this.suggest.models } });
       this.closeSuggest();
+      invalidateModelChoices();
       await this.load();
       toast().success(t("combos.saved"));
       return created;

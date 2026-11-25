@@ -1,7 +1,7 @@
 {
   "id": "code-humanizer",
   "name": "Code Humanizer",
-  "description": "remove AI coding slop from a change without changing behavior",
+  "description": "Remove AI coding slop from a change without changing behavior",
   "category": "writing",
   "hook": "system-prompt",
   "default_enabled": false,

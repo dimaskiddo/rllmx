@@ -210,6 +210,7 @@ Every provider the references ship, with executor kind, status and the work that
 | specialized | done | gemini-cli |
 | specialized | done | kiro, kiro-social |
 | specialized | done | freebuff |
+| free lane, no credential | done | opencode (`noAuth`: a virtual `noauth` account) |
 | specialized | out | devin-cli |
 
 ## Free-Tier Providers (`freeTier`)

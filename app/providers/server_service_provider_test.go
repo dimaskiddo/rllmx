@@ -231,17 +231,20 @@ func TestRunnersReturnsTheServerRunner(t *testing.T) {
 	}
 	app := &fakeApp{values: map[any]any{BindingHTTP: bound, BindingData: &Data{Gate: data.NewGate()}}, route: tests.NewRoute(t), log: &tests.Log{}}
 	runners := (&ServerServiceProvider{}).Runners(app)
-	if len(runners) != 5 || runners[0].Signature() != "rllmx:http" || !runners[0].ShouldRun() {
+	if len(runners) != 6 || runners[0].Signature() != "rllmx:http" || !runners[0].ShouldRun() {
 		t.Fatalf("runners = %v", runners)
 	}
 	if runners[2].Signature() != "rllmx.claude-cli" || !runners[2].ShouldRun() {
 		t.Fatalf("the Claude version runner is missing: %v", runners[2].Signature())
 	}
-	if runners[3].Signature() != "rllmx.probe" || !runners[3].ShouldRun() {
-		t.Fatalf("the probe runner is missing: %v", runners[3].Signature())
+	if runners[3].Signature() != "rllmx.quotaping" || !runners[3].ShouldRun() {
+		t.Fatalf("the quota ping runner is missing: %v", runners[3].Signature())
 	}
-	if runners[4].Signature() != "rllmx.catalog" || !runners[4].ShouldRun() {
-		t.Fatalf("the catalog runner is missing: %v", runners[4].Signature())
+	if runners[4].Signature() != "rllmx.probe" || !runners[4].ShouldRun() {
+		t.Fatalf("the probe runner is missing: %v", runners[4].Signature())
+	}
+	if runners[5].Signature() != "rllmx.catalog" || !runners[5].ShouldRun() {
+		t.Fatalf("the catalog runner is missing: %v", runners[5].Signature())
 	}
 	withPriority, ok := runners[0].(foundation.RunnerWithShutdownPriority)
 	if !ok || withPriority.ShutdownPriority() >= 0 {

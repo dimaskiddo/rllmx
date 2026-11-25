@@ -27,12 +27,13 @@ import (
 )
 
 type oauthRig struct {
-	auth   *auth.Authenticator
-	route  nethttp.Handler
-	cookie string
-	svc    *oauth.Service
-	seen   *[]string
-	st     *store.Store
+	auth     *auth.Authenticator
+	route    nethttp.Handler
+	cookie   string
+	svc      *oauth.Service
+	seen     *[]string
+	st       *store.Store
+	tokenURL string
 }
 
 func newOAuthRig(t *testing.T, tokenBody string) *oauthRig {
@@ -55,6 +56,11 @@ func newOAuthRig(t *testing.T, tokenBody string) *oauthRig {
 		mu.Unlock()
 		if r.URL.Path == "/device" {
 			_, _ = w.Write([]byte(`{"device_code":"DEVICE-SECRET","user_code":"WXYZ-9876","verification_uri":"https://h.example/device","expires_in":600,"interval":5}`))
+			return
+		}
+		if r.URL.Path == "/refuse" {
+			w.WriteHeader(nethttp.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":"invalid_scope"}`))
 			return
 		}
 		_, _ = w.Write([]byte(tokenBody))
@@ -97,7 +103,7 @@ func newOAuthRig(t *testing.T, tokenBody string) *oauthRig {
 	if !ok {
 		t.Fatal("no session")
 	}
-	return &oauthRig{auth: a, route: r, cookie: cookie.Value, svc: svc, seen: &seen, st: st}
+	return &oauthRig{auth: a, route: r, cookie: cookie.Value, svc: svc, seen: &seen, st: st, tokenURL: token.URL}
 }
 
 func (o *oauthRig) call(method, path, body, cookie string) (int, map[string]any, string) {
@@ -157,6 +163,22 @@ func TestADeviceStartShowsTheUserCodeAndNeverTheDeviceCode(t *testing.T) {
 	}
 	if strings.Contains(raw, "DEVICE-SECRET") {
 		t.Fatalf("the device code reached the browser: %s", raw)
+	}
+}
+
+func TestADeviceLoginTheProviderRefusesSaysSo(t *testing.T) {
+	o := newOAuthRig(t, `{"access_token":"AT"}`)
+	reg, err := upstream.Load(fstest.MapFS{
+		"data/dev.json": {Data: []byte(`{"id":"dev","category":"oauth","transport":{"baseUrl":"https://x.example/v1","format":"openai"},"models":[],` +
+			`"oauth":{"flow":"device","deviceUrl":"` + o.tokenURL + `/refuse","tokenUrl":"` + o.tokenURL + `/token"}}`)},
+	}, "data")
+	if err != nil {
+		t.Fatal(err)
+	}
+	o.svc.Registry = reg
+	code, _, raw := o.call("GET", "/api/oauth/dev/device-code", "", o.cookie)
+	if code != nethttp.StatusBadGateway || !strings.Contains(raw, "refused") {
+		t.Fatalf("%d %s", code, raw)
 	}
 }
 

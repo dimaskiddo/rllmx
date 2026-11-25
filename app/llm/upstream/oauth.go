@@ -278,8 +278,9 @@ func (o *OAuth) validate() error {
 			return err
 		}
 	}
-	// A dialect builds its own start, so it may send no scope.
-	if (strings.TrimSpace(o.Scope) == "" && o.Dialect == "") || text.HasASCIIControl(o.Scope) {
+	// A dialect builds its own start, and a device login has no authorize URL, so
+	// neither has to send a scope.
+	if (strings.TrimSpace(o.Scope) == "" && o.Dialect == "" && o.Flow != FlowDevice) || text.HasASCIIControl(o.Scope) {
 		return errors.New("oauth.scope is empty or holds a control character")
 	}
 	if err := o.validateFlow(); err != nil {

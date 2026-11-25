@@ -140,6 +140,30 @@ func TestFrontmatter(t *testing.T) {
 			"\ufeff---\r\nname: Graphify\r\ndescription: build a graph\r\n---\r\nBody.\r\n",
 			"Graphify", "build a graph", "Body.", false,
 		},
+		"folded, stripped": {
+			"---\nname: Fold\ndescription: >-\n  first line\n  second line\n---\nBody.\n",
+			"Fold", "first line second line", "Body.", false,
+		},
+		"folded, with a blank line": {
+			"---\nname: Fold\ndescription: >\n  one\n\n  two\n---\nBody.\n",
+			"Fold", "one\ntwo\n", "Body.", false,
+		},
+		"literal": {
+			"---\nname: Lit\ndescription: |\n  a\n  b\n---\nBody.\n",
+			"Lit", "a\nb\n", "Body.", false,
+		},
+		"literal, stripped": {
+			"---\nname: Lit\ndescription: |-\n  a\n  b\n---\nBody.\n",
+			"Lit", "a\nb", "Body.", false,
+		},
+		"a nested key does not win": {
+			"---\nname: Real\ndescription: real\nmeta:\n  name: Fake\n  description: fake\n---\nBody.\n",
+			"Real", "real", "Body.", false,
+		},
+		"a folded line with a colon": {
+			"---\nname: C\ndescription: >-\n  see https://x.example\n---\nBody.\n",
+			"C", "see https://x.example", "Body.", false,
+		},
 		"unclosed": {"---\nname: X\n", "", "", "", true},
 		"missing":  {"name: X\n", "", "", "", true},
 	} {
@@ -225,6 +249,8 @@ func FuzzReadSKILL(f *testing.F) {
 	f.Add("no frontmatter")
 	f.Add("---\nname: \xff\xfe\n---\n")
 	f.Add("---\n---\n")
+	f.Add("---\nname: A\ndescription: >-\n  folded\n---\n")
+	f.Add("---\nname: A\ndescription: |\n  a\n\n  b\n---\n")
 	f.Add(strings.Repeat("---\n", 200))
 	f.Fuzz(func(t *testing.T, body string) {
 		if len(body) > maxCatalogFile {

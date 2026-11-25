@@ -183,6 +183,19 @@ window.Alpine.data("providerPage", () => Object.assign({
     return effectiveStatus(conn, this.now);
   },
 
+  // statusClass colours the row's badge: green when it can be used, amber while
+  // it cools down, red when it failed or its login expired.
+  statusClass(conn) {
+    const status = this.status(conn);
+    if (status === "error" || status === "expired") {
+      return "badge-err";
+    }
+    if (status === "unavailable") {
+      return "badge-warn";
+    }
+    return "badge-ok";
+  },
+
   tag(conn) {
     return errorTag(conn);
   },

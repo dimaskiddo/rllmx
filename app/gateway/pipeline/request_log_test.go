@@ -68,11 +68,11 @@ func TestTheFeatureLineNamesLevelsModesAndSkillsOnly(t *testing.T) {
 	c.saverStats = saver.Stats{
 		Saved: 120, Filters: []string{"git", "ls"},
 		Prompts: []string{"caveman", "ponytail", "custom"}, Levels: []string{"caveman=full", "ponytail=lite"},
-		Headroom: true, CustomChars: 42,
+		Headroom: true, CustomChars: 42, Skipped: []string{"rtk", "caveman"},
 	}
 	c.skillStats = skill.Stats{Skills: []string{"simplifier"}, Via: map[string]string{"simplifier": "always"}, Reminded: []string{"reviewer"}}
 	line := c.featureLine()
-	for _, want := range []string{"RTK 2", "CAVEMAN full", "PONYTAIL lite", "CUSTOMPROMPT 42c", "HEADROOM", "SKILL simplifier(always)", "SKILL reviewer(reminded)"} {
+	for _, want := range []string{"RTK 2", "CAVEMAN full", "PONYTAIL lite", "CUSTOMPROMPT 42c", "HEADROOM", "SKILL simplifier(always)", "SKILL reviewer(reminded)", "RTK skipped", "CAVEMAN skipped"} {
 		if !strings.Contains(line, want) {
 			t.Errorf("the feature line lacks %q: %s", want, line)
 		}

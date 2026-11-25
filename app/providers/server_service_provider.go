@@ -423,7 +423,7 @@ func (r *ServerServiceProvider) Runners(app foundation.Application) []foundation
 	route := app.MakeRoute()
 	server := apphttp.NewServer(h.Settings, apphttp.Rewrite(route), h.Guard, route.GetRoutes, app.MakeLog())
 	server.WaitFor(DataOf(app).Gate)
-	return []foundation.Runner{server, newOAuthRunner(app, h, h.OAuthSettings), newClaudeRunner(app, h), newProbeRunner(app, h.Probes), newCatalogRunner(app, h.CatalogSync, h.CatalogSync.Enabled)}
+	return []foundation.Runner{server, newOAuthRunner(app, h, h.OAuthSettings), newClaudeRunner(app, h), newQuotaPingRunner(app, h), newProbeRunner(app, h.Probes), newCatalogRunner(app, h.CatalogSync, h.CatalogSync.Enabled)}
 }
 
 // cacheOrNil returns the grouped cache, or nil when the cache provider is not

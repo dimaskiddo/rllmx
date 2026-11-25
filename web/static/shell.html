@@ -32,6 +32,7 @@
         <li x-show="isAdmin()"><a href="/dashboard/pricing" x-bind:title="label('nav.pricing')" x-bind:aria-current="isCurrent('/dashboard/pricing') ? 'page' : false"><span class="rl-icon" x-icon="coins"></span><span x-t="nav.pricing"></span></a></li>
         <li x-show="isAdmin()"><a href="/dashboard/users" x-bind:title="label('nav.users')" x-bind:aria-current="isCurrent('/dashboard/users') ? 'page' : false"><span class="rl-icon" x-icon="user"></span><span x-t="nav.users"></span></a></li>
         <li x-show="isAdmin()"><a href="/dashboard/settings" x-bind:title="label('nav.settings')" x-bind:aria-current="isCurrent('/dashboard/settings') ? 'page' : false"><span class="rl-icon" x-icon="sliders-horizontal"></span><span x-t="nav.settings"></span></a></li>
+        <li><a href="/dashboard/about" x-bind:title="label('nav.about')" x-bind:aria-current="isCurrent('/dashboard/about') ? 'page' : false"><span class="rl-icon" x-icon="globe"></span><span x-t="nav.about"></span></a></li>
         <li x-show="isAdmin()"><a href="/dashboard/console-log" x-bind:title="label('nav.consoleLog')" x-bind:aria-current="isCurrent('/dashboard/console-log') ? 'page' : false"><span class="rl-icon" x-icon="terminal"></span><span x-t="nav.consoleLog"></span></a></li>
       </ul>
     </nav>
@@ -77,6 +78,7 @@
 </div>
 
 <dialog class="rl-dialog" id="rl-confirm" aria-labelledby="dlg-rl-confirm-title">
+  <button type="button" class="btn btn-sm btn-ghost rl-dialog-close" x-tip="common.close" x-on:click="$el.closest('dialog').close()"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.close"></span></button>
   <h2 id="dlg-rl-confirm-title" data-confirm="title"></h2>
   <p data-confirm="message"></p>
   <div class="rl-dialog-actions">
@@ -86,6 +88,7 @@
 </dialog>
 
 <dialog class="rl-dialog" x-ref="password" x-on:close="forgetPassword()" aria-labelledby="dlg-password-title">
+  <button type="button" class="btn btn-sm btn-ghost rl-dialog-close" x-tip="common.close" x-on:click="$el.closest('dialog').close()"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.close"></span></button>
   <form x-on:submit.prevent="savePassword()">
     <h2 id="dlg-password-title" x-t="password.title"></h2>
     <label class="form-label" for="pw-current" x-show="!needsPassword" x-t="password.current"></label>

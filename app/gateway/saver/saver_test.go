@@ -174,8 +174,38 @@ func TestTheSmartTopicsDecideAsTheyAlwaysDid(t *testing.T) {
 	}
 }
 
+func TestASmartSaverThatDoesNotMatchSaysItSkipped(t *testing.T) {
+	cfg := Options{
+		Caveman:  Prompt{Enabled: true, Level: "full", Mode: "smart"},
+		Ponytail: Prompt{Enabled: true, Level: "full", Mode: "smart"},
+	}
+	r := requestWith(translate.Message{Role: translate.RoleUser, Content: translate.TextPart("What is the capital of France?")})
+	st := Apply(context.Background(), nil, r, cfg)
+	if strings.Join(st.Skipped, ",") != "caveman,ponytail" {
+		t.Fatalf("skipped %v", st.Skipped)
+	}
+	if st.Changed() || len(st.Prompts) != 0 {
+		t.Fatalf("a skipped saver acted: %+v", st)
+	}
+}
+
+func TestADisabledSaverSaysNothing(t *testing.T) {
+	r := requestWith(translate.Message{Role: translate.RoleUser, Content: translate.TextPart("hi")})
+	st := Apply(context.Background(), nil, r, Options{Ponytail: Prompt{Enabled: false, Level: "full", Mode: "smart"}})
+	if len(st.Skipped) != 0 {
+		t.Fatalf("a disabled saver named itself: %v", st.Skipped)
+	}
+}
+
+func TestRTKSaysSkippedWhenNoToolTextQualified(t *testing.T) {
+	r := requestWith(translate.Message{Role: translate.RoleUser, Content: translate.TextPart("hi")})
+	if st := Apply(context.Background(), nil, r, Options{RTK: true}); strings.Join(st.Skipped, ",") != "rtk" {
+		t.Fatalf("skipped %v", st.Skipped)
+	}
+}
+
 func TestNamesListsTheSaversThatActed(t *testing.T) {
-	st := Stats{Saved: 12, Filters: []string{"html"}, Prompts: []string{"caveman"}, Headroom: true}
+	st := Stats{Saved: 12, Filters: []string{"html"}, Prompts: []string{"caveman"}, Headroom: true, Skipped: []string{"rtk"}}
 	if got := st.Names(); got != "html,headroom,caveman" {
 		t.Fatalf("Names = %q", got)
 	}

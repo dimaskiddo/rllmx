@@ -2,6 +2,7 @@
 // drag to reorder, arrows for the keyboard, and one free-text field that takes
 // an alias or a provider/model.
 import Sortable from "/static/lib/sortablejs/sortable.core.esm.js";
+import { normalizeModelID } from "./model-choices.js";
 
 let handle = null;
 
@@ -50,7 +51,7 @@ export const modelEditorMethods = {
   // The list is keyed by model, so a value another row already holds would be a
   // duplicate key; the edited row goes instead.
   setModelAt(index, event) {
-    const value = event.target.value.trim();
+    const value = normalizeModelID(event.target.value.trim());
     const at = this.form.models.indexOf(value);
     if (!value || (at >= 0 && at !== index)) {
       this.form.models.splice(index, 1);
@@ -65,7 +66,7 @@ export const modelEditorMethods = {
   },
 
   addModels(list) {
-    for (const value of list) {
+    for (const value of list.map(normalizeModelID)) {
       if (this.form.models.length >= 50) {
         return;
       }

@@ -144,6 +144,9 @@ func (r *Registry) add(e Entry) error {
 	if !categories[e.Category] {
 		return errors.New("unknown category")
 	}
+	if e.NoAuth && (e.Auth != nil || e.OAuth != nil) {
+		return errors.New("a no-auth provider carries a credential block")
+	}
 	if e.Transport.Format == "" {
 		e.Transport.Format = FormatOpenAI
 	}

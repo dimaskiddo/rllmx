@@ -22,7 +22,7 @@ const (
 // readCodex reads the account's windows: the session and weekly pair, then the
 // review and spark pairs when the plan reports them.
 func readCodex(ctx context.Context, r *Reader, e upstream.Entry, a Access) (Reading, error) {
-	raw, stop, early, earlyErr := r.getOK(ctx, "Codex", request{URL: codexUsageURL, Headers: codexHeaders(e, a, nil)})
+	raw, stop, early, earlyErr := r.getOK(ctx, "Codex", request{URL: codexUsageURL, Headers: codexHeaders(e, a, codexExtra())})
 	if stop {
 		return early, earlyErr
 	}
@@ -31,6 +31,22 @@ func readCodex(ctx context.Context, r *Reader, e upstream.Entry, a Access) (Read
 
 // codexHeaders are the CLI's own: its identity, the account header and the
 // bearer token.
+// codexExtra is the pair of headers the tool sends with every call; the
+// account header comes from the entry's own mapping.
+func codexExtra() map[string]string {
+	return map[string]string{"OpenAI-Beta": "codex-1", "originator": "codex_cli_rs"}
+}
+
+// firstOf reads the first of several spellings a field may take.
+func firstOf(v gjson.Result, names ...string) gjson.Result {
+	for _, name := range names {
+		if field := v.Get(name); field.Exists() {
+			return field
+		}
+	}
+	return gjson.Result{}
+}
+
 func codexHeaders(e upstream.Entry, a Access, extra map[string]string) map[string]string {
 	h := bearerFor(e, a)
 	if e.OAuth != nil && e.OAuth.Account != nil {
@@ -127,9 +143,7 @@ func (r *Reader) CodexCredits(ctx context.Context, conn repository.Connection) (
 	if err != nil {
 		return ResetCredits{}, err
 	}
-	code, raw, err := r.do(ctx, request{URL: codexCreditsURL, Headers: codexHeaders(entry, access, map[string]string{
-		"OpenAI-Beta": "codex-1",
-	})})
+	code, raw, err := r.do(ctx, request{URL: codexCreditsURL, Headers: codexHeaders(entry, access, codexExtra())})
 	if err != nil {
 		return ResetCredits{}, err
 	}
@@ -141,12 +155,12 @@ func (r *Reader) CodexCredits(ctx context.Context, conn repository.Connection) (
 	}
 	out := ResetCredits{}
 	data := gjson.ParseBytes(raw)
-	out.AvailableCount = int(data.Get("availableCount").Int())
+	out.AvailableCount = int(firstOf(data, "available_count", "availableCount").Int())
 	for _, c := range data.Get("credits").Array() {
 		out.Credits = append(out.Credits, Credit{
 			Status:    c.Get("status").String(),
-			GrantedAt: stamp(stampOf(c.Get("grantedAt"))),
-			ExpiresAt: stamp(stampOf(c.Get("expiresAt"))),
+			GrantedAt: stamp(stampOf(firstOf(c, "granted_at", "grantedAt"))),
+			ExpiresAt: stamp(stampOf(firstOf(c, "expires_at", "expiresAt"))),
 		})
 	}
 	return out, nil
@@ -166,7 +180,7 @@ func (r *Reader) CodexConsume(ctx context.Context, conn repository.Connection) (
 	if err != nil {
 		return ConsumeResult{}, err
 	}
-	code, raw, err := r.do(ctx, request{Method: http.MethodPost, URL: codexConsumeURL, Headers: codexHeaders(entry, access, nil), Body: body})
+	code, raw, err := r.do(ctx, request{Method: http.MethodPost, URL: codexConsumeURL, Headers: codexHeaders(entry, access, codexExtra()), Body: body})
 	if err != nil {
 		return ConsumeResult{}, err
 	}

@@ -23,15 +23,15 @@ Each row carries a stable identifier, what we do differently and why it is bette
 | 13 | Media Endpoints | 33 | [13-…](design/13-Media-Endpoints.md) |
 | 14 | Outbound Network | 15 | [14-…](design/14-Outbound-Network.md) |
 | 15 | Storage | 19 | [15-…](design/15-Storage.md) |
-| 16 | Usage, Pricing & Quota | 25 | [16-…](design/16-Usage-Pricing-and-Quota.md) |
+| 16 | Usage, Pricing & Quota | 27 | [16-…](design/16-Usage-Pricing-and-Quota.md) |
 | 17 | Configuration | 8 | [17-…](design/17-Configuration.md) |
-| 18 | Web Dashboard | 20 | [18-…](design/18-Web-Dashboard.md) |
+| 18 | Web Dashboard | 24 | [18-…](design/18-Web-Dashboard.md) |
 | 19 | Go Interfaces | 0 | [19-…](design/19-Go-Interfaces.md) |
 | 20 | Cache | 5 | [20-…](design/20-Cache.md) |
 | 21 | API Key Limits | 4 | [21-…](design/21-API-Key-Limits.md) |
 | 22 | Deferred & Out of Scope | 3 | [22-…](design/22-Deferred-and-Out-of-Scope.md) |
 | 23 | CLI | 4 | [23-…](design/23-CLI.md) |
-| **Total** | | **460** | |
+| **Total** | | **466** | |
 
 ## Kinds
 
@@ -39,7 +39,7 @@ Each row's Why column says which kind it is. Every number is counted once, by th
 
 | Kind | Meaning | Count | Numbers |
 |---|---|---|---|
-| Improvement | Differs from the reference for a stated reason | 370 | Every row with no other marker |
+| Improvement | Differs from the reference for a stated reason | 376 | Every row with no other marker |
 | New feature | Something the reference does not have | 9 | 24, 32, 148, 284, 310, 336, 25, 350, 351 |
 | Trade-off | A deliberate cost | 21 | 33, 81, 91, 138, 141, 286, 287, 289, 290, 317, 332, 334, 358, 360, 383, 385, 387, 400, 410, 415 |
 | Scope cut | A reference feature not adopted | 37 | 3, 6, 9, 10, 11, 16, 48, 89, 105, 158, 159, 160, 161, 162, 202, 214, 250, 256, 260, 273, 278, 279, 320, 322, 346, 347, 359, 366, 372, 373, 379, 380, 384, 398, 399 |
@@ -47,7 +47,7 @@ Each row's Why column says which kind it is. Every number is counted once, by th
 | Temporary | Stopgap until a named later change | 3 | 93, 104, 325 |
 | Retired | A framework choice or a rule that no longer applies, or a behavior now the reference's own; the identifier stays citable | 15 | 193, 196, 197, 198, 199, 201, 222, 236, 244, 245, 277, 325, 337, 396, 426 |
 | Built as planned | Was only a schedule change and is now done | 1 | 216 |
-| **Total** | | **460** | |
+| **Total** | | **466** | |
 
 How a row is counted:
 - A row with no marker is an improvement. A row marked *partial* is one too, and so are 112-114 and 118, where only a sub-point waits for later work.

@@ -3,6 +3,7 @@ package oauth_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/url"
 	"rllmx/app/llm/oauth"
 	"rllmx/app/llm/oauth/codebuddy"
@@ -397,6 +398,53 @@ func flowOf(t *testing.T, r *login.Login, id, client string) oauth.Flow {
 		t.Fatal(err)
 	}
 	return f
+}
+
+func TestADeviceStartSendsOnlyTheFieldsItHas(t *testing.T) {
+	for name, tc := range map[string]struct {
+		block string
+		scope string
+	}{
+		"no scope": {`{"flow":"device","deviceUrl":"@/device","tokenUrl":"@/token","params":[{"name":"platform","value":"CLI"}]}`, ""},
+		"a scope":  {`{"flow":"device","deviceUrl":"@/device","tokenUrl":"@/token","scope":"read:user"}`, "read:user"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := login.NewLogin(t, "dv", tc.block, oauth.Dialects{})
+			r.F.On("/device", login.OK(`{"device_code":"DC","user_code":"UC","verification_uri":"https://a.example/v"}`))
+			if _, err := r.Service.StartDevice(context.Background(), "dv", "bind"); err != nil {
+				t.Fatal(err)
+			}
+			q, err := url.ParseQuery(r.F.Last("/device").Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if q.Has("scope") != (tc.scope != "") || q.Get("scope") != tc.scope {
+				t.Fatalf("scope %v, want %q", q["scope"], tc.scope)
+			}
+			if q.Get("client_id") != "client-dv" {
+				t.Fatalf("client_id %q", q.Get("client_id"))
+			}
+		})
+	}
+}
+
+// Meta refuses a scope on the device start, so the file that names none sends
+// none.
+func TestTheMuseDeviceStartCarriesNoScope(t *testing.T) {
+	f, err := oauth.FlowFor(login.Registry(t), func(string) string { return "c" }, nil, "muse")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Flow != upstream.FlowDevice || f.Scope != "" {
+		t.Fatalf("%s %q", f.Flow, f.Scope)
+	}
+}
+
+func TestStartRefusesADeviceFlow(t *testing.T) {
+	r := login.NewLogin(t, "muse", `{"flow":"device","deviceUrl":"@/device","tokenUrl":"@/token"}`, oauth.Dialects{})
+	if _, err := r.Service.Start(oauth.StartRequest{Provider: "muse", Bind: "b"}); !errors.Is(err, oauth.ErrUnsupported) {
+		t.Fatalf("%v", err)
+	}
 }
 
 func TestAHugeLifetimeOrIntervalIsCappedNotWrapped(t *testing.T) {
