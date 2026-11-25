@@ -38,6 +38,9 @@ type Bucket struct {
 
 // Request is one usage row, as the log and the recent list read it.
 type Request struct {
+	// ID is the row's own id, the tie-break of the newest-by-time order and the
+	// second half of a paging cursor.
+	ID           int64
 	Time         time.Time
 	Provider     string
 	Model        string
@@ -290,17 +293,31 @@ func (s *Store) LastSeen(ctx context.Context, since time.Time, keys []string) (m
 // zero from keeps every row the store holds. Newest is by time, not by id: an
 // import gives old history higher ids than the live rows around it.
 func (s *Store) Recent(ctx context.Context, from time.Time, limit int, keys []string) ([]Request, error) {
-	return s.recent(ctx, from, limit, "", keys)
+	return s.recent(ctx, from, limit, "", keys, nil)
+}
+
+// Cursor is a keyset position in the request log: the time and id of the last
+// row a page returned.
+type Cursor struct {
+	TS int64
+	ID int64
+}
+
+// RecentBefore reads the page after cursor in the newest-by-time order. The
+// time and id pair is compared together, so rows sharing a timestamp are read
+// once each and never skipped.
+func (s *Store) RecentBefore(ctx context.Context, from time.Time, limit int, keys []string, cursor Cursor) ([]Request, error) {
+	return s.recent(ctx, from, limit, "", keys, &cursor)
 }
 
 // RecentServed returns the newest rows that used tokens, at most limit, for a
 // list that would otherwise read many rows to keep a few.
 func (s *Store) RecentServed(ctx context.Context, limit int, keys []string) ([]Request, error) {
-	return s.recent(ctx, time.Time{}, limit, `"promptTokens" + "completionTokens" > 0`, keys)
+	return s.recent(ctx, time.Time{}, limit, `"promptTokens" + "completionTokens" > 0`, keys, nil)
 }
 
 // recent runs the one query both readers share; cond is a constant condition.
-func (s *Store) recent(ctx context.Context, from time.Time, limit int, cond string, keys []string) ([]Request, error) {
+func (s *Store) recent(ctx context.Context, from time.Time, limit int, cond string, keys []string, before *Cursor) ([]Request, error) {
 	if limit <= 0 || limit > maxRecent {
 		limit = maxRecent
 	}
@@ -308,22 +325,30 @@ func (s *Store) recent(ctx context.Context, from time.Time, limit int, cond stri
 	if !usable {
 		return []Request{}, nil
 	}
-	conds := make([]string, 0, 3)
+	conds := make([]string, 0, 4)
+	var bound []any
 	if !from.IsZero() {
 		conds = append(conds, `"ts" >= ?`)
-		args = append([]any{from.UnixMilli()}, args...)
+		bound = append(bound, from.UnixMilli())
 	}
 	if cond != "" {
 		conds = append(conds, cond)
 	}
+	if before != nil {
+		conds = append(conds, `("ts" < ? OR ("ts" = ? AND "id" < ?))`)
+		bound = append(bound, before.TS, before.TS, before.ID)
+	}
 	if clause != "" {
 		conds = append(conds, strings.TrimPrefix(clause, " AND "))
+		bound = append(bound, args...)
 	}
+	args = bound
 	where := ""
 	if len(conds) > 0 {
 		where = ` WHERE ` + strings.Join(conds, " AND ")
 	}
 	var rows []struct {
+		ID           int64  `db:"id"`
 		TS           int64  `db:"ts"`
 		Provider     string `db:"provider"`
 		Model        string `db:"model"`
@@ -337,7 +362,7 @@ func (s *Store) recent(ctx context.Context, from time.Time, limit int, cond stri
 		Savers       string `db:"savers"`
 		Skills       string `db:"skills"`
 	}
-	err := s.db.WithContext(ctx).Select(&rows, s.q(`SELECT "ts","provider","model","connectionId","apiKeyName","promptTokens",`+
+	err := s.db.WithContext(ctx).Select(&rows, s.q(`SELECT "id","ts","provider","model","connectionId","apiKeyName","promptTokens",`+
 		`"completionTokens","cachedTokens","status","errorClass","savers","skills" FROM "requests"`+where+` ORDER BY "ts" DESC, "id" DESC LIMIT ?`),
 		append(args, limit)...)
 	if err != nil {
@@ -346,12 +371,39 @@ func (s *Store) recent(ctx context.Context, from time.Time, limit int, cond stri
 	out := make([]Request, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, Request{
-			Time: time.UnixMilli(r.TS).UTC(), Provider: r.Provider, Model: r.Model, ConnectionID: r.ConnectionID, APIKeyName: r.APIKeyName,
+			ID: r.ID, Time: time.UnixMilli(r.TS).UTC(), Provider: r.Provider, Model: r.Model, ConnectionID: r.ConnectionID, APIKeyName: r.APIKeyName,
 			Prompt: r.Prompt, Completion: r.Completion, Cached: r.Cached, Status: r.Status, ErrorClass: r.ErrorClass,
 			Savers: r.Savers, Skills: r.Skills,
 		})
 	}
 	return out, nil
+}
+
+// UnknownCosts counts the rows in the window whose model carried no rate, so a
+// zero in the cost column can be read as free or as unknown.
+func (s *Store) UnknownCosts(ctx context.Context, from time.Time, keys []string) (int64, error) {
+	clause, args, usable := keyClause(keys)
+	if !usable {
+		return 0, nil
+	}
+	conds := []string{`"costKnown" = 0`}
+	var bound []any
+	if !from.IsZero() {
+		conds = append([]string{`"ts" >= ?`}, conds...)
+		bound = append(bound, from.UnixMilli())
+	}
+	if clause != "" {
+		conds = append(conds, strings.TrimPrefix(clause, " AND "))
+		bound = append(bound, args...)
+	}
+	var count []int64
+	if err := s.db.WithContext(ctx).Select(&count, s.q(`SELECT COUNT(*) FROM "requests" WHERE `+strings.Join(conds, " AND ")), bound...); err != nil {
+		return 0, err
+	}
+	if len(count) == 0 {
+		return 0, nil
+	}
+	return count[0], nil
 }
 
 // Providers lists every provider the usage store has served, including days

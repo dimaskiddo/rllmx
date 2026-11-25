@@ -4,8 +4,83 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
+	"unicode"
 )
+
+var (
+	docLink     = regexp.MustCompile(`\]\(([^)\s]+)\)`)
+	docFence    = regexp.MustCompile("(?s)```.*?```")
+	docCodeSpan = regexp.MustCompile("`[^`\n]*`")
+	docHeading  = regexp.MustCompile(`(?m)^#{1,6}\s+(.+)$`)
+	docScheme   = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*:`)
+)
+
+// docSlug is GitHub's heading anchor: lower case, letters, digits, dashes and
+// underscores kept, a space becomes a dash, everything else dropped.
+func docSlug(s string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(s) {
+		switch {
+		case unicode.IsLetter(r), unicode.IsDigit(r), r == '-', r == '_':
+			b.WriteRune(r)
+		case r == ' ':
+			b.WriteRune('-')
+		}
+	}
+	return b.String()
+}
+
+// A link a reader follows is part of the documentation. The README sends them
+// to the migration guide, the guide sends them back, and a rename either one
+// forgets has to fail here rather than in a reader's browser.
+func TestEveryDocLinkResolves(t *testing.T) {
+	files := []string{"../README.md", "../ROADMAP.md", "../AGENTS.md"}
+	for _, glob := range []string{"docs/*.md", "docs/design/*.md"} {
+		found, err := filepath.Glob(filepath.Join("..", glob))
+		if err != nil || len(found) == 0 {
+			t.Fatalf("no files for %s: %v", glob, err)
+		}
+		files = append(files, found...)
+	}
+	for _, file := range files {
+		body, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := docCodeSpan.ReplaceAllString(docFence.ReplaceAllString(string(body), ""), "")
+		for _, m := range docLink.FindAllStringSubmatch(text, -1) {
+			target := m[1]
+			if strings.HasPrefix(target, "#") || docScheme.MatchString(target) {
+				continue
+			}
+			path, fragment, _ := strings.Cut(target, "#")
+			resolved := filepath.Join(filepath.Dir(file), path)
+			if _, err := os.Stat(resolved); err != nil {
+				t.Errorf("%s links to %s, which does not exist", file, target)
+				continue
+			}
+			if fragment == "" || !strings.HasSuffix(path, ".md") {
+				continue
+			}
+			linked, err := os.ReadFile(resolved)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ok := false
+			for _, h := range docHeading.FindAllStringSubmatch(string(linked), -1) {
+				if docSlug(h[1]) == fragment {
+					ok = true
+					break
+				}
+			}
+			if !ok {
+				t.Errorf("%s links to %s, which has no heading with that anchor", file, target)
+			}
+		}
+	}
+}
 
 // The index is the first thing a reader opens, so a status there that disagrees
 // with the doc's own line sends the reader to the wrong conclusion.

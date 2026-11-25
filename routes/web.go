@@ -144,6 +144,8 @@ func webProviders(router route.Route, guard *apphttp.Guard, base Base) {
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPost, "/api/providers/bulk", p.BulkCreate)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/providers/client", p.Client)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/providers/catalog", p.Catalog)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/providers/suggested-models", p.SuggestedModels)
+		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/providers/kilo/free-models", p.KiloFreeModels)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodGet, "/api/providers/{id}", p.Show)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodPut, "/api/providers/{id}", p.Update)
 		guard.Handle(router, apphttp.ClassProtected, nethttp.MethodDelete, "/api/providers/{id}", p.Delete)

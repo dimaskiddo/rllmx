@@ -104,6 +104,7 @@ func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.P
 		Prefetch:      prefetch.New(),
 		Pacer:         ratelimit.NewGroup(h.Upstream.RateLimit),
 		ResponseCache: responseCache(app, store),
+		Embed:         embedder(NewMediaSource(app)),
 		Saver:         saverClient(h),
 		SaverURL:      saverURL(h),
 		Skills:        h.Skills,
@@ -115,12 +116,22 @@ func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.P
 		Minter:        h.Minter,
 		Projects:      h.Google.Projects,
 		Targets:       zed.Targets{Client: h.Zed},
-		Catalog:       &catalog.Guard{Cache: cacheOrNil(app), Fetchers: catalog.Fetchers(h.Registry, client)},
+		Catalog:       CatalogGuard(h, app),
 		Quota:         h.Google.Quota,
 		ClaudeCLI:     h.ClaudeCLI,
 		Timers:        stream.Timers{FirstChunk: h.Stream.FirstChunk, Stall: h.Stream.Stall, UsageWait: h.Stream.UsageWait},
 		Log:           log,
 	})
+}
+
+// CatalogGuard builds the one live-catalog guard the request path and the
+// dashboard's model list share, so a provider's list is fetched once.
+func CatalogGuard(h *HTTP, app foundation.Application) *catalog.Guard {
+	client := network.NewClient(network.Options{
+		ConnectTimeout: h.Upstream.ConnectTimeout, MaxRedirects: -1, Allow: h.Upstream.Allow, BodyCap: -1,
+		Curves: h.Upstream.Curves,
+	})
+	return &catalog.Guard{Cache: cacheOrNil(app), Fetchers: catalog.Fetchers(h.Registry, client)}
 }
 
 // qoderKey reads the signing key the gateway's providers carry. It is public
@@ -192,7 +203,7 @@ func responseCache(app foundation.Application, store *repository.Store) *pipelin
 	if c == nil {
 		return nil
 	}
-	rc := &pipeline.ResponseCache{Cache: c, Flags: store.KV()}
+	rc := &pipeline.ResponseCache{Cache: c, Flags: store.KV(), Semantic: pipeline.NewSemanticIndex()}
 	if lim, err := settings.LoadCache(app.MakeConfig()); err == nil && !lim.Shared {
 		rc.Budget = &cache.Budget{MaxEntries: lim.ResponseMaxEntries, MaxBytes: lim.ResponseMaxBytes}
 		// A settings write purges the answers; the budget must forget them too.

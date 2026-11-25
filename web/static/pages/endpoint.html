@@ -111,10 +111,15 @@
       <p class="rl-hint" x-show="!isAdmin()" x-t="keys.adminOnly"></p>
       <fieldset class="rl-fieldset" x-bind:disabled="!isAdmin()">
       <label class="form-label" for="edit-owner" x-t="users.owner"></label>
-      <select class="form-select" id="edit-owner" x-on:change="setField('edit.owner', $event)">
-        <option value="" x-bind:selected="!edit || !edit.owner" x-t="users.ownerNone"></option>
-        <template x-for="user in users" x-bind:key="user.id"><option x-bind:value="user.id" x-bind:selected="edit && edit.owner === user.id" x-text="user.username"></option></template>
-      </select>
+      <template x-if="isAdmin()">
+        <select class="form-select" id="edit-owner" x-on:change="setField('edit.owner', $event)">
+          <option value="" x-bind:selected="!edit || !edit.owner" x-t="users.ownerNone"></option>
+          <template x-for="user in users" x-bind:key="user.id"><option x-bind:value="user.id" x-bind:selected="edit && edit.owner === user.id" x-text="user.username"></option></template>
+        </select>
+      </template>
+      <template x-if="!isAdmin()">
+        <input class="form-control" id="edit-owner" type="text" readonly x-bind:value="meName">
+      </template>
 
       <div class="form-check form-switch rl-switch">
         <input class="form-check-input" type="checkbox" id="edit-active" role="switch" x-bind:checked="edit ? edit.isActive : false" x-on:change="toggleEditActive()">

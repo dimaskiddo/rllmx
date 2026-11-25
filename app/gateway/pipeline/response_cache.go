@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 
 	"rllmx/app/llm/translate"
 	"rllmx/app/platform/cache"
@@ -17,6 +19,8 @@ const (
 	// CacheHeader carries the request's wish (use, bypass) and the answer's
 	// outcome (hit, miss).
 	CacheHeader = "X-Rllm-Cache"
+	// CacheSimilarity carries the score of a semantic hit.
+	CacheSimilarity = "X-Rllm-Cache-Similarity"
 
 	cacheUse    = "use"
 	cacheBypass = "bypass"
@@ -53,19 +57,39 @@ type ResponseCache struct {
 	Cache  Loader
 	Flags  keyFlags
 	Budget *cache.Budget
+	// Semantic matches a request against cached ones by similarity; nil leaves
+	// the cache exact-only.
+	Semantic *SemanticIndex
 }
 
 // cacheSettings is the secret-free projection of the `responseCache` setting.
 type cacheSettings struct {
-	Enabled bool          `json:"enabled"`
-	TTL     time.Duration `json:"ttl"`
-	MaxKB   int           `json:"maxKb"`
+	Enabled  bool             `json:"enabled"`
+	TTL      time.Duration    `json:"ttl"`
+	MaxKB    int              `json:"maxKb"`
+	Semantic semanticSettings `json:"semantic"`
 }
+
+// semanticSettings is the similarity layer under an enabled response cache. It
+// is on unless the setting says otherwise; without an embedding model the cache
+// stays exact-only.
+type semanticSettings struct {
+	Enabled   bool    `json:"enabled"`
+	Model     string  `json:"embeddingModel"`
+	Threshold float64 `json:"threshold"`
+}
+
+const (
+	defaultThreshold = 0.92
+	minThreshold     = 0.80
+	maxThreshold     = 0.99
+)
 
 // projectSettings reads the setting, filling what is missing or out of range
 // with the defaults. Anything that is not an object is off.
 func projectSettings(raw string, present bool) cacheSettings {
-	s := cacheSettings{TTL: defaultCacheTTL, MaxKB: defaultCacheEntryKB}
+	s := cacheSettings{TTL: defaultCacheTTL, MaxKB: defaultCacheEntryKB,
+		Semantic: semanticSettings{Enabled: true, Threshold: defaultThreshold}}
 	if !present {
 		return s
 	}
@@ -79,6 +103,17 @@ func projectSettings(raw string, present bool) cacheSettings {
 	}
 	if k := v.Get("maxEntryKb"); k.Type == gjson.Number && k.Int() >= 1 && k.Int() <= maxCacheEntryKB {
 		s.MaxKB = int(k.Int())
+	}
+	if sem := v.Get("semantic"); sem.IsObject() {
+		if e := sem.Get("enabled"); e.Type == gjson.True || e.Type == gjson.False {
+			s.Semantic.Enabled = e.Type == gjson.True
+		}
+		if m := sem.Get("embeddingModel"); m.Type == gjson.String && len(m.String()) <= 256 {
+			s.Semantic.Model = strings.TrimSpace(m.String())
+		}
+		if t := sem.Get("threshold"); t.Type == gjson.Number && t.Float() >= minThreshold && t.Float() <= maxThreshold {
+			s.Semantic.Threshold = t.Float()
+		}
 	}
 	return s
 }
@@ -158,7 +193,7 @@ func (c *call) cached(ctx context.Context) (Output, bool) {
 	c.cacheOpts = s
 	raw, hit := rc.Cache.Get(cache.Response, c.cacheKey)
 	if !hit {
-		return Output{}, false
+		return c.cachedSimilar(ctx, s)
 	}
 	var e cachedAnswer
 	if json.Unmarshal(raw, &e) != nil || len(e.Body) == 0 {
@@ -171,6 +206,83 @@ func (c *call) cached(ctx context.Context) (Output, bool) {
 	h.Set("Content-Type", "application/json")
 	h.Set(CacheHeader, cacheHit)
 	return Output{Status: http.StatusOK, Header: h, Body: e.Body}, true
+}
+
+// cachedSimilar answers a request whose exact key is missing but whose text is
+// close to one already cached. It leaves the vector for remember, so the answer
+// is indexed without a second embedding.
+func (c *call) cachedSimilar(ctx context.Context, s cacheSettings) (Output, bool) {
+	rc := c.p.d.ResponseCache
+	if rc == nil || rc.Semantic == nil || c.p.d.Embed == nil || !s.Semantic.Enabled || s.Semantic.Model == "" {
+		return Output{}, false
+	}
+	if len(c.req.Messages) > 3 || len(c.req.Tools) > 0 {
+		return Output{}, false
+	}
+	text := c.req.LastUserText()
+	if text == "" {
+		return Output{}, false
+	}
+	vec, err := c.p.d.Embed(ctx, s.Semantic.Model, text)
+	if err != nil || len(vec) == 0 {
+		return Output{}, false
+	}
+	bucket := c.semanticBucket(ctx)
+	c.cacheVec, c.cacheBucket = vec, bucket
+	key, score, ok := rc.Semantic.Lookup(bucket, vec, s.Semantic.Threshold)
+	if !ok {
+		return Output{}, false
+	}
+	raw, hit := rc.Cache.Get(cache.Response, key)
+	if !hit {
+		rc.Semantic.Drop(key)
+		return Output{}, false
+	}
+	var e cachedAnswer
+	if json.Unmarshal(raw, &e) != nil || len(e.Body) == 0 {
+		rc.Semantic.Drop(key)
+		return Output{}, false
+	}
+	r := &c.row
+	r.Cached = true
+	r.PromptTokens, r.CompletionTokens, r.CachedTokens, r.ReasoningTokens = e.Prompt, e.Completion, e.Cached, e.Reasoning
+	h := http.Header{}
+	h.Set("Content-Type", "application/json")
+	h.Set(CacheHeader, cacheHit)
+	h.Set(CacheSimilarity, strconv.FormatFloat(score, 'f', 3, 64))
+	return Output{Status: http.StatusOK, Header: h, Body: e.Body}, true
+}
+
+// semanticBucket is everything that must match before similarity decides: the
+// request's identity and settings, and its body with the last user text
+// blanked, so only that text is compared.
+func (c *call) semanticBucket(ctx context.Context) string {
+	body := c.canonicalWithLastUserBlanked()
+	t := c.tctx.Thinking
+	return cacheKeyBody([]string{
+		"semantic", c.in.Caller.ID, c.format, c.dest.provider, c.dest.model, c.client,
+		t.Mode, t.Level, strconv.Itoa(t.Budget), t.Display, c.saverKey(ctx), c.skillKey(ctx),
+	}, body)
+}
+
+// canonicalWithLastUserBlanked rewrites the canonical body's last user content
+// to empty; an unreadable body falls back to the body itself.
+func (c *call) canonicalWithLastUserBlanked() []byte {
+	body, ok := canonicalBody(c.in.Body)
+	if !ok {
+		return nil
+	}
+	messages := gjson.GetBytes(body, "messages").Array()
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Get("role").String() != "user" {
+			continue
+		}
+		if next, err := sjson.SetBytes(body, "messages."+strconv.Itoa(i)+".content", ""); err == nil {
+			return next
+		}
+		break
+	}
+	return body
 }
 
 // requestKey is the key of the answer to this request: who asked, in which
@@ -220,4 +332,7 @@ func (c *call) remember(ans *translate.Response, body []byte) {
 		return
 	}
 	rc.Cache.Set(cache.Response, c.cacheKey, val, c.cacheOpts.TTL)
+	if rc.Semantic != nil && len(c.cacheVec) > 0 && c.cacheBucket != "" {
+		rc.Semantic.Add(c.cacheBucket, c.cacheKey, c.cacheVec)
+	}
 }

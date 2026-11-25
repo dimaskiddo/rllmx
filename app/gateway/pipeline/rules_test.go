@@ -223,3 +223,20 @@ func TestARerouteFromANameThatDoesNotResolveIsRefusedForARestrictedKey(t *testin
 		t.Fatalf("%d %s after %d upstream calls", out.Status, out.Body, len(r.up.Calls()))
 	}
 }
+
+// A group switch is a kill switch for the rules inside it, and it leaves the
+// row's own switch alone.
+func TestAGroupSwitchLeavesItsRulesOff(t *testing.T) {
+	files := ruleFiles(skill.StagePreRoute,
+		`{"rules":[{"stage":"pre-route","when":{"modelRegex":"^m$"},"then":{"rerouteModel":"wire/short"}}]}`)
+	off := skillCall(t, `{"routerEnabled":true,"builtinSkillsEnabled":false}`, nil, files)
+	off.evaluateRules(context.Background())
+	if !off.rules.Empty() {
+		t.Fatalf("a rule of a switched-off group matched: %+v", off.rules)
+	}
+	other := skillCall(t, `{"routerEnabled":true,"customSkillsEnabled":false}`, nil, files)
+	other.evaluateRules(context.Background())
+	if other.rules.Reroute != "wire/short" {
+		t.Fatalf("another group's switch stopped a built-in rule: %q", other.rules.Reroute)
+	}
+}

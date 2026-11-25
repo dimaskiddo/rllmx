@@ -24,6 +24,9 @@ func (s *Service) ImportToken(ctx context.Context, provider string, values map[s
 	if err != nil {
 		return "", err
 	}
+	if id, err := s.importByImporter(ctx, f, values); !errors.Is(err, ErrUnsupported) {
+		return id, err
+	}
 	if f.Flow != upstream.FlowImport {
 		return "", ErrUnsupported
 	}

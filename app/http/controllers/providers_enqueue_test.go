@@ -1,8 +1,13 @@
 package controllers
 
 import (
+	"context"
+	"strings"
 	"sync"
 	"testing"
+
+	catalogguard "rllmx/app/llm/catalog"
+	"rllmx/app/store/repository"
 )
 
 // enqueued records the connection ids a route asked to probe.
@@ -47,5 +52,55 @@ func TestABulkImportDoesNotEnqueueEveryConnection(t *testing.T) {
 		`{"provider":"deepseek-web","entries":"first|sso=abc\nsecond|sso=xyz"}`, 200)
 	if got := e.all(); len(got) != 0 {
 		t.Fatalf("a bulk import enqueued %v", got)
+	}
+}
+
+// A key test checks the credential and spends nothing on models; model
+// reachability is the model-test route.
+func TestAKeyCheckDoesNotProbeEveryModel(t *testing.T) {
+	m := newMgmtRig(t)
+	e := &enqueued{}
+	m.pc.Enqueue = e.add
+	id := connID(t, m.ok(t, "POST", "/api/providers", `{"provider":"openai","apiKey":"k","name":"a"}`, 201))
+	// The create itself asks for a probe; the test must add none.
+	m.pc.Enqueue = e.add
+	before := len(e.all())
+	m.ok(t, "POST", "/api/providers/"+id+"/test", "", 200)
+	if got := e.all(); len(got) != before {
+		t.Fatalf("a key test enqueued %v", got[before:])
+	}
+}
+
+// An OAuth provider's model page answers its own live list, with the embedded
+// list as the fallback.
+func TestTheModelListUsesTheProvidersLiveCatalog(t *testing.T) {
+	m := newMgmtRig(t)
+	conn, err := m.st.Store.Connections().Create(context.Background(), repository.ConnInput{
+		Provider: "kiro", AuthType: "oauth", Name: "k",
+		Fields: map[string]string{"accessToken": `"at-` + strings.Repeat("x", 60) + `"`},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.pc.LiveCatalog = &catalogguard.Guard{Fetchers: map[string]catalogguard.Fetcher{
+		"kiro": func(context.Context, repository.Connection) ([]string, error) { return []string{"live-model"}, nil },
+	}}
+	code, out, raw := m.call("GET", "/api/providers/"+conn.ID+"/models", "", true)
+	if code != 200 {
+		t.Fatalf("%d %s", code, raw)
+	}
+	found := false
+	for _, item := range out["models"].([]any) {
+		if row, _ := item.(map[string]any); row["id"] == "live-model" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the live list is missing: %s", raw)
+	}
+	// A provider with no fetcher keeps the embedded list.
+	code, out, _ = m.call("GET", "/api/providers/"+conn.ID+"/models", "", true)
+	if code != 200 || len(out["models"].([]any)) == 0 {
+		t.Fatalf("the embedded fallback is empty")
 	}
 }

@@ -1,6 +1,7 @@
 // Skills: the installed list, each skill's switch and config fields, the
 // catalog sync and the auto-plan orchestration.
 import { api, patchSettings } from "/static/js/ui/api.js";
+import { ask } from "/static/js/ui/dialog.js";
 import { t } from "/static/js/ui/i18n.js";
 import { toast } from "/static/js/ui/toast.js";
 import { clampInt, setPath } from "/static/js/ui/fields.js";
@@ -30,6 +31,9 @@ window.Alpine.data("skillsPage", () => Object.assign({
   problems: [],
   settings: {},
   globalOn: true,
+  builtinOn: true,
+  customOn: true,
+  eccGroupOn: true,
   eccOn: false,
   eccConfidence: 0.35,
   eccMax: 1,
@@ -53,6 +57,9 @@ window.Alpine.data("skillsPage", () => Object.assign({
       this.problems = list.problems || [];
       this.settings = settings;
       this.globalOn = settings.globalSkillsEnabled !== false;
+      this.builtinOn = settings.builtinSkillsEnabled !== false;
+      this.customOn = settings.customSkillsEnabled !== false;
+      this.eccGroupOn = settings.eccSkillsEnabled !== false;
       this.eccOn = settings.ecc_auto_skill_routerEnabled === true;
       this.eccConfidence = settings.ecc_auto_skill_routerConfidence || 0.35;
       this.eccMax = settings.ecc_auto_skill_routerMaxSkills || 1;
@@ -112,7 +119,8 @@ window.Alpine.data("skillsPage", () => Object.assign({
       {
         key: "builtin",
         title: t("skills.builtinTitle"),
-        on: this.globalOn,
+        on: this.builtinOn,
+        off: this.builtinOn !== true,
         subgroups: [
           { key: "prompt", title: "", rows: buckets.prompt },
           { key: "rules", title: t("skills.groupRules"), rows: buckets.rules },
@@ -123,34 +131,68 @@ window.Alpine.data("skillsPage", () => Object.assign({
       cards.push({
         key: "custom",
         title: t("skills.groupCustom"),
-        on: null,
+        on: this.customOn,
+        off: this.customOn !== true,
         subgroups: [{ key: "custom", title: "", rows: buckets.custom }],
       });
     }
     cards.push({
       key: "catalog",
       title: t("skills.catalogTitle"),
-      on: this.eccOn,
+      on: this.eccGroupOn,
+      off: this.eccGroupOn !== true,
       subgroups: [{ key: "ecc", title: "", rows: buckets.ecc }],
     });
     return cards;
   },
 
-  // toggleCard writes the switch a card owns and puts it back when the save is
-  // refused.
+  // toggleCard is a kill switch: it writes its group key and never touches a
+  // row's own switch, so turning a group back on restores what the rows say.
   async toggleCard(card, event) {
     const box = event.target;
-    const catalog = card.key === "catalog";
-    const key = catalog ? "ecc_auto_skill_routerEnabled" : "globalSkillsEnabled";
-    if (await this.patch({ [key]: box.checked })) {
-      if (catalog) {
-        this.eccOn = box.checked;
-      } else {
-        this.globalOn = box.checked;
-      }
+    const keys = {
+      builtin: "builtinSkillsEnabled",
+      custom: "customSkillsEnabled",
+      catalog: "eccSkillsEnabled",
+    };
+    const key = keys[card.key];
+    if (!key || !(await this.patch({ [key]: box.checked }))) {
+      box.checked = !box.checked;
+      return;
+    }
+    if (card.key === "builtin") {
+      this.builtinOn = box.checked;
+    } else if (card.key === "custom") {
+      this.customOn = box.checked;
+    } else {
+      this.eccGroupOn = box.checked;
+    }
+  },
+
+  // setRouter starts or stops the catalog's own router; it enables no skill.
+  async setRouter(event) {
+    const box = event.target;
+    if (await this.patch({ ecc_auto_skill_routerEnabled: box.checked })) {
+      this.eccOn = box.checked;
     } else {
       box.checked = !box.checked;
     }
+  },
+
+  // groupOffSkill reports the group a skill belongs to being switched off.
+  groupOffSkill(skill) {
+    if (skill.source === "custom") {
+      return this.customOn !== true;
+    }
+    if (skill.source === "ecc") {
+      return this.eccGroupOn !== true;
+    }
+    return this.builtinOn !== true;
+  },
+
+  // rowOn gates a row's controls: the page-wide master, and the card's group.
+  rowOn(skill) {
+    return this.globalOn === true && !this.groupOffSkill(skill);
   },
 
   eccPercent() {
@@ -207,6 +249,13 @@ window.Alpine.data("skillsPage", () => Object.assign({
 
   async toggle(skill, event) {
     const box = event.target;
+    if (skill.id === "rea-allow" && box.checked) {
+      const yes = await ask({ title: t("skills.reaTitle"), message: t("skills.reaBody"), danger: true, confirm: t("skills.reaConfirm") });
+      if (!yes) {
+        box.checked = false;
+        return;
+      }
+    }
     if (await this.patch({ [skill.id + "Enabled"]: box.checked })) {
       skill.enabled = box.checked;
     } else {

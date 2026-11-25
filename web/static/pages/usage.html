@@ -29,6 +29,7 @@
       <div class="rl-stat"><span class="text-secondary" x-t="usage.outputTokens"></span><span class="rl-stat-value" x-text="num(stats.totalCompletionTokens)"></span></div>
       <div class="rl-stat"><span class="text-secondary" x-t="usage.cost"></span><span class="rl-stat-value" x-text="money(stats.totalCost)"></span></div>
     </div>
+    <p class="rl-hint" x-show="stats.unknownCostRequests > 0" x-text="label('usage.costUnknown') + ' ' + num(stats.unknownCostRequests)"></p>
 
     <div class="rl-toolbar" x-show="isAdmin()">
       <span class="badge" x-text="label('usage.live') + ': ' + liveRequests()"></span>
@@ -235,6 +236,9 @@
               </template>
             </tbody>
           </table>
+        </div>
+        <div class="rl-actions" x-show="logCursor !== ''">
+          <button type="button" class="btn btn-sm" x-on:click="loadOlder()" x-t="usage.loadOlder"></button>
         </div>
       </div>
     </section>

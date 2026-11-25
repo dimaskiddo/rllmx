@@ -72,6 +72,33 @@ func TestTheSettingsViewCarriesOnlyTheAllowList(t *testing.T) {
 	}
 }
 
+// The three skill groups are kill switches: on by default, written and read
+// back like any other listed setting.
+func TestTheSkillGroupSwitchesRoundTrip(t *testing.T) {
+	m := newMgmtRig(t)
+	seededSettings(t, m)
+	m.settingsRoutes(&SettingsController{DB: func() *repository.Store { return m.st.Store }, Auth: m.auth})
+	code, out, raw := m.call(nethttp.MethodGet, "/api/settings", "", true)
+	if code != 200 {
+		t.Fatalf("%d %s", code, raw)
+	}
+	for _, key := range []string{"builtinSkillsEnabled", "customSkillsEnabled", "eccSkillsEnabled"} {
+		if out[key] != true {
+			t.Errorf("%s starts %v", key, out[key])
+		}
+	}
+	body := `{"builtinSkillsEnabled":false,"customSkillsEnabled":false,"eccSkillsEnabled":false}`
+	if code, _, raw := m.call(nethttp.MethodPatch, "/api/settings", body, true); code != 200 {
+		t.Fatalf("%d %s", code, raw)
+	}
+	_, out, _ = m.call(nethttp.MethodGet, "/api/settings", "", true)
+	for _, key := range []string{"builtinSkillsEnabled", "customSkillsEnabled", "eccSkillsEnabled"} {
+		if out[key] != false {
+			t.Errorf("%s did not persist: %v", key, out[key])
+		}
+	}
+}
+
 func TestASettingsWriteRefusesWhatItCannotValidateAndWritesNothing(t *testing.T) {
 	m := newMgmtRig(t)
 	seededSettings(t, m)

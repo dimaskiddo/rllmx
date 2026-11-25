@@ -31,7 +31,11 @@ func (c *call) evaluateRules(ctx context.Context) {
 		return
 	}
 	setting, legacy := skill.Readers(doc.GetRaw)
+	off := groupOff(doc)
 	enabled := func(m skill.Manifest) bool {
+		if off(m.Source) {
+			return false
+		}
 		on, _ := skill.Switch(m, setting, legacy)
 		return on
 	}

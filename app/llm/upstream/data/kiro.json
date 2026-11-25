@@ -20,6 +20,7 @@
     }
   },
   "oauth": {
+    "importer": "kiro-refresh",
     "flow": "device",
     "deviceUrl": "https://oidc.us-east-1.amazonaws.com/device_authorization",
     "tokenUrl": "https://oidc.us-east-1.amazonaws.com/token",

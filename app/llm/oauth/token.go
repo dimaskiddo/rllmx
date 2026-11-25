@@ -216,6 +216,12 @@ func (c *TokenClient) Get(ctx context.Context, target string, headers map[string
 
 // do sends one request. A header the caller names is set after the defaults, so
 // it can replace Accept but never the content type of a body it did not build.
+// Send answers one request as it is, for a protocol whose body is JSON rather
+// than a form.
+func (c *TokenClient) Send(ctx context.Context, method, target string, body []byte, headers map[string]string) (int, []byte, error) {
+	return c.do(ctx, method, target, "application/json", body, headers)
+}
+
 func (c *TokenClient) do(ctx context.Context, method, target, contentType string, body []byte, headers map[string]string) (int, []byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, tokenTimeout)
 	defer cancel()

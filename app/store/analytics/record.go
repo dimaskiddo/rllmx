@@ -27,6 +27,9 @@ type Record struct {
 	// Estimated marks token counts the gateway guessed because the provider
 	// reported none.
 	Estimated bool
+	// CostKnown marks a cost taken from a rate; an unpriced model stores zero
+	// with this false, so the two are told apart.
+	CostKnown bool
 
 	PromptTokens     int64
 	CompletionTokens int64

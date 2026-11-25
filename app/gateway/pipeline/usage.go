@@ -21,9 +21,10 @@ func (c *call) setUsage(u translate.Usage) {
 	if c.p.d.Prices == nil {
 		return
 	}
-	r.Cost, _ = c.p.d.Prices.Cost(c.dest.provider, c.dest.model, upstream.Usage{
+	cost, known := c.p.d.Prices.Cost(c.dest.provider, c.dest.model, upstream.Usage{
 		Prompt: u.Prompt, Completion: u.Completion, Cached: u.Cached, CacheCreation: u.CacheWrite, Reasoning: u.Reasoning,
 	})
+	r.Cost, r.CostKnown = cost, known
 }
 
 // finish enqueues the one row the request leaves.
@@ -90,37 +91,73 @@ func (c *call) routeLine() string {
 	return b.String()
 }
 
-// featureLine names what the savers and the skills did to the request, or is
-// empty when neither did anything.
+// featureLine is the request's saver and skill summary, in one fixed order:
+// each saver's state, then the skills that acted, once. A saver that was on
+// with nothing to do says SKIPPED; one that was off says OFF.
 func (c *call) featureLine() string {
-	var parts []string
-	st := c.saverStats
-	if n := len(st.Filters); n > 0 {
-		parts = append(parts, "RTK "+strconv.Itoa(n))
+	st, ss := c.saverStats, c.skillStats
+	injected := map[string]bool{}
+	for _, id := range append(append([]string{}, ss.Skills...), ss.Reminded...) {
+		injected[id] = true
 	}
-	if st.Headroom || st.Note != "" {
-		parts = append(parts, "HEADROOM")
+	skipped := map[string]bool{}
+	for _, name := range st.Skipped {
+		skipped[strings.ToLower(name)] = true
 	}
-	for _, l := range st.Levels {
-		name, level, _ := strings.Cut(l, "=")
-		parts = append(parts, strings.ToUpper(name)+" "+level)
+	level := func(name string) bool {
+		for _, l := range st.Levels {
+			if n, _, _ := strings.Cut(l, "="); strings.EqualFold(n, name) {
+				return true
+			}
+		}
+		return false
+	}
+	parts := []string{
+		"RTK " + saverState(len(st.Filters) > 0, skipped["rtk"]),
+		"CAVEMAN " + saverState(level("caveman"), skipped["caveman"]),
+		"PONYTAIL " + saverState(level("ponytail"), skipped["ponytail"]),
 	}
 	if st.CustomChars > 0 {
-		parts = append(parts, "CUSTOMPROMPT "+strconv.Itoa(st.CustomChars)+"c")
+		parts = append(parts, "CUSTOMPROMPT ON ("+strconv.Itoa(st.CustomChars)+"c)")
 	}
-	for _, id := range c.skillStats.Skills {
-		parts = append(parts, "SKILL "+logName(id)+"("+logName(c.skillStats.Via[id])+")")
+	parts = append(parts,
+		"ALLOW REA "+onOff(injected["rea-allow"]),
+		"WATERMARK-REMOVER "+onOff(injected["watermarks-remover"]),
+		"HEADROOM "+saverState(st.Headroom, st.Note != ""),
+	)
+	var named []string
+	seen := map[string]bool{}
+	for _, id := range append(append([]string{}, ss.Skills...), ss.Reminded...) {
+		if id == "rea-allow" || id == "watermarks-remover" || seen[id] || id == "" {
+			continue
+		}
+		seen[id] = true
+		named = append(named, logName(id))
 	}
-	for _, name := range st.Skipped {
-		parts = append(parts, strings.ToUpper(logName(name))+" skipped")
-	}
-	for _, id := range c.skillStats.Reminded {
-		parts = append(parts, "SKILL "+logName(id)+"(reminded)")
-	}
-	if len(parts) == 0 {
-		return ""
+	if len(named) > 0 {
+		parts = append(parts, "SKILLS "+strings.Join(named, " "))
 	}
 	return strings.Join(parts, " · ")
+}
+
+// saverState names one saver's outcome: it acted, it was on with nothing to do,
+// or it was off.
+func saverState(on, skipped bool) string {
+	switch {
+	case on:
+		return "ON"
+	case skipped:
+		return "SKIPPED"
+	}
+	return "OFF"
+}
+
+// onOff is saverState for a switch-only entry, which has no skipped state.
+func onOff(on bool) string {
+	if on {
+		return "ON"
+	}
+	return "OFF"
 }
 
 // doneLine is the closing line of a request: timing, tokens and status.

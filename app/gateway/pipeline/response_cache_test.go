@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -378,13 +379,17 @@ func TestProjectSettingsFillsAndBoundsEveryField(t *testing.T) {
 		present bool
 		want    cacheSettings
 	}{
-		{``, false, cacheSettings{TTL: time.Hour, MaxKB: 512}},
-		{`{"enabled":true}`, true, cacheSettings{Enabled: true, TTL: time.Hour, MaxKB: 512}},
-		{`{"enabled":true,"ttlSeconds":60,"maxEntryKb":8}`, true, cacheSettings{Enabled: true, TTL: time.Minute, MaxKB: 8}},
-		{`{"enabled":true,"ttlSeconds":0,"maxEntryKb":0}`, true, cacheSettings{Enabled: true, TTL: time.Hour, MaxKB: 512}},
-		{`{"enabled":true,"ttlSeconds":99999999,"maxEntryKb":99999}`, true, cacheSettings{Enabled: true, TTL: time.Hour, MaxKB: 512}},
-		{`{"enabled":true,"ttlSeconds":"60"}`, true, cacheSettings{Enabled: true, TTL: time.Hour, MaxKB: 512}},
-		{`{"enabled":"true"}`, true, cacheSettings{TTL: time.Hour, MaxKB: 512}},
+		{``, false, cacheSettings{TTL: time.Hour, MaxKB: 512, Semantic: semanticSettings{Enabled: true, Threshold: 0.92}}},
+		{`{"enabled":true}`, true, cacheSettings{Enabled: true, TTL: time.Hour, MaxKB: 512, Semantic: semanticSettings{Enabled: true, Threshold: 0.92}}},
+		{`{"enabled":true,"ttlSeconds":60,"maxEntryKb":8}`, true, cacheSettings{Enabled: true, TTL: time.Minute, MaxKB: 8, Semantic: semanticSettings{Enabled: true, Threshold: 0.92}}},
+		{`{"enabled":true,"ttlSeconds":0,"maxEntryKb":0}`, true, cacheSettings{Enabled: true, TTL: time.Hour, MaxKB: 512, Semantic: semanticSettings{Enabled: true, Threshold: 0.92}}},
+		{`{"enabled":true,"ttlSeconds":99999999,"maxEntryKb":99999}`, true, cacheSettings{Enabled: true, TTL: time.Hour, MaxKB: 512, Semantic: semanticSettings{Enabled: true, Threshold: 0.92}}},
+		{`{"enabled":true,"ttlSeconds":"60"}`, true, cacheSettings{Enabled: true, TTL: time.Hour, MaxKB: 512, Semantic: semanticSettings{Enabled: true, Threshold: 0.92}}},
+		{`{"enabled":"true"}`, true, cacheSettings{TTL: time.Hour, MaxKB: 512, Semantic: semanticSettings{Enabled: true, Threshold: 0.92}}},
+		{`{"enabled":true,"semantic":{"enabled":false,"embeddingModel":"openai/embed","threshold":0.85}}`, true,
+			cacheSettings{Enabled: true, TTL: time.Hour, MaxKB: 512, Semantic: semanticSettings{Enabled: false, Model: "openai/embed", Threshold: 0.85}}},
+		{`{"enabled":true,"semantic":{"threshold":0.5}}`, true,
+			cacheSettings{Enabled: true, TTL: time.Hour, MaxKB: 512, Semantic: semanticSettings{Enabled: true, Threshold: 0.92}}},
 		{`null`, true, cacheSettings{}},
 		{`true`, true, cacheSettings{}},
 		{`[]`, true, cacheSettings{}},
@@ -491,5 +496,124 @@ func TestTheKeyHoldsEveryPartThatDecidesTheAnswer(t *testing.T) {
 	}
 	if mk(func(*call) {}) != base {
 		t.Fatal("the key is not stable")
+	}
+}
+
+// semanticRig turns the semantic layer on with vectors that make "hi" and
+// "hello" close and anything else far.
+func semanticRig(t *testing.T, steps ...tests.Reply) *cacheRig {
+	t.Helper()
+	r := newCacheRig(t, steps...)
+	r.p.d.Settings = tests.Settings{JSON: `{"responseCache":{"enabled":true,"ttlSeconds":600,"maxEntryKb":512,` +
+		`"semantic":{"enabled":true,"embeddingModel":"openai/embed","threshold":0.90}}}`}
+	r.p.d.ResponseCache.Semantic = NewSemanticIndex()
+	r.p.d.Embed = func(_ context.Context, model, text string) ([]float32, error) {
+		if model != "openai/embed" {
+			return nil, errors.New("unexpected model")
+		}
+		switch strings.TrimSpace(text) {
+		case "hi":
+			return []float32{1, 0}, nil
+		case "hello":
+			return []float32{0.99, 0.14}, nil
+		}
+		return []float32{0, 1}, nil
+	}
+	return r
+}
+
+func TestASimilarRequestAnswersFromTheCache(t *testing.T) {
+	r := semanticRig(t, tests.Reply{ContentType: "application/json", Body: okJSON})
+	first, _ := r.send(r.use(`{"model":"m","messages":[{"role":"user","content":"hi"}]}`))
+	if first.Status != 200 || first.Header.Get(CacheHeader) != "miss" {
+		t.Fatalf("%d %v", first.Status, first.Header)
+	}
+	out, _ := r.send(r.use(`{"model":"m","messages":[{"role":"user","content":"hello"}]}`))
+	if out.Status != 200 || out.Header.Get(CacheHeader) != "hit" || out.Header.Get(CacheSimilarity) == "" {
+		t.Fatalf("a similar request answered %d %v", out.Status, out.Header)
+	}
+	if got := len(r.up.Calls()); got != 1 {
+		t.Fatalf("the similar request called upstream %d times", got)
+	}
+	if row := r.last(); !row.Cached {
+		t.Fatalf("the semantic hit row is not marked cached: %+v", row)
+	}
+}
+
+func TestASimilarRequestUnderAnotherSystemPromptIsAMiss(t *testing.T) {
+	r := semanticRig(t,
+		tests.Reply{ContentType: "application/json", Body: okJSON},
+		tests.Reply{ContentType: "application/json", Body: okJSON})
+	r.send(r.use(`{"model":"m","messages":[{"role":"system","content":"be brief"},{"role":"user","content":"hi"}]}`))
+	out, _ := r.send(r.use(`{"model":"m","messages":[{"role":"system","content":"be verbose"},{"role":"user","content":"hello"}]}`))
+	if out.Header.Get(CacheHeader) != "miss" {
+		t.Fatalf("another system prompt hit the cache: %v", out.Header)
+	}
+	if got := len(r.up.Calls()); got != 2 {
+		t.Fatalf("upstream calls %d", got)
+	}
+}
+
+func TestARejectedEmbeddingLeavesTheExactCacheAlone(t *testing.T) {
+	r := semanticRig(t,
+		tests.Reply{ContentType: "application/json", Body: okJSON},
+		tests.Reply{ContentType: "application/json", Body: okJSON})
+	r.p.d.Embed = func(context.Context, string, string) ([]float32, error) { return nil, errors.New("down") }
+	first, _ := r.send(r.use(chatBody))
+	if first.Status != 200 || first.Header.Get(CacheHeader) != "miss" {
+		t.Fatalf("%d %v", first.Status, first.Header)
+	}
+	again, _ := r.send(r.use(chatBody))
+	if again.Header.Get(CacheHeader) != "hit" || len(r.up.Calls()) != 1 {
+		t.Fatalf("the exact cache stopped working: %v calls=%d", again.Header, len(r.up.Calls()))
+	}
+}
+
+func TestTheSemanticIndexKeepsBucketsApartAndEvicts(t *testing.T) {
+	idx := NewSemanticIndex()
+	base := time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC)
+	idx.now = func() time.Time { return base }
+	idx.Add("a", "k1", []float32{1, 0})
+	if key, score, ok := idx.Lookup("a", []float32{1, 0}, 0.9); !ok || key != "k1" || score < 0.99 {
+		t.Fatalf("lookup %q %v %v", key, score, ok)
+	}
+	if _, _, ok := idx.Lookup("b", []float32{1, 0}, 0.9); ok {
+		t.Fatal("another bucket matched")
+	}
+	if _, _, ok := idx.Lookup("a", []float32{0, 1}, 0.9); ok {
+		t.Fatal("an orthogonal vector matched")
+	}
+	for i := range semanticBucketCap + 5 {
+		idx.Add("a", "x"+strconv.Itoa(i), []float32{float32(i + 1), 1})
+	}
+	if got := len(idx.buckets["a"]); got > semanticBucketCap {
+		t.Fatalf("a bucket grew to %d", got)
+	}
+	idx.Add("a", "unique", []float32{0, 1})
+	idx.Drop("unique")
+	if _, _, ok := idx.Lookup("a", []float32{0, 1}, 0.9); ok {
+		t.Fatal("a dropped entry still matches")
+	}
+	idx.Purge()
+	if len(idx.buckets) != 0 || idx.total != 0 {
+		t.Fatal("purge left entries")
+	}
+}
+
+// With the response cache off, no embedding is taken at all.
+func TestASwitchedOffCacheNeverEmbeds(t *testing.T) {
+	r := newCacheRig(t, tests.Reply{ContentType: "application/json", Body: okJSON})
+	r.p.d.Settings = tests.Settings{JSON: `{"responseCache":{"enabled":false}}`}
+	r.p.d.ResponseCache.Semantic = NewSemanticIndex()
+	calls := 0
+	r.p.d.Embed = func(context.Context, string, string) ([]float32, error) {
+		calls++
+		return []float32{1, 0}, nil
+	}
+	if out, _ := r.send(r.use(chatBody)); out.Status != 200 {
+		t.Fatalf("%d", out.Status)
+	}
+	if calls != 0 {
+		t.Fatalf("a switched-off cache embedded %d time(s)", calls)
 	}
 }

@@ -5,7 +5,7 @@ import { ask } from "/static/js/ui/dialog.js";
 import { copy } from "/static/js/ui/copy.js";
 import { t } from "/static/js/ui/i18n.js";
 import { toast } from "/static/js/ui/toast.js";
-import { formatMethods } from "/static/js/ui/format.js";
+import { formatMethods, compactTokens } from "/static/js/ui/format.js";
 import { setPath } from "/static/js/ui/fields.js";
 import { modelEditorMethods } from "./combo-models.js";
 import { fieldMethods } from "/static/js/ui/fields.js";
@@ -195,6 +195,51 @@ window.Alpine.data("combosPage", () => Object.assign({
       out.audio = out.audio || caps.audio === true;
     }
     return out;
+  },
+
+  // comboLimits is the window a combo can promise: any member may answer, so
+  // the smallest context and the smallest output across all of them. A nested
+  // combo is followed to the router's depth, and a name the model list does not
+  // know is skipped rather than guessed.
+  comboLimits(combo) {
+    const byName = {};
+    for (const c of this.combos) {
+      byName[c.name] = c;
+    }
+    let context = 0;
+    let output = 0;
+    const reach = (members, depth, seen) => {
+      if (depth > 3) {
+        return;
+      }
+      for (const member of members || []) {
+        const nested = byName[member];
+        if (member.indexOf("/") < 0 && nested) {
+          if (seen[member]) {
+            continue;
+          }
+          seen[member] = true;
+          reach(nested.models, depth + 1, seen);
+          continue;
+        }
+        const caps = this.capsBy[member];
+        if (!caps) {
+          continue;
+        }
+        if (caps.contextWindow > 0) {
+          context = context === 0 ? caps.contextWindow : Math.min(context, caps.contextWindow);
+        }
+        if (caps.maxOutput > 0) {
+          output = output === 0 ? caps.maxOutput : Math.min(output, caps.maxOutput);
+        }
+      }
+    };
+    reach(combo.models, 1, {});
+    return {
+      known: context > 0,
+      context: context > 0 ? compactTokens(context) : "",
+      output: output > 0 ? compactTokens(output) : "",
+    };
   },
 
   async copyName(combo) {

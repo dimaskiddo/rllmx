@@ -201,7 +201,7 @@ flowchart TD
 |---|---|
 | `/v1beta/models/{model}:generateContent`, `:streamGenerateContent` | Path split at last `:`; any other action Gemini 404. Model may carry `models/` prefix or be `provider/model`. Action decides streaming. Key from `x-goog-api-key` or `?key=`, never forwarded. Gemini client to Gemini provider forwarded as is (`responseModalities`, `speechConfig`, audio `inlineData` reach upstream and return); to any other provider an audio request is 400 (divergence 137). SSE `data:` lines only |
 | `/v1/api/chat` | Ollama request through Ollama codec; NDJSON back (one JSON body when `"stream": false`; streaming default). One final `done` line carries counts. Errors in Ollama shape (divergence 136) |
-| `/v1beta/models`, `/v1/models` | Model list from active connections, combos, custom models, aliases. Gemini form adds `inputTokenLimit`, `outputTokenLimit`. Restricted key sees only its list. Some providers fetch a live list (cached) |
+| `/v1beta/models`, `/v1/models` | Model list from active connections, custom models, aliases; combos are called by name but not listed. Gemini form adds `inputTokenLimit`, `outputTokenLimit`. Restricted key sees only its list. Some providers fetch a live list (cached) |
 
 ### 8. Combo Expansion & Failover
 
@@ -269,6 +269,10 @@ The plan hook runs after the client bypass and before the model is resolved: the
 
 ### 14. Migrating a 9router Database
 
+The recommended path imports into a store this build owns, so the 9router database is only ever read and the target may be SQLite or PostgreSQL. The reader-facing steps, the `.env`, the container commands and the way back are in [`MIGRATING.md`](MIGRATING.md); the commands in order are `db:migrate`, `db:import-config --from <copy> --with-sso`, `db:import-analytics --from <copy>`.
+
+The alternative, opening 9router's own data directory, is SQLite only and seals the file in place:
+
 ```mermaid
 flowchart TD
     A["Stop 9router; back up data.sqlite"] --> B["Set DB_ENCRYPTION_SECRET, DATA_DIR to that dir"]
@@ -282,7 +286,7 @@ flowchart TD
 
 - Never run both against one database.
 - 9router variable names are not read. Copy the **values** of `API_KEY_SECRET`, `MACHINE_ID_SALT`, `JWT_SECRET` into `AUTH_API_KEY_SECRET`, `AUTH_MACHINE_ID_SALT`, `JWT_SECRET` (names differ: design doc 17).
-- To go back: stop rllmx, then either restore `pre-encryption-*` (untouched original) or run `rllmx artisan db:export-plain` and use the copy under `db/exports/`. That copy holds plain credentials: delete after use.
+- To go back: stop rllmx, then either restore `pre-encryption-*` (untouched original) or run `rllmx artisan db:export-plain` and use the copy under `db/backups/` (or `--out <dir>`). That copy holds plain credentials: delete after use.
 
 **New deployment on an empty database.** Seed with `db:import-config` (stage 17), do not share a directory. Stop the old deployment afterwards: providers with rotating refresh tokens (Codex, xAI, MiniMax) would otherwise invalidate each other's tokens.
 

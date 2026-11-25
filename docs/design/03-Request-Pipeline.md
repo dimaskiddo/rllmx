@@ -101,7 +101,7 @@ flowchart TD
 | Streaming: SSE parse and emit, usage, timers | `utils/stream.js`, `streamHandler.js` | `app/llm/stream` | done |
 | Forced SSE to JSON, non-stream translation | `handlers/chatCore/*` | `app/llm/stream`, `app/gateway/pipeline` | Built (`Collect` for a stream-only provider; a buffered body through the codecs) |
 | Usage save, daily aggregate, cost | `src/lib/db/repos/usageRepo.js` | `app/store/analytics`, `app/gateway/pipeline` | done (one row per request on every path with price and error class; the readers and routes serve the dashboard, design doc 16) |
-| Response cache (opt-in, per key and global, no streams or tool-call answers) | none in the references | `app/gateway/pipeline`, `app/providers` | done (lookup after resolution and before translation, store in `deliver` after the account accepted; a hit selects no account and its row is `cached` at cost 0; D24, D148) |
+| Response cache (opt-in, per key and global, no streams or tool-call answers), with an optional similarity lookup over an exact miss | none in the references | `app/gateway/pipeline`, `app/providers` | done (lookup after resolution and before translation, store in `deliver` after the account accepted; a hit selects no account and its row is `cached` at cost 0; the semantic layer embeds the last user turn once per stored answer; D24, D148, D461) |
 | Request details (body dumps) | `src/lib/db/repos/requestDetailsRepo.js` | none | out |
 | Live-catalog guards: kiro, codex, cursor, kimchi, qoder (extended) | `handlers/chatCore.js` | `app/gateway/catalog` | done (`app/llm/catalog`) |
 

@@ -483,3 +483,44 @@ func TestNoLoggerIsSilent(t *testing.T) {
 	fake.StoreNamed("redis").SetPanics(true)
 	c.Set(Settings, "k", []byte("v"), time.Minute)
 }
+
+// A store that keeps failing is left alone for a cooldown, then tried once
+// more, so a stopped Redis costs no call until it may have recovered.
+func TestTheBreakerLeavesADownStoreAloneForItsCooldown(t *testing.T) {
+	c, fake := newCache(t)
+	fake.StoreNamed("redis").SetPanics(true)
+	now := time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC)
+	c.now = func() time.Time { return now }
+	for range 5 {
+		if _, ok := c.Get(Settings, "k"); ok {
+			t.Fatal("a panicking store answered")
+		}
+	}
+	if got := fake.StoreNamed("redis").Calls["GetInt64"]; got != 3 {
+		t.Fatalf("the store was called %d times; the breaker let it through after three", got)
+	}
+	now = now.Add(breakerCooldown + time.Second)
+	c.Get(Settings, "k")
+	if got := fake.StoreNamed("redis").Calls["GetInt64"]; got != 4 {
+		t.Fatalf("the store was not tried again after the cooldown: %d", got)
+	}
+}
+
+func TestASuccessClosesTheBreaker(t *testing.T) {
+	c, fake := newCache(t)
+	store := fake.StoreNamed("redis")
+	store.SetPanics(true)
+	c.now = func() time.Time { return time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC) }
+	for range 3 {
+		c.Get(Settings, "k")
+	}
+	store.SetPanics(false)
+	c.now = func() time.Time { return time.Date(2026, 11, 25, 12, 1, 0, 0, time.UTC) }
+	if _, ok := c.Get(Settings, "k"); ok {
+		t.Fatal("a value appeared from nowhere")
+	}
+	c.Set(Settings, "k", []byte("v"), time.Minute)
+	if got, ok := c.Get(Settings, "k"); !ok || string(got) != "v" {
+		t.Fatalf("the store did not recover: %q %v", got, ok)
+	}
+}

@@ -95,6 +95,12 @@ func (c *ProvidersController) Validate(ctx contractshttp.Context) contractshttp.
 	if !ok {
 		return flat(ctx, nethttp.StatusBadRequest, "Invalid provider")
 	}
+	if entry.Category == upstream.CategoryCookie {
+		return ctx.Response().Json(nethttp.StatusOK, verdict(c.Checker.CheckWeb(rc, entry.ID, b.APIKey)))
+	}
+	if entry.ID == "deepseek-web" {
+		return ctx.Response().Json(nethttp.StatusOK, verdict(c.Checker.CheckDeepSeekWeb(rc, b.APIKey)))
+	}
 	return ctx.Response().Json(nethttp.StatusOK, verdict(c.Checker.CheckRegistry(rc, entry, b.APIKey)))
 }
 
@@ -121,11 +127,6 @@ func (c *ProvidersController) Test(ctx contractshttp.Context) contractshttp.Resp
 	out := verdict(res.result)
 	if res.refreshed {
 		out["refreshed"] = true
-	}
-	if res.result.Valid() {
-		// A connection that just proved itself is the one worth learning the
-		// models of.
-		c.enqueue(conn.ID)
 	}
 	out["latencyMs"] = res.latency
 	out["testedAt"] = res.at.UTC().Format(time.RFC3339)
@@ -166,6 +167,11 @@ func (c *ProvidersController) checkOne(ctx context.Context, st *repository.Store
 		res = c.Checker.CheckNode(ctx, Node{Type: node.Type, BaseURL: base}, key, model, true)
 	case conn.AuthType == "oauth" && c.oauthEntry(conn.Provider):
 		res, refreshed = c.checkLogin(ctx, conn.ID)
+	case conn.AuthType == "cookie":
+		cookie, _ := conn.Doc().GetString("cookie")
+		res = c.Checker.CheckWeb(ctx, conn.Provider, cookie)
+	case conn.Provider == "deepseek-web":
+		res = c.Checker.CheckDeepSeekWeb(ctx, key)
 	case conn.AuthType != "apikey":
 		res = Result{Outcome: OutcomeUnsupported}
 	default:
@@ -235,6 +241,15 @@ func (c *ProvidersController) ModelsList(ctx contractshttp.Context) contractshtt
 	models, err := catalog.RegistryModels(rc, st.KV(), entry)
 	if err != nil {
 		return storageDown(ctx)
+	}
+	// An OAuth account's provider can name its live list; the embedded one is the
+	// fallback when it cannot be read.
+	if c.LiveCatalog != nil && (conn.AuthType == "oauth" || conn.AuthType == "access_token") {
+		if ids, live := c.LiveCatalog.Live(rc, conn.Provider, conn); live {
+			if fresh, lerr := catalog.LiveList(rc, st.KV(), entry, ids); lerr == nil {
+				models = fresh
+			}
+		}
 	}
 	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"provider": conn.Provider, "connectionId": conn.ID, "models": models})
 }

@@ -289,11 +289,18 @@ dialog.rl-dialog > form > h2:first-child {
 }
 
 .rl-brand {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   padding: 0.25rem 0.625rem 1rem;
   color: var(--tblr-body-color);
   font-weight: 700;
   text-decoration: none;
+}
+
+.rl-brand-mark {
+  flex: none;
+  border-radius: 0.375rem;
 }
 
 /* The one button that changes the sidebar's shape: a drawer on a phone, a rail
@@ -321,6 +328,7 @@ dialog.rl-dialog > form > h2:first-child {
     overflow: hidden;
     padding-inline: 0;
     font-size: 0;
+    justify-content: center;
     text-align: center;
   }
 
@@ -796,6 +804,7 @@ h2 + .form-label {
 }
 
 .rl-login .rl-brand {
+  flex-direction: column;
   text-align: center;
 }
 
@@ -1347,6 +1356,10 @@ h2 + .form-label {
 
 .rl-combo-row .rl-inline {
   margin-block-start: 0;
+}
+
+.rl-combo-row .rl-list-main > .rl-combo-limits {
+  margin-block-start: 0.75rem;
 }
 
 .rl-model-row .rl-list-main {

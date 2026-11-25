@@ -36,6 +36,9 @@ func (c *UsageController) Stream(ctx contractshttp.Context) contractshttp.Respon
 		interval = usageBeat
 	}
 
+	// A standard user's feed carries only their own keys, the same narrowing
+	// the stats and the log take.
+	keys, _, _ := c.scope(ctx)
 	accounts := c.accountNames(rctx)
 	send := func(recent []usageRecent) error {
 		pending, active := c.live(accounts)
@@ -52,7 +55,7 @@ func (c *UsageController) Stream(ctx contractshttp.Context) contractshttp.Respon
 	// The counters are read before the first frame: a change that lands while
 	// it is written must still produce the next one.
 	generation, flushed := c.generation(), c.flushed()
-	recent, err := c.recent(rctx, nil)
+	recent, err := c.recent(rctx, keys)
 	if err != nil {
 		recent = []usageRecent{}
 	}
@@ -74,7 +77,7 @@ func (c *UsageController) Stream(ctx contractshttp.Context) contractshttp.Respon
 				continue
 			}
 			if nextFlushed != flushed {
-				if fresh, err := c.recent(rctx, nil); err == nil {
+				if fresh, err := c.recent(rctx, keys); err == nil {
 					recent = fresh
 				}
 			}

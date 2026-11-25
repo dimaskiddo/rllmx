@@ -1,6 +1,6 @@
 # Design 15 — Storage (`app/store/repository/`, `app/store/dialect/`, `app/store/document/`)
 
-**Status:** partial
+**Status:** unverified — built and tested on SQLite; the PostgreSQL run below is the missing evidence.
 
 Two databases, SQLite (default, 9router's format) or PostgreSQL, both reached through the `DB` facade.
 
@@ -235,7 +235,7 @@ The framework's `migrate:*`, `db:wipe` and `db:seed` would drop or rewrite the 9
 | `proxyPools`, `proxyPoolFitness` tables | `schema.js`, extended `proxyPoolFitnessRepo.js` | out (not created, read or dropped; left alone if present, divergences 202, 214) |
 | Legacy `db.json`, `usage.json`, `disabledModels.json`, `request-details.json` import | `src/lib/db/migrate.js` | out |
 
-One row above is still open: PostgreSQL is written and has never been run here, so `make test-pg` is the evidence still missing. The proxy tables are `out`, which is a decision. That is why this design doc is `partial`: the schema and both engines are built, and the PostgreSQL run is what a done status waits on.
+**Environment check (maintainer):** the PostgreSQL paths are written and have never run here. `make test-pg` with `TEST_PG_DSN` pointed at a PostgreSQL server is the evidence a `done` status waits on; no code is outstanding. The proxy tables are `out`, which is a decision.
 
 ---
 

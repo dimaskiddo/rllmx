@@ -15,6 +15,7 @@
   "executor": "qoder",
   "oauth": {
     "flow": "device",
+    "pat": true,
     "deviceUrl": "https://openapi.qoder.com.cn/api/v1/deviceToken/poll",
     "tokenUrl": "https://openapi.qoder.com.cn/api/v1/deviceToken/poll",
     "scope": "",

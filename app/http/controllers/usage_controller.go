@@ -42,7 +42,9 @@ type UsageReader interface {
 	Buckets(ctx context.Context, from time.Time, hourly bool, keys []string) ([]analytics.Bucket, error)
 	LastSeen(ctx context.Context, since time.Time, keys []string) (map[analytics.Dims]time.Time, error)
 	Recent(ctx context.Context, from time.Time, limit int, keys []string) ([]analytics.Request, error)
+	RecentBefore(ctx context.Context, from time.Time, limit int, keys []string, cursor analytics.Cursor) ([]analytics.Request, error)
 	RecentServed(ctx context.Context, limit int, keys []string) ([]analytics.Request, error)
+	UnknownCosts(ctx context.Context, from time.Time, keys []string) (int64, error)
 	Providers(ctx context.Context, keys []string) ([]string, error)
 }
 
@@ -147,6 +149,7 @@ type usageStats struct {
 	TotalCompletionTokens int64                         `json:"totalCompletionTokens"`
 	TotalCachedTokens     int64                         `json:"totalCachedTokens"`
 	TotalCost             float64                       `json:"totalCost"`
+	UnknownCostRequests   int64                         `json:"unknownCostRequests"`
 	ByProvider            map[string]usageProviderEntry `json:"byProvider"`
 	ByModel               map[string]usageModelEntry    `json:"byModel"`
 	ByAccount             map[string]usageAccountEntry  `json:"byAccount"`
@@ -309,7 +312,21 @@ func (c *UsageController) Logs(ctx contractshttp.Context) contractshttp.Response
 		return flat(ctx, nethttp.StatusBadRequest, "Invalid period")
 	}
 	rc := ctx.Request().Origin().Context()
-	rows, err := st.Recent(rc, w.from, usageLogRows, keys)
+	var before *analytics.Cursor
+	if raw := strings.TrimSpace(ctx.Request().Query("before")); raw != "" {
+		cursor, ok := parseLogCursor(raw)
+		if !ok {
+			return flat(ctx, nethttp.StatusBadRequest, "Invalid cursor")
+		}
+		before = &cursor
+	}
+	var rows []analytics.Request
+	var err error
+	if before != nil {
+		rows, err = st.RecentBefore(rc, w.from, usageLogRows, keys, *before)
+	} else {
+		rows, err = st.Recent(rc, w.from, usageLogRows, keys)
+	}
 	if err != nil {
 		return c.failed(ctx, "logs", "Failed to fetch logs", err)
 	}
@@ -318,6 +335,11 @@ func (c *UsageController) Logs(ctx contractshttp.Context) contractshttp.Response
 	lines := make([]string, 0, len(rows))
 	for _, r := range rows {
 		lines = append(lines, usageLogLine(r, logProvider(r.Provider, nodes), accounts[r.ConnectionID], c.loc()))
+	}
+	// A full page may have a row after it; a short one is the end of the log.
+	if len(rows) == usageLogRows {
+		last := rows[len(rows)-1]
+		ctx.Response().Header("X-Next-Cursor", strconv.FormatInt(last.Time.UnixMilli(), 10)+"-"+strconv.FormatInt(last.ID, 10))
 	}
 	return ctx.Response().Json(nethttp.StatusOK, lines)
 }
@@ -373,18 +395,23 @@ func (c *UsageController) build(ctx context.Context, w usageWindow, keys []strin
 	if err != nil {
 		return usageStats{}, err
 	}
+	unknown, err := st.UnknownCosts(ctx, w.from, keys)
+	if err != nil {
+		return usageStats{}, err
+	}
 	nodes := nodeNames(ctx, c.store())
 	accounts := c.accountNames(ctx)
 	names := usageNames{accounts: accounts, keys: c.keyNames(ctx)}
 
 	out := usageStats{
-		ByProvider:     map[string]usageProviderEntry{},
-		ByModel:        map[string]usageModelEntry{},
-		ByAccount:      map[string]usageAccountEntry{},
-		ByAPIKey:       map[string]usageKeyEntry{},
-		ByEndpoint:     map[string]usageEndpointEntry{},
-		ActiveRequests: []usageActive{},
-		RecentRequests: []usageRecent{},
+		ByProvider:          map[string]usageProviderEntry{},
+		ByModel:             map[string]usageModelEntry{},
+		ByAccount:           map[string]usageAccountEntry{},
+		ByAPIKey:            map[string]usageKeyEntry{},
+		ByEndpoint:          map[string]usageEndpointEntry{},
+		ActiveRequests:      []usageActive{},
+		RecentRequests:      []usageRecent{},
+		UnknownCostRequests: unknown,
 	}
 	for _, s := range sums {
 		last := s.Last
@@ -720,6 +747,23 @@ func usageLogLine(r analytics.Request, provider, account string, loc *time.Locat
 		line += " | " + usageField(r.Savers)
 	}
 	return line
+}
+
+// parseLogCursor reads the "<ms>-<id>" position a page ended at.
+func parseLogCursor(raw string) (analytics.Cursor, bool) {
+	ts, id, ok := strings.Cut(raw, "-")
+	if !ok {
+		return analytics.Cursor{}, false
+	}
+	millis, err := strconv.ParseInt(ts, 10, 64)
+	if err != nil || millis <= 0 {
+		return analytics.Cursor{}, false
+	}
+	row, err := strconv.ParseInt(id, 10, 64)
+	if err != nil || row < 0 {
+		return analytics.Cursor{}, false
+	}
+	return analytics.Cursor{TS: millis, ID: row}, true
 }
 
 func usageField(v string) string {

@@ -165,6 +165,10 @@ type OAuth struct {
 	Dialect string `json:"dialect,omitempty"`
 	// NoClient marks a login the provider runs without a client id.
 	NoClient bool `json:"noClient,omitempty"`
+	// Importer names the shape of a pasted credential this provider accepts
+	// beside the plain import: codex-token, kiro-refresh, ziro-apikey,
+	// kiro-external-idp, zed, mimo-key. Empty takes the plain import only.
+	Importer string `json:"importer,omitempty"`
 	// Fields are the extra values an import login stores beside its token, each
 	// a plain name a request or a login step reads.
 	Fields []string `json:"fields,omitempty"`

@@ -382,3 +382,40 @@ func TestNoQuerySplicesABareRollupName(t *testing.T) {
 		}
 	}
 }
+
+// A paged walk reads every row once, newest by time and id.
+func TestRecentBeforeReadsThePageAfterACursor(t *testing.T) {
+	s := newStore(t)
+	usageRows(t, s)
+	ctx := context.Background()
+	all, err := s.Recent(ctx, time.Time{}, 10, nil)
+	if err != nil || len(all) != 3 {
+		t.Fatalf("%v %d", err, len(all))
+	}
+	page, err := s.Recent(ctx, time.Time{}, 2, nil)
+	if err != nil || len(page) != 2 {
+		t.Fatalf("%v %d", err, len(page))
+	}
+	last := page[1]
+	next, err := s.RecentBefore(ctx, time.Time{}, 10, nil, Cursor{TS: last.Time.UnixMilli(), ID: last.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(next) != 1 || next[0].ID != all[2].ID {
+		t.Fatalf("after cursor %d-%d: %+v", last.Time.UnixMilli(), last.ID, next)
+	}
+}
+
+// A zero cost with no rate behind it is told apart from a free one.
+func TestAnUnpricedRowIsCountedAsUnknown(t *testing.T) {
+	s := newStore(t)
+	at := time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC)
+	put(t, s,
+		Record{Time: at, RequestID: "priced", Provider: "p", Model: "m", Cost: 0.5, CostKnown: true},
+		Record{Time: at.Add(time.Minute), RequestID: "free", Provider: "p", Model: "f", Cost: 0},
+	)
+	got, err := s.UnknownCosts(context.Background(), time.Time{}, nil)
+	if err != nil || got != 1 {
+		t.Fatalf("unknown %d %v", got, err)
+	}
+}

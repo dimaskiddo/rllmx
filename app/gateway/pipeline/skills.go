@@ -79,6 +79,7 @@ func (c *call) skillOptions(ctx context.Context) skill.Options {
 	_, prior, notice := c.sessionInfo()
 	setting, legacy := skill.Readers(doc.GetRaw)
 	o := skill.Options{
+		Off:     groupOff(doc),
 		Replace: c.hermesBlock(doc),
 		Setting: setting,
 		Legacy:  legacy,
@@ -86,7 +87,7 @@ func (c *call) skillOptions(ctx context.Context) skill.Options {
 		Prior:   prior,
 		Notice:  notice,
 		ECC: skill.ECCOptions{
-			Enabled:    doc.Bool("ecc_auto_skill_routerEnabled", false) && !c.headerOff(skill.BypassECC),
+			Enabled:    doc.Bool("ecc_auto_skill_routerEnabled", false) && !docBoolOff(doc, "eccSkillsEnabled") && !c.headerOff(skill.BypassECC),
 			Confidence: doc.Float("ecc_auto_skill_routerConfidence", skill.DefaultThreshold),
 			MaxSkills:  doc.Int("ecc_auto_skill_routerMaxSkills", 1),
 		},
@@ -96,6 +97,24 @@ func (c *call) skillOptions(ctx context.Context) skill.Options {
 	}
 	return o
 }
+
+// groupOff reports the skill groups the operator switched off. A group is on
+// unless its key says otherwise, and a group switch never rewrites a row's own
+// switch.
+func groupOff(doc document.Doc) func(source string) bool {
+	return func(source string) bool {
+		switch source {
+		case "custom":
+			return docBoolOff(doc, "customSkillsEnabled")
+		case "ecc":
+			return docBoolOff(doc, "eccSkillsEnabled")
+		}
+		return docBoolOff(doc, "builtinSkillsEnabled")
+	}
+}
+
+// docBoolOff reports a setting that is off only when it is explicitly false.
+func docBoolOff(doc document.Doc, key string) bool { return !doc.Bool(key, true) }
 
 // hermesBlock is the memory the agent skill injects in place of its prompt. It
 // reads once per request and answers nothing when the agent has no notes, so a

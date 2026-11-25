@@ -138,6 +138,12 @@ func port(u *url.URL) string {
 // do sends one request and returns the status and the body, read under the cap.
 // The error is already an Outcome: nothing the transport said is kept.
 func (c *Checker) do(ctx context.Context, method, target string, header map[string]string, body []byte) (int, []byte, Outcome) {
+	return c.doAccept(ctx, method, target, "application/json", header, body)
+}
+
+// doAccept is do with the Accept value the caller needs: a web page probe asks
+// for html, and a session probe for JSON.
+func (c *Checker) doAccept(ctx context.Context, method, target, accept string, header map[string]string, body []byte) (int, []byte, Outcome) {
 	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
 	var rd io.Reader
@@ -151,7 +157,10 @@ func (c *Checker) do(ctx context.Context, method, target string, header map[stri
 	for k, v := range header {
 		req.Header.Set(k, v)
 	}
-	req.Header.Set("Accept", "application/json")
+	if accept == "" {
+		accept = "application/json"
+	}
+	req.Header.Set("Accept", accept)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}

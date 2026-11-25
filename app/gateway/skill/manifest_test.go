@@ -253,7 +253,7 @@ func TestASliderStepIsChecked(t *testing.T) {
 
 func TestTheEmbeddedCoreSkillsLoad(t *testing.T) {
 	r := NewRegistry("", Builtin())
-	want := []string{"code-humanizer", "commit-lint", "hermes-toolkit", "human-commit", "prose-humanizer", "taste-skill", "watermarks-remover"}
+	want := []string{"code-humanizer", "commit-lint", "hermes-toolkit", "human-commit", "prose-humanizer", "rea-allow", "taste-skill", "watermarks-remover"}
 	list := r.List()
 	if len(list) != len(want) {
 		t.Fatalf("list %+v", list)
@@ -265,8 +265,9 @@ func TestTheEmbeddedCoreSkillsLoad(t *testing.T) {
 		if m.Hook != "system-prompt" {
 			t.Errorf("%s hook %q", m.ID, m.Hook)
 		}
-		// The memory skill injects on every request and carries no routing terms.
-		if m.ID == "hermes-toolkit" {
+		// The memory and REA skills inject on every request and carry no routing
+		// terms of their own.
+		if m.ID == "hermes-toolkit" || m.ID == "rea-allow" {
 			if m.Mode() != "always" {
 				t.Errorf("%s mode %q", m.ID, m.Mode())
 			}

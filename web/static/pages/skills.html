@@ -85,27 +85,31 @@
         <div class="card-header rl-card-head">
           <h2 class="rl-card-title" x-text="card.title"></h2>
           <label class="form-check form-switch rl-switch" x-show="card.on !== null">
-            <input class="form-check-input" type="checkbox" role="switch" x-bind:aria-label="label('skills.enabled')" x-bind:disabled="card.key === 'catalog' && globalOn !== true" x-bind:checked="card.on === true" x-on:change="toggleCard(card, $event)">
+            <input class="form-check-input" type="checkbox" role="switch" x-bind:aria-label="label('skills.enabled')" x-bind:checked="card.on === true" x-on:change="toggleCard(card, $event)">
             <span class="form-check-label" x-t="skills.enabled"></span>
           </label>
         </div>
         <div class="card-body">
-          <p class="rl-hint" x-show="card.key === 'builtin' && globalOn !== true" x-t="skills.allOff"></p>
-          <p class="rl-hint" x-show="card.key === 'catalog' && globalOn !== true" x-t="skills.masterOff"></p>
+          <p class="rl-hint" x-show="card.off === true" x-t="skills.groupOff"></p>
+          <p class="rl-hint" x-show="globalOn !== true" x-t="skills.allOff"></p>
           <template x-if="card.key === 'catalog'">
             <div>
               <p class="rl-hint" x-t="skills.catalogHint"></p>
+              <div class="form-check form-switch rl-switch">
+                <input class="form-check-input" type="checkbox" id="ecc-router" role="switch" x-bind:disabled="card.off === true" x-bind:checked="eccOn === true" x-on:change="setRouter($event)">
+                <label class="form-check-label" for="ecc-router" x-t="skills.eccRouter"></label>
+              </div>
               <div x-show="eccOn === true">
                 <label class="form-label" for="ecc-confidence" x-t="skills.eccConfidence"></label>
                 <div class="rl-range">
                   <output class="rl-range-value" for="ecc-confidence" x-text="eccPercent()"></output>
-                  <input class="form-range" id="ecc-confidence" type="range" min="0.1" max="0.9" step="0.05" x-bind:disabled="globalOn !== true" x-bind:value="eccConfidence" x-on:change="setEccConfidence($event)">
+                  <input class="form-range" id="ecc-confidence" type="range" min="0.1" max="0.9" step="0.05" x-bind:disabled="card.off === true" x-bind:value="eccConfidence" x-on:change="setEccConfidence($event)">
                   <div class="rl-range-scale"><span>10%</span><span>90%</span></div>
                 </div>
                 <label class="form-label" for="ecc-max" x-t="skills.eccMaxSkills"></label>
                 <div class="rl-range">
                   <output class="rl-range-value" for="ecc-max" x-text="eccMax + ' / 3'"></output>
-                  <input class="form-range" id="ecc-max" type="range" min="1" max="3" step="1" x-bind:disabled="globalOn !== true" x-bind:value="eccMax" x-on:change="setEccMax($event)">
+                  <input class="form-range" id="ecc-max" type="range" min="1" max="3" step="1" x-bind:disabled="card.off === true" x-bind:value="eccMax" x-on:change="setEccMax($event)">
                   <div class="rl-range-scale"><span>1</span><span>3</span></div>
                 </div>
               </div>
@@ -137,12 +141,13 @@
                         <span class="badge" x-show="skill.version" x-text="skill.version"></span>
                       </div>
                       <p class="text-secondary" x-text="skill.description"></p>
+                  <p class="rl-warning" x-show="skill.id === 'rea-allow'"><span class="rl-icon" x-icon="triangle-exclamation-point"></span><span x-t="skills.reaHint"></span></p>
                       <div class="rl-fields rl-skill-fields" x-show="skill.enabled === true">
                         <template x-for="field in skill.config_schema || []" x-bind:key="field.key">
                           <div>
                             <template x-if="field.type === 'toggle'">
                               <label class="form-check form-switch rl-switch">
-                                <input class="form-check-input" type="checkbox" role="switch" x-bind:disabled="globalOn !== true" x-bind:checked="fieldValue(skill, field) === true" x-on:change="setConfig(skill, field, $event)">
+                                <input class="form-check-input" type="checkbox" role="switch" x-bind:disabled="!rowOn(skill)" x-bind:checked="fieldValue(skill, field) === true" x-on:change="setConfig(skill, field, $event)">
                                 <span class="form-check-label" x-text="field.label || field.key"></span>
                               </label>
                             </template>
@@ -150,7 +155,7 @@
                               <div>
                                 <label class="form-label" x-bind:for="skill.id + '-' + field.key" x-text="field.label || field.key"></label>
                                 <template x-if="field.type === 'enum'">
-                                  <select class="form-select form-select-sm" x-bind:id="skill.id + '-' + field.key" x-bind:disabled="globalOn !== true" x-on:change="setOption(skill, field, $event.target.value)">
+                                  <select class="form-select form-select-sm" x-bind:id="skill.id + '-' + field.key" x-bind:disabled="!rowOn(skill)" x-on:change="setOption(skill, field, $event.target.value)">
                                     <template x-for="option in field.options" x-bind:key="option.value">
                                       <option x-bind:value="option.value" x-bind:selected="option.value === fieldValue(skill, field)" x-text="option.label || option.value"></option>
                                     </template>
@@ -159,15 +164,15 @@
                                 <template x-if="field.type === 'slider'">
                                   <div class="rl-range">
                                     <output class="rl-range-value" x-bind:for="skill.id + '-' + field.key" x-text="fieldValue(skill, field) + ' / ' + (field.max || 10)"></output>
-                                    <input class="form-range" type="range" x-bind:id="skill.id + '-' + field.key" x-bind:min="field.min || 1" x-bind:max="field.max || 10" x-bind:step="field.step || 1" x-bind:disabled="globalOn !== true" x-bind:value="fieldValue(skill, field)" x-on:change="setConfig(skill, field, $event)">
+                                    <input class="form-range" type="range" x-bind:id="skill.id + '-' + field.key" x-bind:min="field.min || 1" x-bind:max="field.max || 10" x-bind:step="field.step || 1" x-bind:disabled="!rowOn(skill)" x-bind:value="fieldValue(skill, field)" x-on:change="setConfig(skill, field, $event)">
                                     <div class="rl-range-scale"><span x-text="field.min || 1"></span><span x-text="field.max || 10"></span></div>
                                   </div>
                                 </template>
                                 <template x-if="field.type === 'number'">
-                                  <input class="form-control form-control-sm" type="number" x-bind:id="skill.id + '-' + field.key" x-bind:min="field.min || 1" x-bind:max="field.max || 10" x-bind:disabled="globalOn !== true" x-bind:value="fieldValue(skill, field)" x-on:change="setConfig(skill, field, $event)">
+                                  <input class="form-control form-control-sm" type="number" x-bind:id="skill.id + '-' + field.key" x-bind:min="field.min || 1" x-bind:max="field.max || 10" x-bind:disabled="!rowOn(skill)" x-bind:value="fieldValue(skill, field)" x-on:change="setConfig(skill, field, $event)">
                                 </template>
                                 <template x-if="field.type !== 'enum' && field.type !== 'slider' && field.type !== 'number'">
-                                  <input class="form-control form-control-sm" type="text" x-bind:id="skill.id + '-' + field.key" x-bind:disabled="globalOn !== true" x-bind:value="fieldValue(skill, field)" x-on:change="setConfig(skill, field, $event)">
+                                  <input class="form-control form-control-sm" type="text" x-bind:id="skill.id + '-' + field.key" x-bind:disabled="!rowOn(skill)" x-bind:value="fieldValue(skill, field)" x-on:change="setConfig(skill, field, $event)">
                                 </template>
                               </div>
                             </template>
@@ -175,7 +180,7 @@
                         </template>
                         <div x-show="skill.routable === true">
                           <label class="form-label" x-bind:for="skill.id + '-mode'" x-t="skills.routingMode"></label>
-                          <select class="form-select form-select-sm" x-bind:id="skill.id + '-mode'" x-bind:aria-label="label('skills.routingMode')" x-bind:disabled="globalOn !== true" x-bind:value="skill.mode" x-on:change="setMode(skill, $event)">
+                          <select class="form-select form-select-sm" x-bind:id="skill.id + '-mode'" x-bind:aria-label="label('skills.routingMode')" x-bind:disabled="!rowOn(skill)" x-bind:value="skill.mode" x-on:change="setMode(skill, $event)">
                             <option value="smart" x-t="skills.smart"></option>
                             <option value="always" x-t="skills.always"></option>
                           </select>
@@ -184,7 +189,7 @@
                     </div>
                     <div class="rl-list-actions">
                       <label class="form-check form-switch rl-switch">
-                        <input class="form-check-input" type="checkbox" role="switch" x-bind:aria-label="label('skills.enabled') + ' ' + skill.name" x-bind:disabled="globalOn !== true" x-bind:checked="skill.enabled === true" x-on:change="toggle(skill, $event)">
+                        <input class="form-check-input" type="checkbox" role="switch" x-bind:aria-label="label('skills.enabled') + ' ' + skill.name" x-bind:disabled="!rowOn(skill)" x-bind:checked="skill.enabled === true" x-on:change="toggle(skill, $event)">
                         <span class="form-check-label" x-t="skills.enabled"></span>
                       </label>
                       <button type="button" class="btn btn-sm btn-ghost" x-show="skill.editable === true" x-on:click="openEdit(skill)" x-tip="common.edit"><span class="rl-icon" x-icon="pencil"></span><span class="visually-hidden" x-t="common.edit"></span></button>

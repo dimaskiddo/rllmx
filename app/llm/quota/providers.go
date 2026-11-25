@@ -29,43 +29,50 @@ func (m authMask) eligible(authType string) bool {
 // fetcher reads one provider's quota.
 type fetcher struct {
 	auth authMask
-	run  func(ctx context.Context, r *Reader, e upstream.Entry, a Access) (Reading, error)
+	// session marks a reader a connection with only a session can answer.
+	session bool
+	run     func(ctx context.Context, r *Reader, e upstream.Entry, a Access) (Reading, error)
 }
 
 // fetchers is the dispatch table and the list of providers a connection's
 // quota can be read for. A provider whose reading needs a handshake of its own
 // is absent until that handshake is built.
 var fetchers = map[string]fetcher{
-	"github":            {auth: authOAuth, run: readGitHub},
-	"gemini-cli":        {auth: authOAuth, run: readGeminiCLI},
-	"antigravity":       {auth: authOAuth, run: readAntigravity},
-	"claude":            {auth: authOAuth, run: readClaude},
-	"codex":             {auth: authOAuth | authKey, run: readCodex},
-	"kiro":              {auth: authOAuth | authKey, run: readKiro},
-	"kiro-social":       {auth: authOAuth, run: readKiro},
-	"glm":               {auth: authOAuth | authKey, run: readGLM},
-	"glm-cn":            {auth: authOAuth | authKey, run: readGLM},
-	"minimax":           {auth: authOAuth | authKey, run: readMiniMax},
-	"minimax-cn":        {auth: authOAuth | authKey, run: readMiniMax},
-	"kimi":              {auth: authOAuth | authKey, run: readKimi},
-	"deepseek":          {auth: authKey, run: readDeepSeek},
-	"opencode-go":       {auth: authKey, run: readOpenCode},
-	"opencode-zen":      {auth: authKey, run: readOpenCode},
-	"zed":               {auth: authOAuth, run: readZed},
-	"cursor":            {auth: authOAuth, run: readCursor},
-	"grok-cli":          {auth: authOAuth, run: readGrokCLI},
-	"codebuddy-cn":      {auth: authOAuth | authKey, run: readCodeBuddy},
-	"codebuddy-intl":    {auth: authOAuth | authKey, run: readCodeBuddy},
-	"clinepass":         {auth: authOAuth | authKey, run: readCline},
-	"cline":             {auth: authOAuth | authKey, run: readCline},
-	"freebuff":          {auth: authOAuth, run: readFreebuff},
-	"groq":              {auth: authKey, run: readGroq},
-	"ollama":            {auth: authKey, run: readOllama},
-	"vercel-ai-gateway": {auth: authKey, run: readVercel},
-	"commandcode":       {auth: authKey, run: readCommandCode},
-	"synthetic":         {auth: authKey, run: readSynthetic},
-	"deeprelay":         {auth: authKey, run: readDeepRelay},
-	"opendesign-go":     {auth: authKey, run: readOpenDesign},
+	"github":              {auth: authOAuth, run: readGitHub},
+	"gemini-cli":          {auth: authOAuth, run: readGeminiCLI},
+	"antigravity":         {auth: authOAuth, run: readAntigravity},
+	"claude":              {auth: authOAuth, run: readClaude},
+	"codex":               {auth: authOAuth | authKey, run: readCodex},
+	"kiro":                {auth: authOAuth | authKey, run: readKiro},
+	"kiro-social":         {auth: authOAuth, run: readKiro},
+	"glm":                 {auth: authOAuth | authKey, run: readGLM},
+	"glm-cn":              {auth: authOAuth | authKey, run: readGLM},
+	"minimax":             {auth: authOAuth | authKey, run: readMiniMax},
+	"minimax-code":        {auth: authOAuth, run: readMiniMaxCode},
+	"qoder":               {auth: authOAuth | authKey, run: readQoder},
+	"qoder-cn":            {auth: authOAuth | authKey, run: readQoder},
+	"xiaomi-mimo":         {auth: authOAuth | authKey, session: true, run: readXiaomiMimo},
+	"minimax-code-global": {auth: authOAuth, run: readMiniMaxCode},
+	"minimax-cn":          {auth: authOAuth | authKey, run: readMiniMax},
+	"kimi":                {auth: authOAuth | authKey, run: readKimi},
+	"deepseek":            {auth: authKey, run: readDeepSeek},
+	"opencode-go":         {auth: authKey, run: readOpenCode},
+	"opencode-zen":        {auth: authKey, run: readOpenCode},
+	"zed":                 {auth: authOAuth, run: readZed},
+	"cursor":              {auth: authOAuth, run: readCursor},
+	"grok-cli":            {auth: authOAuth, run: readGrokCLI},
+	"codebuddy-cn":        {auth: authOAuth | authKey, run: readCodeBuddy},
+	"codebuddy-intl":      {auth: authOAuth | authKey, run: readCodeBuddy},
+	"clinepass":           {auth: authOAuth | authKey, run: readCline},
+	"cline":               {auth: authOAuth | authKey, run: readCline},
+	"freebuff":            {auth: authOAuth, run: readFreebuff},
+	"groq":                {auth: authKey, run: readGroq},
+	"ollama":              {auth: authKey, run: readOllama},
+	"vercel-ai-gateway":   {auth: authKey, run: readVercel},
+	"commandcode":         {auth: authKey, run: readCommandCode},
+	"synthetic":           {auth: authKey, run: readSynthetic},
+	"deeprelay":           {auth: authKey, run: readDeepRelay},
+	"opendesign-go":       {auth: authKey, run: readOpenDesign},
 }
 
 // Serves reports whether a reading can be asked for this provider and auth type.

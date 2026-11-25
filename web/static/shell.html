@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <title>Router-LLM</title>
+<link rel="icon" href="/static/img/favicon.ico" sizes="16x16 32x32 48x48">
 <script src="/static/js/theme.js"></script>
 <script src="/static/lib/chart.umd.min.js" defer></script>
 <link rel="stylesheet" href="/static/lib/tabler.min.css">
@@ -15,7 +16,7 @@
 <body x-data="shell" x-on:open-password.window="openPassword()" x-on:keydown.escape.window="closeNav()" x-cloak>
 <div class="rl-shell" x-bind:class="navClass()">
   <aside class="rl-sidebar" id="rl-sidebar">
-    <a class="rl-brand" href="/dashboard">Router-LLM</a>
+    <a class="rl-brand" href="/dashboard"><img class="rl-brand-mark" src="/static/img/logo.png" alt="" width="24" height="24">Router-LLM</a>
     <nav x-bind:aria-label="label('nav.dashboard')">
       <p class="rl-nav-section" x-t="nav.groupLlm"></p>
       <ul class="rl-nav">

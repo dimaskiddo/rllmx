@@ -8,11 +8,13 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
 	"github.com/tidwall/gjson"
 
 	"rllmx/app/gateway/probe"
+	catalogguard "rllmx/app/llm/catalog"
 	"rllmx/app/llm/oauth"
 	"rllmx/app/llm/upstream"
 	"rllmx/app/platform/text"
@@ -58,10 +60,24 @@ type ProvidersController struct {
 	// headers the page offers are rewritten to it so they match the request.
 	ClaudeCLI *upstream.ClaudeCLI
 
+	// LiveCatalog reads a provider's own live model list; nil leaves the
+	// embedded list as the only answer.
+	LiveCatalog *catalogguard.Guard
+
 	// catalog is built on the first request and kept: the registry is read once
 	// at start and the client ids never change while the process runs.
 	catalog     []catalogProvider
 	catalogOnce sync.Once
+
+	// Fetch reads one fixed model-list address through the guarded client; nil
+	// leaves the suggestion routes unavailable.
+	Fetch func(ctx context.Context, address string) ([]byte, error)
+	// The two lists are small and change slowly; each is kept for its own time.
+	suggestMu   sync.Mutex
+	suggestAt   map[string]time.Time
+	suggestBody map[string][]suggestedModel
+	kiloAt      time.Time
+	kiloBody    []suggestedModel
 }
 
 // LoginChecker renews an OAuth account's token when it is due and says whether

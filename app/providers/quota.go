@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 
+	"rllmx/app/facades"
+	"rllmx/app/llm/executor"
 	"rllmx/app/llm/oauth"
 	"rllmx/app/llm/quota"
 	"rllmx/app/platform/network"
@@ -21,7 +23,7 @@ func newQuotaReader(h *HTTP) *quota.Reader {
 			ConnectTimeout: h.Upstream.ConnectTimeout, MaxRedirects: 0, Allow: h.Upstream.Allow,
 			BodyCap: 1 << 20, Curves: h.Upstream.Curves,
 		}),
-		Zed: h.Zed,
+		Zed: h.Zed, Cookies: quotaCookies(h), MiniMaxSecret: minimaxSecret(),
 		Renew: func(ctx context.Context, conn repository.Connection) (repository.Connection, error) {
 			return h.Refresher.Renew(ctx, conn)
 		},
@@ -30,6 +32,24 @@ func newQuotaReader(h *HTTP) *quota.Reader {
 		},
 	}
 	return r
+}
+
+// quotaCookies is the session exchange a web-session reading uses, or nil when
+// that piece is not wired.
+func quotaCookies(h *HTTP) (src executor.CookieSource) {
+	if h != nil && h.Google != nil {
+		return h.Google.Mimo
+	}
+	return nil
+}
+
+// minimaxSecret is the MiniMax Code signing key, or "" when none is set.
+func minimaxSecret() string {
+	cfg := facades.Config()
+	if cfg == nil {
+		return ""
+	}
+	return cfg.GetString("upstream.minimax_sign_secret")
 }
 
 // quotaAccess is what a reading presents: the key of an API connection, or the

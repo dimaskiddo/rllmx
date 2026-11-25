@@ -48,7 +48,10 @@ type Options struct {
 	Prior map[string]bool
 	// Notice asks for the failover notice at the top of the system prompt.
 	Notice bool
-	ECC    ECCOptions
+	// Off reports a group the operator switched off, by its source: the
+	// built-in set, "custom" or "ecc". Nil leaves every group on.
+	Off func(source string) bool
+	ECC ECCOptions
 }
 
 // Stats is what one request's skills did, for the redacting log line.
@@ -112,6 +115,9 @@ func Apply(reg *Registry, r *translate.Request, o Options) Stats {
 		if m.Hook != "system-prompt" {
 			continue
 		}
+		if o.Off != nil && o.Off(m.Source) {
+			continue
+		}
 		enabled, mode := Switch(m, o.Setting, o.Legacy)
 		if !enabled {
 			continue
@@ -135,6 +141,11 @@ func Apply(reg *Registry, r *translate.Request, o Options) Stats {
 			return
 		}
 		prompt := reg.Prompt(m.ID)
+		// REA replaces the client's own security-policy paragraph before its
+		// guidance goes in, so the two never travel together.
+		if m.ID == reaSkillID {
+			stripSafetyParagraphs(r)
+		}
 		if o.Replace != nil {
 			if text, ok := o.Replace(m.ID); ok {
 				if text == "" {

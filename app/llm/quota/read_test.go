@@ -332,13 +332,13 @@ func TestRenewalReplacesTheRefusedToken(t *testing.T) {
 }
 
 func TestAnUnknownOrIneligibleConnectionIsNotRead(t *testing.T) {
-	deferred := connOf("minimax-code", "oauth", "")
-	if _, err := testReader(newStub(), deferred, "t").Read(context.Background(), deferred, true); !errors.Is(err, ErrUnsupported) {
+	unknown := connOf("nobody", "oauth", "")
+	if _, err := testReader(newStub(), unknown, "t").Read(context.Background(), unknown, true); !errors.Is(err, ErrUnsupported) {
 		t.Fatalf("%v", err)
 	}
-	for _, name := range []string{"qoder", "xiaomi-mimo", "minimax-code"} {
-		if _, ok := fetchers[name]; ok {
-			t.Fatalf("%s has a reader", name)
+	for _, name := range []string{"qoder", "xiaomi-mimo", "minimax-code", "minimax-code-global"} {
+		if _, ok := fetchers[name]; !ok {
+			t.Fatalf("%s has no reader", name)
 		}
 	}
 	for _, tt := range []struct {
@@ -565,5 +565,82 @@ func TestCodexCreditsReadBothSpellings(t *testing.T) {
 	}
 	if out.Credits[0].GrantedAt == nil || out.Credits[0].ExpiresAt == nil {
 		t.Fatalf("a snake_case credit lost its stamps: %+v", out.Credits[0])
+	}
+}
+
+// MiniMax Code signs its account calls and reads the plan windows with the
+// group the membership names.
+func TestMiniMaxCodeSignsItsCallsAndReadsThePlan(t *testing.T) {
+	s := newStub().
+		on("agent.minimaxi.com", "/v1/api/user/info", `{"data":{"userInfo":{"realUserID":"u1"}}}`).
+		on("agent.minimaxi.com", "/matrix/api/v1/user/get_user_extra_info", `{"data":{"workspaces":[{"workspace_type":0,"workspace_id":"w1"}]}}`).
+		on("agent.minimaxi.com", "/matrix/api/v1/commerce/get_membership_info", `{"data":{"has_token_plan":true,"op_group_id":"g1","token_plan_tier":"pro"}}`).
+		on("www.minimaxi.com", "/v1/api/openplatform/coding_plan/remains", `{"model_remains":[{"model_name":"general","current_interval_remaining_percent":80,"current_interval_status":1,"current_interval_end_time":"2026-11-18T10:00:00Z"}]}`)
+	r := testReader(s, connOf("minimax-code", "oauth", ""), "t")
+	r.MiniMaxSecret = "secret"
+	out, err := r.Read(context.Background(), connOf("minimax-code", "oauth", ""), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Plan != "M Plan pro" || out.Quotas["M-series (5h)"].RemainingPercentage != 80 {
+		t.Fatalf("%+v", out)
+	}
+	if got := s.headers["agent.minimaxi.com/matrix/api/v1/user/get_user_extra_info"].Get("yy"); got == "" {
+		t.Fatal("the account call was not signed")
+	}
+	if _, ok := out.Quotas["Credits"]; ok {
+		t.Fatal("an account with no balance row found one")
+	}
+}
+
+// A MiMo account presents a session cookie, not a key.
+func TestXiaomiMimoReadsTheWeeklyWindowFromItsSession(t *testing.T) {
+	s := newStub().on("mimo-server-sgp.xiaomimimo.com", "/api/user/usage",
+		`{"code":0,"data":{"percent":60,"resetAt":"2026-11-20T00:00:00Z"}}`)
+	conn := connOf("xiaomi-mimo", "oauth", `{"providerSpecificData":{"mimoPassToken":"pass","region":"sgp"}}`)
+	r := testReader(s, conn, "")
+	r.Cookies = fakeCookies{"sess=1"}
+	out, err := r.Read(context.Background(), conn, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q, ok := out.Quotas["Weekly"]
+	if !ok || q.RemainingPercentage != 60 || q.Recurring != true {
+		t.Fatalf("%+v", out)
+	}
+}
+
+// fakeCookies answers one session and counts the fresh retries.
+type fakeCookies struct{ session string }
+
+func (f fakeCookies) Cookie(context.Context, string, string, string, string, bool) (string, error) {
+	return f.session, nil
+}
+
+// A personal token is exchanged for a job token once, then read as a bearer.
+func TestQoderExchangesAPersonalTokenOnce(t *testing.T) {
+	s := newStub().
+		on("openapi.qoder.sh", "/api/v1/jobToken/exchange", `{"token":"jt-1","expires_in":3600}`).
+		on("openapi.qoder.sh", "/api/v2/quota/usage", `{"userQuota":{"total":100,"used":10,"unit":"credits"},"expiresAt":253402214400000}`)
+	conn := connOf("qoder", "apikey", "")
+	r := testReader(s, conn, "pt-abc")
+	for range 2 {
+		out, err := r.Read(context.Background(), conn, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		q, ok := out.Quotas["user"]
+		if !ok || q.Used != 10 || q.Total != 100 || q.ResetAt != nil {
+			t.Fatalf("%+v", out)
+		}
+	}
+	exchanges := 0
+	for _, call := range s.calls {
+		if strings.HasSuffix(call, "/api/v1/jobToken/exchange") {
+			exchanges++
+		}
+	}
+	if exchanges != 1 {
+		t.Fatalf("the token was exchanged %d times", exchanges)
 	}
 }

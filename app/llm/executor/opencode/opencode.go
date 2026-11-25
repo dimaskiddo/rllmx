@@ -67,8 +67,12 @@ const (
 // Execute sends to the lane the model is served on.
 func (o *OpenCodeFree) Execute(ctx context.Context, req executor.Request) (executor.Response, error) {
 	lane := o.lane()
-	req.URL = openCodeURL(lane, req.Model)
+	req.URL = openCodeURL(lane, openCodeEntryBase(req), req.Model)
 	req.Body = openCodeFreeBody(req.Body, openCodeIsResponses(req.Model), openCodeIsMessages(req.Model))
+	// The free lane's 1.3 model is only accepted with a tool choice present.
+	if strings.Contains(req.Model, "muse-spark-1.3") {
+		req.Body = executor.SetValue(req.Body, "tool_choice", "auto")
+	}
 	if renames := openCodeRenames(req.Body); len(renames) > 0 && req.Renamed != nil {
 		req.Renamed(renames)
 	}
@@ -195,16 +199,51 @@ func openCodeSeed(req executor.Request) string {
 	return "opencode\x00" + req.Model
 }
 
-// openCodeURL picks the lane's address for the model.
-func openCodeURL(l openCodeLane, model string) string {
-	base := openCodeBaseModel(model)
-	switch {
-	case openCodeIsResponses(base) && l.responses != "":
-		return l.responses
-	case openCodeIsMessages(base) && l.messages != "":
-		return l.messages
+// openCodeEntryBase is the address the provider's own data names, which the
+// lane's paths are built on.
+func openCodeEntryBase(req executor.Request) string {
+	if req.Entry.Transport.BaseURL != "" {
+		return req.Entry.Transport.BaseURL
 	}
-	return l.chat
+	return req.URL
+}
+
+// openCodeURL picks the lane's address for the model: one the lane names wins,
+// else the provider's own base gains the lane's path. The data names the chat
+// address, so the base is cut back to the host first.
+func openCodeURL(l openCodeLane, entryBase, model string) string {
+	base := openCodeBaseModel(model)
+	if openCodeIsResponses(base) {
+		if l.responses != "" {
+			return l.responses
+		}
+		return openCodeRoot(entryBase) + "/inference/v1/responses"
+	}
+	if openCodeIsMessages(base) {
+		if l.messages != "" {
+			return l.messages
+		}
+		return openCodeRoot(entryBase) + "/inference/v1/messages"
+	}
+	if l.chat != "" {
+		return l.chat
+	}
+	return openCodeRoot(entryBase) + "/inference/v1/chat/completions"
+}
+
+// openCodeRoot cuts a known endpoint off an address, leaving the host the lane's
+// own paths hang from.
+func openCodeRoot(base string) string {
+	base = strings.TrimSpace(base)
+	for _, suffix := range []string{
+		"/inference/v1/chat/completions", "/inference/v1/responses", "/inference/v1/messages",
+		"/v1/chat/completions", "/chat/completions",
+	} {
+		if strings.HasSuffix(base, suffix) {
+			return strings.TrimSuffix(base, suffix)
+		}
+	}
+	return strings.TrimSuffix(base, "/")
 }
 
 // openCodeBaseModel drops a thinking suffix such as "model(high)", so a lookup

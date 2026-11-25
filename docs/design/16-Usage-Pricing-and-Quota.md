@@ -1,6 +1,6 @@
 # Design 16 — Usage, Pricing & Quota (`app/store/analytics/`, `app/llm/quota/`)
 
-**Status:** partial
+**Status:** done
 
 Built today: `app/store/analytics` — the usage store, writer, rollups, retention, the legacy importer and the dashboard's readers; `app/http/controllers` serves the usage routes; `app/gateway/health` holds the in-flight table; `app/llm/quota` holds the Antigravity selector gate and the per-connection readers the quota routes call.
 
@@ -72,7 +72,7 @@ The key-only readers added with the 0.5.123 sync: Synthetic (`/v2/quotas`: two r
 
 **Providers.** Read: GitHub, Gemini CLI, Antigravity (through the selector's own fetcher), Claude, Codex, Kiro, GLM, MiniMax, Kimi, DeepSeek, OpenCode, Zed, Cursor, Grok CLI, CodeBuddy, Cline, Freebuff, Groq, Ollama, Vercel AI Gateway and Command Code.
 
-Deferred until their handshake is designed: MiniMax Code (a signed account API), Xiaomi MiMo (a cookie SSO chain) and Qoder (a pasted token exchanged for a job token) (D379). API key quota limits are a separate feature (design doc 21).
+MiniMax Code (signed account calls, its key configured not literal, D456), Xiaomi MiMo (the desktop session cookie, with the key path best effort) and Qoder (a personal token exchanged for a job token, cached) are read by `app/llm/quota`; nothing remains deferred there. API key quota limits are a separate feature (design doc 21).
 
 **Page.** `/dashboard/quota` lists the connections `/api/providers/client` says a reading answers for, reads one card per connection through `/api/usage/{id}`, and offers the two refill routes and the active switch behind a confirmation. A reading's 401 is the provider refusing the stored credential and is shown on the card, never treated as a session end. Hidden rows (`quotaVisibility`) and the bulk enable/disable actions are not offered (doc 18, D429).
 
@@ -85,21 +85,21 @@ Deferred until their handshake is designed: MiniMax Code (a signed account API),
 | Endpoint | Package | Status |
 |---|---|---|
 | `/api/usage/stats`, `chart`, `history`, `logs`, `request-logs`, `providers`, `active-providers`, `stream` | `app/http/controllers`, `app/store/analytics`, `app/gateway/health` | done (diverged) |
-| `/api/usage/{connectionId}`, `claude-reset`, `codex-reset-credits` | `app/llm/quota`, `app/http/controllers` | done (diverged); MiniMax Code, Xiaomi MiMo and Qoder deferred |
+| `/api/usage/{connectionId}`, `claude-reset`, `codex-reset-credits` | `app/llm/quota`, `app/http/controllers` | done (diverged); MiniMax Code, Xiaomi MiMo and Qoder built (4.20) |
 | `/api/providers/client` | `app/http/controllers` | done (`design doc 4`) |
 | `/api/usage/request-details` | none | out (stored bodies) |
 
 ---
 
 ## Remaining work
-**The usage rows, the readers, every usage route and the per-connection quota readers are built. Each row carries the savers and skills that acted, as names only.** What stays open is the quota auto-ping scheduler, three providers whose reading needs a handshake of its own, and a paged history.**
+**The usage rows, the readers, every usage route, the per-connection quota readers, the auto-ping runner and the keyset-paged log are built. Each row carries the savers and skills that acted, as names only, and whether its cost came from a rate.**
 
 A standard user's read is narrowed to the keys assigned to them inside the query (`Sums`, `Buckets`, `LastSeen`, `Recent`, `RecentServed` and `Providers` take the key list; nil means every key, an empty list means none). The in-flight counts stay admin-only because that table holds no key id (`design doc 2`).
 
-- [x] `/api/usage/*` over `requests` and the rollups, with the live feed; `history` answers the all-time totals (D363), and a keyset-paged history is not built (open)
+- [x] `/api/usage/*` over `requests` and the rollups, with the live feed; `history` answers the all-time totals (D363), and `/api/usage/logs?before=<ms>-<id>` pages the log with a `(ts,id)` keyset cursor and an `X-Next-Cursor` (the page's Load older)
 - [x] Pricing lookup over the embedded baseline and the `pricing` overrides; the pipeline's usage hook calls it
 - [x] Per-key request, token and cost budgets with the day, month and total windows, checked before dispatch (step 2.3, `design doc 21`)
-- [x] `/api/usage/{connectionId}` and the two refill routes, 22 providers; MiniMax Code, Xiaomi MiMo and Qoder await a handshake design (D379)
+- [x] `/api/usage/{connectionId}` and the two refill routes for every provider it serves: MiniMax Code's signed account calls, Xiaomi MiMo's session cookie and Qoder's job-token exchange are built (D379 retires); a refill list carries each grant's label, uses, pause, end and next id
 - [x] Quota auto-ping: the runner and the tiny request that warms a window; the anchored slots stay out (D453)
 
 ---
@@ -118,7 +118,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 107, 108, 109, 111 | One row per request including failures, with error class, `estimated`; one buffer rule; both modes fold cache tokens; tracker reads upstream payload once | One account of what happened |
 | 18 | Usage always recorded, metadata only; upstream error becomes class | Prompts, secrets never at rest |
 | 143 | One row: status 200, no provider, zero tokens | Every request ends in one row |
-| 78 | `Cost` reports "unknown"; patterns split once at load. **(partial)**row still stores 0 for unknown | No per-request compile |
+| 78 | A request with no rate stores cost 0 with `costKnown` false; the stats answer counts those rows as `unknownCostRequests`. Patterns split once at load **(built)** | Zero can be read as free or as unpriced |
 | 354 | A stored rate card is read and written with the field `cache_creation`, and the camel spelling is accepted too **(built)** | A real 9router row spells it `cache_creation`; the strict decoder skipped every override that carried a cache-creation rate, and a card this build wrote would lose it in the reference |
 | 360 | Days and labels use the server's zone (`TZ`). `today` and `24h` come from the hour rollups, which cover the request retention; older days come from the day rollups, which are kept forever, so a long chart can switch from local days to UTC days at the retention edge. `lastUsed` is the newest request time when the request rows still hold it (48 h), else the bucket start **(trade-off)** | The reference keeps a local-date rollup for every day; this build reuses the two rollups it already writes instead of a third table, and the seam only touches data older than the retention |
 | 361 | `24h` is the 24 clock hours ending now, labelled `HH:00` | The reference buckets back from the current minute, so labels read `14:37` |
@@ -145,9 +145,12 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 393 | Kiro's quota is read from CodeWhisperer's GET, then its POST (`x-amz-target`), then the Q host's GET, and the first answer wins; a refusal on all three is a message that says chat may still work, not an error that triggers a renewal **(built)** | The reference reads the same three and words its messages by sign-in method; this build had tried one host and built a second it never called. The live endpoints were never called here, so the POST attempt is unverified |
 | 394 | Text a provider returns in a Claude reset answer is cut to 200 bytes on a character boundary before it reaches the dashboard **(built)** | The reference passes `result`, `reason` and `error.message` through uncut, so one long answer from the vendor fills the page |
 | 380 | Quota auto-ping is not built; the settings are read and written in the reference's shape only **(retired: built in 4.18 as D453)** | The scheduler needed its own design pass; it now has one |
+| 456 | MiniMax Code's signing key is `UPSTREAM_MINIMAX_SIGN_SECRET`, configuration with an empty default, never a literal | A shipped signing key is a credential every copy shares; the operator sets it, and an unset one leaves that reading unavailable instead of failing a request |
+| 457 | Retired: the translator playground was removed at the operator's request; only the console-log routes remain under `/api/translator` | The feature was out of scope |
 | 453 | Auto-ping runs a one-minute tick and pings once per window after its reset, with a 15-minute failure cooldown and the registry's first chat model; the reference's anchored per-account schedule, its pinned ping models and its plan-window checks are not built | One switch per provider, one ping per window, nothing scheduled per account; a pinned model id rots, a registry model is one the account can call |
 | 434 | The log read is bounded by the page's period, seven days by default, and ordered by time rather than by row id | The reference returns the 200 newest rows with no bound, so a month-old import fills the list; ordering by id lets an imported old row outrank a newer live one |
 | 442 | The usage table folds an API key's rows into one summary row, summing its requests, tokens and cost across models and providers, and opens that row into the per-model detail (doc 18); a read a client abandoned is not logged as a failure, at the handler or at the database logger. The reference's table has one row per key, model and provider. **(built)** | One key shown as several rows made a 60-day total look like several keys, and a poll cancelled by a reload filled the log with errors that meant nothing |
+| 460 | The request log's feature line is one fixed order — RTK, CAVEMAN, PONYTAIL, ALLOW REA, WATERMARK-REMOVER, HEADROOM, then the used skills once — with upper-case ON/OFF/SKIPPED; CUSTOMPROMPT follows PONYTAIL when it acted | The reference prints colon tokens in saver order with no per-skill summary and no skipped wording; a reader scanning many lines wants one order and the skills named once |
 
 ---
 

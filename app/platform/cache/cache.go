@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -99,12 +100,31 @@ type Cache struct {
 
 	loads  singleflight.Group
 	warned atomic.Bool
+
+	mu     sync.Mutex
+	now    func() time.Time
+	breaks map[string]breaker
 }
+
+// breaker skips a store that keeps failing. It is per store, so a stopped Redis
+// does not stop the memory store.
+type breaker struct {
+	failures int
+	until    time.Time
+}
+
+const (
+	// breakerFailures is how many consecutive failures open a breaker.
+	breakerFailures = 3
+	// breakerCooldown is how long a store is left alone before one call may try
+	// it again.
+	breakerCooldown = 30 * time.Second
+)
 
 // New wraps the Cache facade. The shared groups use its "redis" store unless
 // WithoutShared is given.
 func New(facade gocache.Cache, opts ...Option) *Cache {
-	c := &Cache{facade: facade, shared: sharedStore}
+	c := &Cache{facade: facade, shared: sharedStore, now: time.Now, breaks: map[string]breaker{}}
 	for _, o := range opts {
 		o(c)
 	}
@@ -114,11 +134,7 @@ func New(facade gocache.Cache, opts ...Option) *Cache {
 // store returns nil when the facade cannot build the store, as it does for a
 // Redis that is not configured.
 func (c *Cache) store(g Group) gocache.Driver {
-	name := memoryStore
-	if g.shared() {
-		name = c.shared
-	}
-	return c.facade.Store(name)
+	return c.facade.Store(c.storeName(g))
 }
 
 func counterKey(g Group) string { return string(g) + ":gen" }
@@ -157,17 +173,60 @@ func setAt(st gocache.Driver, g Group, gen int64, key string, val []byte, ttl ti
 // failed write has no error to look at either, so the first failure of the
 // process is reported once, without a value or the panic text.
 func (c *Cache) guard(g Group, fn func(st gocache.Driver)) {
+	name := c.storeName(g)
+	if !c.allow(name) {
+		return
+	}
 	st := c.store(g)
 	if st == nil {
+		c.note(name, false)
 		c.failed("the store is not available")
 		return
 	}
+	ok := true
 	defer func() {
 		if recover() != nil {
+			ok = false
 			c.failed("the store failed")
 		}
+		c.note(name, ok)
 	}()
 	fn(st)
+}
+
+// storeName is the store a group reads, for the breaker's book.
+func (c *Cache) storeName(g Group) string {
+	if g.shared() {
+		return c.shared
+	}
+	return memoryStore
+}
+
+// allow reports whether the store may be called now. A store whose breaker is
+// open is left alone for the cooldown, so a stopped store costs no call.
+func (c *Cache) allow(name string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	b := c.breaks[name]
+	return !b.until.After(c.now())
+}
+
+// note records one call's outcome: a success closes the breaker, and the third
+// failure in a row opens it.
+func (c *Cache) note(name string, ok bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	b := c.breaks[name]
+	if ok {
+		c.breaks[name] = breaker{}
+		return
+	}
+	b.failures++
+	if b.failures >= breakerFailures {
+		b.failures = 0
+		b.until = c.now().Add(breakerCooldown)
+	}
+	c.breaks[name] = b
 }
 
 func (c *Cache) failed(what string) {

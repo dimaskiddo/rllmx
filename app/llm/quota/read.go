@@ -11,10 +11,12 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/tidwall/gjson"
 
+	"rllmx/app/llm/executor"
 	"rllmx/app/llm/upstream"
 	"rllmx/app/llm/zed"
 	"rllmx/app/platform/cache"
@@ -52,7 +54,15 @@ type Reader struct {
 	// Zed answers the hosted service's account record, which needs its own
 	// address and token cache.
 	Zed *zed.Client
-	Now func() time.Time
+	// Cookies exchanges a pasted session for the cookie a web-session provider
+	// needs; nil leaves such a reading unavailable.
+	Cookies executor.CookieSource
+	// MiniMaxSecret is the key MiniMax Code signs its account calls with.
+	MiniMaxSecret string
+
+	qoderMu   sync.Mutex
+	qoderJobs map[string]qoderJob
+	Now       func() time.Time
 }
 
 // Read answers one connection's quota. force skips the cached reading, for a
@@ -96,7 +106,12 @@ func (r *Reader) read(ctx context.Context, conn repository.Connection, f fetcher
 	entry, _ := r.entry(conn.Provider)
 	access, err := r.access(ctx, conn)
 	if err != nil {
-		return Reading{}, err
+		// A session-only connection presents a cookie, not a token; its reader
+		// says so, and no other reader may take it.
+		if !f.session || !errors.Is(err, ErrNotEligible) {
+			return Reading{}, err
+		}
+		access = Access{Conn: conn}
 	}
 	out, err := f.run(ctx, r, entry, access)
 	if !errors.Is(err, ErrAuth) || r.Renew == nil {

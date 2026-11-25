@@ -214,7 +214,7 @@ func (w *Writer) flush(batch []row) {
 	w.flushed.Add(1)
 }
 
-const insertSQL = `INSERT INTO "requests"("ts","requestId","apiKeyId","apiKeyName","connectionId","provider","model","endpoint","sourceFormat","status","errorClass","stream","cached","estimated","promptTokens","completionTokens","cachedTokens","cacheWriteTokens","reasoningTokens","cost","latencyMs","ttfbMs","comboName","attempt","savers","skills","importId") VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+const insertSQL = `INSERT INTO "requests"("ts","requestId","apiKeyId","apiKeyName","connectionId","provider","model","endpoint","sourceFormat","status","errorClass","stream","cached","estimated","promptTokens","completionTokens","cachedTokens","cacheWriteTokens","reasoningTokens","cost","costKnown","latencyMs","ttfbMs","comboName","attempt","savers","skills","importId") VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
 
 func rowArgs(r row) []any {
 	var imp any
@@ -224,7 +224,7 @@ func rowArgs(r row) []any {
 	return []any{r.Time.UnixMilli(), r.RequestID, r.APIKeyID, r.APIKeyName, r.ConnectionID,
 		r.Provider, r.Model, r.Endpoint, r.SourceFormat, int64(r.Status), r.ErrorClass,
 		dialect.BoolInt(r.Stream), dialect.BoolInt(r.Cached), dialect.BoolInt(r.Estimated),
-		r.PromptTokens, r.CompletionTokens, r.CachedTokens, r.CacheWriteTokens, r.ReasoningTokens, r.Cost,
+		r.PromptTokens, r.CompletionTokens, r.CachedTokens, r.CacheWriteTokens, r.ReasoningTokens, r.Cost, dialect.BoolInt(r.CostKnown),
 		r.LatencyMs, r.TTFBMs, r.ComboName, int64(r.Attempt), r.Savers, r.Skills, imp}
 }
 

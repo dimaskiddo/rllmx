@@ -77,6 +77,20 @@ func TestEnvExampleListsExactlyTheKnownNames(t *testing.T) {
 	}
 }
 
+// The operator reference splits from .env.example, so a variable added there
+// must reach the doc too; the doc is what a reader with no source tree has.
+func TestTheEnvironmentDocNamesEveryVariable(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "..", "docs", "ENVIRONMENT.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range known {
+		if !strings.Contains(string(b), name) {
+			t.Errorf("%s is read by the code but missing from docs/ENVIRONMENT.md", name)
+		}
+	}
+}
+
 func TestEnvExampleHasNoUnknownNames(t *testing.T) {
 	if err := CheckEnvFile(repoEnvEg); err != nil {
 		t.Fatal(err)

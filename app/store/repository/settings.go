@@ -70,9 +70,10 @@ var settingDefaults = []settingDefault{
 	{"ponytailEnabled", "false"}, {"ponytailLevel", `"full"`}, {"ponytailRoutingMode", `"smart"`}, {"customPromptEnabled", "false"}, {"customPrompt", `""`}, {"watermarkStripEnabled", "false"}, {"pxpipeEnabled", "false"},
 	{"pxpipeAutoInstall", "true"}, {"pxpipeMinChars", "25000"}, {"pxpipeTimeoutMs", "15000"}, {"providerOverrides", "{}"},
 	{"headroomAutoStart", "true"}, {"hermesServiceAutoStart", "true"},
-	{"skillSources", "[]"}, {"globalSkillsEnabled", "true"}, {"ecc_auto_skill_routerEnabled", "false"}, {"ecc_auto_skill_routerConfidence", "0.35"},
+	{"skillSources", "[]"}, {"globalSkillsEnabled", "true"},
+	{"builtinSkillsEnabled", "true"}, {"customSkillsEnabled", "true"}, {"eccSkillsEnabled", "true"}, {"ecc_auto_skill_routerEnabled", "false"}, {"ecc_auto_skill_routerConfidence", "0.35"},
 	{"ecc_auto_skill_routerMaxSkills", "1"},
-	{"responseCache", `{"enabled":false,"ttlSeconds":3600,"maxEntryKb":512}`},
+	{"responseCache", `{"enabled":false,"ttlSeconds":3600,"maxEntryKb":512,"semantic":{"enabled":true,"threshold":0.92}}`},
 	{"claudeAutoPing", "false"}, {"codexAutoPing", "false"},
 }
 

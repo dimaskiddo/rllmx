@@ -145,6 +145,8 @@ Full wording and reasons for the Go rules: `docs/ARCHITECTURE.md`, Go Convention
 | `docs/ARCHITECTURE.md` | Module map, design decisions, approved modules, Go conventions, terminal commands |
 | `docs/PARITY.md`, `docs/DIVERGENCES.md` | Pinned references and status vocabulary; divergence index |
 | `docs/WORKFLOWS.md` | Pipeline, startup order and operator procedures |
+| `docs/MIGRATING.md` | Moving from 9Router to Router-LLM and back, step by step |
 | `ROADMAP.md` | What is built, partial and planned, written for readers |
 | `.env.example` | Every variable with its default (`design doc 17`) |
+| `docs/ENVIRONMENT.md` | The same variables as an operator reference, in `.env.example` order |
 | `Makefile`, `Dockerfile`, `.goreleaser.yml` | Build, container, release |

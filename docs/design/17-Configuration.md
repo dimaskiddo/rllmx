@@ -1,10 +1,10 @@
 # Design 17 — Configuration (`config/`, `app/platform/settings/`)
 
-**Status:** partial
+**Status:** done
 
 The settings and variable tables below are parity data: the keys the store reads and writes back. A key whose *behaviour* belongs to a later step is marked there, and that step's design doc owns it.
 
-Environment variables and an optional `.env` in the working directory, read by the framework's config loader through `config/*.go`. The process environment wins. Every variable has a default in the `config.Env(name, default)` call.
+Environment variables and an optional `.env` in the working directory, read by the framework's config loader through `config/*.go`. The process environment wins. Every variable has a default in the `config.Env(name, default)` call. The operator-facing list of every variable, with its default and accepted values, is [`docs/ENVIRONMENT.md`](../ENVIRONMENT.md); the rules and the reference mapping stay here.
 
 ### Loading
 
@@ -49,16 +49,16 @@ No code reads rows marked *planned* yet, so setting one in `.env` fails startup 
 | Cache | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_DB` (empty `REDIS_HOST`: the memory store only) |
 | Response cache | `CACHE_RESPONSE_MAX_ENTRIES` (1000, 1 to 100000), `CACHE_RESPONSE_MAX_MB` (64, 1 to 4096): the in-process bound; ignored when `REDIS_HOST` is set |
 | Logging | `LOG_CHANNEL` (`single`; `daily` or `stack` also), `LOG_OUTPUT` (`both`; also `file` or `stdout`), `LOG_LEVEL` (info). The file, the formatter (`text` or `json`) and the retention days are keys of the channel in `config/logging.go` (`storage/logs/rllmx.log`), not variables. `stdout` writes the same line the file would carry to the standard output, behind the same redactor; an unknown value fails the start |
-| Streams | `STREAM_STALL_TIMEOUT` (360s, 5s to 1h), `STREAM_FIRST_CHUNK_TIMEOUT` (200s, 5s to 1h), `STREAM_USAGE_WAIT` (3s, 100ms to 30s; how long a finished turn waits for a late usage report), all read; `STREAM_EMPTY_PEEK_DEADLINE` (45s, 1s to 10m) (planned,) |
+| Streams | `STREAM_STALL_TIMEOUT` (360s, 5s to 1h), `STREAM_FIRST_CHUNK_TIMEOUT` (200s, 5s to 1h), `STREAM_USAGE_WAIT` (3s, 100ms to 30s; how long a finished turn waits for a late usage report), all read; `STREAM_EMPTY_PEEK_DEADLINE` (45s, 1s to 10m), deferred: no provider needs its own peek deadline (doc 22) |
 | Upstream | `UPSTREAM_CONNECT_TIMEOUT` (60s, 1s to 10m), `UPSTREAM_ALLOW_PRIVATE` (empty: public targets only; host names, addresses or CIDRs; link-local and the cloud metadata addresses are refused even when listed), `UPSTREAM_TLS_CURVE` (`x25519` offers only that group, `default` offers the standard list; anything else fails the start), `UPSTREAM_CLAUDE_CLI_VERSION` (empty: the latest published Claude Code, read from npm every six hours, never below the build's floor; a value is `x.y.z` and turns the lookup off), `UPSTREAM_KIRO_CREATE_RESPONSE` (`auto`: Kiro's Responses transport answers only after the IDE transport's enrolment rate-limit; `always`; `off`; anything else fails the start), and the outbound pace `UPSTREAM_RATE_LIMIT_RPM` (60; `0` off), `UPSTREAM_RATE_LIMIT_BURST` (10, at least 1) and `UPSTREAM_RATE_LIMIT_MAX_WAIT` (30s, `0` unbounded), built |
 | OAuth login | `OAUTH_CALLBACK_HOST` (127.0.0.1): an IP address, the bind address of the fixed-port login listener |
 | OAuth refresh | `OAUTH_BACKGROUND_REFRESH` (true) and `OAUTH_REFRESH_DELAY` (1500ms, 0s to 1m, pause between accounts), built. `OAUTH_REFRESH_GOOGLE_DELAY` (12s, 0s to 1m, the pause after an account of a provider that sets `slowRefresh`, plus 0 to 4 s of jitter), built |
 | Media | `MEDIA_VIDEO_TIMEOUT` (120s, 5s to 10m; one video create or poll), built. `MEDIA_SEARXNG_URL` (empty; an http or https address with a host), built |
 | Token savers | `SAVER_HEADROOM_URL` (empty; the settings row's `headroomUrl` wins, which is empty until set, then this value, then `http://localhost:8787`) |
 | Catalog | `CATALOG_SYNC` (true; `false` stops the timer, and a file already in `DATA_DIR` is still loaded), built |
-| Translator | `TRANSLATOR_ENABLED` (false) (planned) |
+
 | OAuth clients | `OAUTH_CLIENT_ID_<PROVIDER>` for antigravity, claude, codex, github, google, kimi, kimi_coding, minimax_code, muse, nous, trae, windsurf, xai; `OAUTH_CLIENT_SECRET_<PROVIDER>` only for antigravity, google, trae. Default empty, which disables that provider's login; `.env.example` carries working values. `google` serves Gemini and Gemini CLI, `minimax_code` both MiniMax Code regions, `xai` xAI and Grok CLI. Built: `OAUTH_CLIENT_ID_CLAUDE` and `OAUTH_CLIENT_ID_CODEX` (at most 256 characters, no spaces or control characters); adds `OAUTH_CLIENT_ID_GITHUB`; adds `OAUTH_CLIENT_ID_GOOGLE`, `OAUTH_CLIENT_SECRET_GOOGLE` (Gemini CLI), `OAUTH_CLIENT_ID_ANTIGRAVITY` and `OAUTH_CLIENT_SECRET_ANTIGRAVITY`; adds `OAUTH_CLIENT_ID_MINIMAX_CODE` (both MiniMax Code sites; CodeBuddy and GLM need none); adds `OAUTH_CLIENT_ID_KIMI`, `OAUTH_CLIENT_ID_MUSE`, `OAUTH_CLIENT_ID_NOUS` and `OAUTH_CLIENT_ID_XAI` (the Grok CLI login reads the xAI one; Kilo Code needs none). iflow is not built (D279), so it has no variable |
-| Provider overrides | `PROVIDER_AZURE_ENDPOINT`, `..._AZURE_DEPLOYMENT`, `..._AZURE_API_VERSION`, `..._AZURE_ORGANIZATION`, `..._MIMO_PLATFORM_URL`, `..._COMMANDCODE_BASE_URL` (planned) |
+| Provider overrides | `PROVIDER_AZURE_ENDPOINT`, `..._AZURE_DEPLOYMENT`, `..._AZURE_API_VERSION`, `..._AZURE_ORGANIZATION`, `..._MIMO_PLATFORM_URL`, `..._COMMANDCODE_BASE_URL`, deferred: the registry data carries each address today (doc 22) |
 
 ### Not Read
 
@@ -86,12 +86,12 @@ The status column is the v1 target, not the build state: behavior lands later. U
 | `stickyRoundRobinLimit`, `providerStrategies`, `fallbackStrategy` | honored: each `providerStrategies[name]` is the bare strategy word or an object holding `fallbackStrategy` and `stickyRoundRobinLimit` (1-100); the word is `fill-first` or `round-robin`; an entry's other keys are kept as written |
 | `comboStrategy`, `comboStickyRoundRobinLimit`, `comboStrategies` | honored: the combo routing reads them through the same 5 s settings cache (`design doc 4`). A `comboStrategies[name]` entry carries `fallbackStrategy`, and for a smart or fusion combo `smartPolicy`, `sessionSticky`, `confidenceThreshold`, `routerModel`, `judgeModel` and `fusionTuning` (`minPanel`, `stragglerGraceMs`, `panelHardTimeoutMs`); none of those has a top-level form |
 | `capacityAdapter` | honored: a pool per capability (`vision`, `audioInput`, plus `pdf` and `videoInput`), with its enabled and round-robin switches and its ordered models, prepended when no declared member meets the need (`design doc 3`) |
-| `providerThinking` | stored; read by no code yet |
+| `providerThinking` | stored and round-tripped; read by no code, because no provider's thinking shape is chosen by it |
 | `quotaVisibility` | stored; the quota page reads it (`design doc 18`) |
 | `providerOverrides` | honored: read and written by the override routes; applied to an upstream call by the executors |
 | `rtkEnabled`, `headroomEnabled`, `headroomUrl`, `headroomCompressUserMessages`, `headroomTimeoutMs`, `cavemanEnabled`, `cavemanLevel`, `cavemanRoutingMode`, `ponytailEnabled`, `ponytailLevel`, `ponytailRoutingMode`, `customPromptEnabled`, `customPrompt` | honored |
-| `claudeAutoPing`, `codexAutoPing` | stored and round-tripped in the reference's shape (a switch, or an object of connections and schedules); no scheduler reads them yet (`design doc 16`) |
-| `responseCache` | honored (`{enabled, ttlSeconds, maxEntryKb}`, default off; D24, D148); written by the settings API |
+| `claudeAutoPing`, `codexAutoPing` | honored: the auto-ping runner reads them each minute and warms one short window per reset (`design doc 16`) |
+| `responseCache` | honored (`{enabled, ttlSeconds, maxEntryKb, semantic: {enabled, embeddingModel, threshold}}`, default off with the semantic layer on when it is on; D24, D148, D461); written by the settings API |
 | `ccFilterNaming` | honored (answers the Claude CLI topic-naming probe locally; absent = off; dashboard toggle with the settings API) |
 | `autoPlanEnabled`, `autoPlanMode` (`auto`/`manual`), `autoPlanComboId`, `autoCodeComboId` (128 bytes), `autoPlanComplexityThreshold` (1-10), `autoPlanSmartClassify`, `autoPlanMaxTokens` (200-4000), `autoPlanTimeoutMs` (1000-60000), `autoPlanShowInResponse` (extended) | honored: the auto plan hook reads them (design doc 11); PATCH validates each against its bound, and an unknown combo id falls back to the automatic pick rather than a 400 |
 | `<skillId>Enabled`, `<skillId>RoutingMode`, `ecc_auto_skill_router*` (extended) | honored; the per-skill keys are accepted for the manifest's id alphabet by the settings API |
@@ -121,27 +121,27 @@ The status column is the v1 target, not the build state: behavior lands later. U
 | `AUTH_COOKIE_SECURE` | `AUTH_COOKIE_SECURE` | as is |
 | `STRICT_PRODUCTION_GUARD` (extended) | `AUTH_REFUSE_DEFAULT_PASSWORD` | name says what `true` does |
 | `LOG_LEVEL` | `LOG_LEVEL` | as is |
-| `ENABLE_TRANSLATOR` | `TRANSLATOR_ENABLED` | planned with the translator playground (design doc 4) |
+
 | `STREAM_STALL_TIMEOUT_MS` | `STREAM_STALL_TIMEOUT` | Go duration (`360s`), not milliseconds |
 | `STREAM_FIRST_CHUNK_TIMEOUT_MS` | `STREAM_FIRST_CHUNK_TIMEOUT` | duration |
-| `EMPTY_PEEK_DEADLINE_MS` | `STREAM_EMPTY_PEEK_DEADLINE` | not built: no provider needs its own peek deadline (design doc 9) |
+| `EMPTY_PEEK_DEADLINE_MS` | `STREAM_EMPTY_PEEK_DEADLINE` | deferred: no provider needs its own peek deadline (doc 22) |
 | `FETCH_CONNECT_TIMEOUT_MS` | `UPSTREAM_CONNECT_TIMEOUT` | duration |
 | `NINEROUTER_KIRO_CREATE_RESPONSE`, `KIRO_CREATE_RESPONSE` | `UPSTREAM_KIRO_CREATE_RESPONSE` | same three values; the group names the outbound transport it changes, and a bad value stops the start (D444) |
 | `NINEROUTER_TLS_ECDH_CURVE` | `UPSTREAM_TLS_CURVE` | same intent; this program's own name and only two values |
 | `CLAUDE_CLI_VERSION` | `UPSTREAM_CLAUDE_CLI_VERSION` | same intent; the group names the outbound identity it changes |
 | `FETCH_KEEPALIVE_TIMEOUT_MS` | — | not read: the Go pool's idle timeout is fixed and a dropped socket costs one replay |
 | `FETCH_FRESH_RETRY` | — | not read: the replay has no kill switch |
-| `VIDEO_FETCH_TIMEOUT_MS` | `MEDIA_VIDEO_TIMEOUT` | duration; built, |
+| `VIDEO_FETCH_TIMEOUT_MS` | `MEDIA_VIDEO_TIMEOUT` | duration; built |
 | `DISABLE_BACKGROUND_TOKEN_REFRESH` | `OAUTH_BACKGROUND_REFRESH` | polarity inverted: `true` enables, default `true` |
 | `BG_REFRESH_DELAY_MS` | `OAUTH_REFRESH_DELAY` | duration; pause between two accounts in a background pass (not a start delay; the first pass always waits 10 s) |
 | `BG_REFRESH_GOOGLE_DELAY_MS` | `OAUTH_REFRESH_GOOGLE_DELAY` | duration |
 | (browser-built redirect) | `OAUTH_CALLBACK_HOST` | new: fixed-port login listener bind address (default `127.0.0.1`; `0.0.0.0` in a container) |
-| `SEARXNG_URL` | `MEDIA_SEARXNG_URL` | built, |
+| `SEARXNG_URL` | `MEDIA_SEARXNG_URL` | built |
 | `HEADROOM_URL` | `SAVER_HEADROOM_URL` | done |
 | `MODEL_CATALOG_SYNC` (`off` disables) | `CATALOG_SYNC` | boolean: `false` stops the timer only; built |
-| `AZURE_ENDPOINT`, `AZURE_DEPLOYMENT`, `AZURE_API_VERSION`, `AZURE_ORGANIZATION` | `PROVIDER_AZURE_*` | planned, |
+| `AZURE_ENDPOINT`, `AZURE_DEPLOYMENT`, `AZURE_API_VERSION`, `AZURE_ORGANIZATION` | `PROVIDER_AZURE_*` | deferred (doc 22) |
 | `KIMI_OAUTH_CLIENT_ID`, `KIMI_CODING_OAUTH_CLIENT_ID` | `OAUTH_CLIENT_ID_KIMI`, `OAUTH_CLIENT_ID_KIMI_CODING` | |
-| `MIMO_PLATFORM_URL`, `COMMAND_CODE_API_BASE_URL` | `PROVIDER_MIMO_PLATFORM_URL`, `PROVIDER_COMMANDCODE_BASE_URL` | planned, |
+| `MIMO_PLATFORM_URL`, `COMMAND_CODE_API_BASE_URL` | `PROVIDER_MIMO_PLATFORM_URL`, `PROVIDER_COMMANDCODE_BASE_URL` | deferred (doc 22) |
 | OAuth client ids and secrets hardcoded in `open-sse/providers/registry/*.js`, `shared.js`, `services/nous.js` | `OAUTH_CLIENT_ID_<PROVIDER>` and `OAUTH_CLIENT_SECRET_<PROVIDER>` (16 variables read, listed in `.env.example`) | diverged: configuration, not code |
 
 ---

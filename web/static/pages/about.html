@@ -9,7 +9,7 @@
     <section class="card" x-show="!loading">
       <div class="card-header rl-card-head">
         <h2 class="rl-card-title" x-t="about.versionTitle"></h2>
-        <button type="button" class="btn btn-sm" x-bind:disabled="check.busy" x-on:click="checkNow()">
+        <button type="button" class="btn btn-sm" x-show="admin" x-bind:disabled="check.busy" x-on:click="checkNow()">
           <span class="rl-icon" x-icon="refresh-cw"></span>
           <span x-show="check.busy !== true" x-t="about.check"></span>
           <span x-show="check.busy === true" x-t="about.checking"></span>
@@ -20,6 +20,7 @@
           <dt x-t="about.versionTitle"></dt><dd><code class="rl-code" x-text="version === '' ? '—' : version"></code></dd>
           <dt x-t="about.commit"></dt><dd><code class="rl-code" x-text="commit === '' ? '—' : commit"></code></dd>
         </dl>
+        <p class="rl-hint" x-show="!admin" x-t="about.checkAdmin"></p>
         <p class="rl-error" x-show="check.error" x-text="check.error"></p>
         <p class="rl-hint" x-show="check.done && check.hasUpdate !== true" x-t="about.upToDate"></p>
         <div x-show="check.done && check.hasUpdate === true">

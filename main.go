@@ -1,6 +1,10 @@
 package main
 
 import (
+	// The distroless image carries no zoneinfo, and day rollups and log times
+	// read the local zone.
+	_ "time/tzdata"
+
 	"rllmx/bootstrap"
 )
 

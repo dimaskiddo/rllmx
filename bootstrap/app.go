@@ -75,7 +75,9 @@ func declareRoutes(version, commit string) {
 	base.Auth = controllers.NewAuthController(h.Auth, h.Trust)
 	base.OIDC = oidcController(h)
 	base.SAML = samlController(h)
-	base.Providers = &controllers.ProvidersController{Registry: h.Registry, OAuth: h.OAuth, DB: db, Checker: h.Checker, Refresher: h.Refresher, Enqueue: h.Probes.Enqueue, Probe: h.Probes.Prober, ClaudeCLI: h.ClaudeCLI}
+	base.Providers = &controllers.ProvidersController{Registry: h.Registry, OAuth: h.OAuth, DB: db, Checker: h.Checker, Refresher: h.Refresher, Enqueue: h.Probes.Enqueue, Probe: h.Probes.Prober, ClaudeCLI: h.ClaudeCLI,
+		LiveCatalog: providers.CatalogGuard(h, facades.App()),
+		Fetch:       guardedFetch(version, "application/json", 8<<20)}
 	base.Nodes = &controllers.NodesController{Registry: h.Registry, DB: db, Checker: h.Checker, Changed: h.Snapshot.Invalidate}
 	base.OAuth = &controllers.OAuthController{Service: h.OAuth, Auth: h.Auth, Server: h.Settings}
 	base.Pages = &controllers.PagesController{Files: web.Static}

@@ -1,0 +1,11 @@
+{
+  "id": "rea-allow",
+  "name": "REA Allow",
+  "description": "Replace the built-in security-policy paragraphs with responsible reverse-engineering guidance",
+  "category": "skills",
+  "hook": "system-prompt",
+  "default_enabled": false,
+  "routable": false,
+  "routing_mode": "always",
+  "version": "1.0.0"
+}

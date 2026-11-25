@@ -49,6 +49,24 @@ type Guard struct {
 	Now func() time.Time
 }
 
+// Live reads the provider's own list for the account, through the same five
+// minute cache the request guard uses. It answers false when the provider has
+// no fetcher or the read failed.
+func (g *Guard) Live(ctx context.Context, provider string, conn repository.Connection) ([]string, bool) {
+	if g == nil {
+		return nil, false
+	}
+	fetch, ok := g.Fetchers[provider]
+	if !ok {
+		return nil, false
+	}
+	ids, err := g.list(ctx, provider, conn, fetch)
+	if err != nil || len(ids) == 0 {
+		return nil, false
+	}
+	return ids, true
+}
+
 // Known reports what the provider's list says about model for this account.
 // The answer is Undetermined when the provider has no fetcher, when the model
 // is empty, or when the list could not be read.

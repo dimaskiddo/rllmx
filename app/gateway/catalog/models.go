@@ -100,6 +100,26 @@ func RegistryAll(ctx context.Context, kv KV, entries []upstream.Entry) ([][]Mode
 	return out, nil
 }
 
+// LiveList is the provider's own list as the dashboard shows it: the live ids
+// as built-in rows, the operator's custom models added, and switched-off ids
+// dropped.
+func LiveList(ctx context.Context, kv KV, e upstream.Entry, ids []string) ([]Model, error) {
+	custom, err := kv.List(ctx, repository.ScopeCustomModels)
+	if err != nil {
+		return nil, err
+	}
+	names := entryOwners(e)
+	off, err := disabledSet(ctx, kv, names)
+	if err != nil {
+		return nil, err
+	}
+	base := make([]Model, 0, len(ids))
+	for _, id := range ids {
+		base = append(base, Model{ID: id, Source: "live"})
+	}
+	return merge(base, names, custom, nil, off), nil
+}
+
 func baseModels(e upstream.Entry) []Model {
 	base := make([]Model, 0, len(e.Models))
 	for _, m := range e.Models {

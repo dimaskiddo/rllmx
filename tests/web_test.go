@@ -1115,6 +1115,41 @@ func hasIconFile(t *testing.T, id string) bool {
 	return false
 }
 
+// Every page a browser opens first declares the icon; without the link a
+// browser asks for /favicon.ico, which no route answers.
+func TestEveryPageDeclaresTheFavicon(t *testing.T) {
+	link := `rel="icon" href="/static/img/favicon.ico"`
+	for _, page := range []string{"static/shell.html", "static/login.html", "static/callback.html"} {
+		if !strings.Contains(readWeb(t, page), link) {
+			t.Errorf("%s does not declare the favicon", page)
+		}
+	}
+	ico, err := fs.ReadFile(web.Static, "static/img/favicon.ico")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ico) < 6 || ico[0] != 0 || ico[1] != 0 || ico[2] != 1 || ico[3] != 0 {
+		t.Fatal("static/img/favicon.ico is not an ICO file")
+	}
+	if n := int(ico[4]) | int(ico[5])<<8; n < 2 {
+		t.Errorf("the favicon carries %d image(s); a 16px tab and a larger size are both needed", n)
+	}
+}
+
+func TestTheBrandShowsTheMark(t *testing.T) {
+	mark := regexp.MustCompile(`<a class="rl-brand"[^>]*>(.*?)</a>`)
+	for _, page := range []string{"static/shell.html", "static/login.html"} {
+		m := mark.FindStringSubmatch(readWeb(t, page))
+		if m == nil {
+			t.Errorf("%s has no brand link", page)
+			continue
+		}
+		if !strings.Contains(m[1], `src="/static/img/logo.png"`) || !strings.Contains(m[1], `alt=""`) {
+			t.Errorf("%s: the brand link does not start with the mark and an empty alt: %s", page, m[1])
+		}
+	}
+}
+
 func TestEveryProviderCardShowsAnIconWithAFallback(t *testing.T) {
 	body := readWeb(t, "static/pages/providers.html")
 	icons := regexp.MustCompile(`(?s)<span class="rl-provider-icon".*?</span>`).FindAllString(body, -1)
@@ -1356,8 +1391,16 @@ func TestAStandardUserSeesNoAdminControls(t *testing.T) {
 	}
 	for _, id := range []string{"create-owner", "edit-owner"} {
 		if !strings.Contains(endpoint, `id="`+id+`"`) {
-			t.Errorf("the key dialog has no %s owner select", id)
+			t.Errorf("the key dialog has no %s owner control", id)
 		}
+	}
+	// A standard user sees their own name where the owner would be, not a
+	// disabled select reading "Nobody".
+	if !strings.Contains(endpoint, `x-bind:value="meName"`) || !strings.Contains(endpoint, `x-if="!isAdmin()"`) {
+		t.Error("a standard user sees the owner select instead of their own name")
+	}
+	if !strings.Contains(readWeb(t, "static/js/pages/endpoint.js"), "meName = who.user") {
+		t.Error("a standard user's own name is not read for the owner field")
 	}
 	if strings.Contains(endpoint, `x-t="users.title"`) {
 		t.Error("the users card still lives on the endpoint page")
@@ -1371,7 +1414,7 @@ func TestAStandardUserSeesNoAdminControls(t *testing.T) {
 	if !strings.Contains(readWeb(t, "static/pages/users.html"), `x-t="users.title"`) {
 		t.Error("the users page is missing")
 	}
-	if !strings.Contains(readWeb(t, "static/js/pages/endpoint.js"), "this.role = (await session()).role") {
+	if !strings.Contains(readWeb(t, "static/js/pages/endpoint.js"), "this.role = who.role") {
 		t.Error("the page never reads its role")
 	}
 }
@@ -1700,6 +1743,41 @@ func TestTheComboModelHeadingIsATitle(t *testing.T) {
 	}
 }
 
+// Any member can answer, so the only window a combo can promise is its
+// smallest. The reference's card takes the largest output instead, which
+// overstates what the combo serves.
+func TestTheComboListShowsTheSmallestLimits(t *testing.T) {
+	js := readWeb(t, "static/js/pages/combos.js")
+	body := methodBody(js, "comboLimits")
+	if body == "" {
+		t.Fatal("combos.js has no comboLimits")
+	}
+	if !strings.Contains(body, "Math.min") {
+		t.Error("a limit is not folded with Math.min")
+	}
+	if strings.Contains(body, "Math.max") {
+		t.Error("a limit is folded with Math.max, which promises more than a member serves")
+	}
+	if !strings.Contains(body, "seen") || !strings.Contains(body, "> 3") {
+		t.Error("a nested combo is followed with no visited set or depth bound")
+	}
+	if !strings.Contains(body, "compactTokens") {
+		t.Error("the limits are not written by the shared formatter")
+	}
+	page := readWeb(t, "static/pages/combos.html")
+	for _, want := range []string{"comboLimits(combo).context", "comboLimits(combo).output"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the combo row does not show %s", want)
+		}
+	}
+	// The row's shared paragraph rule outranks a bare class, so the line needs
+	// a selector at least as specific as that rule to keep its own gap.
+	css := readWeb(t, "static/css/components.css")
+	if !strings.Contains(css, ".rl-combo-row .rl-list-main > .rl-combo-limits") {
+		t.Error("the limits line has no rule of its own under the chips")
+	}
+}
+
 // Every saver row writes a key the settings write accepts; a key outside the
 // allow list is a switch that answers 400.
 func TestTheSaverKeysAreInTheAllowList(t *testing.T) {
@@ -1748,13 +1826,42 @@ func TestTheSkillsPageWritesOnlyAllowedKeys(t *testing.T) {
 	if !strings.Contains(js, "globalSkillsEnabled") || !strings.Contains(controller, `"globalSkillsEnabled"`) {
 		t.Error("the global skills switch is not written or not accepted")
 	}
-	for _, key := range []string{"ecc_auto_skill_routerEnabled", "ecc_auto_skill_routerConfidence", "ecc_auto_skill_routerMaxSkills"} {
+	for _, key := range []string{"ecc_auto_skill_routerEnabled", "ecc_auto_skill_routerConfidence", "ecc_auto_skill_routerMaxSkills",
+		"builtinSkillsEnabled", "customSkillsEnabled", "eccSkillsEnabled"} {
 		if !strings.Contains(js, key) {
 			t.Errorf("skills.js never writes %s", key)
 		}
 		if !strings.Contains(controller, `"`+key+`"`) {
 			t.Errorf("settingsRules does not accept %s", key)
 		}
+	}
+}
+
+// A card's switch is a kill switch for its group: it never writes a row's own
+// switch or starts the router, and REA asks before it is enabled.
+func TestTheSkillsCardsAreKillSwitches(t *testing.T) {
+	js := readWeb(t, "static/js/pages/skills.js")
+	page := readWeb(t, "static/pages/skills.html")
+	body := methodBody(js, "toggleCard")
+	for _, key := range []string{"builtinSkillsEnabled", "customSkillsEnabled", "eccSkillsEnabled"} {
+		if !strings.Contains(body, key) {
+			t.Errorf("the card switch never writes %s", key)
+		}
+	}
+	if strings.Contains(body, "Enabled\"]") || strings.Contains(body, "globalSkillsEnabled") {
+		t.Error("a card switch writes a row's switch or the master")
+	}
+	if !strings.Contains(methodBody(js, "setRouter"), "ecc_auto_skill_routerEnabled") {
+		t.Error("the catalog router has no switch of its own")
+	}
+	for _, want := range []string{"skills.eccRouter", "skills.groupOff", "rowOn(skill)", `x-t="skills.reaHint"`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("skills.html lacks %s", want)
+		}
+	}
+	toggle := methodBody(js, "async toggle")
+	if !strings.Contains(toggle, "rea-allow") || !strings.Contains(toggle, "ask(") {
+		t.Error("REA Allow can be enabled with no warning")
 	}
 }
 
@@ -1803,7 +1910,7 @@ func TestTheSkillsPageSeparatesTheCatalogFromTheBuiltInList(t *testing.T) {
 		}
 	}
 	body := methodBody(js, "toggleCard")
-	for _, want := range []string{"globalSkillsEnabled", "ecc_auto_skill_routerEnabled"} {
+	for _, want := range []string{"builtinSkillsEnabled", "customSkillsEnabled", "eccSkillsEnabled"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the card switch never writes %s", want)
 		}
@@ -2066,6 +2173,13 @@ func TestTheQuotaResetAndReadingPassAreGuarded(t *testing.T) {
 	}
 	if !strings.Contains(js, "/codex-reset-credits") || !strings.Contains(methodBody(js, "async openExpiry"), "/codex-reset-credits") {
 		t.Error("the expiry dialog never reads the Codex credits")
+	}
+	iReset := strings.Index(html, `x-on:click="reset(conn)"`)
+	iExpiry := strings.Index(html, `x-on:click="openExpiry(conn)"`)
+	iRefresh := strings.Index(html, `x-on:click="read(conn, true)"`)
+	iActive := strings.Index(html, `x-on:click="toggleActive(conn)"`)
+	if iReset < 0 || iExpiry < iReset || iRefresh < iExpiry || iActive < iRefresh {
+		t.Error("a card's actions are not reset, expiry, refresh, active switch")
 	}
 	for _, want := range []string{`x-ref="expiry"`, "quota.useBy", "quota.refills", "quota.grantedAt", "quota.expiresAt"} {
 		if !strings.Contains(html, want) {
@@ -2928,5 +3042,38 @@ func TestTheControlKeyHasItsOwnPasswordInputAndStaysOutOfTheFieldEditor(t *testi
 				t.Errorf("%s.json lacks %s", lang, key)
 			}
 		}
+	}
+}
+
+// The live feed is narrowed like the rest of the page: a standard user's frames
+// carry only their own keys.
+func TestTheUsageFeedNarrowsToTheCallersKeys(t *testing.T) {
+	body, err := os.ReadFile("../app/http/controllers/usage_stream.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(body)
+	if !strings.Contains(src, "c.scope(ctx)") {
+		t.Error("the feed never reads the caller's scope")
+	}
+	if !strings.Contains(src, "c.recent(rctx, keys)") {
+		t.Error("the feed asks the store for every key")
+	}
+}
+
+// Only an administrator checks for updates; a standard user sees a note saying
+// so and no button.
+func TestOnlyAnAdminChecksForUpdates(t *testing.T) {
+	page := readWeb(t, "static/pages/about.html")
+	i := strings.Index(page, `x-on:click="checkNow()"`)
+	if i < 0 {
+		t.Fatal("the About page has no update check")
+	}
+	line := page[strings.LastIndex(page[:i], "<button"):i]
+	if !strings.Contains(line, `x-show="admin"`) {
+		t.Error("a standard user is offered the update check")
+	}
+	if !strings.Contains(page, `x-t="about.checkAdmin"`) {
+		t.Error("a standard user is not told only an administrator may check")
 	}
 }

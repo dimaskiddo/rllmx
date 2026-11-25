@@ -35,6 +35,19 @@ var mimoAccountModels = map[string]bool{
 // mimoUserAgent is what the account service expects of the desktop client.
 const mimoUserAgent = "miNative PC/Normal Windows_NT/10.0.19045 DEVT/PC DEVS/Windows APP/miaccount_desktop APPV/0.1.0"
 
+// MimoUserAgent is the desktop client's user agent, which the account service
+// checks as well as the cookie.
+const MimoUserAgent = mimoUserAgent
+
+// MimoHost answers the account-service base for a region; an unknown region
+// takes the default.
+func MimoHost(region string) string {
+	if host, ok := mimoHosts[region]; ok {
+		return host
+	}
+	return mimoHosts[mimoDefaultRegion]
+}
+
 // XiaomiMimo serves the MiMo cloud API, and the account service for the three
 // ids that spend a desktop account's quota when the account has a pass token.
 type XiaomiMimo struct {

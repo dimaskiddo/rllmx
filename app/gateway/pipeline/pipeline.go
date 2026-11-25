@@ -156,6 +156,10 @@ type call struct {
 	body         []byte
 	upStream     bool
 
+	// The semantic layer's bucket and the request's vector, kept for remember.
+	cacheVec    []float32
+	cacheBucket string
+
 	// cacheKey is set when the response cache was consulted for this request;
 	// the answer is stored under it and carries the miss header.
 	cacheKey  string

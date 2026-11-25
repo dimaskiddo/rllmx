@@ -92,6 +92,9 @@ type settingsView struct {
 	CustomPrompt                string `json:"customPrompt"`
 	WatermarkStripEnabled       bool   `json:"watermarkStripEnabled"`
 	GlobalSkillsEnabled         bool   `json:"globalSkillsEnabled"`
+	BuiltinSkillsEnabled        bool   `json:"builtinSkillsEnabled"`
+	CustomSkillsEnabled         bool   `json:"customSkillsEnabled"`
+	EccSkillsEnabled            bool   `json:"eccSkillsEnabled"`
 
 	AutoPlanEnabled        bool   `json:"autoPlanEnabled"`
 	AutoPlanMode           string `json:"autoPlanMode"`
@@ -227,6 +230,9 @@ func (c *SettingsController) view(d document.Doc) settingsView {
 		CustomPrompt:                 d.Str("customPrompt", ""),
 		WatermarkStripEnabled:        d.Bool("watermarkStripEnabled", false),
 		GlobalSkillsEnabled:          d.Bool("globalSkillsEnabled", true),
+		BuiltinSkillsEnabled:         d.Bool("builtinSkillsEnabled", true),
+		CustomSkillsEnabled:          d.Bool("customSkillsEnabled", true),
+		EccSkillsEnabled:             d.Bool("eccSkillsEnabled", true),
 		AutoPlanEnabled:              auto.Enabled,
 		AutoPlanMode:                 auto.Mode,
 		AutoPlanComboID:              auto.PlanCombo,
@@ -330,6 +336,9 @@ var settingsRules = map[string]settingRule{
 	"autoPlanShowInResponse":          boolRule,
 	"skillSources":                    urlListRule("https", 10, 2048),
 	"globalSkillsEnabled":             boolRule,
+	"builtinSkillsEnabled":            boolRule,
+	"customSkillsEnabled":             boolRule,
+	"eccSkillsEnabled":                boolRule,
 	"ecc_auto_skill_routerEnabled":    boolRule,
 	"ecc_auto_skill_routerConfidence": floatRule(0, 1),
 	"ecc_auto_skill_routerMaxSkills":  intRule(1, 5),
@@ -821,7 +830,7 @@ func responseCacheRule(raw json.RawMessage) (string, string) {
 	v := gjson.ParseBytes(raw)
 	for k := range v.Map() {
 		switch k {
-		case "enabled", "ttlSeconds", "maxEntryKb":
+		case "enabled", "ttlSeconds", "maxEntryKb", "semantic":
 		default:
 			return "", "has an unknown field"
 		}
@@ -834,6 +843,27 @@ func responseCacheRule(raw json.RawMessage) (string, string) {
 	}
 	if k := v.Get("maxEntryKb"); k.Exists() && (k.Type != gjson.Number || k.Int() < 1 || k.Int() > 4096) {
 		return "", "has a maxEntryKb outside 1 to 4096"
+	}
+	if sem := v.Get("semantic"); sem.Exists() {
+		if !sem.IsObject() {
+			return "", "has a semantic that is not an object"
+		}
+		for k := range sem.Map() {
+			switch k {
+			case "enabled", "embeddingModel", "threshold":
+			default:
+				return "", "has an unknown semantic field"
+			}
+		}
+		if e := sem.Get("enabled"); e.Exists() && e.Type != gjson.True && e.Type != gjson.False {
+			return "", "has a semantic.enabled that is not true or false"
+		}
+		if m := sem.Get("embeddingModel"); m.Exists() && (m.Type != gjson.String || len(m.String()) > 256) {
+			return "", "has a semantic.embeddingModel over 256 bytes"
+		}
+		if t := sem.Get("threshold"); t.Exists() && (t.Type != gjson.Number || t.Float() < 0.8 || t.Float() > 0.99) {
+			return "", "has a semantic.threshold outside 0.8 to 0.99"
+		}
 	}
 	return string(raw), ""
 }

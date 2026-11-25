@@ -291,3 +291,28 @@ func TestTheStatsSayHowEachSkillWasChosen(t *testing.T) {
 		t.Fatalf("via %v", st.Via)
 	}
 }
+
+// A group switch is a kill switch: off skips the group's skills whatever their
+// own switches say, and it never rewrites one.
+func TestAGroupSwitchSkipsItsSkillsWithoutTouchingTheirs(t *testing.T) {
+	reg := installed(t, map[string]string{
+		"terse/manifest.json": `{"id":"terse","name":"Terse","description":"d","hook":"system-prompt",` +
+			`"default_enabled":true,"routing_mode":"always"}`,
+		"terse/prompt.txt": "TERSE PROMPT",
+		"mine/manifest.json": `{"id":"mine","name":"Mine","description":"d","hook":"system-prompt",` +
+			`"source":"custom","default_enabled":true,"routing_mode":"always"}`,
+		"mine/prompt.txt": "CUSTOM PROMPT",
+	})
+	on := Options{}
+	off := Options{Off: func(source string) bool { return source == "custom" }}
+	r := ask("hello")
+	Apply(reg, r, off)
+	if body := systemText(r); !strings.Contains(body, "TERSE PROMPT") || strings.Contains(body, "CUSTOM PROMPT") {
+		t.Fatalf("the custom group was not the only one switched off: %q", body)
+	}
+	r = ask("hello")
+	Apply(reg, r, on)
+	if body := systemText(r); !strings.Contains(body, "CUSTOM PROMPT") {
+		t.Fatalf("the row's own switch was lost: %q", body)
+	}
+}

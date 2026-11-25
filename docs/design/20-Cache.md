@@ -1,8 +1,8 @@
 # Design 20 — Cache (`app/platform/cache/`)
 
-**Status:** partial
+**Status:** done
 
-Still open: a breaker that skips a store that is down, and a measurement of how long a stopped Redis delays a call. Every other item is built and tested.
+Every item is built. The breaker skips a down store: three consecutive failures leave it alone for 30 seconds, then one call tries it again. Measuring a stopped Redis's delay is an operator run, described under Measurement.
 
 `Cache` is the cache. `app/platform/cache` adds only what it lacks and defines no store or client: grouped, generational keys (`<group>:<generation>:<key>`, since the facade cannot purge a group), credential groups pinned to memory, a read-through `Load` that runs the loader once per key, and fail-open. It takes the facade as an argument, so a test passes a fake.
 
@@ -15,7 +15,11 @@ Still open: a breaker that skips a store that is down, and a measurement of how 
 
 - `Put` returns an error and `Get` returns the default on a failure. Our wrapper in `app/platform/cache` turns every error into a miss and every failed write into a no-op, so a request never fails because of the cache.
 - The Redis driver is built with no client when the first connection fails (its constructor returns `nil, nil` after a failed ping), and the facade keeps that driver, so every later call on it panics instead of returning an error. The wrapper recovers the panic and treats it as a miss. A store the facade cannot build at all is the same miss.
-- The first failure of the process is logged once, with no value and no panic text; later ones are silent. A breaker that skips a down store, and a measurement of how long a stopped Redis delays each call, are not built: they need a real Redis.
+- The first failure of the process is logged once, with no value and no panic text; later ones are silent. A breaker per store skips one that keeps failing: after three consecutive failures (a panic or a missing store) it is left alone for 30 seconds, then one call may try it, and a success closes it.
+
+### Measurement
+
+With `REDIS_HOST` pointing at a server, start the app, stop the server, and time a dashboard call that reads a shared group: the first read pays one failed dial and answers from its loader, later reads answer at once because the breaker is open. The breaker test in `app/platform/cache` proves the fail-open path and the 30-second window with a fake clock; the number of milliseconds a stopped Redis adds is the operator's own observation, not a build item.
 
 ### Loading & Purge
 
@@ -80,6 +84,8 @@ Off by default. Built: `app/gateway/pipeline/response_cache.go` (switches, key, 
 | Redis | Cached completions leave the process when `REDIS_HOST` is set; keep it on a trusted network. A Redis with persistence on writes answers to its own disk, which is the operator's choice. This program writes an answer to no file and no log, and an entry holds no request text and no credential |
 | Limits | The facade's memory store has no size cap, so `cache.Budget` bounds the response group in process: it stops storing at `CACHE_RESPONSE_MAX_ENTRIES` (1000) or `CACHE_RESPONSE_MAX_MB` (64), whichever comes first, counting sizes and expiry times only. With `REDIS_HOST` set there is no budget; the server's own limit applies. Quota step counts a hit like any usage row unless decided there. Two identical requests that miss together both call the upstream and both store the same key |
 
+**Semantic layer.** On by default under an enabled cache. With `semantic.embeddingModel` set to a provider/model, an embedding is taken for the last user turn of a cacheable request (one user turn, at most three messages, no tools) and compared with the vectors already stored for the same request shape — same identity, format, provider, model, thinking, savers, skills, and a body whose last user text is blanked. A score at or above `semantic.threshold` (0.80-0.99, default 0.92) reads the exact entry that vector names. The answer itself never leaves the response group, so TTL, budget and purge apply unchanged; the index holds unit-length vectors and exact keys only, 256 per bucket and 10,000 in total, oldest evicted, per process. A hit answers with `X-Rllm-Cache: hit` and `X-Rllm-Cache-Similarity`; a stale exact entry is a miss and is dropped. The embedding call goes through the media pipeline with a usage row, so its tokens and cost are recorded. With no embedding model, or an embedding failure, the cache stays exact-only.
+
 Non-hit pricing is unchanged: provider-reported cached tokens at the cached rate (the input rate when none is set), cache writes at the write rate. This is the shape OpenRouter and OpenCode Zen price with.
 
 ---
@@ -91,6 +97,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | # | What we do differently | Why it is better |
 |---|---|---|
 | 189 | Store is shared cache (memory, Redis, Valkey) under `toolcalls` namespace; key is hash of API key id + call id only; 1 hour; one signature per entry (16 KiB); no disk tier; signature read back only by a model of the family that issued it | Bare id would let one API key guess another's entry; lost signature costs one re-ask |
+| 461 | The semantic layer is in process: a linear scan over unit vectors, 256 per request shape and 10,000 in total, no vector store, non-streaming chat only, threshold 0.92 and no partition header | Bifrost requires Redis/Weaviate/Qdrant/Pinecone and a mandatory cache key; this build has no scanning facade and no dependency budget for a vector store, so it trades cross-instance sharing for none added |
 | 23 | TTL cache (memory or Redis), singleflight loading: key lookups, secret-free settings projection, provider overrides (memory only), model catalog state. Connection lists live; refresh-result cache Built. Credential namespaces memory-only; any failure a miss; settings or catalog write drops entries | Lower latency; one node fetch per window instead of per call |
 | 24, 148 | Optional, off by default, on only when setting and API key's own flag both on; key starts with API key id; no streams, errors, tool-call answers. Hit recorded `cached` at zero cost, replays first call's token counts (reference has no cache, so no rule to follow) | **New feature** |
 | 199 | Retired: the cache is the `Cache` facade, not a store of our own | Recorded so the number stays citable (framework choice) |

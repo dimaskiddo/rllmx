@@ -27,7 +27,23 @@ func TestOpenCodePicksTheLaneByModel(t *testing.T) {
 		"union-alpha(high)":               "https://x/messages",
 		"glm-5":                           "https://x/chat",
 	} {
-		if got := openCodeURL(lane, model); got != want {
+		if got := openCodeURL(lane, "https://x", model); got != want {
+			t.Errorf("%s: %s, want %s", model, got, want)
+		}
+	}
+}
+
+// Production passes no lane: the address is built from the provider's own base,
+// as the reference does. Its data names only the chat endpoint.
+func TestOpenCodeBuildsTheLaneAddressFromTheProviderBase(t *testing.T) {
+	base := "https://opencode.ai/inference/v1/chat/completions"
+	for model, want := range map[string]string{
+		"muse-spark-1.2-contributor-free": "https://opencode.ai/inference/v1/responses",
+		"muse-spark-1.3-contributor-free": "https://opencode.ai/inference/v1/responses",
+		"union-alpha":                     "https://opencode.ai/inference/v1/messages",
+		"jev-1.13-free":                   "https://opencode.ai/inference/v1/chat/completions",
+	} {
+		if got := openCodeURL(openCodeLane{}, base, model); got != want {
 			t.Errorf("%s: %s, want %s", model, got, want)
 		}
 	}

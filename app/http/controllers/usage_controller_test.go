@@ -7,6 +7,7 @@ import (
 	"fmt"
 	nethttp "net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -26,17 +27,20 @@ import (
 
 // usageFake is the analytics store as the controller reads it.
 type usageFake struct {
-	sums      []analytics.Sum
-	buckets   []analytics.Bucket
-	seen      map[analytics.Dims]time.Time
-	recent    []analytics.Request
-	providers []string
-	err       error
-	lastFrom  time.Time
-	lastHours bool
-	lastKeys  []string
-	// lastRecent is the start the logs reader asked for.
+	sums        []analytics.Sum
+	buckets     []analytics.Bucket
+	seen        map[analytics.Dims]time.Time
+	recent      []analytics.Request
+	providers   []string
+	err         error
+	lastFrom    time.Time
+	lastHours   bool
+	lastKeys    []string
+	unknownCost int64
+	// lastRecent is the start the logs reader asked for, and lastServed the key
+	// list the recent list asked for.
 	lastRecent time.Time
+	lastServed []string
 }
 
 func (f *usageFake) Sums(_ context.Context, from time.Time, hourly bool, keys []string) ([]analytics.Sum, error) {
@@ -58,9 +62,21 @@ func (f *usageFake) Recent(_ context.Context, from time.Time, _ int, _ []string)
 	return f.recent, f.err
 }
 
+func (f *usageFake) RecentBefore(_ context.Context, from time.Time, _ int, _ []string, cursor analytics.Cursor) ([]analytics.Request, error) {
+	f.lastRecent = from
+	var out []analytics.Request
+	for _, r := range f.recent {
+		if r.Time.UnixMilli() < cursor.TS || (r.Time.UnixMilli() == cursor.TS && r.ID < cursor.ID) {
+			out = append(out, r)
+		}
+	}
+	return out, f.err
+}
+
 // RecentServed applies the store's rule: only rows that used tokens, at most
 // limit of them.
-func (f *usageFake) RecentServed(_ context.Context, limit int, _ []string) ([]analytics.Request, error) {
+func (f *usageFake) RecentServed(_ context.Context, limit int, keys []string) ([]analytics.Request, error) {
+	f.lastServed = keys
 	var out []analytics.Request
 	for _, r := range f.recent {
 		if r.Prompt+r.Completion > 0 && len(out) < limit {
@@ -68,6 +84,10 @@ func (f *usageFake) RecentServed(_ context.Context, limit int, _ []string) ([]an
 		}
 	}
 	return out, f.err
+}
+
+func (f *usageFake) UnknownCosts(context.Context, time.Time, []string) (int64, error) {
+	return f.unknownCost, nil
 }
 
 func (f *usageFake) Providers(context.Context, []string) ([]string, error) {
@@ -343,8 +363,8 @@ func TestAnUnknownPeriodIsRefusedOnEveryRoute(t *testing.T) {
 func TestUsageLogsAreOneLinePerRow(t *testing.T) {
 	r := newUsageRig(t)
 	r.f.recent = []analytics.Request{
-		{Time: time.Date(2026, 11, 17, 9, 5, 6, 0, time.UTC), Provider: "openai", Model: "gpt-4o", ConnectionID: r.conn.ID, APIKeyName: "ci", Prompt: 12, Completion: 7, Status: 200},
-		{Time: time.Date(2026, 11, 17, 9, 6, 0, 0, time.UTC), Provider: "cc", ConnectionID: "missing", Prompt: 1, Status: 502, ErrorClass: "upstream_5xx"},
+		{ID: 7, Time: time.Date(2026, 11, 17, 9, 5, 6, 0, time.UTC), Provider: "openai", Model: "gpt-4o", ConnectionID: r.conn.ID, APIKeyName: "ci", Prompt: 12, Completion: 7, Status: 200},
+		{ID: 6, Time: time.Date(2026, 11, 17, 9, 6, 0, 0, time.UTC), Provider: "cc", ConnectionID: "missing", Prompt: 1, Status: 502, ErrorClass: "upstream_5xx"},
 	}
 	code, _, raw := r.m.call("GET", "/api/usage/logs", "", true)
 	if code != 200 {
@@ -359,6 +379,15 @@ func TestUsageLogsAreOneLinePerRow(t *testing.T) {
 	}
 	if got := lines[1].String(); got != "17-11-2026 16:06:00 | - | Claude Code | - | - | 1 | 0 | 502" {
 		t.Fatalf("second line %q", got)
+	}
+	// A page after a cursor reads only what is older than that position.
+	older := time.Date(2026, 11, 17, 9, 6, 0, 0, time.UTC).UnixMilli()
+	code, _, raw = r.m.call("GET", "/api/usage/logs?before="+strconv.FormatInt(older, 10)+"-6", "", true)
+	if code != 200 || len(gjson.Parse(raw).Array()) != 1 {
+		t.Fatalf("after cursor: %d %s", code, raw)
+	}
+	if code, _, _ := r.m.call("GET", "/api/usage/logs?before=nope", "", true); code != 400 {
+		t.Fatalf("a bad cursor answered %d", code)
 	}
 }
 

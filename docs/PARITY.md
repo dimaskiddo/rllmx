@@ -11,7 +11,7 @@ How closely Router-LLM follows 9router. The reference is read-only and never cop
 | 9router | 0.5.123 | `5ae63d22` | 2026-11-23 | Behavior baseline |
 | 9router-extended | 0.5.123-extended | `14052060` | 2026-11-23 | Extended fork; its delta matches the baseline except where recorded |
 
-The project also tracks a private extended fork built on the same upstream release. On disagreement the baseline wins, and only the fork's own additions are adopted.
+The project also tracks the extended fork, [9Router-Extended](https://github.com/thunderkex/9router-extended), built on the same upstream release. On disagreement the baseline wins, and only the fork's own additions are adopted.
 
 ---
 
@@ -33,7 +33,7 @@ Status changes go in the document holding the row; pins and status values stay h
 | `todo` | Planned for v1, not started |
 | `partial` | Started, some behavior missing |
 | `done` | Implemented, tested, documented |
-| `unverified` | Built and tested against fakes; a live account is the missing evidence |
+| `unverified` | Built and tested against fakes; a live account, or a live engine such as PostgreSQL, is the missing evidence |
 | `diverged` | On purpose differently; see the design document's `Divergences` section |
 | `deferred` | Not in v1, may come later |
 | `out` | Excluded for good (needs a spawned process other than the filter-gated `git clone`, outside scope) |

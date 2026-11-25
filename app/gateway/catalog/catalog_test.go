@@ -469,3 +469,32 @@ func TestTheModelListPublishesThinkingLevels(t *testing.T) {
 		t.Fatalf("%s", raw)
 	}
 }
+
+// A live list replaces the embedded rows and keeps the operator's own models,
+// minus the switched-off ids.
+func TestALiveListKeepsCustomRowsAndDropsDisabledOnes(t *testing.T) {
+	r := newRig(t)
+	r.kv.scopes[repository.ScopeCustomModels] = map[string]string{"codex|mine|llm": `{"providerAlias":"codex","id":"mine","name":"Mine"}`}
+	r.kv.disabled["codex"] = []string{"gone"}
+	entry, ok := r.c.Registry.ByID("codex")
+	if !ok {
+		t.Fatal("codex missing")
+	}
+	list, err := LiveList(context.Background(), r.kv, entry, []string{"live-1", "gone"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]string{}
+	for _, m := range list {
+		ids[m.ID] = m.Source
+	}
+	if ids["live-1"] != "live" || ids["mine"] != "custom" {
+		t.Fatalf("%v", ids)
+	}
+	if _, found := ids["gone"]; found {
+		t.Fatal("a disabled id survived the live list")
+	}
+	if _, found := ids["gpt-a"]; found {
+		t.Fatal("an embedded id survived the live list")
+	}
+}

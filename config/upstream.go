@@ -32,5 +32,8 @@ func init() {
 		// after the rate-limit answer the IDE transport gives enrolled accounts,
 		// always uses it for every request, off never does.
 		"kiro_create_response": config.Env("UPSTREAM_KIRO_CREATE_RESPONSE", "auto"),
+		// The key MiniMax Code signs its account calls with. It is configuration,
+		// never a literal in the code; empty leaves that reading unavailable.
+		"minimax_sign_secret": config.Env("UPSTREAM_MINIMAX_SIGN_SECRET", ""),
 	})
 }

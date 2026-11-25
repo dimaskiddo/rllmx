@@ -2,7 +2,7 @@
 
 Router-LLM is an LLM gateway in Go on Goravel Lite v1.18.0. A client sends a request in the OpenAI, Anthropic, Gemini or Responses format. The router picks an account for the model, translates the request to the provider's format, streams the answer back in the client's format and records usage.
 
-It is one static binary. The only process it ever starts is `git`, for the skill sync. Configuration defaults live in `.env.example`; never guess a value.
+It is one static binary. The only process it ever starts is `git`, for the skill sync. Configuration defaults live in `.env.example`; never guess a value. The operator reference for every variable is `docs/ENVIRONMENT.md`.
 
 This file holds what cuts across every area:
 

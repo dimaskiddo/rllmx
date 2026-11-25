@@ -241,6 +241,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 423 | The catalog folder fills only ids nothing else holds | The reference lets a later folder replace an earlier one by listing order, so an import could replace a skill the operator wrote |
 | 424 | Every internal call (the plan, its question and the smart router's) carries every bypass switch and no session id | A call this router makes for itself must not run a skill, a saver or a rule, or mark the conversation |
 | 433 | One switch turns every skill off: it stops the local and catalog routers and the rule hooks, and leaves the response-cache key empty | An operator needs one emergency switch; per-skill toggles would mean hunting each row while a prompt runs |
+| 455 | REA Allow is a built-in skill with its own switch, and enabling it asks for confirmation first | The reference runs it as a token-saver switch with no warning; a skill fits the page the operator already reads, and the dialog makes the safety cost visible before it is paid |
 
 ---
 

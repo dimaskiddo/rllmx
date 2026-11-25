@@ -25,7 +25,7 @@ Status words: **built** (implemented and tested), **partial** (some behavior mis
 | PostgreSQL storage | built |
 | Import from an existing 9router database (config and usage history) | built |
 | Usage rows, pricing and cost | built |
-| Usage dashboard routes (stats, chart, history, logs, providers, live feed), per-connection quota readings with the two refill routes, and the client connection list | built (routes); pages planned |
+| Usage dashboard routes (stats, chart, history, logs, providers, live feed), per-connection quota readings with the two refill routes, and the client connection list | built |
 
 ## Requests
 
@@ -73,8 +73,13 @@ Status words: **built** (implemented and tested), **partial** (some behavior mis
 | Dashboard shell, router, theme and locale switch, English and Indonesian, a sidebar that is a drawer on a phone and a remembered rail on a desktop | built |
 | Endpoint and API keys page (base URL, key guard, keys, access list, budgets with their spend, response cache) | built |
 | Dashboard roles: an admin, and standard users who see only their assigned keys and those keys' usage; the Users page and the key owner select | built |
-| Dashboard part 2: combos with auto-suggest and the vision/audio adapter, usage with charts and a live topology, quota, console log, settings and single sign-on, pricing, skills Studio, auto plan, token savers | built |
-| About page: version and commit, an on-demand check of this repository's GitHub releases, a verified self-update (`rllmx upgrade` or the admin action), credits to 9Router and 9Router-Extended, and the MIT license | built |
+| Dashboard part 2: combos with auto-suggest, the vision/audio adapter and their smallest context and output limits, usage with charts and a live topology, quota, console log, settings and single sign-on, pricing, skills Studio, auto plan, token savers | built |
+| About page: version and commit, an on-demand check of this repository's GitHub releases, a verified self-update (`rllmx artisan upgrade` or the admin action), credits to 9Router and 9Router-Extended, and the MIT license | built |
+| REA Allow: a built-in skill that replaces the client's security-policy paragraphs, off by default and behind a warning | built |
+| Quota readers for MiniMax Code, Xiaomi MiMo and Qoder; a keyset-paged request log; per-provider reset credits and expiry | built |
+| Cookie and deepseek-web provider probes; codex-token, zed, kiro-refresh and kiro-external-idp importers | built |
+| Suggested-model and kilo free-model routes | built |
+| Skills cards are kill switches: each turns its group off and on without touching a row's own switch; the catalog router has its own switch | built |
 | Providers that need no credential: opencode is served through a virtual account, so it needs no key and no login | built |
 | Quota: reset credits name their grant, both providers list their credits and expiry, and an auto-ping runner warms a reset window | built |
 | Maintenance: optimize, checkpoint, analyse and an incremental vacuum of the configuration file, plus the usage store's own jobs | built |
@@ -83,7 +88,7 @@ Status words: **built** (implemented and tested), **partial** (some behavior mis
 | Web stack (Alpine.js, Tabler CSS, Lucide, Chart.js, Sortable.js: all vendored and pinned) and the `/static` route | built |
 | Dashboard management API (settings, keys, models and aliases, custom and disabled models, availability, pricing, combos and presets, console log) | built |
 | Usage API (stats, chart, history, logs, providers, active providers, live feed) | built |
-| Quota API (per-connection readings, `providers/client`, the two refill routes) | built; quota auto-ping planned |
+| Quota API (per-connection readings, `providers/client`, the two refill routes) | built |
 | Usage and quota pages: period-bounded, newest-first logs, provider names in the chart and the topology | built |
 | Provider pages (list, detail, every login flow, custom endpoints, models, header overrides) | built |
 | Outbound pacing per connection, so a burst is queued instead of reaching a provider as an anomaly | built |

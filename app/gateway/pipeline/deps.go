@@ -138,6 +138,9 @@ type Deps struct {
 	Pacer Pacer
 	// ResponseCache is the opt-in answer cache; nil is off.
 	ResponseCache *ResponseCache
+	// Embed turns text into a vector for the semantic cache; nil leaves the
+	// cache exact-only.
+	Embed func(ctx context.Context, model, text string) ([]float32, error)
 	// Saver is the Headroom client; nil leaves the sidecar saver off.
 	Saver *saver.Compressor
 	// SaverURL is the sidecar address when the settings row holds none.

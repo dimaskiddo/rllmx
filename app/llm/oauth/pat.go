@@ -3,7 +3,10 @@ package oauth
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/url"
 
+	"rllmx/app/llm/qoder"
 	"rllmx/app/llm/upstream"
 )
 
@@ -26,10 +29,18 @@ func (s *Service) ConnectToken(ctx context.Context, provider, baseURL, token str
 		return "", ErrToken
 	}
 	f.Endpoints = rebaseAll(f.Endpoints, baseURL)
-	u := f.Endpoints[upstream.EndpointUser]
-	status, _, err := s.Tokens.Get(ctx, u, map[string]string{"Authorization": "Bearer " + token})
-	if err != nil || status < 200 || status > 299 {
-		return "", ErrToken
+	if provider == "qoder" || provider == "qoder-cn" {
+		// A Qoder token is a personal token: the exchange and a quota read are
+		// the proof that a request can use it.
+		if err := s.checkQoderToken(ctx, baseURL, token); err != nil {
+			return "", ErrToken
+		}
+	} else {
+		u := f.Endpoints[upstream.EndpointUser]
+		status, _, err := s.Tokens.Get(ctx, u, map[string]string{"Authorization": "Bearer " + token})
+		if err != nil || status < 200 || status > 299 {
+			return "", ErrToken
+		}
 	}
 	acc := Account{}
 	if h := s.dials().Hooks[f.Hook]; h != nil {
@@ -47,4 +58,25 @@ func (s *Service) ConnectToken(ctx context.Context, provider, baseURL, token str
 		return "", ErrStorage
 	}
 	return id, nil
+}
+
+// checkQoderToken trades the personal token for a job token and reads the
+// account's quota with it, which is what a request will present.
+func (s *Service) checkQoderToken(ctx context.Context, baseURL, token string) error {
+	u, err := url.Parse(baseURL)
+	if err != nil || u.Host == "" {
+		return ErrToken
+	}
+	base := "https://" + u.Host
+	job, _, err := qoder.Exchange(ctx, func(ctx context.Context, method, target string, body []byte, headers map[string]string) (int, []byte, error) {
+		return s.Tokens.Send(ctx, method, target, body, headers)
+	}, base, token)
+	if err != nil {
+		return err
+	}
+	status, _, err := s.Tokens.Get(ctx, base+"/api/v2/quota/usage", map[string]string{"Authorization": "Bearer " + job})
+	if err != nil || status < http.StatusOK || status > 299 {
+		return ErrToken
+	}
+	return nil
 }

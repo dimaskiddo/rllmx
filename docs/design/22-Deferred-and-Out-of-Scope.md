@@ -13,8 +13,10 @@
 | Cloud sync | Out | Removed from the reference as well |
 | Install commands stored in skills, autostart, the Hermes process manager and installer, devin-cli, headroom installer | Out | Spawn processes; only the `git clone` behind the `app/git` filter gate may |
 | Self-update (`rllmx artisan upgrade`, the About page's admin action) | In, bounded | Downloads this repository's release for the platform, verifies the published checksum, swaps its own binary and re-executes it with a fixed argv; no shell, no child command, no process manager. A `dev` build refuses (D454) |
+| Kiro's AWS-signed API key import and MiMo's key/session import | Deferred | Neither has a connection shape here: a Kiro API key needs AWS signing at every call, and the MiMo key is usually refused while the session path exists |
+| Translator playground | Out | Removed at the operator's request (4.22); the console-log routes under `/api/translator` stay |
 | System tray, TUI | Out | Not a server concern |
-| The reference's "REA allow" saver (drops the system-prompt paragraphs that carry an assistant's refusal and dual-use guidance) | Out | It removes safety guidance a client or an operator wrote into the prompt, which is not a token saving |
+| The reference's "REA allow" saver (drops the system-prompt paragraphs that carry an assistant's refusal and dual-use guidance) | In, at the operator's explicit request | Built as the `rea-allow` skill, off by default, and switching it on asks for confirmation; the dialog and doc 11 record what it removes (D455) |
 
 Package status lives in `ROADMAP.md`, feature status in the parity tables.
 

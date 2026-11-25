@@ -13,6 +13,7 @@
     }
   },
   "oauth": {
+    "importer": "codex-token",
     "flow": "code-pkce",
     "bulk": true,
     "authorizeUrl": "https://auth.openai.com/oauth/authorize",

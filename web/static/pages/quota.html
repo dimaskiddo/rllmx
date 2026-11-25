@@ -39,11 +39,11 @@
       <div class="card-header rl-card-head">
         <h2 class="rl-card-title"><span x-text="connectionName(conn)"></span> <span class="badge" x-text="conn.provider"></span> <span class="badge" x-show="conn.isActive !== true" x-t="quota.inactive"></span></h2>
         <div class="rl-list-actions">
+          <button type="button" class="btn btn-sm btn-outline-danger" x-show="canReset(conn)" x-bind:disabled="resetting[conn.id] === true" x-on:click="reset(conn)" x-tip="quota.reset"><span class="rl-icon" x-icon="gauge"></span><span x-text="resetCredits(conn)"></span><span class="visually-hidden" x-t="quota.reset"></span></button>
+          <button type="button" class="btn btn-sm btn-ghost" x-show="canExpiry(conn)" x-on:click="openExpiry(conn)" x-tip="quota.expiry"><span class="rl-icon" x-icon="clock"></span><span class="visually-hidden" x-t="quota.expiry"></span></button>
           <button type="button" class="btn btn-sm btn-ghost" x-on:click="read(conn, true)" x-tip="quota.refresh"><span class="rl-icon" x-icon="refresh-cw"></span><span class="visually-hidden" x-t="quota.refresh"></span></button>
           <button type="button" class="btn btn-sm btn-ghost" x-show="conn.isActive === true" x-on:click="toggleActive(conn)" x-tip="quota.deactivate"><span class="rl-icon" x-icon="pause"></span><span class="visually-hidden" x-t="quota.deactivate"></span></button>
           <button type="button" class="btn btn-sm btn-ghost" x-show="conn.isActive !== true" x-on:click="toggleActive(conn)" x-tip="quota.activate"><span class="rl-icon" x-icon="play"></span><span class="visually-hidden" x-t="quota.activate"></span></button>
-          <button type="button" class="btn btn-sm btn-outline-danger" x-show="canReset(conn)" x-bind:disabled="resetting[conn.id] === true" x-on:click="reset(conn)" x-tip="quota.reset"><span class="rl-icon" x-icon="gauge"></span><span x-text="resetCredits(conn)"></span><span class="visually-hidden" x-t="quota.reset"></span></button>
-          <button type="button" class="btn btn-sm btn-ghost" x-show="canExpiry(conn)" x-on:click="openExpiry(conn)" x-tip="quota.expiry"><span class="rl-icon" x-icon="clock"></span><span class="visually-hidden" x-t="quota.expiry"></span></button>
         </div>
       </div>
       <div class="card-body">

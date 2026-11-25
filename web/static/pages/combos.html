@@ -38,6 +38,11 @@
                 </template>
                 <li class="rl-chip rl-chip-model" x-show="moreCount(combo) > 0"><span x-text="'+' + moreCount(combo)"></span></li>
               </ul>
+              <p class="rl-hint rl-combo-limits" x-show="comboLimits(combo).known" x-tip="combos.limitsHint">
+                <span x-text="label('combos.context') + ' ' + comboLimits(combo).context"></span>
+                <span aria-hidden="true">·</span>
+                <span x-text="label('combos.maxOutput') + ' ' + comboLimits(combo).output"></span>
+              </p>
             </div>
             <div class="rl-inline rl-combo-strategy">
               <select class="form-select form-select-sm" x-bind:aria-label="label('combos.strategy')" x-bind:value="strategyOf(combo)" x-on:change="setStrategy(combo, $event)">

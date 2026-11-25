@@ -67,19 +67,21 @@ func TestTheFeatureLineNamesLevelsModesAndSkillsOnly(t *testing.T) {
 	c := logCall()
 	c.saverStats = saver.Stats{
 		Saved: 120, Filters: []string{"git", "ls"},
-		Prompts: []string{"caveman", "ponytail", "custom"}, Levels: []string{"caveman=full", "ponytail=lite"},
+		Prompts: []string{"caveman", "ponytail", "custom"}, Levels: []string{"ponytail=lite"},
 		Headroom: true, CustomChars: 42, Skipped: []string{"rtk", "caveman"},
 	}
 	c.skillStats = skill.Stats{Skills: []string{"simplifier"}, Via: map[string]string{"simplifier": "always"}, Reminded: []string{"reviewer"}}
 	line := c.featureLine()
-	for _, want := range []string{"RTK 2", "CAVEMAN full", "PONYTAIL lite", "CUSTOMPROMPT 42c", "HEADROOM", "SKILL simplifier(always)", "SKILL reviewer(reminded)", "RTK skipped", "CAVEMAN skipped"} {
-		if !strings.Contains(line, want) {
-			t.Errorf("the feature line lacks %q: %s", want, line)
-		}
+	want := "RTK ON · CAVEMAN SKIPPED · PONYTAIL ON · CUSTOMPROMPT ON (42c) · ALLOW REA OFF · WATERMARK-REMOVER OFF · HEADROOM ON · SKILLS simplifier reviewer"
+	if line != want {
+		t.Fatalf("feature line = %q, want %q", line, want)
+	}
+	if strings.Contains(line, "(always)") || strings.Contains(line, "skipped") {
+		t.Errorf("a skill repeats its router or a status is lower-case: %q", line)
 	}
 	c.saverStats, c.skillStats = saver.Stats{}, skill.Stats{}
-	if got := c.featureLine(); got != "" {
-		t.Fatalf("a request nothing acted on earned a line: %q", got)
+	if got := c.featureLine(); got != "RTK OFF · CAVEMAN OFF · PONYTAIL OFF · ALLOW REA OFF · WATERMARK-REMOVER OFF · HEADROOM OFF" {
+		t.Fatalf("a request nothing acted on = %q", got)
 	}
 }
 

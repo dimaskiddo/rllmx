@@ -216,3 +216,17 @@ func TestTheKiroModelListPresentsTheIDEIdentity(t *testing.T) {
 		t.Fatalf("x-amz-user-agent %q", gotAmz)
 	}
 }
+
+// Live answers the provider's own list and false when it has no fetcher.
+func TestLiveReadsTheProvidersOwnList(t *testing.T) {
+	g := &Guard{Fetchers: map[string]Fetcher{
+		"kiro": func(context.Context, repository.Connection) ([]string, error) { return []string{"a", "b"}, nil },
+	}}
+	ids, ok := g.Live(context.Background(), "kiro", repository.Connection{ID: "c1", Provider: "kiro"})
+	if !ok || len(ids) != 2 {
+		t.Fatalf("%v %v", ids, ok)
+	}
+	if _, ok := g.Live(context.Background(), "openai", repository.Connection{}); ok {
+		t.Fatal("a provider with no fetcher answered live")
+	}
+}

@@ -87,6 +87,7 @@ window.Alpine.data("usagePage", () => Object.assign({
   seen: {},
   tick: 0,
   logLines: [],
+  logCursor: "",
   logFilter: "",
   logStatus: "all",
   logRefresh: true,
@@ -421,12 +422,30 @@ window.Alpine.data("usagePage", () => Object.assign({
     }
   },
 
-  async loadLogs() {
+  // loadLogs reads the newest page, or the page after cursor and puts it above
+  // what is already shown. The cursor is the header a full page carries.
+  async loadLogs(before) {
+    let path = "/api/usage/logs?period=" + encodeURIComponent(this.period);
+    if (before) {
+      path += "&before=" + encodeURIComponent(before);
+    }
     try {
-      const rows = await api("/api/usage/logs?period=" + encodeURIComponent(this.period));
-      this.logLines = (rows || []).map(parseLog);
+      const res = await fetch(path, { credentials: "same-origin" });
+      const rows = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error((rows && rows.error) || "Request failed (" + res.status + ")");
+      }
+      const page = (rows || []).map(parseLog);
+      this.logLines = before ? page.concat(this.logLines) : page;
+      this.logCursor = res.headers.get("X-Next-Cursor") || "";
     } catch (err) {
       this.error = err.message;
+    }
+  },
+
+  async loadOlder() {
+    if (this.logCursor) {
+      await this.loadLogs(this.logCursor);
     }
   },
 

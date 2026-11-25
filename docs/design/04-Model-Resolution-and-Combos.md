@@ -1,8 +1,8 @@
 # Design 04 — Model Resolution & Combos (`app/llm/routing/`)
 
-**Status:** partial
+**Status:** done
 
-Built: `app/llm/routing` (the resolver, the 5 s snapshot and the suffix grammar below) and `app/gateway/combo` (policy, order, rotation, sticky choice), called by `app/gateway/pipeline`. Built: the connection, node and override routes in the Parity table below. `app/gateway` also holds the pipeline, the catalog, the conversation store, prefetch and account selection; the capacity adapter is built (D337 retired); four provider routes remain open, named in the Parity table.
+Built: `app/llm/routing` (the resolver, the 5 s snapshot and the suffix grammar below) and `app/gateway/combo` (policy, order, rotation, sticky choice), called by `app/gateway/pipeline`. Built: the connection, node and override routes in the Parity table below. `app/gateway` also holds the pipeline, the catalog, the conversation store, prefetch and account selection; the capacity adapter is built (D337 retired). Every route in the parity table is built; the Kiro API-key and MiMo key importers are deferred (doc 22).
 
 ### Resolution (`Resolver.Resolve`, built)
 
@@ -83,22 +83,22 @@ sequenceDiagram
 | `/api/providers/{id}/overrides` | `app/http/controllers` | done (D147; `builtinHeaders` is the provider's own set, merged in send order and stripped of the computed beta list, the internal keys and the credentials; the identity defaults are rewritten to the live claude-cli version) |
 | `GET /v1/models`, `/v1/models/info`, `/v1/models/{id}`, `GET /v1beta/models` | `app/gateway/catalog`, `app/http/controllers` | done (`/v1/models` also carries `thinking_levels` for a reasoning model) |
 | `GET /api/tags` (Ollama's model list) | `app/gateway/catalog`, `app/http/controllers` | done (the caller's own catalog, so a restricted key sees its allow list) |
-| `/api/providers/{id}/test`, `/api/providers/validate` | `app/http/controllers` | partial, open: cookie-media probes (API-key, node and registry probes built; an OAuth account of a provider with a login is checked without a call to the provider (renew when due, then look for a held token); AWS, cookie, special probes and pasted tokens answer "test not supported yet" (D95-99, D215)) |
-| `/api/providers/{id}/models` | `app/http/controllers` | partial, open: the live catalog of an OAuth provider (nodes read the node's own `/models`; a registry answers its embedded list plus `customModels`, minus `disabledModels`, with no request) |
+| `/api/providers/{id}/test`, `/api/providers/validate` | `app/http/controllers` | done for chat, API-key, node, cookie and deepseek-web probes; a key test checks the credential only and enqueues no model probe, model reachability being `/test-models` (chatgpt-web, gemini-web, muse-web, uc-web two-step, deepseek-web; a transport fault keeps the account with a warning); grok-web answers unknown-with-warning until a TLS-impersonating client exists (D459); AWS and pasted-token probes stay unsupported (D95-99, D215) |
+| `/api/providers/{id}/models` | `app/http/controllers` | done: a node reads its own `/models`; an OAuth provider's live list is read through the shared five-minute catalog guard (kiro, kiro-social, codex, cursor, kimchi), with custom models added, disabled ones dropped, and the embedded list as the fallback |
 | `/api/provider-nodes` (list, create), `/{id}` (update, delete) | `app/http/controllers` | done |
 | `/api/provider-nodes/validate` | `app/http/controllers` | done |
 | `/api/providers/client` (usage list, filters, totals) | `app/http/controllers` | done (only the connections a quota reading answers) |
 | `/api/providers/test-batch`, `/api/providers/{id}/test-models`, `/api/models/test` | `app/http/controllers`, `app/gateway/probe` | done (llm models only) |
-| `/api/providers/suggested-models`, `/api/providers/kilo/free-models` | `app/http/controllers` | todo (fixed URL list, guarded client) |
+| `/api/providers/suggested-models`, `/api/providers/kilo/free-models` | `app/http/controllers` | done: a server-side address table keyed by provider (no caller URL, D458), ten-minute cache, kilo's list kept an hour and answered stale with a warning |
 | `/api/models/*` (alias, custom, disabled, availability, catalog-sync) | `app/http/controllers` | done (D352, D353, D357, D387); `PUT /api/models` is a scope cut (D359); the sync itself is `design doc 7` |
 | `/api/combos/*` (+ presets) | `app/http/controllers` | done (D356, D358) |
 | `/api/pricing` | `app/http/controllers` | done (D354, D355) |
-| `/api/translator/*` | `app/http/controllers` | partial, open: the playground (the console log read, clear and stream routes are built) |
+| `/api/translator/*` | `app/http/controllers` | done: the console-log read/clear/stream only; the translator playground is out (doc 22) |
 | `/api/media-providers/tts/*/voices` | `app/http/controllers`, `app/gateway` | done |
 | Media model resolution (bare id, slash id, `provider/model`, per-kind) | `app/llm/upstream` media index | done |
 | A search or fetch provider named in the body (`provider`, else `model`), and a connection borrowed from another provider (`credentialFallback`) | `app/gateway/media`, the provider's media block | done |
 | `/api/oauth/{provider}/authorize`, `exchange`, `callback`, `status`, `device-code`, `poll` and `/callback` | `app/llm/oauth`, `app/http/controllers`, `web` | partial (authorize, exchange, callback, status and `/callback` for claude and codex, D150-153; `device-code` and `poll` are); replaces `[provider]/[action]` |
-| `/api/oauth/*` importers (codex, grok-cli, cursor, kiro, zed, xiaomi-mimo, gitlab pat) plus Windsurf, Zed, Trae, Mimo callback shapes | `app/llm/oauth` | todo |
+| `/api/oauth/*` importers | `app/llm/oauth` | built: plain import, bulk (codex, grok-cli), PAT (gitlab, qoder with its exchange), codex-token, zed, kiro-refresh and kiro-external-idp; kiro-apikey and mimo-key are deferred with their connection shapes (doc 22); Windsurf and Trae have no provider entry (doc 22) |
 
 ---
 
@@ -131,7 +131,9 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 79 | One row, case-insensitive | One rule |
 | 81 | 5 s snapshot with `Invalidate`; failed read fails the request | No wrong routing on storage fault; second instance may lag 5 s (trade-off) |
 | 91 | Strict pattern, not a built-in, unique, base URL checks, on write only | Shadowing prefix would hide a built-in; existing rows still read (trade-off) |
-| 225 | `GET /v1/models` lists only models a caller can call: a registry provider with at least one active, readable connection, and a node with one; every such connection counts and a model is listed if any accepts it. The reference lists the whole static catalog when no connection exists and counts only the first connection of a provider. Entries carry `created`; a read route changes no row (the reference refreshes credentials during a GET). Custom-model rows are matched by provider id, alias and node prefix, type `llm` only. Combos are not listed until | An empty gateway advertises nothing, a second account's models show, and an alias-keyed row from a real 9router database appears |
+| 225 | `GET /v1/models` lists only models a caller can call: a registry provider with at least one active, readable connection, and a node with one; every such connection counts and a model is listed if any accepts it. The reference lists the whole static catalog when no connection exists and counts only the first connection of a provider. Entries carry `created`; a read route changes no row (the reference refreshes credentials during a GET). Custom-model rows are matched by provider id, alias and node prefix, type `llm` only. Combos are not listed there: a client calls one by name without finding it in the list | An empty gateway advertises nothing, a second account's models show, and an alias-keyed row from a real 9router database appears |
+| 458 | Suggested models take `?provider=`, resolved through a fixed server-side address table; the reference fetches any `url=` a caller sends | A caller-chosen URL is an SSRF hole |
+| 459 | grok-web's session probe answers unknown-with-warning until a TLS-impersonating client exists; the other cookie probes make a real request | Cloudflare refuses a plain client, and marking a working account broken is worse than the warning |
 | 226 | `/v1/models/info`, `/v1/models/{id}` and `/v1beta/models` are built from the same filtered list as `/v1/models`; the Gemini list has real token limits and `models/<id>` names. The reference answers `info` and `/v1beta/models` from the static catalog with no key filter, and invents 128000/8192 | A restricted key cannot learn a model it may not call; limits are the capability row's |
 | 213 | An update takes a fixed field list only: a client cannot set `testStatus`, `lastError*`, `errorCode`, `backoffLevel`, a lock, a token or a node connection's copied fields. Only the server writes health, and the `Checker` records test outcomes. Toggling `isActive` does not clear a cooldown | A dashboard form cannot hide a real cooldown or poison an account (improvement) |
 | 335 | A combo request writes **one** usage row, naming the combo in `comboName` and the member that answered in `provider`/`model`/`connectionId`; the reference writes a row per member tried. **Built** | This router's analytics, quota and D306 all assume one row per request; a member's spend is visible through the row that answered |
@@ -151,6 +153,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 391 | Round-robin rotates inside the tier of members that meet the request's needs and keeps the rest behind them. **Built** | The capability order was undone by the rotation, so a text-only member could lead a request with an image |
 | 387 | `POST /api/models/catalog-sync` bounds the whole sync at 50 s, so it answers inside the dashboard's 60 s write deadline **(trade-off)** | The reference allows 60 s for the download alone and then parses it with no bound, so a slow day cuts the answer off mid-write |
 | 338 | The smart router runs through the ordinary pipeline on its own model name, so it writes its own usage row and none of its spend is added to the client's row. **Built** | Router cost is visible without inflating the client's usage |
+| 462 | The combo card reads its context window and its max output as the smallest across the members, a nested combo followed to depth 3 and an unknown name skipped; the reference's card takes the largest max output, while its own model list already takes the smallest. **Built** | Any member may answer, so the larger figure promises an output a smaller member refuses |
 
 ---
 

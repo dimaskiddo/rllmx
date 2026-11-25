@@ -13,6 +13,7 @@
   "executor": "zed",
   "forceStream": true,
   "oauth": {
+    "importer": "zed",
     "flow": "code",
     "authorizeUrl": "https://zed.dev/native_app_signin",
     "tokenUrl": "https://cloud.zed.dev/client/llm_tokens",

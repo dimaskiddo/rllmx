@@ -24,7 +24,7 @@ func TestRoleAllowsTheAdminEverythingAndTheUserTheirOwnSurface(t *testing.T) {
 		{auth.RoleUser, nethttp.MethodPost, "/api/auth/change-password", true},
 		{auth.RoleUser, nethttp.MethodGet, "/api/keys", true},
 		{auth.RoleUser, nethttp.MethodGet, "/api/keys/k1", true},
-		{auth.RoleUser, nethttp.MethodGet, "/api/about/update", true},
+		{auth.RoleUser, nethttp.MethodGet, "/api/about/update", false},
 		{auth.RoleUser, nethttp.MethodPost, "/api/about/upgrade", false},
 		{auth.RoleUser, nethttp.MethodPut, "/api/keys/k1", true},
 		{auth.RoleUser, nethttp.MethodPost, "/api/keys/k1/reveal", true},

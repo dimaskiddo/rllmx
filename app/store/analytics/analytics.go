@@ -172,7 +172,7 @@ func ddl(d dialect.Dialect) []string {
 		text("provider"), text("model"), text("endpoint"), text("sourceFormat"),
 		`"status" ` + big + ` NOT NULL DEFAULT 0`, text("errorClass"),
 		num("stream"), num("cached"), num("estimated"), num("promptTokens"), num("completionTokens"), num("cachedTokens"),
-		num("cacheWriteTokens"), num("reasoningTokens"), flt("cost"), num("latencyMs"), num("ttfbMs"),
+		num("cacheWriteTokens"), num("reasoningTokens"), flt("cost"), num("costKnown"), num("latencyMs"), num("ttfbMs"),
 		text("comboName"), num("attempt"), text("savers"), text("skills"), `"importId" TEXT UNIQUE`,
 	}, ", ")
 	return []string{
@@ -191,6 +191,7 @@ func ddl(d dialect.Dialect) []string {
 // database gets them from the DDL.
 var addedColumns = []struct{ table, column string }{
 	{"requests", "estimated"},
+	{"requests", "costKnown"},
 	{"requests", "savers"},
 	{"requests", "skills"},
 }

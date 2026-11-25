@@ -30,6 +30,7 @@ window.Alpine.data("endpointPage", () => Object.assign({
   role: "user",
   keys: [],
   users: [],
+  meName: "",
   settings: { requireApiKey: false, requireLogin: true },
   baseUrl: location.origin + "/v1",
   revealed: {},
@@ -60,7 +61,9 @@ window.Alpine.data("endpointPage", () => Object.assign({
     this.loading = true;
     this.error = "";
     try {
-      this.role = (await session()).role;
+      const who = await session();
+      this.role = who.role;
+      this.meName = who.user;
       const listing = await api("/api/keys");
       this.keys = listing.keys || [];
       if (!this.isAdmin()) {
