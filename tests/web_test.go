@@ -972,6 +972,56 @@ func TestTheRequestLogNamesTheKeyThatCalled(t *testing.T) {
 	}
 }
 
+// A dialog's hint line sits under its title, in the corner button's column: it
+// keeps clear of the × the same way the title does.
+func TestADialogSubtitleKeepsClearOfTheCloseButton(t *testing.T) {
+	css := readWeb(t, "static/css/components.css")
+	at := strings.Index(css, "dialog.rl-dialog > form > h2:first-child + .rl-hint {")
+	if at < 0 {
+		t.Fatal("a dialog subtitle is not held clear of the close button")
+	}
+	if !strings.Contains(css[at:min(at+200, len(css))], "padding-inline-end: 2.5rem") {
+		t.Error("the subtitle rule does not clear the 1.75rem button")
+	}
+}
+
+// Test again is its own row between the weights and the ranked list, so it
+// touches neither the sliders above nor the heading below.
+func TestTestAgainSitsOnItsOwnRowAboveTheRankedList(t *testing.T) {
+	page := readWeb(t, "static/pages/combos.html")
+	weights, again, ranked := strings.Index(page, `x-t="combos.weights"`), strings.Index(page, `x-t="combos.retest"`), strings.Index(page, `x-t="combos.ranked"`)
+	if weights < 0 || again < 0 || ranked < 0 || again < weights || ranked < again {
+		t.Fatal("the suggest dialog does not order the weights, Test again, then the ranked list")
+	}
+	between := page[weights:ranked]
+	if strings.Contains(between, "rl-section-head") {
+		t.Error("Test again still shares a row with a heading")
+	}
+	if !strings.Contains(page[weights:again], "rl-actions") {
+		t.Error("Test again is not on a row of its own")
+	}
+}
+
+// A spent key budget and a provider's pace are both 429s; the log names the
+// class, and the page turns the two into words.
+func TestTheRequestLogNamesABudgetRefusal(t *testing.T) {
+	js := readWeb(t, "static/js/pages/usage.js")
+	for _, want := range []string{`key_quota: "usage.class.key_quota"`, `rate_limit: "usage.class.rate_limit"`} {
+		if !strings.Contains(js, want) {
+			t.Errorf("statusWord does not map %q", want)
+		}
+	}
+	en, id := loadTranslations(t, "en"), loadTranslations(t, "id")
+	for _, key := range []string{"usage.class.key_quota", "usage.class.rate_limit"} {
+		if strings.TrimSpace(en[key]) == "" || strings.TrimSpace(id[key]) == "" {
+			t.Errorf("%s is missing from a locale", key)
+		}
+	}
+	if !strings.Contains(readWeb(t, "static/pages/usage.html"), `x-bind:class="muted(row.account)"`) {
+		t.Error("an account that was never chosen does not read as one")
+	}
+}
+
 // Stacked fields live in a two-column grid; the password line belongs under the
 // switch, not beside it.
 func TestTheSecurityCardGivesThePasswordItsOwnRow(t *testing.T) {

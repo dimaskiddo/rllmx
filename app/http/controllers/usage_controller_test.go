@@ -363,6 +363,7 @@ func TestAnUnknownPeriodIsRefusedOnEveryRoute(t *testing.T) {
 func TestUsageLogsAreOneLinePerRow(t *testing.T) {
 	r := newUsageRig(t)
 	r.f.recent = []analytics.Request{
+		{ID: 8, Time: time.Date(2026, 11, 17, 9, 7, 0, 0, time.UTC), APIKeyName: "ci", Status: 429, ErrorClass: "key_quota"},
 		{ID: 7, Time: time.Date(2026, 11, 17, 9, 5, 6, 0, time.UTC), Provider: "openai", Model: "gpt-4o", ConnectionID: r.conn.ID, APIKeyName: "ci", Prompt: 12, Completion: 7, Status: 200},
 		{ID: 6, Time: time.Date(2026, 11, 17, 9, 6, 0, 0, time.UTC), Provider: "cc", ConnectionID: "missing", Prompt: 1, Status: 502, ErrorClass: "upstream_5xx"},
 	}
@@ -371,14 +372,19 @@ func TestUsageLogsAreOneLinePerRow(t *testing.T) {
 		t.Fatalf("%d %s", code, raw)
 	}
 	lines := gjson.Parse(raw).Array()
-	if len(lines) != 2 {
+	if len(lines) != 3 {
 		t.Fatalf("lines %s", raw)
 	}
-	if got := lines[0].String(); got != "17-11-2026 16:05:06 | gpt-4o | OPENAI | work | ci | 12 | 7 | ok" {
+	// A spent key budget and a provider's pace are both 429s; the class beside
+	// the code is what tells them apart.
+	if got := lines[0].String(); got != "17-11-2026 16:07:00 | - | - | - | ci | 0 | 0 | 429 key_quota" {
 		t.Fatalf("first line %q", got)
 	}
-	if got := lines[1].String(); got != "17-11-2026 16:06:00 | - | Claude Code | - | - | 1 | 0 | 502" {
+	if got := lines[1].String(); got != "17-11-2026 16:05:06 | gpt-4o | OPENAI | work | ci | 12 | 7 | ok" {
 		t.Fatalf("second line %q", got)
+	}
+	if got := lines[2].String(); got != "17-11-2026 16:06:00 | - | Claude Code | - | - | 1 | 0 | 502 upstream_5xx" {
+		t.Fatalf("third line %q", got)
 	}
 	// A page after a cursor reads only what is older than that position.
 	older := time.Date(2026, 11, 17, 9, 6, 0, 0, time.UTC).UnixMilli()

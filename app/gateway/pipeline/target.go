@@ -41,6 +41,9 @@ func (c *call) resolve(ctx context.Context) (Output, bool) {
 	case err != nil:
 		return c.internal(ctx, err), false
 	}
+	// The row names what was asked before anything can refuse it, so a refused
+	// request still reads as the model it named.
+	c.row.Provider, c.row.Model = t.Provider, t.Model
 	// The key is checked on the resolved target, before the response cache and
 	// before any account: a check after the cache would let a restricted key read
 	// an answer cached for a model it may not call.
@@ -56,7 +59,6 @@ func (c *call) resolve(ctx context.Context) (Output, bool) {
 	if out, ok := c.budget(ctx); !ok {
 		return out, false
 	}
-	c.row.Provider, c.row.Model = t.Provider, t.Model
 	// A media model is never a chat model: the two areas share one registry, so
 	// the kind decides.
 	if m, ok := c.p.d.Registry.Model(t.Provider, t.Model); ok && m.Kind != "" && m.Kind != upstream.KindLLM {

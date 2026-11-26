@@ -228,6 +228,12 @@ dialog.rl-dialog > form > h2:first-child {
   min-block-size: 1.75rem;
 }
 
+/* The hint under a title keeps clear of the corner button's column too. */
+dialog.rl-dialog > h2:first-child + .rl-hint,
+dialog.rl-dialog > form > h2:first-child + .rl-hint {
+  padding-inline-end: 2.5rem;
+}
+
 /* A dialog is fixed while modal and absolute otherwise, so it is the containing
    block for its own corner button. */
 .rl-dialog-close {

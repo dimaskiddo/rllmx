@@ -73,7 +73,8 @@ func (p *Pipeline) service(ctx context.Context, kind string, in Input) Output {
 		return bad(http.StatusForbidden, appfailure.NotAllowed(name))
 	}
 	if out, ok := p.budget(ctx, in.Caller); !ok {
-		row.Status, row.ErrorClass = out.Status, appfailure.ClassOf(out.Status)
+		// The key's own budget, not the provider's pace: the row says which.
+		row.Status, row.ErrorClass = out.Status, "key_quota"
 		return out
 	}
 	cfg := entry.Media.Config(kind)

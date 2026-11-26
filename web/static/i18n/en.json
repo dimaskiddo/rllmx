@@ -648,6 +648,8 @@
   "usage.breakdown": "Breakdown",
   "usage.byProvider": "By provider",
   "usage.cachedTokens": "Cached tokens",
+  "usage.class.key_quota": "Rate limited (budget)",
+  "usage.class.rate_limit": "Rate limited",
   "usage.cost": "Est. cost",
   "usage.costUnknown": "Requests with no price on file (cost left out):",
   "usage.empty": "No usage in this period.",

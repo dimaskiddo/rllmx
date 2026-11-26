@@ -34,16 +34,17 @@ const (
 
 // budgetPipeline builds a pipeline whose only job is a budget check: no account
 // and no client is needed when the check refuses first.
-func budgetPipeline(t *testing.T, id, entry string, b gatewaymedia.Budget) *gatewaymedia.Pipeline {
+func budgetPipeline(t *testing.T, id, entry string, b gatewaymedia.Budget) (*gatewaymedia.Pipeline, *usage.Sink) {
 	t.Helper()
 	reg, err := upstream.Load(fstest.MapFS{"data/" + id + ".json": {Data: []byte(entry)}}, "data")
 	if err != nil {
 		t.Fatal(err)
 	}
+	rows := &usage.Sink{}
 	return gatewaymedia.New(gatewaymedia.Deps{
 		Registry: reg, Adapters: mediamux.New(mediamux.Options{}), Client: gatewaymedia.HTTP{},
-		Budget: b, Usage: &usage.Sink{}, Now: time.Now,
-	})
+		Budget: b, Usage: rows, Now: time.Now,
+	}), rows
 }
 
 func spent() spend {
@@ -51,7 +52,7 @@ func spent() spend {
 }
 
 func TestASpentBudgetStopsAnImageBeforeAnyCall(t *testing.T) {
-	p := budgetPipeline(t, "openai", budgetImageEntry, spent())
+	p, rows := budgetPipeline(t, "openai", budgetImageEntry, spent())
 	out := p.Images(context.Background(), gatewaymedia.Input{
 		Path: "/v1/images/generations", Body: []byte(`{"model":"gpt-image-1","prompt":"p"}`),
 		Caller: identity.Caller{ID: "k1"},
@@ -62,10 +63,16 @@ func TestASpentBudgetStopsAnImageBeforeAnyCall(t *testing.T) {
 	if out.Header["Retry-After"] != "60" {
 		t.Fatalf("%v", out.Header)
 	}
+	// The row names the model it asked for and the key's budget, not the
+	// provider's pace.
+	got := rows.All()
+	if len(got) != 1 || got[0].ErrorClass != "key_quota" || got[0].Model != "gpt-image-1" {
+		t.Fatalf("rows %+v", got)
+	}
 }
 
 func TestASpentBudgetStopsASearchBeforeAnyCall(t *testing.T) {
-	p := budgetPipeline(t, "serper", budgetSearchEntry, spent())
+	p, rows := budgetPipeline(t, "serper", budgetSearchEntry, spent())
 	out := p.Search(context.Background(), gatewaymedia.Input{
 		Path: "/v1/search", Body: []byte(`{"provider":"serper","query":"x"}`),
 		Caller: identity.Caller{ID: "k1"},
@@ -73,10 +80,13 @@ func TestASpentBudgetStopsASearchBeforeAnyCall(t *testing.T) {
 	if out.Status != http.StatusTooManyRequests || !strings.Contains(string(out.Body), "insufficient_quota") {
 		t.Fatalf("%d %s", out.Status, out.Body)
 	}
+	if got := rows.All(); len(got) != 1 || got[0].ErrorClass != "key_quota" {
+		t.Fatalf("rows %+v", got)
+	}
 }
 
 func TestABudgetThatCannotBeReadFailsClosed(t *testing.T) {
-	p := budgetPipeline(t, "openai", budgetImageEntry, spend{err: errors.New("analytics is down")})
+	p, _ := budgetPipeline(t, "openai", budgetImageEntry, spend{err: errors.New("analytics is down")})
 	out := p.Images(context.Background(), gatewaymedia.Input{
 		Path: "/v1/images/generations", Body: []byte(`{"model":"gpt-image-1","prompt":"p"}`),
 		Caller: identity.Caller{ID: "k1"},

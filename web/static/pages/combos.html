@@ -243,13 +243,12 @@
         </div>
       </div>
 
-      <div class="rl-section-head rl-block-start">
-        <div>
-          <h3 class="rl-card-title" x-t="combos.ranked"></h3>
-          <p class="rl-hint" x-show="suggest.summary.total" x-text="suggest.summary.working + ' / ' + suggest.summary.total + ' ' + label('combos.working')"></p>
-        </div>
+      <div class="rl-actions">
         <button type="button" class="btn btn-sm" x-bind:disabled="suggest.busy === true" x-on:click="runSuggest(true)"><span class="rl-icon" x-icon="refresh-cw"></span><span x-t="combos.retest"></span></button>
       </div>
+
+      <h3 class="rl-card-title" x-t="combos.ranked"></h3>
+      <p class="rl-hint" x-show="suggest.summary.total" x-text="suggest.summary.working + ' / ' + suggest.summary.total + ' ' + label('combos.working')"></p>
 
       <p class="text-secondary" x-show="suggest.busy" x-t="common.loading"></p>
       <p class="rl-error" x-show="suggest.error" x-text="suggest.error"></p>

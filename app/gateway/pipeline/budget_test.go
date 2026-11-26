@@ -50,6 +50,16 @@ func TestASpentBudgetIsAnsweredBeforeAnyCall(t *testing.T) {
 	if len(r.up.Calls()) != 0 {
 		t.Fatal("a spent budget reached the provider")
 	}
+	// The row still names what the key asked for, so the log line is not a row
+	// of dashes, and its class says the key's budget rather than the provider's
+	// pace.
+	rows := r.rows.All()
+	if len(rows) != 1 {
+		t.Fatalf("rows %d", len(rows))
+	}
+	if row := rows[0]; row.Provider != "forced" || row.Model != "fm" || row.ErrorClass != "key_quota" {
+		t.Fatalf("row %+v", row)
+	}
 }
 
 func TestABudgetThatCannotBeReadFailsClosed(t *testing.T) {

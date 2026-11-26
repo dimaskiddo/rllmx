@@ -7,6 +7,13 @@ import { formatMethods } from "/static/js/ui/format.js";
 
 const periods = ["today", "24h", "7d", "30d", "60d", "all"];
 
+// A failure whose class changes what the reader should do gets a word of its
+// own; the rest keep their code.
+const failureWords = {
+  key_quota: "usage.class.key_quota",
+  rate_limit: "usage.class.rate_limit",
+};
+
 function emptyStats() {
   return {
     totalRequests: 0, totalPromptTokens: 0, totalCompletionTokens: 0, totalCachedTokens: 0, totalCost: 0,
@@ -349,7 +356,15 @@ window.Alpine.data("usagePage", () => Object.assign({
     if (status === "pending") {
       return t("usage.pending");
     }
-    return t("usage.failed") + " " + status;
+    // A log line carries "<code> <class>"; the recent list carries the class
+    // alone and older rows a bare code.
+    const parts = status.split(" ");
+    const word = failureWords[parts[parts.length - 1]];
+    return word ? t(word) : t("usage.failed") + " " + status;
+  },
+
+  muted(value) {
+    return value === "-" ? "text-secondary" : "";
   },
 
   connectUsage() {

@@ -686,7 +686,12 @@ func usageStatus(r analytics.Request) string {
 func usageLogLine(r analytics.Request, provider, account string, loc *time.Location) string {
 	status := "ok"
 	if r.Status >= 400 {
+		// The code alone cannot tell a spent key budget from a provider's pace;
+		// the class beside it can.
 		status = strconv.FormatInt(r.Status, 10)
+		if r.ErrorClass != "" && r.ErrorClass != "none" {
+			status += " " + r.ErrorClass
+		}
 	}
 	line := fmt.Sprintf("%s | %s | %s | %s | %s | %d | %d | %s",
 		r.Time.In(loc).Format("02-01-2006 15:04:05"),

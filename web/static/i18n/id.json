@@ -648,6 +648,8 @@
   "usage.breakdown": "Rincian",
   "usage.byProvider": "Per penyedia",
   "usage.cachedTokens": "Token cache",
+  "usage.class.key_quota": "Dibatasi (anggaran)",
+  "usage.class.rate_limit": "Dibatasi",
   "usage.cost": "Perkiraan biaya",
   "usage.costUnknown": "Permintaan tanpa harga tercatat (biaya tidak dihitung):",
   "usage.empty": "Tidak ada penggunaan pada periode ini.",

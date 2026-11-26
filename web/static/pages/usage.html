@@ -225,9 +225,9 @@
                 <tr>
                   <td x-text="row.time"></td>
                   <td x-text="row.key"></td>
-                  <td x-text="row.model"></td>
-                  <td x-text="row.provider"></td>
-                  <td x-text="row.account"></td>
+                  <td x-bind:class="muted(row.model)" x-text="row.model"></td>
+                  <td x-bind:class="muted(row.provider)" x-text="row.provider"></td>
+                  <td x-bind:class="muted(row.account)" x-text="row.account"></td>
                   <td class="text-end" x-text="row.inTokens"></td>
                   <td class="text-end" x-text="row.outTokens"></td>
                   <td x-text="statusWord(row.status)"></td>
