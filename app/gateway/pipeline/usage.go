@@ -4,6 +4,8 @@ import (
 	"strconv"
 	"strings"
 
+	"rllmx/app/gateway/saver"
+	"rllmx/app/gateway/skill"
 	"rllmx/app/llm/translate"
 	"rllmx/app/llm/upstream"
 	"rllmx/app/platform/failure"
@@ -40,7 +42,7 @@ func (c *call) finish(out Output) {
 		r.ErrorClass = failure.ClassOf(out.Status)
 	}
 	r.LatencyMs = c.p.d.Now().Sub(c.start).Milliseconds()
-	r.Savers, r.Skills = c.saverStats.Names(), c.skillStats.Names()
+	r.Savers, r.Skills = featureNames(c.saverStats, c.skillStats)
 	if c.p.d.Log != nil {
 		c.p.d.Log.Infof("%s", doneLine(*r))
 	}
@@ -91,6 +93,40 @@ func (c *call) routeLine() string {
 	return b.String()
 }
 
+// featureNames splits the two feature strings for the usage row. The watermark
+// remover rides the skill registry but is a fixed transform, so its prompt
+// changes the request like a saver and it is filed with them.
+func featureNames(st saver.Stats, ss skill.Stats) (savers, skills string) {
+	savers = st.Names()
+	var kept []string
+	for _, id := range strings.Split(ss.Names(), ",") {
+		switch {
+		case id == "":
+		case id == watermarkRemover:
+			savers = joinFeature(savers, id)
+		default:
+			kept = append(kept, id)
+		}
+	}
+	return savers, strings.Join(kept, ",")
+}
+
+// watermarkRemover is the one skill the usage row files with the savers.
+const watermarkRemover = "watermarks-remover"
+
+// joinFeature appends one name to a comma-joined list unless it is already there.
+func joinFeature(list, name string) string {
+	if list == "" {
+		return name
+	}
+	for _, have := range strings.Split(list, ",") {
+		if have == name {
+			return list
+		}
+	}
+	return list + "," + name
+}
+
 // featureLine is the request's saver and skill summary, in one fixed order:
 // each saver's state, then the skills that acted, once. A saver that was on
 // with nothing to do says SKIPPED; one that was off says OFF.
@@ -113,7 +149,7 @@ func (c *call) featureLine() string {
 		return false
 	}
 	parts := []string{
-		"RTK " + saverState(len(st.Filters) > 0, skipped["rtk"]),
+		rtkState(st, skipped["rtk"]),
 		"CAVEMAN " + saverState(level("caveman"), skipped["caveman"]),
 		"PONYTAIL " + saverState(level("ponytail"), skipped["ponytail"]),
 	}
@@ -122,13 +158,13 @@ func (c *call) featureLine() string {
 	}
 	parts = append(parts,
 		"ALLOW REA "+onOff(injected["rea-allow"]),
-		"WATERMARK-REMOVER "+onOff(injected["watermarks-remover"]),
+		"WATERMARK-REMOVER "+onOff(injected[watermarkRemover]),
 		"HEADROOM "+saverState(st.Headroom, st.Note != ""),
 	)
 	var named []string
 	seen := map[string]bool{}
 	for _, id := range append(append([]string{}, ss.Skills...), ss.Reminded...) {
-		if id == "rea-allow" || id == "watermarks-remover" || seen[id] || id == "" {
+		if id == "rea-allow" || id == watermarkRemover || seen[id] || id == "" {
 			continue
 		}
 		seen[id] = true
@@ -138,6 +174,19 @@ func (c *call) featureLine() string {
 		parts = append(parts, "SKILLS "+strings.Join(named, " "))
 	}
 	return strings.Join(parts, " · ")
+}
+
+// rtkState names the compactor's outcome: the filters it shrank, the switch
+// with nothing to shrink, or off. RTK has no routing mode, so it never says
+// SKIPPED, and the names let a line be matched to its usage row.
+func rtkState(st saver.Stats, skipped bool) string {
+	switch {
+	case len(st.Filters) > 0:
+		return "RTK ON (" + strings.Join(st.Filters, ",") + ")"
+	case skipped:
+		return "RTK ON"
+	}
+	return "RTK OFF"
 }
 
 // saverState names one saver's outcome: it acted, it was on with nothing to do,

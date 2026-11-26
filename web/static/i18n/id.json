@@ -54,7 +54,6 @@
   "combos.limit": "Berapa model",
   "combos.limitsHint": "Batas terkecil dari seluruh anggota, karena salah satunya yang menjawab",
   "combos.maxOutput": "Output Maks",
-  "combos.model": "Model",
   "combos.models": "model",
   "combos.modelsEmpty": "Tambahkan model pertama di bawah.",
   "combos.modelsTitle": "Model",

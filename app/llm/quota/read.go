@@ -29,8 +29,9 @@ const (
 	callTimeout = 8 * time.Second
 	// readTimeout bounds a whole reading, a renewal and the one retry included.
 	readTimeout = 25 * time.Second
-	// readTTL is how long a reading serves a dashboard poll.
-	readTTL = 60 * time.Second
+	// readTTL outlives the dashboard's minute-long poll, so a tick is served
+	// from cache and the provider is asked far less often.
+	readTTL = 5 * time.Minute
 )
 
 // Access is what one reading presents: the account's key or token, and the
@@ -59,6 +60,8 @@ type Reader struct {
 	Cookies executor.CookieSource
 	// MiniMaxSecret is the key MiniMax Code signs its account calls with.
 	MiniMaxSecret string
+	// ClaudeCLI is the live claude-cli fingerprint the Claude OAuth calls carry.
+	ClaudeCLI *upstream.ClaudeCLI
 
 	qoderMu   sync.Mutex
 	qoderJobs map[string]qoderJob
@@ -95,6 +98,16 @@ func (r *Reader) Read(ctx context.Context, conn repository.Connection, force boo
 		}
 	}
 	return out, err
+}
+
+// forget drops a connection's cached reading and its refill list, after a spend
+// that changed what the provider would answer.
+func (r *Reader) forget(id string) {
+	if r.Cache == nil {
+		return
+	}
+	r.Cache.Delete(cache.Quota, id)
+	r.Cache.Delete(cache.Quota, codexCreditsKey(id))
 }
 
 // read runs one fetcher, renewing the credential once when the provider refused

@@ -54,7 +54,6 @@
   "combos.limit": "How many models",
   "combos.limitsHint": "The smallest limit across the members, since any of them may answer",
   "combos.maxOutput": "Max Output",
-  "combos.model": "Model",
   "combos.models": "models",
   "combos.modelsEmpty": "Add the first model below.",
   "combos.modelsTitle": "Models",

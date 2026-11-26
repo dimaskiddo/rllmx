@@ -11,7 +11,6 @@ import (
 	"github.com/tidwall/gjson"
 
 	"rllmx/app/llm/upstream"
-	"rllmx/app/platform/cache"
 	"rllmx/app/store/dialect"
 	"rllmx/app/store/repository"
 )
@@ -22,10 +21,13 @@ const (
 	claudeResetURL   = "https://api.anthropic.com/api/organizations/"
 )
 
-// claudeHeaders adds the two headers every call to the Claude OAuth API carries.
-func claudeHeaders(h map[string]string) map[string]string {
+// claudeHeaders adds the headers every call to the Claude OAuth API carries. The
+// reset grants are gated by surface, so the user agent names the CLI even though
+// the login's own identity says sdk-cli.
+func (r *Reader) claudeHeaders(h map[string]string) map[string]string {
 	h["anthropic-beta"] = "oauth-2025-04-20"
 	h["anthropic-version"] = "2023-06-01"
+	h["User-Agent"] = "claude-cli/" + r.ClaudeCLI.Version() + " (external, cli)"
 	return h
 }
 
@@ -33,7 +35,7 @@ func claudeHeaders(h map[string]string) map[string]string {
 // window as a number used out of 100, and names a model's own weekly window in
 // either the top-level keys or the limits list.
 func readClaude(ctx context.Context, r *Reader, e upstream.Entry, a Access) (Reading, error) {
-	h := claudeHeaders(bearerFor(e, a))
+	h := r.claudeHeaders(bearerFor(e, a))
 	raw, stop, early, earlyErr := r.getOK(ctx, "Claude", request{URL: claudeUsageURL, Headers: h})
 	if stop {
 		return early, earlyErr
@@ -91,7 +93,7 @@ func (r *Reader) ClaudeReset(ctx context.Context, conn repository.Connection, gr
 	if err != nil {
 		return ResetResult{}, err
 	}
-	h := claudeHeaders(bearer(identity(entry), access.Token))
+	h := r.claudeHeaders(bearer(identity(entry), access.Token))
 	h["Content-Type"] = "application/json"
 	code, raw, err := r.do(ctx, request{URL: claudeProfileURL, Headers: h})
 	if err != nil {
@@ -120,9 +122,7 @@ func (r *Reader) ClaudeReset(ctx context.Context, conn repository.Connection, gr
 	out.Message = upstreamText(data.Get("error.message").String())
 	out.OK = code/100 == 2 && out.Result == "reset"
 	// The limits the grant refilled are not what the cache holds any more.
-	if r.Cache != nil {
-		r.Cache.Delete(cache.Quota, conn.ID)
-	}
+	r.forget(conn.ID)
 	return out, nil
 }
 

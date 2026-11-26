@@ -421,6 +421,50 @@ func TestAClaudeGrantIsSpentOnTheAccountOrganization(t *testing.T) {
 	}
 }
 
+// The provider withholds the reset grants from a caller whose user agent says
+// SDK, so every Claude OAuth call the reader makes has to name the CLI surface.
+func TestEveryClaudeOAuthCallPresentsTheCLISurface(t *testing.T) {
+	usage := `{"five_hour":{"utilization":10},"cedar_ember":{"eligible":true,"next_grant_id":"g2",` +
+		`"grants":[{"id":"g1","resets_left":2}]}}`
+	for _, tt := range []struct {
+		name string
+		cli  *upstream.ClaudeCLI
+		want string
+	}{
+		{name: "live version", cli: upstream.NewClaudeCLI("2.1.500"), want: "claude-cli/2.1.500 (external, cli)"},
+		{name: "floor", cli: nil, want: "claude-cli/" + upstream.ClaudeCLIFloor + " (external, cli)"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newStub().
+				on("api.anthropic.com", "/api/oauth/usage", usage).
+				on("api.anthropic.com", "/api/oauth/profile", `{"organization":{"uuid":"org-9"}}`).
+				on("api.anthropic.com", "/api/organizations/org-9/reset_rate_limits", `{"result":"reset"}`)
+			conn := connOf("claude", "oauth", "")
+			r := testReader(s, conn, "t")
+			r.ClaudeCLI = tt.cli
+			out, err := r.Read(context.Background(), conn, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if out.ResetCredits == nil || out.ResetCredits.AvailableCount != 2 {
+				t.Fatalf("the grants block the button needs is missing: %+v", out.ResetCredits)
+			}
+			if _, err := r.ClaudeReset(context.Background(), conn, "grant-1"); err != nil {
+				t.Fatal(err)
+			}
+			for _, key := range []string{
+				"api.anthropic.com/api/oauth/usage",
+				"api.anthropic.com/api/oauth/profile",
+				"api.anthropic.com/api/organizations/org-9/reset_rate_limits",
+			} {
+				if got := s.header(key, "User-Agent"); got != tt.want {
+					t.Fatalf("%s: user agent %q, want %q", key, got, tt.want)
+				}
+			}
+		})
+	}
+}
+
 func TestACodexCreditSpendReportsTheServiceAnswer(t *testing.T) {
 	s := newStub().
 		code("chatgpt.com", "/backend-api/wham/rate-limit-reset-credits/consume", http.StatusConflict).
@@ -552,6 +596,60 @@ func TestClaudeGrantsListEveryGrantAndCountTheUsableOnes(t *testing.T) {
 }
 
 // The Codex answer may spell its fields either way.
+// The refill list is a display-only read reached on every dialog open, so it is
+// cached beside the reading and dropped by a spend that changes both answers.
+func TestCodexCreditsAreCachedUntilASpend(t *testing.T) {
+	s := newStub().
+		on("chatgpt.com", "/backend-api/wham/rate-limit-reset-credits",
+			`{"available_count":2,"credits":[{"status":"available"}]}`).
+		on("chatgpt.com", "/backend-api/wham/rate-limit-reset-credits/consume",
+			`{"code":"reset","windows_reset":1}`)
+	conn := connOf("codex", "oauth", "")
+	r := testReader(s, conn, "t")
+	r.Cache = cache.New(tests.NewCache(), cache.WithoutShared())
+	for i := 0; i < 2; i++ {
+		out, err := r.CodexCredits(context.Background(), conn)
+		if err != nil || out.AvailableCount != 2 {
+			t.Fatalf("%v %+v", err, out)
+		}
+	}
+	if n := s.counted("chatgpt.com/backend-api/wham/rate-limit-reset-credits"); n != 1 {
+		t.Fatalf("the refill list was read %d times", n)
+	}
+	r.Cache.Set(cache.Quota, conn.ID, []byte("{}"), time.Minute)
+	out, err := r.CodexConsume(context.Background(), conn)
+	if err != nil || !out.Reset {
+		t.Fatalf("%v %+v", err, out)
+	}
+	if _, hit := r.Cache.Get(cache.Quota, conn.ID); hit {
+		t.Fatal("the reading survived a spend")
+	}
+	if _, hit := r.Cache.Get(cache.Quota, codexCreditsKey(conn.ID)); hit {
+		t.Fatal("the refill list survived a spend")
+	}
+	if _, err := r.CodexCredits(context.Background(), conn); err != nil {
+		t.Fatal(err)
+	}
+	if n := s.counted("chatgpt.com/backend-api/wham/rate-limit-reset-credits"); n != 2 {
+		t.Fatalf("the refill list was not read again after a spend: %d", n)
+	}
+}
+
+func TestAFailedCodexCreditListIsNotCached(t *testing.T) {
+	s := newStub().code("chatgpt.com", "/backend-api/wham/rate-limit-reset-credits", http.StatusInternalServerError)
+	conn := connOf("codex", "oauth", "")
+	r := testReader(s, conn, "t")
+	r.Cache = cache.New(tests.NewCache(), cache.WithoutShared())
+	for i := 0; i < 2; i++ {
+		if _, err := r.CodexCredits(context.Background(), conn); !errors.Is(err, ErrRefused) {
+			t.Fatalf("%v", err)
+		}
+	}
+	if n := s.counted("chatgpt.com/backend-api/wham/rate-limit-reset-credits"); n != 2 {
+		t.Fatalf("a refused list served %d call(s); it must be asked again", n)
+	}
+}
+
 func TestCodexCreditsReadBothSpellings(t *testing.T) {
 	s := newStub().on("chatgpt.com", "/backend-api/wham/rate-limit-reset-credits",
 		`{"available_count":1,"credits":[{"status":"available","granted_at":"2026-11-01T00:00:00Z","expires_at":"2026-12-01T00:00:00Z"}]}`)

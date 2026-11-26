@@ -1447,6 +1447,30 @@ func TestTheSignInFormOffersAUsername(t *testing.T) {
 	}
 }
 
+// The CAPTCHA widget has to sit inside the form and follow the page's theme,
+// not the provider's default.
+func TestTheCaptchaWidgetFollowsTheFormAndTheTheme(t *testing.T) {
+	js := readWeb(t, "static/js/login.js")
+	if !strings.Contains(js, `getAttribute("data-bs-theme")`) || !strings.Contains(js, "theme:") {
+		t.Error("the CAPTCHA does not follow the page's theme")
+	}
+	if !strings.Contains(js, `provider === "turnstile"`) || !strings.Contains(js, `size = "flexible"`) {
+		t.Error("the Turnstile widget does not fill the form")
+	}
+	css := readWeb(t, "static/css/components.css")
+	start := strings.Index(css, ".rl-captcha {")
+	if start < 0 {
+		t.Fatal("the CAPTCHA slot has no rule")
+	}
+	end := strings.Index(css[start:], "}")
+	rule := css[start : start+end]
+	for _, want := range []string{"display: flex", "justify-content: center", "width: 100%"} {
+		if !strings.Contains(rule, want) {
+			t.Errorf("the CAPTCHA slot is missing %q", want)
+		}
+	}
+}
+
 // An account single sign-on provisioned has no password the user knows, so the
 // dialog asks only for the new one until they set it.
 func TestASetPasswordDialogAsksNoCurrentPasswordWhenNoneIsKnown(t *testing.T) {
@@ -1559,9 +1583,15 @@ func TestTheComboModelEditorKeepsAnAccessibleOrder(t *testing.T) {
 			t.Errorf("the model editor has no %s button", want)
 		}
 	}
+	if !strings.Contains(body, `x-text="model"`) {
+		t.Error("a chosen model is not shown as text")
+	}
 	js := readWeb(t, "static/js/pages/combo-models.js")
 	if !strings.Contains(js, "models.splice(from, 1)") {
 		t.Error("a reorder does not move the stored list")
+	}
+	if strings.Contains(js, "setModelAt") || strings.Contains(body, "setModelAt") {
+		t.Error("a model row is still an editable input with no picker")
 	}
 }
 
@@ -2111,6 +2141,45 @@ func TestTheUsageLoadDropsAnAnswerThatIsNoLongerTheLatest(t *testing.T) {
 	}
 }
 
+// The expiry dialog assigns a plain object, and the component reads a reactive
+// proxy back, so comparing the two by identity never matches and the busy line
+// never clears. The open it belongs to is counted instead.
+func TestTheExpiryDialogDropsAnAnswerForAnEarlierOpen(t *testing.T) {
+	body := methodBody(readWeb(t, "static/js/pages/quota.js"), "async openExpiry")
+	if !strings.Contains(body, "this.expirySeq") || !strings.Contains(body, "seq !== this.expirySeq") ||
+		!strings.Contains(body, "seq === this.expirySeq") {
+		t.Error("openExpiry has no sequence guard, so a stale answer can leave the dialog busy")
+	}
+}
+
+// Spending a reset is irreversible, so the confirmation names the grant it
+// spends and what that grant refills, not only the count.
+func TestTheResetConfirmationNamesTheGrant(t *testing.T) {
+	js := readWeb(t, "static/js/pages/quota.js")
+	reset := methodBody(js, "async reset")
+	if !strings.Contains(reset, "resetMessage") || !strings.Contains(reset, "danger: true") || !strings.Contains(reset, `confirm: t("quota.reset")`) {
+		t.Error("the reset is not confirmed through resetMessage")
+	}
+	message := methodBody(js, "resetMessage")
+	for _, want := range []string{"label", "resetsLeft", "clears", "endsAt"} {
+		if !strings.Contains(message, want) {
+			t.Errorf("the confirmation does not name the grant's %s", want)
+		}
+	}
+	if !strings.Contains(methodBody(js, "grantID"), "nextGrant(") {
+		t.Error("grantID does not use the one rule for picking a grant")
+	}
+}
+
+// The usage page opens on today; the API's own fallback only serves a caller
+// that omits the period.
+func TestTheUsagePageOpensOnToday(t *testing.T) {
+	body := readWeb(t, "static/js/pages/usage.js")
+	if !strings.Contains(body, `period: "today"`) || strings.Contains(body, `period: "7d"`) {
+		t.Error("the usage page does not open on today")
+	}
+}
+
 // Sorting names with subtraction gives NaN, and a header that sorts a column the
 // reader cannot see is a trap.
 func TestTheUsageBreakdownSortsWhatItShows(t *testing.T) {
@@ -2185,7 +2254,7 @@ func TestTheQuotaResetAndReadingPassAreGuarded(t *testing.T) {
 	}
 	// The Claude reset names the grant it spends; the page also lists the
 	// credits and their expiry.
-	if !strings.Contains(reset, "grantId") || !strings.Contains(methodBody(js, "grantID"), "nextGrantId") {
+	if !strings.Contains(reset, "grantId") || !strings.Contains(methodBody(js, "grantID"), "nextGrant(") {
 		t.Error("the Claude reset sends no grant to spend")
 	}
 	if !strings.Contains(js, "/codex-reset-credits") || !strings.Contains(methodBody(js, "async openExpiry"), "/codex-reset-credits") {
@@ -2198,7 +2267,7 @@ func TestTheQuotaResetAndReadingPassAreGuarded(t *testing.T) {
 	if iReset < 0 || iExpiry < iReset || iRefresh < iExpiry || iActive < iRefresh {
 		t.Error("a card's actions are not reset, expiry, refresh, active switch")
 	}
-	for _, want := range []string{`x-ref="expiry"`, "quota.useBy", "quota.refills", "quota.grantedAt", "quota.expiresAt"} {
+	for _, want := range []string{`x-ref="expiry"`, "quota.useBy", "quota.refills", "quota.grantedAt", "quota.expiresAt", "quota.noGrant", "expiry.rows.length === 0"} {
 		if !strings.Contains(html, want) {
 			t.Errorf("quota.html lacks %s", want)
 		}
@@ -2664,7 +2733,7 @@ func TestSmallHelpersHaveOneImplementation(t *testing.T) {
 // State nothing reads and helpers nobody calls are weight a reader has to
 // carry; an export no other module imports is a public surface nobody asked for.
 func TestNoDeadStateOrUnusedExportsInThePages(t *testing.T) {
-	dead := []string{"addSuggested", "suggest.open", "suggest.context", "bulk.open", "nodeForm.open", "modelAdd.open", "context: {}", "keys.pause\"", "keys.resume\""}
+	dead := []string{"addSuggested", "suggest.open", "suggest.context", "bulk.open", "nodeForm.open", "modelAdd.open", "context: {}", "keys.pause\"", "keys.resume\"", "setModelAt"}
 	ours(t, func(name, body string) {
 		if !strings.HasSuffix(name, ".js") && !strings.HasSuffix(name, ".html") && !strings.HasSuffix(name, ".json") {
 			return

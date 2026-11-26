@@ -172,7 +172,7 @@
           <li class="rl-list-row rl-model-row" x-bind:data-index="index">
             <div class="rl-list-main">
               <button type="button" class="rl-drag" data-drag x-tip="combos.drag"><span class="rl-icon" x-icon="grip-vertical"></span><span class="visually-hidden" x-t="combos.drag"></span></button>
-              <input class="form-control form-control-sm" type="text" x-bind:aria-label="label('combos.model')" x-bind:value="model" x-on:change="setModelAt(index, $event)">
+              <code class="rl-code" x-text="model"></code>
             </div>
             <div class="rl-list-actions">
               <button type="button" class="btn btn-sm btn-ghost" x-on:click="moveModel(index, -1)" x-tip="combos.moveUp"><span class="rl-icon" x-icon="arrow-up"></span><span class="visually-hidden" x-t="combos.moveUp"></span></button>

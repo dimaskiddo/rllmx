@@ -9,6 +9,7 @@ import (
 	"rllmx/app/llm/executor"
 	"rllmx/app/llm/oauth"
 	"rllmx/app/llm/quota"
+	"rllmx/app/platform/cache"
 	"rllmx/app/platform/network"
 	"rllmx/app/store/repository"
 )
@@ -16,7 +17,7 @@ import (
 // newQuotaReader builds the per-connection quota reader from the same pieces a
 // request uses: the guarded client, the renewal the pipeline follows, and the
 // credential rule of a request.
-func newQuotaReader(h *HTTP) *quota.Reader {
+func newQuotaReader(h *HTTP, c *cache.Cache) *quota.Reader {
 	r := &quota.Reader{
 		Reg: h.Registry,
 		Client: network.NewClient(network.Options{
@@ -24,6 +25,7 @@ func newQuotaReader(h *HTTP) *quota.Reader {
 			BodyCap: 1 << 20, Curves: h.Upstream.Curves,
 		}),
 		Zed: h.Zed, Cookies: quotaCookies(h), MiniMaxSecret: minimaxSecret(),
+		ClaudeCLI: h.ClaudeCLI, Cache: c,
 		Renew: func(ctx context.Context, conn repository.Connection) (repository.Connection, error) {
 			return h.Refresher.Renew(ctx, conn)
 		},

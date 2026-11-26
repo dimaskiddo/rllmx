@@ -1078,7 +1078,7 @@ func TestAFailureExactlyAtTheStartOfTheRequestDoesNotBlockItsSuccess(t *testing.
 	}
 }
 
-func TestRecordTestWritesTheOutcomeAndLeavesTheCooldownAlone(t *testing.T) {
+func TestRecordTestWritesTheOutcomeAndClearsTheHealthOnAPass(t *testing.T) {
 	s := newMigrated(t)
 	ctx := context.Background()
 	a := mkConn(t, s, ConnInput{Provider: "p", AuthType: "apikey", Name: "x"})
@@ -1128,18 +1128,23 @@ func TestRecordTestWritesTheOutcomeAndLeavesTheCooldownAlone(t *testing.T) {
 	if !d.IsNull("lastError") || !d.IsNull("lastErrorAt") {
 		t.Errorf("a pass left an error: %s", got.Data)
 	}
-	if v, _ := d.GetString("modelLock_m"); v != lockBefore {
-		t.Errorf("a pass erased a real cooldown: %q", v)
+	if !d.IsNull("modelLock_m") {
+		t.Errorf("a pass kept the cooldown: %s", got.Data)
 	}
-	if lvl, _ := d.GetInt("backoffLevel"); lvl != 3 {
-		t.Errorf("a pass reset the backoff to %d", lvl)
+	if !d.IsNull("errorCode") || !d.IsNull("rateLimitedUntil") {
+		t.Errorf("a pass kept the error code: %s", got.Data)
+	}
+	if lvl, _ := d.GetInt("backoffLevel"); lvl != 0 {
+		t.Errorf("a pass left the backoff at %d", lvl)
 	}
 }
 
 func TestRecordTestKeepsAnExpiredConnectionExpired(t *testing.T) {
 	s := newMigrated(t)
 	ctx := context.Background()
-	a := mkConn(t, s, ConnInput{Provider: "p", AuthType: "apikey", Name: "x", Fields: map[string]string{"testStatus": `"expired"`}})
+	a := mkConn(t, s, ConnInput{Provider: "p", AuthType: "apikey", Name: "x"})
+	mustLock(t, s, a.ID, "m", time.Now().Add(time.Hour), 429, "slow down", 3)
+	setRaw(t, s, a.ID, map[string]string{"testStatus": `"expired"`})
 	for _, ok := range []bool{false, true} {
 		if err := s.Connections().RecordTest(ctx, a.ID, ok, "Invalid API key", time.Now()); err != nil {
 			t.Fatal(err)
@@ -1148,6 +1153,10 @@ func TestRecordTestKeepsAnExpiredConnectionExpired(t *testing.T) {
 		if v, _ := got.Doc().GetString("testStatus"); v != StatusExpired {
 			t.Fatalf("ok=%v turned an expired connection into %q", ok, v)
 		}
+	}
+	got, _, _ := s.Connections().Get(ctx, a.ID)
+	if !got.Doc().IsNull("modelLock_m") {
+		t.Fatalf("a pass left the lock: %s", got.Data)
 	}
 }
 

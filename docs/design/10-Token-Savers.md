@@ -22,7 +22,7 @@ The order is RTK, Headroom, caveman, ponytail, custom prompt. Each prompt is app
 
 **Activation modes.** `cavemanRoutingMode` and `ponytailRoutingMode` take `always` or `smart`. The defaults are the extended fork's: caveman `always`, ponytail `smart`.
 
-In `smart` mode the latest user text is scored against that saver's own triggers, keywords and description. The instruction is injected only above a threshold: 0.35 for caveman, 0.30 for ponytail. Greetings and bare arithmetic never match, and the scorer reads at most 4 KiB and 400 tokens. A saver that was on but did not match, and RTK with no tool text to compact, are named in the request's feature line as `CAVEMAN skipped`, `PONYTAIL skipped` and `RTK skipped`, so an absent saver is not mistaken for a disabled one; the usage row still lists only the savers that acted.
+In `smart` mode the latest user text is scored against that saver's own triggers, keywords and description. The instruction is injected only above a threshold: 0.35 for caveman, 0.30 for ponytail. Greetings and bare arithmetic never match, and the scorer reads at most 4 KiB and 400 tokens. A prompt saver that was on but did not match is named in the request's feature line as `CAVEMAN SKIPPED` or `PONYTAIL SKIPPED`, so an absent match is not mistaken for a disabled saver. RTK has no mode: the line prints `RTK ON (filters)` with what it compacted, `RTK ON` when it ran and nothing qualified, and `RTK OFF` when switched off. The usage row still lists only the savers that acted.
 
 **RTK details.** A block under 500 bytes or over 10 MiB is passed through, and the detector reads only its first 1 KiB. The most specific shape wins, and a filter's output is accepted only when it is non-empty and strictly shorter than its input. A tool result the client marked as failed is never touched.
 
@@ -53,7 +53,7 @@ The proxy strips hop-by-hop headers, does not forward `Host`, follows no redirec
 | RTK filters (12) | `open-sse/rtk/filters/*` | `saver/rtk` | done |
 | Detection and the smaller-only rule | `open-sse/rtk/autodetect.js`, `applyFilter.js` | `saver/rtk` | done |
 | The two built-in prompt styles, level and activation mode | the reference's `rtk` prompt files, the extended fork's skill manifests | `saver/caveman`, `saver/ponytail`, `saver/prompt` | done |
-| Watermark Remover: the skill's prompt (smart or always) and the strip of invisible characters from every answer | `skills/watermarks-remover`, none for the strip | `app/gateway/skill`, `app/platform/text`, `app/gateway/pipeline` | done (the prompt is the extended fork's own text; the strip is D428) |
+| Watermark Remover: the skill's prompt (smart or always) and the strip of invisible characters from every answer | `skills/watermarks-remover`, none for the strip | `app/gateway/skill`, `app/platform/text`, `app/gateway/pipeline` | done (the prompt is the extended fork's own text; the strip is D428); the usage row reports the prompt half under savers |
 | Custom prompt | `open-sse/rtk/customPrompt.js` | `saver`, `saver/prompt` | done |
 | Headroom client | `open-sse/rtk/headroom.js` | `saver/headroom` | done |
 | `/api/headroom/status`, `/api/headroom/proxy` | `src/app/api/headroom/{status,proxy}` | `app/http/controllers` | done |

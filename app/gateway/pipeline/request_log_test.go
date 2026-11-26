@@ -72,9 +72,15 @@ func TestTheFeatureLineNamesLevelsModesAndSkillsOnly(t *testing.T) {
 	}
 	c.skillStats = skill.Stats{Skills: []string{"simplifier"}, Via: map[string]string{"simplifier": "always"}, Reminded: []string{"reviewer"}}
 	line := c.featureLine()
-	want := "RTK ON · CAVEMAN SKIPPED · PONYTAIL ON · CUSTOMPROMPT ON (42c) · ALLOW REA OFF · WATERMARK-REMOVER OFF · HEADROOM ON · SKILLS simplifier reviewer"
+	want := "RTK ON (git,ls) · CAVEMAN SKIPPED · PONYTAIL ON · CUSTOMPROMPT ON (42c) · ALLOW REA OFF · WATERMARK-REMOVER OFF · HEADROOM ON · SKILLS simplifier reviewer"
 	if line != want {
 		t.Fatalf("feature line = %q, want %q", line, want)
+	}
+	// RTK is a switch with no routing mode: on with nothing compacted says ON,
+	// never SKIPPED.
+	c.saverStats = saver.Stats{Skipped: []string{"rtk"}}
+	if got := c.featureLine(); !strings.HasPrefix(got, "RTK ON · CAVEMAN") {
+		t.Fatalf("an idle RTK = %q", got)
 	}
 	if strings.Contains(line, "(always)") || strings.Contains(line, "skipped") {
 		t.Errorf("a skill repeats its router or a status is lower-case: %q", line)
@@ -82,6 +88,33 @@ func TestTheFeatureLineNamesLevelsModesAndSkillsOnly(t *testing.T) {
 	c.saverStats, c.skillStats = saver.Stats{}, skill.Stats{}
 	if got := c.featureLine(); got != "RTK OFF · CAVEMAN OFF · PONYTAIL OFF · ALLOW REA OFF · WATERMARK-REMOVER OFF · HEADROOM OFF" {
 		t.Fatalf("a request nothing acted on = %q", got)
+	}
+}
+
+// The watermark remover rides the skill registry but is a fixed transform, so
+// the usage row files it with the savers and never lists it among the skills.
+func TestTheWatermarkRemoverIsFiledWithTheSavers(t *testing.T) {
+	tests := []struct {
+		name                  string
+		st                    saver.Stats
+		ss                    skill.Stats
+		wantSavers, wantSkill string
+	}{
+		{"absent", saver.Stats{Filters: []string{"git"}}, skill.Stats{Skills: []string{"simplifier"}}, "git", "simplifier"},
+		{"only the watermark", saver.Stats{}, skill.Stats{Skills: []string{"watermarks-remover"}}, "watermarks-remover", ""},
+		{"both", saver.Stats{Filters: []string{"git"}, Prompts: []string{"caveman"}},
+			skill.Stats{Skills: []string{"watermarks-remover", "simplifier"}}, "git,caveman,watermarks-remover", "simplifier"},
+		{"already a saver", saver.Stats{Filters: []string{"watermarks-remover"}},
+			skill.Stats{Skills: []string{"watermarks-remover"}}, "watermarks-remover", ""},
+		{"reminded", saver.Stats{}, skill.Stats{Reminded: []string{"watermarks-remover", "reviewer"}}, "watermarks-remover", "reviewer"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			savers, skills := featureNames(tt.st, tt.ss)
+			if savers != tt.wantSavers || skills != tt.wantSkill {
+				t.Fatalf("savers %q skills %q, want %q %q", savers, skills, tt.wantSavers, tt.wantSkill)
+			}
+		})
 	}
 }
 

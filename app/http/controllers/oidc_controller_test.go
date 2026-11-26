@@ -349,6 +349,27 @@ func TestASuccessfulSignInIssuesTheSessionCookie(t *testing.T) {
 	}
 }
 
+// The issuer is canonicalised for discovery, so a settings row that keeps a
+// trailing slash names the same provider. The callback has to compare the same
+// way, or a sign-in that already passed the provider dies on the way back.
+func TestASignInFinishesWhenTheIssuerIsWrittenWithATrailingSlash(t *testing.T) {
+	r := newOIDCRig(t, nil)
+	if err := r.sq.Settings().Patch(contextBackground(), map[string]string{
+		"oidcIssuerUrl": `"` + r.idp.issuer + `/"`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	r.auth.Store.Changed()
+
+	rec, _ := r.flow(t, nil)
+	if rec.Code != nethttp.StatusFound || location(rec) != "http://localhost:20128/" {
+		t.Fatalf("%d %q", rec.Code, location(rec))
+	}
+	if sessionCookie(rec) == "" {
+		t.Fatal("no session cookie was issued")
+	}
+}
+
 func TestTheSessionFromAProviderCarriesItsMethod(t *testing.T) {
 	r := newOIDCRig(t, nil)
 	rec, _ := r.flow(t, nil)

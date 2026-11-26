@@ -9,6 +9,24 @@ import { clampInt } from "/static/js/ui/fields.js";
 
 const quotaPageSize = 10;
 
+// windowName is the quota table's own name for a window a grant refills, so
+// the confirmation reads like the rows above it.
+function windowName(clear) {
+  switch (clear) {
+    case "five_hour":
+    case "session":
+      return "Session (5h)";
+    case "seven_day":
+    case "weekly":
+    case "seven_day_overage_included":
+      return "Weekly (7d)";
+  }
+  if (clear.startsWith("seven_day_")) {
+    return "Weekly " + clear.slice("seven_day_".length) + " (7d)";
+  }
+  return clear;
+}
+
 // quotaRank orders the windows a provider reports: the shortest first, then the
 // week, then the month. A map loses the reader's order, so the name is read.
 function quotaRank(key) {
@@ -62,6 +80,7 @@ window.Alpine.data("quotaPage", () => Object.assign({
   gone: false,
   pass: 0,
   loadSeq: 0,
+  expirySeq: 0,
   resetting: {},
   expiry: { open: false, provider: "", name: "", busy: false, error: "", rows: [] },
 
@@ -248,22 +267,48 @@ window.Alpine.data("quotaPage", () => Object.assign({
     return conn.provider === "codex";
   },
 
-  // grantID is the refill a reset names: the service's next grant, else the
+  // nextGrant is the refill a reset names: the service's next grant, else the
   // first grant that still has uses left.
-  grantID(conn) {
+  nextGrant(conn) {
     const reading = this.readings[conn.id];
     if (!reading || !reading.resetCredits) {
-      return "";
+      return null;
     }
+    const credits = reading.resetCredits.credits || [];
     if (reading.resetCredits.nextGrantId) {
-      return reading.resetCredits.nextGrantId;
+      return credits.find((credit) => credit.id === reading.resetCredits.nextGrantId) || { id: reading.resetCredits.nextGrantId };
     }
-    for (const credit of reading.resetCredits.credits || []) {
+    for (const credit of credits) {
       if (credit.id && credit.paused !== true && (credit.resetsLeft || 0) > 0) {
-        return credit.id;
+        return credit;
       }
     }
-    return "";
+    return null;
+  },
+
+  grantID(conn) {
+    const grant = this.nextGrant(conn);
+    return grant && grant.id ? grant.id : "";
+  },
+
+  // resetMessage names the grant the irreversible spend uses and what it
+  // refills, so the confirmation says more than a count.
+  resetMessage(conn) {
+    const grant = conn.provider === "claude" ? this.nextGrant(conn) : null;
+    if (!grant || !grant.id) {
+      return t("quota.resetBody") + " " + this.resetCredits(conn);
+    }
+    const parts = [grant.label || grant.id];
+    if (grant.resetsLeft || grant.resetsTotal) {
+      parts.push(t("quota.left") + " " + (grant.resetsLeft || 0) + "/" + (grant.resetsTotal || 0));
+    }
+    if ((grant.clears || []).length > 0) {
+      parts.push(t("quota.refills") + " " + grant.clears.map(windowName).join(", "));
+    }
+    if (grant.endsAt) {
+      parts.push(t("quota.useBy") + " " + this.formatDate(grant.endsAt));
+    }
+    return parts.join(" · ") + ". " + t("quota.resetBody") + " " + this.resetCredits(conn);
   },
 
   canExpiry(conn) {
@@ -295,13 +340,15 @@ window.Alpine.data("quotaPage", () => Object.assign({
   },
 
   async openExpiry(conn) {
-    const dialog = { open: true, provider: conn.provider, name: this.connectionName(conn), busy: true, error: "", rows: [] };
-    this.expiry = dialog;
-    this.$refs.expiry.showModal();
+    const seq = ++this.expirySeq;
+    this.expiry = { open: true, provider: conn.provider, name: this.connectionName(conn), busy: true, error: "", rows: [] };
     try {
+      if (!this.$refs.expiry.open) {
+        this.$refs.expiry.showModal();
+      }
       if (conn.provider === "codex") {
         const out = await api("/api/usage/" + encodeURIComponent(conn.id) + "/codex-reset-credits");
-        if (this.expiry !== dialog) {
+        if (seq !== this.expirySeq) {
           return;
         }
         this.expiry.rows = (out.credits || []).map((credit) => ({
@@ -323,24 +370,24 @@ window.Alpine.data("quotaPage", () => Object.assign({
         }));
       }
     } catch (err) {
-      if (this.expiry === dialog) {
+      if (seq === this.expirySeq) {
         this.expiry.error = err.message;
       }
     } finally {
-      if (this.expiry === dialog) {
+      if (seq === this.expirySeq) {
         this.expiry.busy = false;
       }
     }
   },
 
   closeExpiry() {
+    this.expirySeq++;
     this.$refs.expiry.close();
     this.expiry.open = false;
   },
 
   async reset(conn) {
-    const left = this.resetCredits(conn);
-    const yes = await ask({ title: t("quota.resetTitle"), message: t("quota.resetBody") + " " + left, danger: true, confirm: t("quota.reset") });
+    const yes = await ask({ title: t("quota.resetTitle"), message: this.resetMessage(conn), danger: true, confirm: t("quota.reset") });
     if (!yes || this.resetting[conn.id]) {
       return;
     }

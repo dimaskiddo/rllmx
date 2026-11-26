@@ -95,8 +95,11 @@ Alpine.data("loginPage", () => ({
       this.captchaFailed = true;
       return;
     }
-    this.captchaWidget = api.render(slot, {
+    // The widget follows the page's theme; Turnstile can also fill the form,
+    // while reCAPTCHA has only fixed sizes and is centred by the stylesheet.
+    const options = {
       sitekey: this.captcha.siteKey,
+      theme: document.documentElement.getAttribute("data-bs-theme") === "dark" ? "dark" : "light",
       callback: (token) => {
         this.captchaToken = token;
       },
@@ -106,7 +109,11 @@ Alpine.data("loginPage", () => ({
       "error-callback": () => {
         this.captchaToken = "";
       },
-    });
+    };
+    if (this.captcha.provider === "turnstile") {
+      options.size = "flexible";
+    }
+    this.captchaWidget = api.render(slot, options);
   },
   // An answer is spent once the provider has seen it, refused or not.
   resetCaptcha() {

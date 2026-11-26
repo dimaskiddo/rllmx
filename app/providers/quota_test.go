@@ -5,8 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"rllmx/app/platform/cache"
 	"rllmx/app/platform/settings"
 	"rllmx/app/store/repository"
+	"rllmx/tests"
 )
 
 func TestAQuotaReadingPresentsTheStoredKey(t *testing.T) {
@@ -28,8 +30,9 @@ func TestAQuotaReadingPresentsTheStoredKey(t *testing.T) {
 
 func TestTheReaderIsBuiltWithAGuardedClient(t *testing.T) {
 	h := &HTTP{Upstream: &settings.Upstream{ConnectTimeout: time.Second}}
-	reader := newQuotaReader(h)
-	if reader.Client == nil || reader.Renew == nil || reader.Access == nil {
+	c := cache.New(tests.NewCache(), cache.WithoutShared())
+	reader := newQuotaReader(h, c)
+	if reader.Client == nil || reader.Renew == nil || reader.Access == nil || reader.Cache != c {
 		t.Fatalf("%+v", reader)
 	}
 }

@@ -48,18 +48,6 @@ export const modelEditorMethods = {
     this.moveTo(index, index + delta);
   },
 
-  // The list is keyed by model, so a value another row already holds would be a
-  // duplicate key; the edited row goes instead.
-  setModelAt(index, event) {
-    const value = normalizeModelID(event.target.value.trim());
-    const at = this.form.models.indexOf(value);
-    if (!value || (at >= 0 && at !== index)) {
-      this.form.models.splice(index, 1);
-      return;
-    }
-    this.form.models[index] = value;
-  },
-
   // A copied combo arrives one model per line; a typed list may use commas.
   splitModels(text) {
     return text.split(/[\n,]+/).map((value) => value.trim()).filter(Boolean);

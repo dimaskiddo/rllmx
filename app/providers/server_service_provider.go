@@ -264,8 +264,7 @@ func buildHTTP(app foundation.Application) (*HTTP, error) {
 			ConnectTimeout: upstreamCfg.ConnectTimeout, MaxRedirects: -1, BodyCap: 64 << 10,
 		}))
 	}
-	h.Quota = newQuotaReader(h)
-	h.Quota.Cache = cacheOrNil(app)
+	h.Quota = newQuotaReader(h, cacheOrNil(app))
 	if err := wireCatalogSync(h, app, cfg); err != nil {
 		return nil, err
 	}

@@ -58,6 +58,7 @@ Only `settings`, `apikeys`, `models`, `limiter`, `response` and `toolcalls` may 
 | `limiter` | Login failure counters | The memory store always applies (the in-process floor), plus the configured store when it is Redis. Counters are small and expire by TTL, so the store's missing size cap does not matter |
 | `response` | Cached completions | Configured driver |
 | `toolcalls` | Gemini thought signatures by tool call, so a client that drops one does not break the next turn, owned by the Gemini codec in `app/llm/translate`. Key: SHA-256 of the API key id and the call id, never the bare id; value: model family and signature; 1 hour; a signature is never offered to a model of another family | Configured driver |
+| `quota` | Per-connection quota readings and the Codex refill list (`<connection>/credits`), five minutes; a spend drops both entries. Holds no credential. The auto-ping runner reads through it, so a just-reset window can be warmed up to five minutes late (D369, D463) | Memory only |
 | `connections` | The Copilot token a GitHub account's requests carry, for 10 s after it is minted so concurrent requests share one mint (`oauth.Minter`); the account's own copy lives sealed in its provider data | Memory only |
 | `refresh` | Refreshed credentials (10 s result cache) | Memory only |
 | `oauth` | Login sessions with PKCE verifiers or private keys (reserved: the store is an in-process map, because `Begin` has to be one atomic step) | Memory only |

@@ -99,6 +99,7 @@
     <p class="text-secondary" x-text="expiry.name"></p>
     <p class="rl-hint" x-show="expiry.busy" x-t="common.loading"></p>
     <p class="rl-error" x-show="expiry.error" x-text="expiry.error"></p>
+    <p class="rl-hint" x-show="!expiry.busy && expiry.error === '' && expiry.rows.length === 0" x-t="quota.noGrant"></p>
     <div x-show="!expiry.busy && expiry.error === '' && expiry.rows.length > 0">
       <div class="rl-table-wrap" x-show="expiry.provider === 'claude'">
       <table class="table table-sm">

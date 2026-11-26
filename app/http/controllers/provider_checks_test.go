@@ -155,7 +155,7 @@ func TestTestingASavedConnectionRecordsTheOutcome(t *testing.T) {
 	}
 }
 
-func TestATestNeverCreatesOrErasesACooldown(t *testing.T) {
+func TestATestCreatesNoCooldownAndAPassErasesOne(t *testing.T) {
 	m := newMgmtRig(t)
 	ctx := context.Background()
 	srv := newUpstream(t, 401, "")
@@ -182,6 +182,26 @@ func TestATestNeverCreatesOrErasesACooldown(t *testing.T) {
 		if strings.HasPrefix(k, repository.LockPrefix) {
 			t.Errorf("a test created the lock %s", k)
 		}
+	}
+	// A pass is the operator's re-validation: the stale health goes with it.
+	up := newUpstream(t, 200, "")
+	okNode := nodeFor(t, m, up.URL, "openai-compatible", "ok")
+	good := connID(t, m.ok(t, "POST", "/api/providers", fmt.Sprintf(`{"provider":%q,"apiKey":"k","name":"good"}`, okNode), 201))
+	if _, err := m.st.Connections().LockFromLevel(ctx, good, "m", 429, "r", func(int) (time.Time, int, bool) { return time.Now().Add(time.Hour), 3, true }); err != nil {
+		t.Fatal(err)
+	}
+	m.ok(t, "POST", "/api/providers/"+good+"/test", "", 200)
+	passed, _, _ := m.st.Connections().Get(ctx, good)
+	for _, k := range []string{"modelLock_m", "errorCode", "rateLimitedUntil", "lastError"} {
+		if !passed.Doc().IsNull(k) {
+			t.Errorf("a pass kept %s: %s", k, passed.Data)
+		}
+	}
+	if lvl, _ := passed.Doc().GetInt("backoffLevel"); lvl != 0 {
+		t.Errorf("a pass left the backoff at %d", lvl)
+	}
+	if st, _ := passed.Doc().GetString("testStatus"); st != "active" {
+		t.Errorf("a pass left the status %q", st)
 	}
 }
 

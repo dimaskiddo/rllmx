@@ -9,6 +9,7 @@ import (
 	"github.com/tidwall/gjson"
 
 	"rllmx/app/llm/upstream"
+	"rllmx/app/platform/cache"
 	"rllmx/app/store/dialect"
 	"rllmx/app/store/repository"
 )
@@ -128,8 +129,19 @@ func codexPrefix(name string) string {
 	return strings.ReplaceAll(id, "_", "-")
 }
 
+// codexCreditsKey is the refill list's cache key, beside the reading's own.
+func codexCreditsKey(id string) string { return id + "/credits" }
+
 // CodexCredits lists the refills an account holds.
 func (r *Reader) CodexCredits(ctx context.Context, conn repository.Connection) (ResetCredits, error) {
+	if r.Cache != nil {
+		if raw, hit := r.Cache.Get(cache.Quota, codexCreditsKey(conn.ID)); hit {
+			var out ResetCredits
+			if json.Unmarshal(raw, &out) == nil {
+				return out, nil
+			}
+		}
+	}
 	entry, _ := r.entry(conn.Provider)
 	access, err := r.access(ctx, conn)
 	if err != nil {
@@ -154,6 +166,11 @@ func (r *Reader) CodexCredits(ctx context.Context, conn repository.Connection) (
 			GrantedAt: stamp(stampOf(firstOf(c, "granted_at", "grantedAt"))),
 			ExpiresAt: stamp(stampOf(firstOf(c, "expires_at", "expiresAt"))),
 		})
+	}
+	if r.Cache != nil {
+		if raw, mErr := json.Marshal(out); mErr == nil {
+			r.Cache.Set(cache.Quota, codexCreditsKey(conn.ID), raw, readTTL)
+		}
 	}
 	return out, nil
 }
@@ -185,5 +202,9 @@ func (r *Reader) CodexConsume(ctx context.Context, conn repository.Connection) (
 	out.WindowsReset = int(data.Get("windows_reset").Int())
 	out.Message = upstreamText(data.Get("message").String())
 	out.Reset = code/100 == 2 && (out.Code == "reset" || out.WindowsReset > 0)
+	// Any accepted spend may have consumed a credit, so both cached answers go.
+	if code/100 == 2 {
+		r.forget(conn.ID)
+	}
 	return out, nil
 }

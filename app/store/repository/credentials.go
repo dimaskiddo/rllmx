@@ -117,12 +117,12 @@ func patchObject(d document.Doc, key string, set map[string]string, remove []str
 	return obj.String(), nil
 }
 
-// RecordTest stores the outcome of a key check on a connection. A pass sets it
-// active and clears the last error; a failure sets it to error with the given
-// message, which is a fixed one and never provider text. A check is not a
-// request, so it touches no lock, no backoff level and no error code: it does
-// not create a cooldown and a pass does not erase a real one. A connection
-// marked expired stays expired, so the selector keeps skipping it.
+// RecordTest stores the outcome of a key check on a connection. A failure sets
+// it to error with the given message, which is a fixed one and never provider
+// text, and creates no cooldown: a check is not a request. A pass is the
+// operator's re-validation, so it clears every health field and lock a cooldown
+// left, as activation does. A connection marked expired keeps that status, so
+// the selector keeps skipping it.
 func (r *ConnectionsRepo) RecordTest(ctx context.Context, id string, ok bool, message string, at time.Time) error {
 	return r.s.Tx(ctx, func(tx contractsdb.Tx) error {
 		c, d, err := r.lockRow(tx, id)
@@ -141,10 +141,16 @@ func (r *ConnectionsRepo) RecordTest(ctx context.Context, id string, ok bool, me
 					return err
 				}
 			}
-			for _, k := range []string{"lastError", "lastErrorAt"} {
+			if err := clearAllLocks(&d); err != nil {
+				return err
+			}
+			for _, k := range []string{"lastError", "lastErrorAt", "errorCode", "rateLimitedUntil"} {
 				if err := d.SetNull(k); err != nil {
 					return err
 				}
+			}
+			if err := d.SetInt("backoffLevel", 0); err != nil {
+				return err
 			}
 		default:
 			if status != StatusExpired {

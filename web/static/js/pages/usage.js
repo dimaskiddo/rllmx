@@ -69,7 +69,7 @@ window.Alpine.data("usagePage", () => Object.assign({
   error: "",
   role: "user",
   tab: "overview",
-  period: "7d",
+  period: "today",
   stats: emptyStats(),
   points: [],
   metric: "tokens",

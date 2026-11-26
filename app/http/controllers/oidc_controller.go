@@ -137,8 +137,15 @@ func (c *OIDCController) Callback(ctx contractshttp.Context) contractshttp.Respo
 	}
 
 	set := c.settings(r.Context())
-	if !set.Configured() || !c.Auth.Mode(r.Context()).OIDC || set.Issuer != pending.Issuer || set.ClientID != pending.ClientID {
-		// Settings changed mid-flow: the sign-in was for another provider.
+	// Discovery stores the canonical issuer, so the settings row is canonicalised
+	// here too. A row written elsewhere (an imported database, an older build) may
+	// keep a trailing slash or a capitalised host, and that is the same provider,
+	// not a settings change mid-flow.
+	issuer, issuerErr := oidc.ParseIssuer(set.Issuer)
+	mode := c.Auth.Mode(r.Context())
+	if issuerErr != nil || !set.Configured() || !mode.OIDC || issuer != pending.Issuer || set.ClientID != pending.ClientID {
+		sso.Debugf(c.Log, "oidc callback settings no longer match the flow: issuer=%t configured=%t usable=%t issuerMatch=%t clientMatch=%t",
+			issuerErr == nil, set.Configured(), mode.OIDC, issuer == pending.Issuer, set.ClientID == pending.ClientID)
 		c.countFailure(key)
 		return c.fail(ctx, base, sso.CodeNotConfigured)
 	}

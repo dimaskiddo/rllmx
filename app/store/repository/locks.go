@@ -64,6 +64,19 @@ func (r *ConnectionsRepo) LockFromLevel(ctx context.Context, id, model string, s
 	return locked, err
 }
 
+// clearAllLocks nulls every per-model and account lock, so a passed check starts
+// the connection clean as the reference's activation reset does.
+func clearAllLocks(d *document.Doc) error {
+	for _, k := range d.Keys() {
+		if strings.HasPrefix(k, modelLockPrefix) {
+			if err := d.SetNull(k); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // dropEndedLocks removes the locks that ended before at, and cleared ones, so
 // a connection that sees many model names does not grow a key for each of them.
 func dropEndedLocks(d *document.Doc, at time.Time) error {

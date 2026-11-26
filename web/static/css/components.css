@@ -826,8 +826,12 @@ h2 + .form-label {
   margin-block-start: 1rem;
 }
 
-/* The CAPTCHA widget draws itself here once the provider's loader answers. */
+/* The CAPTCHA widget draws itself here once the provider's loader answers: a
+   flexible Turnstile fills the form, a fixed reCAPTCHA sits centred. */
 .rl-captcha {
+  display: flex;
+  width: 100%;
+  justify-content: center;
   margin-block-start: 0.75rem;
 }
 

@@ -23,7 +23,7 @@ Each row carries a stable identifier, what we do differently and why it is bette
 | 13 | Media Endpoints | 33 | [13-…](design/13-Media-Endpoints.md) |
 | 14 | Outbound Network | 12 | [14-…](design/14-Outbound-Network.md) |
 | 15 | Storage | 12 | [15-…](design/15-Storage.md) |
-| 16 | Usage, Pricing & Quota | 41 | [16-…](design/16-Usage-Pricing-and-Quota.md) |
+| 16 | Usage, Pricing & Quota | 42 | [16-…](design/16-Usage-Pricing-and-Quota.md) |
 | 17 | Configuration | 6 | [17-…](design/17-Configuration.md) |
 | 18 | Web Dashboard | 24 | [18-…](design/18-Web-Dashboard.md) |
 | 19 | Go Interfaces | 0 | [19-…](design/19-Go-Interfaces.md) |
@@ -31,7 +31,7 @@ Each row carries a stable identifier, what we do differently and why it is bette
 | 21 | API Key Limits | 4 | [21-…](design/21-API-Key-Limits.md) |
 | 22 | Deferred & Out of Scope | 1 | [22-…](design/22-Deferred-and-Out-of-Scope.md) |
 | 23 | CLI | 2 | [23-…](design/23-CLI.md) |
-| **Total** | | **415** | |
+| **Total** | | **416** | |
 
 ## Kinds
 
@@ -39,7 +39,7 @@ Each row is counted once, by the marker in its Why column.
 
 | Kind | Meaning | Rows |
 |---|---|---|
-| Improvement | Differs from the reference for a stated reason | 346 |
+| Improvement | Differs from the reference for a stated reason | 347 |
 | New Feature | Something the reference does not have | 4 |
 | Trade-Off | A deliberate cost | 17 |
 | Scope Cut | A reference feature not adopted | 24 |
@@ -47,7 +47,7 @@ Each row is counted once, by the marker in its Why column.
 | Temporary | Stopgap until a named later change | 5 |
 | Retired | A framework choice or a rule that no longer applies, or a behavior now the reference's own; the identifier stays citable | 16 |
 | Built As Planned | Was only a schedule change and is now done | 0 |
-| **Total** | | **415** |
+| **Total** | | **416** |
 
 Each row names its own identifier; the design doc's `Divergences` table is the list.
 
