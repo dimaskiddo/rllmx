@@ -27,6 +27,9 @@ const (
 	// preEncryptionLabel names the copy taken before secrets are sealed. It is
 	// the untouched original, so it is never pruned.
 	preEncryptionLabel = "pre-encryption"
+	// proxyCleanupLabel names the copy taken before unused proxy settings are
+	// removed. Like the one above, it keeps the original and is never pruned.
+	proxyCleanupLabel = "proxy-cleanup"
 
 	dbFileName = "data.sqlite"
 )
@@ -230,6 +233,10 @@ func (s *Store) Migrate(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("repository: scan secrets: %w", err)
 	}
+	proxyRows, err := s.stripProxyKeys(s.on(ctx), false)
+	if err != nil {
+		return nil, fmt.Errorf("repository: scan proxy settings: %w", err)
+	}
 	if !hasCheck && sp.unopenable > 0 {
 		return nil, ErrWrongEncryptionSecret
 	}
@@ -237,7 +244,7 @@ func (s *Store) Migrate(ctx context.Context) ([]string, error) {
 		warns = append(warns, fmt.Sprintf("%d rows hold damaged JSON; their secrets were left as they are", sp.skipped))
 	}
 
-	changesData := !p.empty() || seedMeta || sp.values() > 0
+	changesData := !p.empty() || seedMeta || sp.values() > 0 || proxyRows > 0
 	if !changesData && hasCheck {
 		return warns, nil
 	}
@@ -245,6 +252,8 @@ func (s *Store) Migrate(ctx context.Context) ([]string, error) {
 		label := strings.TrimSuffix(schemaChangePrefix, "-")
 		if sp.values() > 0 {
 			label = preEncryptionLabel
+		} else if proxyRows > 0 {
+			label = proxyCleanupLabel
 		}
 		w, err := s.backupBeforeChange(ctx, label)
 		if err != nil {
@@ -272,18 +281,22 @@ func (s *Store) Migrate(ctx context.Context) ([]string, error) {
 		if done, err = s.scanSecrets(tx, true); err != nil {
 			return err
 		}
+		if _, err := s.stripProxyKeys(tx, true); err != nil {
+			return err
+		}
 		return s.writeCheck(tx)
 	})
 	if err != nil {
 		return nil, err
 	}
-	if done.values() > 0 && s.dialect == dialect.SQLite {
-		// Plain copies stay in free pages and the WAL until the file is rebuilt.
+	if (done.values() > 0 || proxyRows > 0) && s.dialect == dialect.SQLite {
+		// Plain copies, and the proxy settings just removed, stay in free pages
+		// and the WAL until the file is rebuilt.
 		if err := s.Vacuum(ctx); err != nil {
-			return nil, fmt.Errorf("repository: rebuild the database after sealing: %w", err)
+			return nil, fmt.Errorf("repository: rebuild the database after cleaning: %w", err)
 		}
 		if err := s.Checkpoint(ctx); err != nil {
-			return nil, fmt.Errorf("repository: checkpoint after sealing: %w", err)
+			return nil, fmt.Errorf("repository: checkpoint after cleaning: %w", err)
 		}
 	}
 	if done.values() > 0 {
@@ -291,6 +304,9 @@ func (s *Store) Migrate(ctx context.Context) ([]string, error) {
 		if n := s.legacyUsageKeys(ctx); n > 0 {
 			warns = append(warns, fmt.Sprintf("%d old usage rows still hold client keys in plain text; `rllmx artisan db:import-analytics --drop-old` moves them to the analytics store without the key", n))
 		}
+	}
+	if proxyRows > 0 {
+		s.log.Infof("unused proxy settings removed from %d connections", proxyRows)
 	}
 	return warns, nil
 }

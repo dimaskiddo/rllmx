@@ -214,7 +214,7 @@
             <button type="button" class="btn btn-sm btn-ghost" x-on:click="removeAddPsd(index)" x-tip="common.remove"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.remove"></span></button>
           </div>
         </template>
-        <button type="button" class="btn btn-sm" x-on:click="addPsdRow()"><span class="rl-icon" x-icon="plus"></span><span x-t="provider.addExtra"></span></button>
+        <button type="button" class="btn btn-sm rl-field-add" x-on:click="addPsdRow()"><span class="rl-icon" x-icon="plus"></span><span x-t="provider.addExtra"></span></button>
       </fieldset>
       <div class="rl-inline">
         <button type="button" class="btn btn-sm" x-bind:disabled="add.checking || add.key === ''" x-on:click="checkAdd()"><span x-t="providers.check"></span></button>
@@ -302,7 +302,7 @@
             <button type="button" class="btn btn-sm btn-ghost" x-bind:disabled="row.readonly" x-on:click="removeEditPsd(index)" x-tip="common.remove"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.remove"></span></button>
           </div>
         </template>
-        <button type="button" class="btn btn-sm" x-on:click="editPsdRow()"><span class="rl-icon" x-icon="plus"></span><span x-t="provider.addExtra"></span></button>
+        <button type="button" class="btn btn-sm rl-field-add" x-on:click="editPsdRow()"><span class="rl-icon" x-icon="plus"></span><span x-t="provider.addExtra"></span></button>
       </fieldset>
       <p class="rl-error" x-show="edit && edit.error" x-text="edit ? edit.error : ''"></p>
       <div class="rl-dialog-actions">

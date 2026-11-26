@@ -174,8 +174,9 @@ var errorState = []string{"testStatus", "lastError", "errorCode", "lastErrorAt",
 // disk, so it is spelled as stored.
 const lockPrefix = "modelLock_"
 
-// cleanConnection removes the model locks and the error state, keeping every
-// other key's bytes and position.
+// cleanConnection removes the model locks, the error state and the proxy
+// settings this router never dials through, keeping every other key's bytes and
+// position.
 func cleanConnection(data string) (string, error) {
 	d, err := document.ParseDoc(data)
 	if err != nil {
@@ -193,7 +194,8 @@ func cleanConnection(data string) (string, error) {
 			return "", err
 		}
 	}
-	return d.String(), nil
+	out, _, err := repository.StripProxyKeys(d.String())
+	return out, err
 }
 
 // holdsSealed reports whether any string leaf of a JSON document is sealed.

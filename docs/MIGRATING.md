@@ -11,13 +11,13 @@ The source must be a database 9Router itself migrated (schema version 2 and late
 | Copied | Notes |
 |---|---|
 | API keys | With the restriction flag and its allow list |
-| Providers and connections | Per-model locks and error state are cleared; the credential and the rest of the row are kept |
+| Providers and connections | Per-model locks, error state and the per-connection proxy settings are cleared; the credential and the rest of the row are kept |
 | Custom nodes, combos | As stored |
 | Aliases, custom and disabled models, pricing overrides | From the `kv` scopes 9Router writes |
 | Settings | Active skills and savers, and the login policy with `--with-sso` |
 | Usage history | A separate step, `db:import-analytics` |
 
-Left behind: the dashboard password (the new install keeps its own), 9Router's `requireLogin` and `requireApiKey`, and its proxy, tunnel, MITM and observability settings.
+Left behind: the dashboard password (the new install keeps its own), 9Router's `requireLogin` and `requireApiKey`, its per-connection proxy settings (they have no effect here; a backup is taken before a start removes them from a database opened in place), and its proxy pool tables, tunnel, MITM and observability settings.
 
 ---
 

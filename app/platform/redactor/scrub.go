@@ -38,6 +38,13 @@ var (
 	userInfo = regexp.MustCompile(`(://)[^/\s:@]+:[^/\s@]+@`)
 )
 
+var (
+	// queryTrace is the framework query logger's prefix. Its statement has every
+	// bound value inlined, so the literals are masked and the shape stays.
+	queryTrace = regexp.MustCompile(`^\[[\d.]+ms\] \[rows:[^\]]*\] `)
+	sqlLiteral = regexp.MustCompile(`'(?:[^']|'')*'`)
+)
+
 // SensitiveName reports whether a key names a secret.
 func SensitiveName(name string) bool {
 	name = strings.ReplaceAll(strings.ToLower(name), "-", "_")
@@ -53,6 +60,9 @@ func SensitiveName(name string) bool {
 // bearer tokens, JWTs, Google API keys, secret query parameters and the
 // credentials in a URL.
 func Scrub(s string) string {
+	if queryTrace.MatchString(s) {
+		s = sqlLiteral.ReplaceAllString(s, "'"+Redacted+"'")
+	}
 	for _, re := range valuePatterns {
 		s = re.ReplaceAllString(s, Redacted)
 	}

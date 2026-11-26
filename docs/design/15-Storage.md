@@ -77,7 +77,7 @@ DDL follows the reference (`src/lib/db/schema.js`, pinned in `PARITY.md`). Every
 
 | Where | Content |
 |---|---|
-| `providerConnections.data` | `displayName`, `accessToken`, `refreshToken`, `idToken`, `apiKey`, `expiresAt`, `expiresIn`, `lastRefreshAt`, `projectId`, `testStatus`, `lastError`, `errorCode`, `lastErrorAt`, `backoffLevel`, `lastUsedAt`, `consecutiveUseCount`, dynamic `modelLock_<model>`, `providerSpecificData` (copilot token, base URL, API type, account id, device id, proxy settings kept but unused, enabled models, assigned model,.) |
+| `providerConnections.data` | `displayName`, `accessToken`, `refreshToken`, `idToken`, `apiKey`, `expiresAt`, `expiresIn`, `lastRefreshAt`, `projectId`, `testStatus`, `lastError`, `errorCode`, `lastErrorAt`, `backoffLevel`, `lastUsedAt`, `consecutiveUseCount`, dynamic `modelLock_<model>`, `providerSpecificData` (copilot token, base URL, API type, account id, device id, enabled models, assigned model,.) · the five per-connection proxy keys are removed by the import and by the start of a database that carries them (design 14, D214) |
 | `providerNodes.data` | prefix, base URL, API type |
 | `combos.models` | JSON array |
 | `kv` scopes | `modelAliases`, `customModels` (key `providerAlias\|id\|type`), `mitmAlias`, `pricing`, `disabledModels`. Go-only scopes use the prefix `rllm`: `rllmKeyLimits` (key = API key id), `rllmAuth/sessionEpoch`, `rllmCrypto/check` |

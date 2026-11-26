@@ -81,6 +81,51 @@ func TestMigrateTwiceWritesNothing(t *testing.T) {
 	}
 }
 
+// The reference stores per-connection proxy settings this router never dials
+// through. An imported database keeps them only until the next start, which
+// removes them from the connection and nothing else, after a backup.
+func TestStartupRemovesTheReferenceProxySettings(t *testing.T) {
+	s := newMigrated(t)
+	s.exec(t, `INSERT INTO "providerConnections"("id","provider","authType","name","data","createdAt","updatedAt") VALUES ('c1','openai','apikey','main',?,'t','t')`,
+		`{"displayName":"Main","providerSpecificData":{"connectionProxyEnabled":true,"connectionProxyUrl":"http://u:p@h:80",`+
+			`"connectionNoProxy":"localhost","connectionProxyPoolId":"p1","proxyPoolId":"p1","region":"eu"}}`)
+	file := s.SQ.File
+	s.SQ.Close()
+
+	rs := reopen(t, file, tests.DBSecret)
+	if _, err := rs.Migrate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got := rs.one(t, `SELECT "data" FROM "providerConnections" WHERE "id" = 'c1'`)
+	for _, gone := range []string{"connectionProxyEnabled", "connectionProxyUrl", "connectionNoProxy", "connectionProxyPoolId", "proxyPoolId"} {
+		if strings.Contains(got, gone) {
+			t.Errorf("%s survived the start: %s", gone, got)
+		}
+	}
+	if !strings.Contains(got, `"region":"eu"`) {
+		t.Errorf("a field beside the proxy settings was dropped: %s", got)
+	}
+	if strings.Index(got, `"displayName"`) > strings.Index(got, `"providerSpecificData"`) {
+		t.Errorf("the key order changed: %s", got)
+	}
+	// A proxy URL can carry a user and a password, so the rebuild has to run.
+	if b, err := os.ReadFile(file); err != nil {
+		t.Fatal(err)
+	} else if strings.Contains(string(b), "u:p@h:80") {
+		t.Error("the removed proxy URL is still in the database file")
+	}
+	names := backupNames(t, file)
+	if len(names) != 1 || !strings.HasPrefix(names[0], proxyCleanupLabel+"-") {
+		t.Fatalf("backups = %v", names)
+	}
+	if _, err := rs.Migrate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if n := backupNames(t, file); len(n) != 1 {
+		t.Fatalf("a second start took another backup: %v", n)
+	}
+}
+
 func TestMissingColumnIsAddedAfterABackup(t *testing.T) {
 	s := newMigrated(t)
 	s.exec(t, `ALTER TABLE "apiKeys" DROP COLUMN "accessAllow"`)

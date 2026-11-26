@@ -124,6 +124,7 @@ type rig struct {
 	rep  *spy
 	hlt  *healthSpy
 	flg  *flightSpy
+	log  *tests.Log
 }
 
 func instant(time.Duration) <-chan time.Time {
@@ -249,7 +250,7 @@ func newRig(t *testing.T, steps ...tests.Reply) *rig {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &rig{t: t, p: p, st: st, up: up, rows: rows, rep: rep, hlt: hlt, flg: flg}
+	return &rig{t: t, p: p, st: st, up: up, rows: rows, rep: rep, hlt: hlt, flg: flg, log: log}
 }
 
 func (r *rig) conn(provider, key string) repository.Connection {

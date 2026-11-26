@@ -20,7 +20,7 @@ func TestReadCountsEveryCopiedTable(t *testing.T) {
 	}
 }
 
-func TestConnectionsLoseLocksAndErrorStateButKeepEverythingElse(t *testing.T) {
+func TestConnectionsLoseLocksErrorStateAndProxySettings(t *testing.T) {
 	p := read(t, Options{})
 	if len(p.connections) != 2 {
 		t.Fatalf("%d connections", len(p.connections))
@@ -34,7 +34,11 @@ func TestConnectionsLoseLocksAndErrorStateButKeepEverythingElse(t *testing.T) {
 	if got == "" {
 		t.Fatal("conn-1 is missing")
 	}
-	for _, gone := range []string{"testStatus", "lastError", "errorCode", "lastErrorAt", "backoffLevel", "rateLimitedUntil", "modelLock_gpt-5", "modelLock___all"} {
+	for _, gone := range []string{
+		"testStatus", "lastError", "errorCode", "lastErrorAt", "backoffLevel", "rateLimitedUntil", "modelLock_gpt-5", "modelLock___all",
+		"providerSpecificData.connectionProxyEnabled", "providerSpecificData.connectionProxyUrl", "providerSpecificData.connectionNoProxy",
+		"providerSpecificData.connectionProxyPoolId", "providerSpecificData.proxyPoolId",
+	} {
 		if gjson.Get(got, gone).Exists() {
 			t.Errorf("%s survived the clean: %s", gone, got)
 		}

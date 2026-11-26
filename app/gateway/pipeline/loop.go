@@ -143,6 +143,12 @@ func (c *call) serveFail(ctx context.Context) (Output, *accountFail) {
 			// always did, and nothing is locked.
 			return c.upstreamFail(f), f
 		}
+		if ctx.Err() != nil {
+			// The caller's own deadline ran out, not the account's: a probe or an
+			// internal question that gave up locks nothing, and no account is left
+			// to try.
+			return c.upstreamFail(f), f
+		}
 		res, err := c.p.d.Reporter.Fail(ctx, account.FailInput{
 			ConnID: sel.Conn.ID, Provider: c.dest.provider, Model: c.dest.model,
 			Status: f.status, Text: f.text, ResetAt: f.resetAt,

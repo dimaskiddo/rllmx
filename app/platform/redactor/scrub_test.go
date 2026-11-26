@@ -52,6 +52,52 @@ func TestScrub(t *testing.T) {
 	}
 }
 
+// The framework's query logger writes every bound value inside the statement,
+// and an ERROR or a debug line carries a connection document or the settings
+// row with it. The shape of the statement survives; the values do not.
+func TestAQueryLineKeepsItsShapeButNotItsValues(t *testing.T) {
+	tests := []struct {
+		name    string
+		in      string
+		absent  []string
+		present []string
+	}{
+		{
+			"a failed select",
+			`[0.064ms] [rows:-] SELECT "id","provider" FROM "providerConnections" WHERE "id" = '960812d7-b797' AND "name" = 'o''brien'` + "\tcontext deadline exceeded",
+			[]string{"960812d7-b797", "o''brien", "o'brien"},
+			[]string{`"providerConnections"`, "context deadline exceeded", "[0.064ms] [rows:-] ", "'[redacted]'"},
+		},
+		{
+			"a slow write",
+			`[812.5ms] [rows:1] [SLOW] UPDATE "providerConnections" SET "data"='{"apiKey":"enc:v1:abc"}' WHERE "id" = 'x'`,
+			[]string{"enc:v1:abc", "'x'"},
+			[]string{`UPDATE "providerConnections" SET "data"=`, "[SLOW]"},
+		},
+		{
+			"an ordinary message keeps its apostrophe",
+			`upstream refused text="you've reached your limit"`,
+			nil,
+			[]string{`you've reached your limit`},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Scrub(tt.in)
+			for _, s := range tt.absent {
+				if strings.Contains(got, s) {
+					t.Errorf("%q still holds %q", got, s)
+				}
+			}
+			for _, s := range tt.present {
+				if !strings.Contains(got, s) {
+					t.Errorf("%q lost %q", got, s)
+				}
+			}
+		})
+	}
+}
+
 func TestSensitiveName(t *testing.T) {
 	for _, n := range []string{"password", "my_token", "api-key", "Authorization", "x_cookie", "client_secret", "apikey", "code_verifier", "private-key", "session_id", "Credentials"} {
 		if !SensitiveName(n) {

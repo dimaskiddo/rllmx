@@ -74,7 +74,7 @@ window.Alpine.data("usagePage", () => Object.assign({
   points: [],
   metric: "tokens",
   barMetric: "tokens",
-  group: "byModel",
+  group: "byApiKey",
   open: {},
   costMode: false,
   sortKey: "requests",

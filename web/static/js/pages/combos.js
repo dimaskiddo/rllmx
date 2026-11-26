@@ -444,6 +444,10 @@ window.Alpine.data("combosPage", () => Object.assign({
     this.suggest.weights[key] = parseFloat(event.target.value);
   },
 
+  weightPercent(key) {
+    return Math.round(this.suggest.weights[key] * 100) + "%";
+  },
+
   weightQuery() {
     const w = this.suggest.weights;
     return [w.reliability, w.latency, w.cost, w.quality].join(",");

@@ -68,12 +68,14 @@ const settingsDoc = `{"stickyRoundRobinLimit":5,"providerStrategies":{"openai":"
 	`"password":"$2a$10$hash","requireLogin":true,"tunnelEnabled":true,"outboundProxyUrl":"http://p.test",` +
 	`"enableObservability":false,"headroomAutoStart":true,"someFutureKey":1}`
 
-// connData keeps a lock, the whole error state and fields the import must not
-// touch, in a fixed key order, so a byte comparison means something.
+// connData keeps a lock, the whole error state, the proxy settings and fields
+// the import must not touch, in a fixed key order, so a byte comparison means
+// something.
 const connData = `{"apiKey":"sk-upstream","testStatus":"active","lastError":"boom","errorCode":"E1",` +
 	`"lastErrorAt":"2026-01-02T00:00:00.000Z","backoffLevel":3,"rateLimitedUntil":"2026-01-03T00:00:00.000Z",` +
 	`"modelLock_gpt-5":"2026-01-02T00:00:00.000Z","modelLock___all":"2026-01-02T00:00:00.000Z",` +
-	`"stickyCount":2,"providerSpecificData":{"connectionProxyEnabled":false,"region":"eu"}}`
+	`"stickyCount":2,"providerSpecificData":{"connectionProxyEnabled":false,"connectionProxyUrl":"http://u:p@h:80",` +
+	`"connectionNoProxy":"localhost","connectionProxyPoolId":"p1","proxyPoolId":"p1","region":"eu"}}`
 
 func openSource(t testing.TB, path string) contractsdb.DB {
 	t.Helper()

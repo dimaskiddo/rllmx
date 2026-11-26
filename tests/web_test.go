@@ -1901,6 +1901,60 @@ func TestTheComboModelHeadingIsATitle(t *testing.T) {
 	}
 }
 
+// The button that adds a provider field belongs to the block above it, not to
+// the last row inside it, so it stands clear of the rows in both dialogs.
+func TestTheAddFieldButtonStandsClearOfTheRows(t *testing.T) {
+	page := readWeb(t, "static/pages/provider.html")
+	if n := strings.Count(page, `class="btn btn-sm rl-field-add"`); n != 2 {
+		t.Errorf("%d add-field buttons carry the class, want 2 (add and edit)", n)
+	}
+	css := readWeb(t, "static/css/components.css")
+	i := strings.Index(css, ".rl-field-add {")
+	if i < 0 || !strings.Contains(css[i:min(i+120, len(css))], "margin-block-start: 0.75rem") {
+		t.Error("the add-field button has no gap above it")
+	}
+}
+
+// The suggest dialog reads like the rest of the page: each weight shows its
+// value under its label, the fields sit on the shared grid, and the ranked
+// models hang under a heading with the re-probe beside it. A model row keeps
+// its three buttons on one line however long the name is.
+func TestTheSuggestDialogUsesThePageComponents(t *testing.T) {
+	page := readWeb(t, "static/pages/combos.html")
+	start := strings.Index(page, `x-ref="suggest"`)
+	if start < 0 {
+		t.Fatal("the page has no suggest dialog")
+	}
+	dlg := page[start:]
+	dlg = dlg[:strings.Index(dlg, "</dialog>")]
+	if n := strings.Count(dlg, `class="rl-range-value"`); n != 4 {
+		t.Errorf("the suggest dialog shows %d weight values, want 4", n)
+	}
+	if !strings.Contains(dlg, `class="rl-fields"`) {
+		t.Error("the suggest fields are not on the shared grid")
+	}
+	if strings.Contains(dlg, "form-control-sm") {
+		t.Error("the suggest dialog uses the small input the rest of the page does not")
+	}
+	if !strings.Contains(dlg, `x-t="combos.ranked"`) {
+		t.Error("the ranked models have no heading of their own")
+	}
+	css := readWeb(t, "static/css/components.css")
+	i := strings.Index(css, ".rl-model-row .rl-list-actions {")
+	if i < 0 || !strings.Contains(css[i:min(i+160, len(css))], "flex-wrap: nowrap") {
+		t.Error("a model row's actions still shrink and wrap beside a long name")
+	}
+	// The adapter pools draw the same three buttons beside a name, so they take
+	// the same rule.
+	for _, name := range []string{"vision", "audioInput"} {
+		block := page[strings.Index(page, `adapterBlock('`+name+`').models`):]
+		block = block[:strings.Index(block, "</ul>")]
+		if !strings.Contains(block, "rl-model-row") {
+			t.Errorf("the %s adapter pool does not use the model row", name)
+		}
+	}
+}
+
 // Any member can answer, so the only window a combo can promise is its
 // smallest. The reference's card takes the largest output instead, which
 // overstates what the combo serves.
@@ -2304,6 +2358,15 @@ func TestTheUsageBreakdownSortsWhatItShows(t *testing.T) {
 	}
 	if strings.Count(html, "aria-sort") < 6 {
 		t.Error("a breakdown column header has no aria-sort")
+	}
+}
+
+// A key's spend is the question an operator opens this page for, so the
+// breakdown starts on API key rather than on model.
+func TestTheUsageBreakdownStartsOnAPIKeys(t *testing.T) {
+	js := readWeb(t, "static/js/pages/usage.js")
+	if !strings.Contains(js, `group: "byApiKey"`) || strings.Contains(js, `group: "byModel"`) {
+		t.Error("the usage breakdown does not open on API key")
 	}
 }
 

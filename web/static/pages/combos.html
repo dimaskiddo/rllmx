@@ -100,7 +100,7 @@
         <p class="rl-hint" x-show="adapterBlock('vision').enabled && adapterBlock('vision').models.length === 0" x-t="combos.adapterEmpty"></p>
         <ul class="rl-list" x-show="adapterBlock('vision').enabled && adapterBlock('vision').models.length > 0">
           <template x-for="(member, index) in adapterBlock('vision').models" x-bind:key="member">
-            <li class="rl-list-row">
+            <li class="rl-list-row rl-model-row">
               <code class="rl-code" x-text="member"></code>
               <div class="rl-list-actions">
                 <button type="button" class="btn btn-sm btn-ghost" x-bind:disabled="index === 0" x-on:click="moveAdapterModel('vision', index, -1)" x-tip="combos.moveUp"><span class="rl-icon" x-icon="arrow-up"></span><span class="visually-hidden" x-t="combos.moveUp"></span></button>
@@ -135,7 +135,7 @@
         <p class="rl-hint" x-show="adapterBlock('audioInput').enabled && adapterBlock('audioInput').models.length === 0" x-t="combos.adapterEmpty"></p>
         <ul class="rl-list" x-show="adapterBlock('audioInput').enabled && adapterBlock('audioInput').models.length > 0">
           <template x-for="(member, index) in adapterBlock('audioInput').models" x-bind:key="member">
-            <li class="rl-list-row">
+            <li class="rl-list-row rl-model-row">
               <code class="rl-code" x-text="member"></code>
               <div class="rl-list-actions">
                 <button type="button" class="btn btn-sm btn-ghost" x-bind:disabled="index === 0" x-on:click="moveAdapterModel('audioInput', index, -1)" x-tip="combos.moveUp"><span class="rl-icon" x-icon="arrow-up"></span><span class="visually-hidden" x-t="combos.moveUp"></span></button>
@@ -200,54 +200,78 @@
       <h2 id="combo-suggest-title" x-t="combos.suggestTitle"></h2>
       <p class="rl-hint" x-t="combos.suggestHint"></p>
 
-      <div class="rl-grid">
+      <div class="rl-fields">
         <div>
           <label class="form-label" for="w-reliability" x-t="combos.weightReliability"></label>
-          <input class="form-range" id="w-reliability" type="range" min="0" max="1" step="0.05" x-bind:value="suggest.weights.reliability" x-on:change="runSuggest(false)" x-on:input="setWeight('reliability', $event)">
+          <div class="rl-range">
+            <output class="rl-range-value" for="w-reliability" x-text="weightPercent('reliability')"></output>
+            <input class="form-range" id="w-reliability" type="range" min="0" max="1" step="0.05" x-bind:value="suggest.weights.reliability" x-on:change="runSuggest(false)" x-on:input="setWeight('reliability', $event)">
+            <div class="rl-range-scale"><span>0%</span><span>100%</span></div>
+          </div>
         </div>
         <div>
           <label class="form-label" for="w-latency" x-t="combos.weightLatency"></label>
-          <input class="form-range" id="w-latency" type="range" min="0" max="1" step="0.05" x-bind:value="suggest.weights.latency" x-on:change="runSuggest(false)" x-on:input="setWeight('latency', $event)">
+          <div class="rl-range">
+            <output class="rl-range-value" for="w-latency" x-text="weightPercent('latency')"></output>
+            <input class="form-range" id="w-latency" type="range" min="0" max="1" step="0.05" x-bind:value="suggest.weights.latency" x-on:change="runSuggest(false)" x-on:input="setWeight('latency', $event)">
+            <div class="rl-range-scale"><span>0%</span><span>100%</span></div>
+          </div>
         </div>
         <div>
           <label class="form-label" for="w-cost" x-t="combos.weightCost"></label>
-          <input class="form-range" id="w-cost" type="range" min="0" max="1" step="0.05" x-bind:value="suggest.weights.cost" x-on:change="runSuggest(false)" x-on:input="setWeight('cost', $event)">
+          <div class="rl-range">
+            <output class="rl-range-value" for="w-cost" x-text="weightPercent('cost')"></output>
+            <input class="form-range" id="w-cost" type="range" min="0" max="1" step="0.05" x-bind:value="suggest.weights.cost" x-on:change="runSuggest(false)" x-on:input="setWeight('cost', $event)">
+            <div class="rl-range-scale"><span>0%</span><span>100%</span></div>
+          </div>
         </div>
         <div>
           <label class="form-label" for="w-quality" x-t="combos.weightQuality"></label>
-          <input class="form-range" id="w-quality" type="range" min="0" max="1" step="0.05" x-bind:value="suggest.weights.quality" x-on:change="runSuggest(false)" x-on:input="setWeight('quality', $event)">
+          <div class="rl-range">
+            <output class="rl-range-value" for="w-quality" x-text="weightPercent('quality')"></output>
+            <input class="form-range" id="w-quality" type="range" min="0" max="1" step="0.05" x-bind:value="suggest.weights.quality" x-on:change="runSuggest(false)" x-on:input="setWeight('quality', $event)">
+            <div class="rl-range-scale"><span>0%</span><span>100%</span></div>
+          </div>
         </div>
       </div>
 
       <label class="form-label" for="suggest-prompt" x-t="combos.prompt"></label>
       <textarea class="form-control" id="suggest-prompt" rows="2" x-bind:value="suggest.prompt" x-on:input="setField('suggest.prompt', $event)" x-on:blur="runSuggest(false)"></textarea>
 
-      <div class="rl-inline">
+      <div class="rl-fields">
         <div>
           <label class="form-label" for="suggest-name" x-t="combos.name"></label>
-          <input class="form-control form-control-sm" id="suggest-name" type="text" maxlength="100" x-bind:value="suggest.name" x-on:input="setField('suggest.name', $event)">
+          <input class="form-control" id="suggest-name" type="text" maxlength="100" x-bind:value="suggest.name" x-on:input="setField('suggest.name', $event)">
         </div>
         <div>
           <label class="form-label" for="suggest-limit" x-t="combos.limit"></label>
-          <input class="form-control form-control-sm" id="suggest-limit" type="number" min="1" max="50" x-bind:value="suggest.limit" x-on:change="setLimit($event)">
+          <input class="form-control" id="suggest-limit" type="number" min="1" max="50" x-bind:value="suggest.limit" x-on:change="setLimit($event)">
         </div>
-        <button type="button" class="btn btn-sm" x-bind:disabled="suggest.busy === true" x-on:click="runSuggest(true)" x-t="combos.retest"></button>
+      </div>
+
+      <div class="rl-section-head rl-block-start">
+        <div>
+          <h3 class="rl-card-title" x-t="combos.ranked"></h3>
+          <p class="rl-hint" x-show="suggest.summary.total" x-text="suggest.summary.working + ' / ' + suggest.summary.total + ' ' + label('combos.working')"></p>
+        </div>
+        <button type="button" class="btn btn-sm" x-bind:disabled="suggest.busy === true" x-on:click="runSuggest(true)"><span class="rl-icon" x-icon="refresh-cw"></span><span x-t="combos.retest"></span></button>
       </div>
 
       <p class="text-secondary" x-show="suggest.busy" x-t="common.loading"></p>
       <p class="rl-error" x-show="suggest.error" x-text="suggest.error"></p>
-      <p class="rl-hint" x-show="suggest.summary.total" x-text="suggest.summary.working + ' / ' + suggest.summary.total + ' ' + label('combos.working')"></p>
+      <p class="rl-hint" x-show="!suggest.busy && !suggest.error && suggest.models.length === 0" x-t="combos.suggestEmpty"></p>
 
       <ol class="rl-list">
         <template x-for="(model, index) in suggest.models" x-bind:key="model">
-          <li class="rl-list-row">
+          <li class="rl-list-row rl-model-row">
             <div class="rl-list-main">
-              <div class="rl-list-title"><span x-text="'#' + (index + 1)"></span><span x-text="model"></span></div>
+              <span class="badge" x-text="'#' + (index + 1)"></span>
+              <code class="rl-code" x-text="model"></code>
             </div>
           </li>
         </template>
       </ol>
-      <div x-show="excluded().length > 0">
+      <div class="rl-block-start" x-show="excluded().length > 0">
         <h3 class="rl-card-title" x-t="combos.excluded"></h3>
         <ul class="rl-chips">
           <template x-for="row in excluded()" x-bind:key="row.model">
