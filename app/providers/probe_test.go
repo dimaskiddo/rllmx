@@ -4,6 +4,9 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"rllmx/app/gateway/probe"
+	"rllmx/app/store/repository"
 )
 
 func TestTheQueueCollapsesDuplicates(t *testing.T) {
@@ -57,6 +60,39 @@ func TestNextStopsAtShutdown(t *testing.T) {
 	cancel()
 	if _, ok := q.next(ctx); ok {
 		t.Fatal("a cancelled runner took a job")
+	}
+}
+
+// emptyProber is a connection with no model to ping.
+type emptyProber struct{}
+
+func (emptyProber) Connection(context.Context, repository.Connection, bool) []probe.Result {
+	return nil
+}
+
+// pingingProber answers one model.
+type pingingProber struct{}
+
+func (pingingProber) Connection(context.Context, repository.Connection, bool) []probe.Result {
+	return []probe.Result{{OK: true}}
+}
+
+func TestAConnectionWithNoModelGetsItsKeyChecked(t *testing.T) {
+	for name, tc := range map[string]struct {
+		prober connProber
+		check  bool
+	}{
+		"no model":  {emptyProber{}, true},
+		"one model": {pingingProber{}, false},
+	} {
+		checked := 0
+		probeThenCheck(context.Background(), tc.prober, repository.Connection{ID: "c1"}, func(context.Context) error {
+			checked++
+			return nil
+		})
+		if got := checked > 0; got != tc.check {
+			t.Errorf("%s: checked %v, want %v", name, got, tc.check)
+		}
 	}
 }
 

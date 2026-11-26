@@ -31,9 +31,9 @@ const (
 	timeout = 10 * time.Second
 	// parallel is how many pings run at once, after the warm-up.
 	parallel = 3
-	// probeCap is how many candidates a connection is probed for; a
-	// connection that names its own models is not capped.
-	probeCap = 5
+	// probeCap is how many candidates a background probe spends: one could be a
+	// model the provider has retired, and more is spend nobody asked for.
+	probeCap = 3
 	// listCap is the ceiling for an explicit test of every model.
 	listCap = 50
 )
@@ -98,13 +98,11 @@ func New(o Options) *Prober {
 // few minutes unless force says otherwise. The first candidate runs alone, so a
 // token refresh happens once instead of in three parallel pings.
 func (p *Prober) Connection(ctx context.Context, conn repository.Connection, force bool) []Result {
-	list, own, err := p.candidates(ctx, conn)
+	list, err := p.candidates(ctx, conn)
 	if err != nil || len(list) == 0 {
 		return nil
 	}
-	// A connection that names its own models is probed for all of them; the
-	// provider's embedded list is only sampled.
-	if !own && len(list) > probeCap {
+	if len(list) > probeCap {
 		list = list[:probeCap]
 	}
 	return p.run(ctx, conn, list, force)
@@ -113,7 +111,7 @@ func (p *Prober) Connection(ctx context.Context, conn repository.Connection, for
 // All probes every candidate of a connection, up to listCap, for an explicit
 // test. It never reads the cache: the caller asked for an answer now.
 func (p *Prober) All(ctx context.Context, conn repository.Connection) ([]Result, error) {
-	list, _, err := p.candidates(ctx, conn)
+	list, err := p.candidates(ctx, conn)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +130,7 @@ func (p *Prober) Model(ctx context.Context, model string) Result {
 // Probed returns the cached probe of a connection's models, for a read route
 // that ranks on it. It spends nothing.
 func (p *Prober) Probed(ctx context.Context, conn repository.Connection) []Result {
-	list, _, err := p.candidates(ctx, conn)
+	list, err := p.candidates(ctx, conn)
 	if err != nil {
 		return nil
 	}
@@ -149,7 +147,7 @@ func (p *Prober) Probed(ctx context.Context, conn repository.Connection) []Resul
 // Models names the models a connection would be probed for, the provider
 // included, in probe order.
 func (p *Prober) Models(ctx context.Context, conn repository.Connection) ([]string, error) {
-	list, _, err := p.candidates(ctx, conn)
+	list, err := p.candidates(ctx, conn)
 	if err != nil {
 		return nil, err
 	}
@@ -289,11 +287,11 @@ func enabledModels(c repository.Connection) []string {
 
 // candidates is a connection's models in the order they are probed: the
 // default first, then the connection's own list, then the provider's list with
-// the disabled ones already gone. own says the list came from the connection.
-func (p *Prober) candidates(ctx context.Context, conn repository.Connection) (out []candidate, own bool, err error) {
-	prefix, models, own, err := p.list(ctx, conn)
+// the disabled ones already gone.
+func (p *Prober) candidates(ctx context.Context, conn repository.Connection) (out []candidate, err error) {
+	prefix, models, err := p.list(ctx, conn)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	defaultModel, _ := conn.Doc().GetString("defaultModel")
 	out = make([]candidate, 0, len(models)+1)
@@ -309,35 +307,35 @@ func (p *Prober) candidates(ctx context.Context, conn repository.Connection) (ou
 	for _, m := range models {
 		add(m)
 	}
-	return out, own, nil
+	return out, nil
 }
 
-// list names the prefix a connection's models are reached through, the model
-// ids themselves, and whether the connection named them.
-func (p *Prober) list(ctx context.Context, conn repository.Connection) (string, []string, bool, error) {
+// list names the prefix a connection's models are reached through and the model
+// ids themselves.
+func (p *Prober) list(ctx context.Context, conn repository.Connection) (string, []string, error) {
 	if upstream.NodeKind(conn.Provider) != "" {
 		node, found, err := p.o.Nodes().Get(ctx, conn.Provider)
 		if err != nil || !found {
-			return "", nil, false, err
+			return "", nil, err
 		}
 		// A node answers under its prefix; a node without one cannot be
 		// addressed at all.
 		prefix, _ := node.Doc().GetString("prefix")
 		if own := ownModels(conn); len(own) > 0 {
-			return prefix, own, true, nil
+			return prefix, own, nil
 		}
-		return prefix, nil, false, nil
+		return prefix, nil, nil
 	}
 	if own := ownModels(conn); len(own) > 0 {
-		return conn.Provider, own, true, nil
+		return conn.Provider, own, nil
 	}
 	entry, found := p.o.Registry.ByID(conn.Provider)
 	if !found {
-		return "", nil, false, errors.New("probe: unknown provider")
+		return "", nil, errors.New("probe: unknown provider")
 	}
 	list, err := catalog.RegistryModels(ctx, p.o.KV(), entry)
 	if err != nil {
-		return "", nil, false, err
+		return "", nil, err
 	}
 	ids := make([]string, 0, len(list))
 	for _, m := range list {
@@ -346,7 +344,7 @@ func (p *Prober) list(ctx context.Context, conn repository.Connection) (string, 
 		}
 		ids = append(ids, m.ID)
 	}
-	return conn.Provider, ids, false, nil
+	return conn.Provider, ids, nil
 }
 
 // ownModels is the model list the connection itself carries: its stored

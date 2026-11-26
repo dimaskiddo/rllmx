@@ -112,7 +112,7 @@ func addCodexWindows(quotas map[string]Quota, prefix string, snap gjson.Result) 
 			label = prefix + " " + label
 		}
 		q := share(v.Get("used_percent").Float(), stampOf(v.Get("reset_at")))
-		q.DisplayName, q.Recurring = label, true
+		q.DisplayName, q.Recurring = strings.ToUpper(label[:1])+label[1:], true
 		quotas[label] = q
 	}
 }

@@ -138,6 +138,15 @@ func (c *ProvidersController) Test(ctx contractshttp.Context) contractshttp.Resp
 	return ctx.Response().Json(nethttp.StatusOK, out)
 }
 
+// CheckStored checks a stored connection's credential and records the outcome,
+// for a background caller that has no request to answer.
+func (c *ProvidersController) CheckStored(ctx context.Context, st *repository.Store, conn repository.Connection) error {
+	if _, status, msg := c.checkOne(ctx, st, conn); status != 0 {
+		return errors.New(msg)
+	}
+	return nil
+}
+
 // checkResult is what one connection's key check came to.
 type checkResult struct {
 	result    Result

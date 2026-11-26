@@ -181,8 +181,8 @@
                         <div x-show="skill.routable === true">
                           <label class="form-label" x-bind:for="skill.id + '-mode'" x-t="skills.routingMode"></label>
                           <select class="form-select form-select-sm" x-bind:id="skill.id + '-mode'" x-bind:aria-label="label('skills.routingMode')" x-bind:disabled="!rowOn(skill)" x-bind:value="skill.mode" x-on:change="setMode(skill, $event)">
-                            <option value="smart" x-t="skills.smart"></option>
-                            <option value="always" x-t="skills.always"></option>
+                            <option value="smart" x-t="saver.smart"></option>
+                            <option value="always" x-t="saver.always"></option>
                           </select>
                         </div>
                       </div>

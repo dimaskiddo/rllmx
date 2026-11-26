@@ -1712,6 +1712,33 @@ func TestTheQuotaPagePagesItsAccountsAndLimits(t *testing.T) {
 	}
 }
 
+// A skill row's routing select carries the same two choices as the Token Saver
+// page, and reads them in the same words.
+func TestTheSkillsRoutingSelectReadsLikeTheTokenSaver(t *testing.T) {
+	page := readWeb(t, "static/pages/skills.html")
+	for _, want := range []string{`<option value="smart" x-t="saver.smart">`, `<option value="always" x-t="saver.always">`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("skills.html lacks %q", want)
+		}
+	}
+	for _, gone := range []string{`x-t="skills.smart"`, `x-t="skills.always"`} {
+		if strings.Contains(page, gone) {
+			t.Errorf("skills.html still uses %q", gone)
+		}
+	}
+	for _, name := range []string{"static/i18n/en.json", "static/i18n/id.json"} {
+		var words map[string]string
+		if err := json.Unmarshal([]byte(readWeb(t, name)), &words); err != nil {
+			t.Fatal(err)
+		}
+		for _, key := range []string{"skills.smart", "skills.always"} {
+			if _, kept := words[key]; kept {
+				t.Errorf("%s still carries %q", name, key)
+			}
+		}
+	}
+}
+
 // A provider names some windows in its own lowercase ("session", "weekly");
 // the table writes them as its own labels do. A name with a digit, a space or
 // a capital is the provider's or a model's and is left alone.

@@ -31,7 +31,7 @@ Each row carries a stable identifier, what we do differently and why it is bette
 | 21 | API Key Limits | 4 | [21-…](design/21-API-Key-Limits.md) |
 | 22 | Deferred & Out of Scope | 1 | [22-…](design/22-Deferred-and-Out-of-Scope.md) |
 | 23 | CLI | 2 | [23-…](design/23-CLI.md) |
-| **Total** | | **416** | |
+| **Total** | | **417** | |
 
 ## Kinds
 
@@ -39,7 +39,7 @@ Each row is counted once, by the marker in its Why column.
 
 | Kind | Meaning | Rows |
 |---|---|---|
-| Improvement | Differs from the reference for a stated reason | 347 |
+| Improvement | Differs from the reference for a stated reason | 348 |
 | New Feature | Something the reference does not have | 4 |
 | Trade-Off | A deliberate cost | 17 |
 | Scope Cut | A reference feature not adopted | 24 |
@@ -47,7 +47,7 @@ Each row is counted once, by the marker in its Why column.
 | Temporary | Stopgap until a named later change | 5 |
 | Retired | A framework choice or a rule that no longer applies, or a behavior now the reference's own; the identifier stays citable | 16 |
 | Built As Planned | Was only a schedule change and is now done | 0 |
-| **Total** | | **416** |
+| **Total** | | **417** |
 
 Each row names its own identifier; the design doc's `Divergences` table is the list.
 

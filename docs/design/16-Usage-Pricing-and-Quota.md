@@ -77,6 +77,7 @@ The key-only readers added with the 0.5.123 sync: Synthetic (`/v2/quotas`: two r
 
 - One field carries one unit: a window counts in its provider's own numbers, a balance is a credit with a unit, and the share left is always a percentage (D368).
 - A reading and the Codex refill list are cached by connection id for five minutes, `force=1` skips the reading's cache, and nothing is keyed by a token (D369, D463).
+- A window's row key is the provider's own name; its display name is written like the page's other rows: Codex's pairs read `Session` and `Weekly`, and a prefixed pair keeps its prefix capitalized, `Review session` and `Spark weekly`.
 - Every call has an 8 s deadline and a 1 MiB cap, and a whole reading 25 s, under the dashboard's 60 s write deadline (D370).
 - A failure answers the provider and its status, never the upstream body (D371).
 

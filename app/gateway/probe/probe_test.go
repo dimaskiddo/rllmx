@@ -100,14 +100,14 @@ func TestTheProvidersListIsSampledAndTheDefaultModelComesFirst(t *testing.T) {
 	p := newProber(t, h, func() time.Time { return now })
 	conn := repository.Connection{ID: "c1", Provider: "demo", Data: `{"defaultModel":"m3"}`}
 	got := p.Connection(context.Background(), conn, true)
-	if len(got) != probeCap {
-		t.Fatalf("%d results, want %d", len(got), probeCap)
+	if len(got) != 3 {
+		t.Fatalf("%d results, want 3", len(got))
 	}
 	if got[0].ModelID != "m3" || got[0].Model != "demo/m3" {
 		t.Fatalf("first result %+v", got[0])
 	}
 	calls, _, _ := h.state()
-	if len(calls) != probeCap || calls[0] != "demo/m3" {
+	if len(calls) != 3 || calls[0] != "demo/m3" {
 		t.Fatalf("calls %v", calls)
 	}
 }
@@ -123,16 +123,38 @@ func TestANonChatModelIsNotProbed(t *testing.T) {
 	}
 }
 
-func TestAConnectionThatNamesItsOwnModelsIsProbedForAllOfThem(t *testing.T) {
+func TestAConnectionsOwnListIsSampledToo(t *testing.T) {
 	h := &handler{}
 	p := newProber(t, h, time.Now)
 	conn := repository.Connection{ID: "c1", Provider: "demo", Data: `{"providerSpecificData":{"enabledModels":["a","b","c","d","e","f"]}}`}
 	got := p.Connection(context.Background(), conn, true)
-	if len(got) != 6 {
-		t.Fatalf("%d results, want all six", len(got))
+	if len(got) != 3 {
+		t.Fatalf("%d results, want 3", len(got))
 	}
 	if got[0].Model != "demo/a" {
 		t.Fatalf("first %+v", got[0])
+	}
+	if calls, _, _ := h.state(); len(calls) != 3 {
+		t.Fatalf("an enabled list of six spent %d calls", len(calls))
+	}
+}
+
+func TestAConnectionWithNoModelIsNotPinged(t *testing.T) {
+	h := &handler{}
+	nodeID := upstream.NodeOpenAIPrefix + "n1"
+	p := New(Options{
+		Pipeline: func() (Handler, error) { return h, nil },
+		Nodes: func() NodeReader {
+			return nodes{nodeID: {ID: nodeID, Type: upstream.NodeTypeOpenAI, Data: `{"prefix":"mine"}`}}
+		},
+		Now: time.Now,
+	})
+	got := p.Connection(context.Background(), repository.Connection{ID: "c1", Provider: nodeID}, true)
+	if len(got) != 0 {
+		t.Fatalf("%+v", got)
+	}
+	if calls, _, _ := h.state(); len(calls) != 0 {
+		t.Fatalf("a connection with no model spent %v", calls)
 	}
 }
 
@@ -164,7 +186,10 @@ func TestTheFirstPingRunsAloneThenThreeAtOnce(t *testing.T) {
 	h := &handler{delay: 5 * time.Millisecond}
 	p := newProber(t, h, time.Now)
 	conn := repository.Connection{ID: "c1", Provider: "demo", Data: `{"models":["a","b","c","d","e","f","g"]}`}
-	got := p.Connection(context.Background(), conn, true)
+	got, err := p.All(context.Background(), conn)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 7 {
 		t.Fatalf("%d results", len(got))
 	}

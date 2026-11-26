@@ -8,6 +8,8 @@ import (
 
 	"rllmx/app/gateway/catalog"
 	"rllmx/app/gateway/probe"
+	"rllmx/app/http/controllers"
+	"rllmx/app/store/repository"
 )
 
 // queueCap bounds the connections waiting for a probe. A full queue drops a
@@ -121,13 +123,17 @@ func (q *probeQueue) len() int {
 type probeRunner struct {
 	app    foundation.Application
 	probes *ProbeSource
+	// check judges a connection's credential when it has no model to ping; nil
+	// leaves that fallback out.
+	check  func(ctx context.Context, st *repository.Store, conn repository.Connection) error
 	ctx    context.Context
 	cancel context.CancelFunc
 }
 
-func newProbeRunner(app foundation.Application, probes *ProbeSource) *probeRunner {
+func newProbeRunner(app foundation.Application, probes *ProbeSource, h *HTTP) *probeRunner {
 	ctx, cancel := context.WithCancel(app.Context())
-	return &probeRunner{app: app, probes: probes, ctx: ctx, cancel: cancel}
+	ctl := &controllers.ProvidersController{Registry: h.Registry, Checker: h.Checker, Refresher: h.Refresher}
+	return &probeRunner{app: app, probes: probes, check: ctl.CheckStored, ctx: ctx, cancel: cancel}
 }
 
 func (r *probeRunner) Signature() string { return "rllmx.probe" }
@@ -158,7 +164,25 @@ func (r *probeRunner) one(id string) {
 	if err != nil {
 		return
 	}
-	built.Prober.Connection(r.ctx, conn, false)
+	var check func(context.Context) error
+	if r.check != nil {
+		check = func(ctx context.Context) error { return r.check(ctx, store, conn) }
+	}
+	probeThenCheck(r.ctx, built.Prober, conn, check)
+}
+
+// connProber is the one method the runner needs from the prober.
+type connProber interface {
+	Connection(ctx context.Context, conn repository.Connection, force bool) []probe.Result
+}
+
+// probeThenCheck pings a connection and checks its key when there is no model
+// to ping, so a connection with nothing to call still reports on its status.
+func probeThenCheck(ctx context.Context, p connProber, conn repository.Connection, check func(context.Context) error) {
+	if len(p.Connection(ctx, conn, false)) > 0 || check == nil {
+		return
+	}
+	_ = check(ctx)
 }
 
 func (r *probeRunner) Shutdown() error {
