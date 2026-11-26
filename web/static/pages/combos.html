@@ -254,7 +254,7 @@
       <p class="rl-error" x-show="suggest.error" x-text="suggest.error"></p>
       <p class="rl-hint" x-show="!suggest.busy && !suggest.error && suggest.models.length === 0" x-t="combos.suggestEmpty"></p>
 
-      <ol class="rl-list">
+      <ol class="rl-list rl-block-start">
         <template x-for="(model, index) in suggest.models" x-bind:key="model">
           <li class="rl-list-row rl-model-row">
             <div class="rl-list-main">

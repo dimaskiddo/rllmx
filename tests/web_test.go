@@ -1000,6 +1000,9 @@ func TestTestAgainSitsOnItsOwnRowAboveTheRankedList(t *testing.T) {
 	if !strings.Contains(page[weights:again], "rl-actions") {
 		t.Error("Test again is not on a row of its own")
 	}
+	if !strings.Contains(page[ranked:], `class="rl-list rl-block-start"`) {
+		t.Error("the ranked list sits flush against its heading")
+	}
 }
 
 // A spent key budget and a provider's pace are both 429s; the log names the
