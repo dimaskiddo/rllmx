@@ -478,6 +478,29 @@ dialog.rl-dialog > form > h2:first-child {
   margin-block-start: 0;
 }
 
+/* A field and the action beside it share one line: the input gives up whatever
+   room the button needs rather than wrapping below it. */
+.rl-key-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.rl-key-row .form-control {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.rl-key-row .btn {
+  flex: 0 0 auto;
+}
+
+/* A check result belongs to the field it describes, so it sits under it with
+   room to read. */
+.rl-check {
+  margin-block-start: 0.75rem;
+}
+
 /* A switch is a flex row, so its box has no Tabler padding or float and centres
    in a header or a toolbar like the controls beside it. */
 .rl-switch {

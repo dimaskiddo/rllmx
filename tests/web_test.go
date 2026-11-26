@@ -2844,7 +2844,7 @@ func TestSmallHelpersHaveOneImplementation(t *testing.T) {
 // State nothing reads and helpers nobody calls are weight a reader has to
 // carry; an export no other module imports is a public surface nobody asked for.
 func TestNoDeadStateOrUnusedExportsInThePages(t *testing.T) {
-	dead := []string{"addSuggested", "suggest.open", "suggest.context", "bulk.open", "nodeForm.open", "modelAdd.open", "context: {}", "keys.pause\"", "keys.resume\"", "setModelAt"}
+	dead := []string{"addSuggested", "suggest.open", "suggest.context", "bulk.open", "nodeForm.open", "modelAdd.open", "context: {}", "keys.pause\"", "keys.resume\"", "setModelAt", "testModels(", "provider.modelsTitle"}
 	ours(t, func(name, body string) {
 		if !strings.HasSuffix(name, ".js") && !strings.HasSuffix(name, ".html") && !strings.HasSuffix(name, ".json") {
 			return

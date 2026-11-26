@@ -26,7 +26,6 @@ window.Alpine.data("providerPage", () => Object.assign({
   strategy: { roundRobin: false, sticky: "3" },
   selected: [],
   now: Date.now(),
-  results: null,
   testRun: null,
   timer: null,
   pollTimer: null,

@@ -111,15 +111,6 @@ export const connectionMethods = {
     }
   },
 
-  async testModels(conn) {
-    try {
-      this.results = await api("/api/providers/" + encodeURIComponent(conn.id) + "/test-models", { method: "POST", body: {} });
-      this.$refs.resultsDlg.showModal();
-    } catch (err) {
-      toast().error(err.message);
-    }
-  },
-
   async remove(conn) {
     const yes = await ask({ title: t("provider.deleteTitle"), message: t("provider.deleteBody"), confirm: t("common.delete") });
     if (!yes) {

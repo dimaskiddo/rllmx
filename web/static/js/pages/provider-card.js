@@ -1,6 +1,6 @@
 // What the provider list and a provider's own page share: the words for a
-// custom endpoint, the check that a key change invalidates, and the results
-// dialog. Mixed into both page components.
+// custom endpoint, the check that a key change invalidates, and the list's
+// results dialog. Mixed into both page components.
 import { t } from "/static/js/ui/i18n.js";
 
 // nodeTypeLabel is the words for a custom endpoint's kind.

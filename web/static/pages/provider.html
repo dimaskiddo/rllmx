@@ -93,7 +93,6 @@
               <button type="button" class="btn btn-sm btn-ghost" x-bind:disabled="busy('move')" x-on:click="move(index, -1)" x-tip="provider.moveUp"><span class="rl-icon" x-icon="arrow-up"></span><span class="visually-hidden" x-t="provider.moveUp"></span></button>
               <button type="button" class="btn btn-sm btn-ghost" x-bind:disabled="busy('move')" x-on:click="move(index, 1)" x-tip="provider.moveDown"><span class="rl-icon" x-icon="arrow-down"></span><span class="visually-hidden" x-t="provider.moveDown"></span></button>
               <button type="button" class="btn btn-sm btn-ghost" x-bind:disabled="busy('test:' + conn.id)" x-on:click="test(conn)" x-tip="provider.test"><span class="rl-icon" x-icon="activity"></span><span class="visually-hidden" x-t="provider.test"></span></button>
-              <button type="button" class="btn btn-sm btn-ghost" x-on:click="testModels(conn)" x-tip="provider.testModels"><span class="rl-icon" x-icon="layers"></span><span class="visually-hidden" x-t="provider.testModels"></span></button>
               <button type="button" class="btn btn-sm btn-ghost" x-on:click="openEdit(conn)" x-tip="common.edit"><span class="rl-icon" x-icon="pencil"></span><span class="visually-hidden" x-t="common.edit"></span></button>
               <button type="button" class="btn btn-sm btn-ghost" x-bind:disabled="busy('toggle:' + conn.id)" x-on:click="toggle(conn)" x-bind:title="conn.isActive === false ? label('keys.active') : label('keys.inactive')"><span class="rl-icon" x-show="conn.isActive !== false" x-icon="pause"></span><span class="rl-icon" x-show="conn.isActive === false" x-icon="play"></span><span class="visually-hidden" x-text="conn.isActive === false ? label('keys.active') : label('keys.inactive')"></span></button>
               <button type="button" class="btn btn-sm btn-ghost-danger" x-on:click="remove(conn)" x-tip="common.delete"><span class="rl-icon" x-icon="trash"></span><span class="visually-hidden" x-t="common.delete"></span></button>
@@ -180,25 +179,6 @@
     </div>
   </section>
 
-  <dialog class="rl-dialog" x-ref="resultsDlg" aria-labelledby="dlg-resultsDlg-title">
-    <button type="button" class="btn btn-sm btn-ghost rl-dialog-close" x-tip="common.close" x-on:click="$el.closest('dialog').close()"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.close"></span></button>
-    <h2 id="dlg-resultsDlg-title" x-t="provider.modelsTitle"></h2>
-    <ul class="rl-list">
-      <template x-for="row in (results ? results.results : [])" x-bind:key="row.modelId || row.model">
-        <li class="rl-list-row">
-          <div class="rl-list-main">
-            <div class="rl-list-title"><span x-text="row.modelId || row.model"></span><span class="badge" x-bind:data-ok="row.ok ? 'yes' : 'no'" x-text="row.ok ? label('providers.ok') : label('providers.failedOne')"></span></div>
-            <p class="rl-hint" x-show="row.error" x-text="row.error"></p>
-          </div>
-          <div class="rl-list-actions"><span class="rl-hint" x-text="row.latencyMs !== undefined ? row.latencyMs + ' ms' : ''"></span></div>
-        </li>
-      </template>
-    </ul>
-    <div class="rl-dialog-actions">
-      <button type="button" class="btn btn-primary" x-on:click="closeResults()" x-t="common.done"></button>
-    </div>
-  </dialog>
-
   <dialog class="rl-dialog" x-ref="addDlg" x-on:close="forgetAdd()" aria-labelledby="dlg-addDlg-title">
     <button type="button" class="btn btn-sm btn-ghost rl-dialog-close" x-tip="common.close" x-on:click="$el.closest('dialog').close()"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.close"></span></button>
     <form x-on:submit.prevent="saveAdd()">
@@ -284,12 +264,14 @@
       <input class="form-control" id="edit-priority" type="number" min="1" max="1000000" x-bind:value="edit ? edit.priority : ''" x-on:input="setField('edit.priority', $event)">
       <div x-show="editUsesKey()">
         <label class="form-label" for="edit-key" x-t="provider.apiKey"></label>
-        <input class="form-control" id="edit-key" type="password" autocomplete="off" x-bind:value="edit ? edit.apiKey : ''" x-on:input="setEditKey($event)">
-        <p class="rl-hint" x-t="provider.apiKeyHint"></p>
-        <div class="rl-inline">
+        <div class="rl-key-row">
+          <input class="form-control" id="edit-key" type="password" autocomplete="off" x-bind:value="edit ? edit.apiKey : ''" x-on:input="setEditKey($event)">
           <button type="button" class="btn btn-sm" x-bind:disabled="!edit || edit.checking || edit.apiKey === ''" x-on:click="checkEdit()"><span x-t="providers.check"></span></button>
+        </div>
+        <p class="rl-hint" x-t="provider.apiKeyHint"></p>
+        <div class="rl-check" x-show="edit && edit.check && !edit.check.unsupported">
           <span class="badge badge-ok" x-show="edit && edit.check && edit.check.valid" x-t="providers.valid"></span>
-          <span class="badge badge-err" x-show="edit && edit.check && !edit.check.valid && !edit.check.unsupported" x-t="providers.invalid"></span>
+          <span class="badge badge-err" x-show="edit && edit.check && !edit.check.valid" x-t="providers.invalid"></span>
         </div>
         <p class="rl-error" x-show="edit && edit.check && !edit.check.valid && edit.check.error" x-text="edit.check ? edit.check.error : ''"></p>
       </div>
