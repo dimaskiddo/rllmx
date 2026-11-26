@@ -3,6 +3,7 @@ module rllmx
 go 1.26.0
 
 require (
+	github.com/andybalholm/brotli v1.2.8
 	github.com/beevik/etree v1.8.1
 	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/gofrs/flock v0.13.1

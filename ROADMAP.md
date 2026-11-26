@@ -23,7 +23,7 @@ Status words: **built** (implemented and tested), **partial** (some behavior mis
 | Area | Status |
 |---|---|
 | SQLite storage, migration, credential sealing | built |
-| PostgreSQL storage | built |
+| PostgreSQL storage | built (the `make test-pg` run against a server is still pending) |
 | Import from an existing 9router database (config and usage history) | built |
 | Usage rows, pricing and cost | built |
 | Usage dashboard routes (stats, chart, history, logs, providers, live feed), per-connection quota readings with the two refill routes, and the client connection list | built |

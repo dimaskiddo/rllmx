@@ -7,6 +7,8 @@ import (
 	nethttp "net/http"
 	"strconv"
 	"strings"
+
+	"github.com/andybalholm/brotli"
 )
 
 // compressThreshold is the smallest answer worth compressing. Below it the
@@ -17,6 +19,10 @@ const compressThreshold = 1024
 // or audio, where a high level spends CPU for a small gain on dense data.
 const gzipLevel = gzip.BestSpeed
 
+// brotliLevel is the usual dynamic-content level: 0 gives back the ratio gzip
+// already has, and the default 6 spends CPU on dense data for little more.
+const brotliLevel = 4
+
 // encoder builds one response encoder.
 type encoder struct {
 	name string
@@ -24,9 +30,10 @@ type encoder struct {
 }
 
 // encoders are offered in this order, and the first the client accepts wins.
-// Brotli joins ahead of gzip once its module is approved (NOTES, dependency
-// queue): it is not in the standard library.
 var encoders = []encoder{
+	{name: "br", wrap: func(w io.Writer) io.WriteCloser {
+		return brotli.NewWriterLevel(w, brotliLevel)
+	}},
 	{name: "gzip", wrap: func(w io.Writer) io.WriteCloser {
 		gw, _ := gzip.NewWriterLevel(w, gzipLevel)
 		return gw

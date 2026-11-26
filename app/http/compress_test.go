@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/andybalholm/brotli"
+
 	"rllmx/app/llm/stream"
 )
 
@@ -63,6 +65,12 @@ func decoded(t *testing.T, rec *httptest.ResponseRecorder) string {
 		out, err := io.ReadAll(r)
 		if err != nil {
 			t.Fatalf("gzip: %v", err)
+		}
+		return string(out)
+	case "br":
+		out, err := io.ReadAll(brotli.NewReader(rec.Body))
+		if err != nil {
+			t.Fatalf("br: %v", err)
 		}
 		return string(out)
 	}
@@ -115,12 +123,44 @@ func TestTheCompressionDecision(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			h := Compress(true, answer(tc.status, tc.header, tc.body))
 			rec := serve(h, tc.method, tc.accept, "")
-			got := rec.Header().Get("Content-Encoding") == "gzip"
+			// One of ours, or a coding the handler set and the wrapper kept.
+			enc := rec.Header().Get("Content-Encoding")
+			got := enc == "gzip" || enc == "br"
 			if got != tc.encoded {
 				t.Fatalf("encoded = %v, want %v (headers %v)", got, tc.encoded, rec.Header())
 			}
 			if body := decoded(t, rec); body != tc.body {
 				t.Fatalf("the body changed: %d bytes, want %d", len(body), len(tc.body))
+			}
+		})
+	}
+}
+
+func TestBrotliIsChosenAheadOfGzip(t *testing.T) {
+	body := plain(4096)
+	cases := []struct{ accept, want string }{
+		{"br", "br"},
+		{"gzip, br", "br"},
+		{"gzip", "gzip"},
+		{"br;q=0.5, gzip", "gzip"},
+		{"gzip, br;q=0", "gzip"},
+		{"*", "br"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.accept, func(t *testing.T) {
+			h := Compress(true, answer(200, map[string]string{"Content-Type": "application/json"}, body))
+			rec := serve(h, "GET", tc.accept, "")
+			if got := rec.Header().Get("Content-Encoding"); got != tc.want {
+				t.Fatalf("encoding = %q, want %q", got, tc.want)
+			}
+			if rec.Header().Get("Content-Length") != "" {
+				t.Fatalf("an encoded answer kept its length: %v", rec.Header())
+			}
+			if !strings.Contains(strings.ToLower(strings.Join(rec.Header().Values("Vary"), ",")), "accept-encoding") {
+				t.Fatalf("Vary = %v", rec.Header().Values("Vary"))
+			}
+			if got := decoded(t, rec); got != body {
+				t.Fatalf("the body changed: %d bytes, want %d", len(got), len(body))
 			}
 		})
 	}
@@ -403,9 +443,15 @@ func FuzzAcceptEncoding(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, raw string) {
 		enc := acceptedEncoder(raw)
-		if enc != "" && enc != "gzip" {
-			t.Fatalf("%q chose %q, which nothing offers", raw, enc)
+		if enc == "" {
+			return
 		}
+		for _, e := range encoders {
+			if e.name == enc {
+				return
+			}
+		}
+		t.Fatalf("%q chose %q, which nothing offers", raw, enc)
 	})
 }
 
