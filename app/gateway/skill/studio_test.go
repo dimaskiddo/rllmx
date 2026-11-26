@@ -88,7 +88,7 @@ func TestDraftChecksTheHookAndPrompt(t *testing.T) {
 	}{
 		"install hook": {func(d *Draft) { d.Hook = "install-cli" }, "hook"},
 		"no prompt":    {func(d *Draft) { d.Prompt = "" }, "prompt_template"},
-		"controlled":   {func(d *Draft) { d.Prompt = "a\nb" }, "control"},
+		"controlled":   {func(d *Draft) { d.Prompt = "a\x00b" }, "control"},
 		"bad rule": {func(d *Draft) {
 			d.Hook = "pre-route"
 			d.Prompt = ""
@@ -108,6 +108,20 @@ func TestDraftChecksTheHookAndPrompt(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), c.bad) {
 			t.Errorf("%s: %v (want %q)", name, err, c.bad)
 		}
+	}
+}
+
+// A prompt is message text, so a markdown block keeps its lines and tabs.
+func TestAPromptMayCarryLineBreaks(t *testing.T) {
+	dir := t.TempDir()
+	d := customDraft()
+	d.Prompt = "# Rules\n\n- be concise\n\tkeep it short\n"
+	if _, err := Create(dir, d); err != nil {
+		t.Fatalf("a multi-line prompt: %v", err)
+	}
+	_, prompt, err := LoadDir(filepath.Join(dir, "mine"))
+	if err != nil || prompt != d.Prompt {
+		t.Fatalf("prompt %q err %v", prompt, err)
 	}
 }
 

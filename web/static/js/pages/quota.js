@@ -9,6 +9,19 @@ import { clampInt } from "/static/js/ui/fields.js";
 
 const quotaPageSize = 10;
 
+// windowWords are the windows a provider reports. One written in its own
+// lowercase is titled for the table; a model id or any other name it wrote
+// keeps its case.
+const windowWords = ["session", "weekly", "monthly", "rolling", "hourly", "daily"];
+
+function windowTitle(name) {
+  const word = name.toLowerCase();
+  if (windowWords.indexOf(word) < 0) {
+    return name;
+  }
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
 // windowName is the quota table's own name for a window a grant refills, so
 // the confirmation reads like the rows above it.
 function windowName(clear) {
@@ -24,7 +37,7 @@ function windowName(clear) {
   if (clear.startsWith("seven_day_")) {
     return "Weekly " + clear.slice("seven_day_".length) + " (7d)";
   }
-  return clear;
+  return windowTitle(clear);
 }
 
 // quotaRank orders the windows a provider reports: the shortest first, then the
@@ -176,7 +189,7 @@ window.Alpine.data("quotaPage", () => Object.assign({
     }
     return Object.entries(reading.quotas || {}).map(([key, row]) => ({
       key: key,
-      name: row.displayName || key,
+      name: windowTitle(row.displayName || key),
       used: row.used,
       total: row.total,
       percent: Math.max(0, Math.min(100, row.remainingPercentage)),
@@ -364,7 +377,7 @@ window.Alpine.data("quotaPage", () => Object.assign({
           status: this.creditWord(credit),
           label: credit.label || credit.id || "",
           left: (credit.resetsLeft || 0) + " / " + (credit.resetsTotal || 0),
-          refills: (credit.clears || []).join(", "),
+          refills: (credit.clears || []).map(windowName).join(", "),
           useBy: this.formatDate(credit.endsAt),
           remaining: this.left(credit.endsAt),
         }));

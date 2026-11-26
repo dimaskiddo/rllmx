@@ -9,6 +9,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"unicode"
 
 	"rllmx/app/platform/file"
 	"rllmx/app/platform/text"
@@ -112,7 +113,7 @@ func (d Draft) checkPrompt(hook string, hasRules bool) error {
 	switch {
 	case len(d.Prompt) > maxPrompt:
 		return fmt.Errorf("%w: the prompt is over %d bytes", ErrInvalid, maxPrompt)
-	case text.HasControl(d.Prompt):
+	case promptHasControl(d.Prompt):
 		return fmt.Errorf("%w: the prompt carries control characters", ErrInvalid)
 	case hook == "system-prompt" && prompt == "":
 		return fmt.Errorf("%w: a system-prompt skill needs prompt_template", ErrInvalid)
@@ -120,6 +121,15 @@ func (d Draft) checkPrompt(hook string, hasRules bool) error {
 		return fmt.Errorf("%w: a %s skill needs rules", ErrInvalid, hook)
 	}
 	return nil
+}
+
+// promptHasControl reports a control character a prompt may not carry. A prompt
+// is message text, so a tab and a line break belong to it; a NUL, a DEL or a C1
+// character does not.
+func promptHasControl(s string) bool {
+	return strings.ContainsFunc(s, func(r rune) bool {
+		return unicode.IsControl(r) && r != '\n' && r != '\r' && r != '\t'
+	})
 }
 
 // Create writes a new custom skill folder and answers the id it used. A draft

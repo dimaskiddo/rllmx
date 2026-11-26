@@ -3,7 +3,7 @@
 import { api } from "/static/js/ui/api.js";
 import { t } from "/static/js/ui/i18n.js";
 import { toast } from "/static/js/ui/toast.js";
-import { cooldownOf } from "./provider-status.js";
+import { checkAllowsSave, cooldownOf } from "./provider-status.js";
 import { formatMethods } from "/static/js/ui/format.js";
 import { fieldMethods } from "/static/js/ui/fields.js";
 import { cardMethods } from "./provider-card.js";
@@ -60,6 +60,20 @@ export function effectiveStatus(conn, now) {
   return cooldownOf(conn, now) > 0 ? status : "active";
 }
 
+// showsFailure is true while a stored failure still describes the connection:
+// it is cooling down, its check failed, or its login expired.
+export function showsFailure(conn, now) {
+  const status = effectiveStatus(conn, now);
+  return status === "unavailable" || status === "error" || status === "expired";
+}
+
+// currentTag names the failure a row shows: the status code of a live cooldown
+// and nothing else. A failed check or an expired login already says so in its
+// status badge, and a healed connection's old code is not its state.
+export function currentTag(conn, now) {
+  return effectiveStatus(conn, now) === "unavailable" ? errorTag(conn) : "";
+}
+
 
 // statsOf counts one provider's connections and names its latest failure. A
 // key serving out a lock is cooling down, not failing.
@@ -79,7 +93,7 @@ function statsOf(connections, now) {
     if (status === "error" || status === "expired") {
       failed++;
     }
-    if (conn.lastErrorAt && (!latest || conn.lastErrorAt > latest.lastErrorAt)) {
+    if (showsFailure(conn, now) && conn.lastErrorAt && (!latest || conn.lastErrorAt > latest.lastErrorAt)) {
       latest = conn;
     }
   }
@@ -91,7 +105,7 @@ function statsOf(connections, now) {
     cooling: cooling,
     allDisabled: allDisabled,
     noAuth: connections.some((conn) => conn.noAuth === true),
-    tag: latest ? errorTag(latest) : "",
+    tag: latest ? currentTag(latest, now) : "",
     errorAt: latest ? latest.lastErrorAt : "",
   };
 }
@@ -353,6 +367,17 @@ window.Alpine.data("providersPage", () => Object.assign({
       body.apiType = this.add.apiType;
     }
     try {
+      // The key here is optional and used only for the check; when one was
+      // typed it has to pass like any other.
+      if (this.add.apiKey !== "") {
+        await this.checkNode();
+        if (!checkAllowsSave(this.add.check)) {
+          if (this.add.error === "") {
+            this.add.error = t("provider.checkRequired");
+          }
+          return;
+        }
+      }
       await api("/api/provider-nodes", { method: "POST", body: body });
       this.closeAdd();
       await this.load();

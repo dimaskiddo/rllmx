@@ -74,13 +74,47 @@ func Cloak(body []byte, d *Disguise) ([]byte, map[string]string) {
 // withBilling puts the billing block first in the system prompt. The hash is
 // taken over the body as it stands, before tools are renamed.
 func withBilling(body []byte, version string) []byte {
+	return prependBilling(body, billingText(body, version))
+}
+
+// BillingOf reads the billing line a Claude Code client put first in its system,
+// or "" when the request carries none.
+func BillingOf(body []byte) string {
+	if !gjson.ValidBytes(body) || !gjson.ParseBytes(body).IsObject() {
+		return ""
+	}
+	sys := gjson.GetBytes(body, "system")
+	text := sys.Get("0.text").String()
+	if sys.Type == gjson.String {
+		text = sys.String()
+	}
+	if !strings.HasPrefix(strings.ToLower(text), billingPrefix) {
+		return ""
+	}
+	if i := strings.IndexByte(text, '\n'); i >= 0 {
+		text = text[:i]
+	}
+	return strings.TrimRight(text, "\r")
+}
+
+// WithBillingLine puts a line the client already sent back first in the system,
+// for a native client whose body the reader normalized. A line without the
+// prefix is ignored.
+func WithBillingLine(body []byte, line string) []byte {
+	if !strings.HasPrefix(strings.ToLower(line), billingPrefix) {
+		return body
+	}
+	return prependBilling(body, line)
+}
+
+func prependBilling(body []byte, line string) []byte {
 	sys := gjson.GetBytes(body, "system")
 	if sys.IsArray() {
 		if first := sys.Get("0.text").String(); strings.HasPrefix(first, billingPrefix) {
 			return body
 		}
 	}
-	block := `{"type":"text","text":` + document.Encode(billingText(body, version)) + `}`
+	block := `{"type":"text","text":` + document.Encode(line) + `}`
 	var blocks string
 	switch {
 	case sys.IsArray():

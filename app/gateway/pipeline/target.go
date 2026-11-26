@@ -155,6 +155,9 @@ func (c *call) destinationOf(ctx context.Context, t routing.Target) (destination
 	d.format = upstream.FormatOpenAI
 	if kind == upstream.NodeTypeAnthropic {
 		d.format = upstream.FormatClaude
+		// The node speaks Anthropic's API, so it implements the context-editing
+		// block a Claude client sends.
+		d.entry.Transport.Quirks.KeepContextManagement = true
 	} else if api, _ := n.Doc().GetString("apiType"); api == "responses" {
 		d.format = upstream.FormatResponses
 	}

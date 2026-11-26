@@ -24,7 +24,7 @@ func readSynthetic(ctx context.Context, r *Reader, e upstream.Entry, a Access) (
 func parseSynthetic(raw []byte) Reading {
 	out := Reading{Quotas: map[string]Quota{}, Plan: "Synthetic"}
 	data := gjson.ParseBytes(raw)
-	for _, b := range []struct{ name, path string }{{"Subscription", "subscription"}, {"Search (hourly)", "search.hourly"}} {
+	for _, b := range []struct{ name, path string }{{"Subscription", "subscription"}, {"Search (Hourly)", "search.hourly"}} {
 		bucket := data.Get(b.path)
 		total := bucket.Get("limit").Float()
 		if total <= 0 {

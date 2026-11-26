@@ -269,6 +269,29 @@ func TestAClaudeCodeClientIsNeverDisguised(t *testing.T) {
 	}
 }
 
+func TestAClaudeCodeClientsOwnBillingLineSurvivesTheRoundTrip(t *testing.T) {
+	r := newRig(t, tests.Reply{ContentType: "application/json", Body: claudeMsg})
+	r.token("sub", "a@x.test", oauthToken, "")
+	const line = "x-anthropic-billing-header: cc_version=2.1.322.abc; cc_entrypoint=sdk-cli; cch=12345;"
+	body := `{"model":"sub/claude-x","max_tokens":50,"system":[{"type":"text","text":"` + line + `"},{"type":"text","text":"You are Claude Code."}],"messages":[{"role":"user","content":"hi"}]}`
+	rec := httptest.NewRecorder()
+	open := func() (stream.Client, error) { return stream.NewSSE(rec, stream.Options{}) }
+	in := Input{Path: "/v1/messages", Body: []byte(body), Caller: identity.Caller{ID: "key-1"}, RequestID: "r", Header: PickHeaders(http.Header{"User-Agent": {"claude-cli/2.1.0 (external, cli)"}})}
+	if out := r.p.Handle(context.Background(), in, open); out.Status != 200 {
+		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+	call := r.up.Calls()[0]
+	if got := gjson.GetBytes(call.Body, "system.0.text").String(); got != line {
+		t.Fatalf("the client's billing line was lost: %s", call.Body)
+	}
+	if got := gjson.GetBytes(call.Body, "system.1.text").String(); got != "You are Claude Code." {
+		t.Fatalf("the conversation system changed: %s", call.Body)
+	}
+	if gjson.GetBytes(call.Body, "metadata").Exists() || gjson.GetBytes(call.Body, "tools").Exists() {
+		t.Fatalf("a native request was disguised: %s", call.Body)
+	}
+}
+
 func TestAnAPIKeyIsNeverDisguisedAndKeepsItsHeaders(t *testing.T) {
 	r := newRig(t, tests.Reply{ContentType: "application/json", Body: claudeMsg})
 	if _, err := r.st.Connections().Create(context.Background(), repository.ConnInput{

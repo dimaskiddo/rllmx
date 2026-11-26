@@ -9,7 +9,7 @@ import { loginMethods } from "./provider-login.js";
 import { modelMethods } from "./provider-models.js";
 import { settingsMethods } from "./provider-settings.js";
 import { cooldownOf, span } from "./provider-status.js";
-import { effectiveStatus, errorTag } from "./providers.js";
+import { effectiveStatus, showsFailure, currentTag } from "./providers.js";
 import { cardMethods } from "./provider-card.js";
 import { fieldMethods } from "/static/js/ui/fields.js";
 
@@ -195,8 +195,12 @@ window.Alpine.data("providerPage", () => Object.assign({
     return "badge-ok";
   },
 
+  failed(conn) {
+    return showsFailure(conn, this.now);
+  },
+
   tag(conn) {
-    return errorTag(conn);
+    return currentTag(conn, this.now);
   },
 
   cooldown(conn) {

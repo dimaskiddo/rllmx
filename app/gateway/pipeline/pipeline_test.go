@@ -436,6 +436,22 @@ func TestClaudeNodeUsesItsOwnEndpointAndKeyHeader(t *testing.T) {
 	}
 }
 
+// An Anthropic-compatible node implements the context-editing field a Claude
+// Code client sends, so the request keeps it; only a gateway that rejects it
+// may drop it.
+func TestAnAnthropicNodeKeepsTheClientsContextManagement(t *testing.T) {
+	msg := `{"id":"msg_1","type":"message","role":"assistant","model":"claude-x","content":[{"type":"text","text":"hey"}],"stop_reason":"end_turn","usage":{"input_tokens":4,"output_tokens":2}}`
+	r := newRig(t, tests.Reply{ContentType: "application/json", Body: msg})
+	r.conn(claudeID, "ck")
+	body := `{"model":"cm","max_tokens":9,"context_management":{"edits":[]},"messages":[{"role":"user","content":"hi"}]}`
+	if out, _ := r.do("/v1/messages", body); out.Status != 200 {
+		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+	if call := r.up.Calls()[0]; !gjson.GetBytes(call.Body, "context_management").Exists() {
+		t.Fatalf("the client's context_management was dropped: %s", call.Body)
+	}
+}
+
 func TestRateLimitedAccountFallsBackToTheNext(t *testing.T) {
 	r := newRig(t, tests.Reply{Status: 429, Body: `{"error":{"message":"rate limit reached"}}`}, tests.Reply{ContentType: "application/json", Body: okJSON})
 	r.conn(nodeID, "k1")

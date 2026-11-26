@@ -197,6 +197,11 @@ dialog.rl-dialog {
   color: var(--tblr-body-color);
 }
 
+/* A table with five columns needs the extra room. */
+dialog.rl-dialog-lg {
+  width: min(48rem, calc(100vw - 2rem));
+}
+
 dialog.rl-dialog .form-check {
   margin-block-start: 0.75rem;
 }
@@ -559,6 +564,12 @@ dialog.rl-dialog > form > h2:first-child {
    spacer. A row without actions keeps the full width. */
 .rl-list-row:has(> .rl-list-actions) > .rl-list-main {
   max-width: 75%;
+}
+
+/* The actions set the row's height, so the text, the drag handle and the
+   buttons share a line instead of the text riding above the buttons. */
+.rl-list-row:has(> .rl-list-actions) {
+  align-items: center;
 }
 
 .rl-list-title {

@@ -1273,6 +1273,33 @@ func TestAProviderCardShowsOneFailureBadge(t *testing.T) {
 	}
 }
 
+// A connection that healed keeps its last failure out of sight: a stored code
+// or message shows only while the connection cools down, failed a check, or its
+// login expired.
+func TestAHealedConnectionShowsNoFailureBadge(t *testing.T) {
+	js := readWeb(t, "static/js/pages/providers.js")
+	for _, want := range []string{
+		"export function showsFailure(conn, now)",
+		"export function currentTag(conn, now)",
+		`effectiveStatus(conn, now) === "unavailable" ? errorTag(conn) : ""`,
+		"showsFailure(conn, now) && conn.lastErrorAt",
+		`tag: latest ? currentTag(latest, now) : ""`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("providers.js lacks %q", want)
+		}
+	}
+	if page := readWeb(t, "static/pages/provider.html"); !strings.Contains(page, `x-show="failed(conn) && conn.lastError"`) {
+		t.Error("the row's message is not tied to the connection's state")
+	}
+	pjs := readWeb(t, "static/js/pages/provider.js")
+	for _, want := range []string{"failed(conn) {", "return showsFailure(conn, this.now)", "return currentTag(conn, this.now)"} {
+		if !strings.Contains(pjs, want) {
+			t.Errorf("provider.js lacks %q", want)
+		}
+	}
+}
+
 // Copying a key is silent; the eye button is the only way to put it on screen.
 func TestCopyingAKeyDoesNotRevealIt(t *testing.T) {
 	js := readWeb(t, "static/js/pages/endpoint.js")
@@ -1471,6 +1498,46 @@ func TestTheCaptchaWidgetFollowsTheFormAndTheTheme(t *testing.T) {
 	}
 }
 
+// A row with actions is as tall as its buttons, so its text and drag handle have
+// to sit on the buttons' line rather than the row's top.
+func TestAListRowCentresItsContentAgainstItsActions(t *testing.T) {
+	css := readWeb(t, "static/css/components.css")
+	start := strings.Index(css, ".rl-list-row:has(> .rl-list-actions) {")
+	if start < 0 {
+		t.Fatal("an action row has no rule")
+	}
+	end := strings.Index(css[start:], "}")
+	if rule := css[start : start+end]; !strings.Contains(rule, "align-items: center") {
+		t.Error("an action row aligns its content to the top")
+	}
+}
+
+// The expiry dialog carries five columns, and its refills must read like the
+// quota table's windows instead of the provider's own ids.
+func TestTheExpiryDialogIsWideAndNamesItsWindows(t *testing.T) {
+	if page := readWeb(t, "static/pages/quota.html"); !strings.Contains(page, `class="rl-dialog rl-dialog-lg"`) {
+		t.Error("the expiry dialog keeps the narrow width")
+	}
+	css := readWeb(t, "static/css/components.css")
+	start := strings.Index(css, "dialog.rl-dialog-lg {")
+	if start < 0 {
+		t.Fatal("the wide dialog has no rule")
+	}
+	end := strings.Index(css[start:], "}")
+	if rule := css[start : start+end]; !strings.Contains(rule, "width: min(48rem") {
+		t.Error("the wide dialog is no wider than the base one")
+	}
+	js := readWeb(t, "static/js/pages/quota.js")
+	if expiry := methodBody(js, "async openExpiry"); !strings.Contains(expiry, `clears || []).map(windowName)`) {
+		t.Error("the expiry table prints a raw window id")
+	}
+	for _, want := range []string{`case "five_hour":`, `case "seven_day":`, `startsWith("seven_day_")`, `"Session (5h)"`, `"Weekly (7d)"`} {
+		if !strings.Contains(js, want) {
+			t.Errorf("windowName lacks %q", want)
+		}
+	}
+}
+
 // An account single sign-on provisioned has no password the user knows, so the
 // dialog asks only for the new one until they set it.
 func TestASetPasswordDialogAsksNoCurrentPasswordWhenNoneIsKnown(t *testing.T) {
@@ -1642,6 +1709,23 @@ func TestTheQuotaPagePagesItsAccountsAndLimits(t *testing.T) {
 	}
 	if !strings.Contains(js, "async function readQuota") {
 		t.Error("a 401 from a quota reading would send the browser to the sign-in page")
+	}
+}
+
+// A provider names some windows in its own lowercase ("session", "weekly");
+// the table writes them as its own labels do. A name with a digit, a space or
+// a capital is the provider's or a model's and is left alone.
+func TestTheQuotaPageTitlecasesAProviderWindowName(t *testing.T) {
+	js := readWeb(t, "static/js/pages/quota.js")
+	for _, want := range []string{
+		`const windowWords = ["session", "weekly", "monthly", "rolling", "hourly", "daily"]`,
+		"function windowTitle(name)",
+		"name: windowTitle(row.displayName || key)",
+		"return windowTitle(clear)",
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("quota.js lacks %q", want)
+		}
 	}
 }
 
@@ -3126,6 +3210,104 @@ func TestTheControlKeyHasItsOwnPasswordInputAndStaysOutOfTheFieldEditor(t *testi
 		for _, key := range []string{"provider.controlKey", "provider.controlKeyHint", "provider.controlKeySaved"} {
 			if !strings.Contains(i18n, `"`+key+`"`) {
 				t.Errorf("%s.json lacks %s", lang, key)
+			}
+		}
+	}
+}
+
+// An OAuth login has no key to type and no model to order, and the reference's
+// edit dialog offers neither an automatic priority nor a default model either.
+func TestAnOAuthConnectionEditsNoKeyOrModel(t *testing.T) {
+	html := readWeb(t, "static/pages/provider.html")
+	for _, id := range []string{"edit-global", "edit-model"} {
+		if strings.Contains(html, `id="`+id+`"`) {
+			t.Errorf("the edit dialog still offers %s", id)
+		}
+	}
+	if !strings.Contains(html, `x-show="editUsesKey()"`) {
+		t.Error("the API key input is not tied to the connection's kind")
+	}
+	js := readWeb(t, "static/js/pages/provider-connections.js")
+	for _, want := range []string{`authType: conn.authType || ""`, `editUsesKey() {`, `"oauth"`, `"access_token"`, `"mcode-lease"`, `this.editUsesKey() && this.edit.apiKey !== ""`} {
+		if !strings.Contains(js, want) {
+			t.Errorf("provider-connections.js lacks %q", want)
+		}
+	}
+	body := methodBody(js, "editBody")
+	for _, gone := range []string{"defaultModel", "globalPriority"} {
+		if strings.Contains(body, gone) {
+			t.Errorf("editBody still sends %s", gone)
+		}
+	}
+}
+
+// A typed key is checked before it is stored: the add dialog no longer offers
+// to save what the check refused, the edit dialog checks a new key, and a node
+// dialog checks the optional key it was given. A provider the check cannot
+// judge is not a refusal.
+func TestAKeyMustPassItsCheckBeforeItIsSaved(t *testing.T) {
+	status := readWeb(t, "static/js/pages/provider-status.js")
+	for _, want := range []string{"export function checkAllowsSave(check)", "check.valid", "check.unsupported === true"} {
+		if !strings.Contains(status, want) {
+			t.Errorf("provider-status.js lacks %q", want)
+		}
+	}
+
+	js := readWeb(t, "static/js/pages/provider-connections.js")
+	add := methodBody(js, "saveAdd")
+	for _, want := range []string{"validateKey()", "checkAllowsSave"} {
+		if !strings.Contains(add, want) {
+			t.Errorf("saveAdd lacks %q", want)
+		}
+	}
+	if strings.Contains(add, "saveAnyway") {
+		t.Error("saveAdd still offers to save a refused key")
+	}
+	edit := methodBody(js, "saveEdit")
+	for _, want := range []string{"validateEdit()", "checkAllowsSave"} {
+		if !strings.Contains(edit, want) {
+			t.Errorf("saveEdit lacks %q", want)
+		}
+	}
+	if !strings.Contains(methodBody(js, "setEditKey"), "this.edit.check = null") {
+		t.Error("a changed edit key keeps the old result")
+	}
+	open := methodBody(js, "openEdit")
+	for _, want := range []string{"defaultModel:", "check: null", "checking: false"} {
+		if !strings.Contains(open, want) {
+			t.Errorf("openEdit lacks %q", want)
+		}
+	}
+
+	nodes := readWeb(t, "static/js/pages/providers.js")
+	saveNode := methodBody(nodes, "saveNode")
+	for _, want := range []string{"checkNode()", "checkAllowsSave"} {
+		if !strings.Contains(saveNode, want) {
+			t.Errorf("saveNode lacks %q", want)
+		}
+	}
+
+	html := readWeb(t, "static/pages/provider.html")
+	if !strings.Contains(html, "checkEdit()") {
+		t.Error("the edit dialog has no check button")
+	}
+	for _, want := range []string{"!add.check.unsupported", "!edit.check.unsupported"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("an invalid badge is not excused by %q", want)
+		}
+	}
+	if !regexp.MustCompile(`<input[^>]*id="add-key"[^>]*required`).MatchString(html) {
+		t.Error("the add dialog submits without a key")
+	}
+
+	for _, lang := range []string{"en", "id"} {
+		i18n := readWeb(t, "static/i18n/"+lang+".json")
+		if strings.Contains(i18n, `"provider.saveAnyway"`) {
+			t.Errorf("%s.json still offers saveAnyway", lang)
+		}
+		for _, gone := range []string{"can still be saved", "tetap bisa disimpan"} {
+			if strings.Contains(i18n, gone) {
+				t.Errorf("%s.json still promises a refused key can be saved", lang)
 			}
 		}
 	}

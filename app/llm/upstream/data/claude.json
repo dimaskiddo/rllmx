@@ -3,7 +3,7 @@
   "alias": "cc",
   "category": "oauth",
   "display": { "name": "Claude Code" },
-  "transport": { "baseUrl": "https://api.anthropic.com/v1/messages", "format": "claude" },
+  "transport": { "baseUrl": "https://api.anthropic.com/v1/messages", "format": "claude", "quirks": { "keepContextManagement": true } },
   "oauth": {
     "flow": "code-pkce",
     "authorizeUrl": "https://claude.ai/oauth/authorize",

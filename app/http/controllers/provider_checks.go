@@ -42,6 +42,11 @@ func verdict(r Result) contractshttp.Json {
 	if !r.Valid() {
 		out["error"] = r.Outcome.Message()
 	}
+	if r.Outcome == OutcomeUnsupported {
+		// A caller that gates a save on the answer must not read "cannot be
+		// checked" as "the key is bad".
+		out["unsupported"] = true
+	}
 	if r.Method != "" {
 		out["method"] = r.Method
 	}

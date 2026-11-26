@@ -14,7 +14,7 @@ A folder under `DATA_DIR/skills/<id>/`; the six core skills ship embedded in the
 | `prompt.txt` or `prompt.md` | The prompt. `prompt.txt` wins over `prompt.md`. |
 | `rules.json` | Optional declarative rules: `{"rules":[...]}`, at most 16 KiB and 20 rules |
 
-Bounds: manifest 32 KiB, prompt 64 KiB, id `^[a-z0-9][a-z0-9_-]{0,63}$`, name 128 bytes, description 4 KiB, 100 triggers or keywords of 128 bytes each, control characters refused. A folder that fails a check is skipped and listed under `problems`; it is never half-loaded.
+Bounds: manifest 32 KiB, prompt 64 KiB, id `^[a-z0-9][a-z0-9_-]{0,63}$`, name 128 bytes, description 4 KiB, 100 triggers or keywords of 128 bytes each; every manifest field refuses control characters, and a prompt refuses them too except a tab and a line break, which are its own text. A folder that fails a check is skipped and listed under `problems`; it is never half-loaded.
 
 `install_command`, `update_command`, `uninstall_command` and `hook.js` are read only to be reported as unsupported. Nothing in a skill folder is executed.
 
@@ -269,3 +269,4 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | The reference's plan call keeps the client's tools, and `Promise.race` leaves the timed-out request running | The internal call carries no tools and is cancelled by its context (divergence 414) |
 | The reference's `stripPlanMarkersForClient` is imported and never called, so `autoPlanShowInResponse` is decorative | The flag is stored and answered, and the design says plainly that it changes nothing: the plan never travels in the answer |
 | `/api/settings` is a fixed view, so a skill's saved config value was never read back and the control snapped to its default. | `GET /api/skills` carries each skill's stored `values`, read under the same `SettingKey` the write uses. |
+| A prompt is message text, but the Studio checked it with the header rule (`text.HasControl`), so every multi-line markdown prompt was refused while an imported one was never checked | `checkPrompt` allows a tab and a line break and refuses the rest of Cc; the manifest fields keep the stricter rule |

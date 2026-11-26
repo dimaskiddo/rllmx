@@ -5,9 +5,13 @@ import { api } from "/static/js/ui/api.js";
 import { ask } from "/static/js/ui/dialog.js";
 import { t } from "/static/js/ui/i18n.js";
 import { toast } from "/static/js/ui/toast.js";
-import { mergeConnection, psdBody, psdRows, renumber } from "./provider-status.js";
+import { checkAllowsSave, mergeConnection, psdBody, psdRows, renumber } from "./provider-status.js";
 
 const nodeKeys = ["prefix", "apiType", "baseUrl", "nodeName"];
+// keyless are the auth kinds with no key to paste: an OAuth login's token lives
+// with the account, a pasted token is already stored, a lease is minted by the
+// provider's desktop app.
+const keyless = ["oauth", "access_token", "mcode-lease"];
 // controlKey is the provider data field the OpenDesign quota reading needs; it
 // has its own password input, so the generic field editor never lists it.
 const controlKey = "opendesignControlKey";
@@ -291,15 +295,11 @@ export const connectionMethods = {
     this.add.busy = true;
     try {
       const body = this.addBody();
-      let check = this.add.check;
-      if (!check) {
-        check = await this.validateKey();
-      }
-      if (!check.valid) {
-        const yes = await ask({ title: t("provider.checkRequired"), message: check.error || t("provider.testFailed"), confirm: t("provider.saveAnyway") });
-        if (!yes) {
-          return;
-        }
+      const check = await this.validateKey();
+      this.add.check = check;
+      if (!checkAllowsSave(check)) {
+        this.add.error = check.error || t("provider.checkRequired");
+        return;
       }
       try {
         await this.create(body, false);
@@ -327,9 +327,9 @@ export const connectionMethods = {
   openEdit(conn) {
     this.edit = {
       id: conn.id,
+      authType: conn.authType || "",
       name: conn.name || "",
       priority: String(conn.priority || 1),
-      globalPriority: conn.globalPriority === undefined || conn.globalPriority === null ? "" : String(conn.globalPriority),
       defaultModel: conn.defaultModel || "",
       apiKey: "",
       controlKey: "",
@@ -338,12 +338,47 @@ export const connectionMethods = {
       region: this.region(conn.providerSpecificData),
       psd: psdRows(conn.providerSpecificData, (this.node ? nodeKeys : []).concat([controlKey])),
       psdKeys: [],
+      check: null,
+      checking: false,
       error: "",
       busy: false,
     };
     this.edit.psdKeys = this.edit.psd.filter((row) => !row.readonly).map((row) => row.key);
     this.$refs.editDlg.showModal();
     this.$refs.editName.focus();
+  },
+
+  // editUsesKey is true for a connection whose credential is a key. An OAuth
+  // login, a pasted token and a lease have none to type.
+  editUsesKey() {
+    return !!this.edit && keyless.indexOf(this.edit.authType) < 0;
+  },
+
+  // A typed key is a new credential, so the result of the previous one no
+  // longer describes it.
+  setEditKey(event) {
+    this.setField("edit.apiKey", event);
+    this.edit.check = null;
+  },
+
+  validateEdit() {
+    return api("/api/providers/validate", {
+      method: "POST",
+      body: { provider: this.id, apiKey: this.edit.apiKey, modelId: this.edit.defaultModel },
+    });
+  },
+
+  async checkEdit() {
+    this.edit.checking = true;
+    this.edit.check = null;
+    this.edit.error = "";
+    try {
+      this.edit.check = await this.validateEdit();
+    } catch (err) {
+      this.edit.error = err.message;
+    } finally {
+      this.edit.checking = false;
+    }
   },
 
   closeEdit() {
@@ -372,11 +407,9 @@ export const connectionMethods = {
       name: this.edit.name,
       priority: Number(this.edit.priority) || 1,
       isActive: this.edit.isActive,
-      defaultModel: this.edit.defaultModel === "" ? null : this.edit.defaultModel,
-      globalPriority: this.edit.globalPriority === "" ? null : Number(this.edit.globalPriority),
       providerSpecificData: psdBody(this.edit.psd, this.edit.psdKeys),
     };
-    if (this.edit.apiKey !== "") {
+    if (this.editUsesKey() && this.edit.apiKey !== "") {
       body.apiKey = this.edit.apiKey;
     }
     if (this.controlKeyField() && this.edit.controlKey.trim() !== "") {
@@ -392,6 +425,14 @@ export const connectionMethods = {
     this.edit.error = "";
     this.edit.busy = true;
     try {
+      if (this.editUsesKey() && this.edit.apiKey !== "") {
+        const check = await this.validateEdit();
+        this.edit.check = check;
+        if (!checkAllowsSave(check)) {
+          this.edit.error = check.error || t("provider.checkRequired");
+          return;
+        }
+      }
       await api("/api/providers/" + encodeURIComponent(this.edit.id), { method: "PUT", body: this.editBody() });
       this.closeEdit();
       await this.reloadConnections();

@@ -521,22 +521,49 @@ func TestConcurrentFailuresAllCount(t *testing.T) {
 	}
 }
 
-func TestTheErrorTextIsStoredButNeverLogged(t *testing.T) {
+// The upstream's own message is what tells an operator why an account was
+// locked, so it goes to the log as well as to the dashboard.
+func TestTheUpstreamTextIsStoredAndLogged(t *testing.T) {
 	r := newRig(t, `{}`)
 	a := r.add(t, "p", "a", nil)
-	secret := "sk-live-prompt-fragment-9917"
-	r.fail(t, a.ID, 500, "upstream said "+secret)
+	r.fail(t, a.ID, 500, "upstream said the route is down")
 	if last, _ := r.get(t, a.ID).Doc().GetString("lastError"); last == "" {
 		t.Fatal("the dashboard has no error to show")
 	}
-	for _, line := range r.log.Lines() {
-		if contains(line, secret) {
-			t.Fatalf("the error text reached the log: %q", line)
+	lines := r.log.Lines()
+	for _, want := range []string{"account lock", "provider=p", "conn=" + a.ID, "status=500", "upstream said the route is down"} {
+		if !anyLine(lines, want) {
+			t.Errorf("no log line carries %q: %v", want, lines)
 		}
 	}
-	if len(r.log.Lines()) == 0 {
-		t.Fatal("nothing was logged about the lock")
+}
+
+// A refusal of the request itself has its own line and still locks nothing.
+func TestARequestScopedRefusalIsLoggedAndLocksNothing(t *testing.T) {
+	r := newRig(t, `{}`)
+	a := r.add(t, "p", "a", nil)
+	if got := r.fail(t, a.ID, 400, "no such model"); got.Fallback || !got.RequestScoped {
+		t.Fatalf("%+v", got)
 	}
+	d := r.get(t, a.ID).Doc()
+	if v, _ := d.GetString("testStatus"); v == "unavailable" {
+		t.Fatal("a request-scoped refusal locked the account")
+	}
+	if lvl, _ := d.GetInt("backoffLevel"); lvl != 0 {
+		t.Fatalf("backoff level %d", lvl)
+	}
+	if !anyLine(r.log.Lines(), "no such model") {
+		t.Fatalf("the refusal was not logged: %v", r.log.Lines())
+	}
+}
+
+func anyLine(lines []string, sub string) bool {
+	for _, line := range lines {
+		if contains(line, sub) {
+			return true
+		}
+	}
+	return false
 }
 
 func contains(s, sub string) bool {

@@ -58,6 +58,7 @@ One `Checker`, built once in the provider wiring (`app/providers`) on `network.N
 | Node connection | Probed at the node's own base URL, never the copy on the connection |
 | Special providers | OAuth, cookie, AWS-signed and similar answer `test not supported yet`; the row is not written |
 | Empty key | `Invalid API key` without a request |
+| Save gate | The dashboard saves a connection or creates a node only once its key check passed, or when the answer says `test not supported yet`; that answer carries `unsupported: true`, so a caller does not read it as a bad key. The create and update routes themselves stay permissive: bulk import makes no request (D287) and a caller is not second-guessed |
 
 | Probe kind | Request |
 |---|---|
@@ -129,5 +130,6 @@ A provider meters per account, so a burst of retries or parallel callers can loo
 |---|---|
 | The image prefetch checkbox contradicted D326 | Closed as designed: a client's image URL is read from public addresses only, on every hop, whatever the operator's list says |
 | The reference paces nothing outbound; a burst only becomes a 429 and then a lock | The bucket is ours, and it is per connection because the provider meters the account |
+| A check that can answer "not supported" cannot be the only gate on a save | The answer carries `unsupported`, and the dashboard lets that one through; a cookie, AWS-signed or unprobed provider would otherwise never be addable |
 
 

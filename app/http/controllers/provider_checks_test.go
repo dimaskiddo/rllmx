@@ -41,9 +41,17 @@ func TestValidateAProviderKeyThroughTheRoute(t *testing.T) {
 	if code != 200 || out["valid"] != false || out["error"] != "Invalid API key" {
 		t.Fatalf("%d %v", code, out)
 	}
-	// An OAuth provider cannot be judged.
+	// An OAuth provider cannot be judged, and the answer says so beside the text,
+	// because a dashboard may save what it cannot check.
 	code, out, _ = m.call("POST", "/api/providers/validate", `{"provider":"claude","apiKey":"k"}`, true)
-	if code != 200 || out["error"] != "test not supported yet" {
+	if code != 200 || out["error"] != "test not supported yet" || out["unsupported"] != true {
+		t.Fatalf("%d %v", code, out)
+	}
+	// A judged key carries no such mark.
+	srv := newUpstream(t, 200, "")
+	node := nodeFor(t, m, srv.URL, "openai-compatible", "marked")
+	code, out, _ = m.call("POST", "/api/providers/validate", fmt.Sprintf(`{"provider":%q,"apiKey":"k"}`, node), true)
+	if code != 200 || out["valid"] != true || out["unsupported"] != nil {
 		t.Fatalf("%d %v", code, out)
 	}
 }

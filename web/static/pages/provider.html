@@ -84,7 +84,7 @@
                 <span class="badge badge-err" x-show="tag(conn)" x-text="tagLabel(tag(conn))"></span>
               </div>
               <p class="rl-hint" x-show="subtitle(conn)" x-text="subtitle(conn)"></p>
-              <p class="rl-error" x-show="conn.lastError" x-bind:title="formatDate(conn.lastErrorAt)" x-text="conn.lastError"></p>
+              <p class="rl-error" x-show="failed(conn) && conn.lastError" x-bind:title="formatDate(conn.lastErrorAt)" x-text="conn.lastError"></p>
               <p class="rl-hint" x-show="cooldown(conn)"><span class="rl-icon" x-icon="clock"></span><span x-t="provider.cooldown"></span><span x-text="cooldown(conn)"></span></p>
               <p class="rl-hint" x-show="conn.noAuth !== true" x-bind:title="label('provider.priorityHint')"><span x-t="provider.priorityLabel"></span> <span x-text="conn.priority"></span><span x-show="conn.globalPriority !== undefined && conn.globalPriority !== null"> · <span x-t="provider.auto"></span> <span x-text="conn.globalPriority"></span></span></p>
               <p class="rl-hint" x-show="conn.noAuth === true" x-t="provider.noAuth"></p>
@@ -207,7 +207,7 @@
       <label class="form-label" for="add-name" x-t="provider.name"></label>
       <input class="form-control" id="add-name" x-ref="addName" maxlength="256" required x-bind:value="add.name" x-on:input="setField('add.name', $event)">
       <label class="form-label" for="add-key" x-t="provider.apiKey"></label>
-      <input class="form-control" id="add-key" type="password" autocomplete="off" x-bind:value="add.key" x-on:input="setAddKey($event)">
+      <input class="form-control" id="add-key" type="password" autocomplete="off" required x-bind:value="add.key" x-on:input="setAddKey($event)">
       <label class="form-label" for="add-model" x-t="provider.defaultModel"></label>
       <input class="form-control" id="add-model" x-bind:value="add.defaultModel" x-on:input="setAddModel($event)">
       <label class="form-label" for="add-priority" x-t="provider.priority"></label>
@@ -239,7 +239,7 @@
       <div class="rl-inline">
         <button type="button" class="btn btn-sm" x-bind:disabled="add.checking || add.key === ''" x-on:click="checkAdd()"><span x-t="providers.check"></span></button>
         <span class="badge badge-ok" x-show="add.check && add.check.valid" x-t="providers.valid"></span>
-        <span class="badge badge-err" x-show="add.check && !add.check.valid" x-t="providers.invalid"></span>
+        <span class="badge badge-err" x-show="add.check && !add.check.valid && !add.check.unsupported" x-t="providers.invalid"></span>
       </div>
       <p class="rl-error" x-show="add.check && !add.check.valid && add.check.error" x-text="add.check ? add.check.error : ''"></p>
       <p class="rl-error" x-show="add.error" x-text="add.error"></p>
@@ -282,13 +282,17 @@
       <input class="form-control" id="edit-name" x-ref="editName" maxlength="256" x-bind:value="edit ? edit.name : ''" x-on:input="setField('edit.name', $event)">
       <label class="form-label" for="edit-priority" x-t="provider.priority"></label>
       <input class="form-control" id="edit-priority" type="number" min="1" max="1000000" x-bind:value="edit ? edit.priority : ''" x-on:input="setField('edit.priority', $event)">
-      <label class="form-label" for="edit-global" x-t="provider.globalPriority"></label>
-      <input class="form-control" id="edit-global" type="number" min="0" max="1000000" x-bind:value="edit ? edit.globalPriority : ''" x-on:input="setField('edit.globalPriority', $event)">
-      <label class="form-label" for="edit-model" x-t="provider.defaultModel"></label>
-      <input class="form-control" id="edit-model" x-bind:value="edit ? edit.defaultModel : ''" x-on:input="setField('edit.defaultModel', $event)">
-      <label class="form-label" for="edit-key" x-t="provider.apiKey"></label>
-      <input class="form-control" id="edit-key" type="password" autocomplete="off" x-bind:value="edit ? edit.apiKey : ''" x-on:input="setField('edit.apiKey', $event)">
-      <p class="rl-hint" x-t="provider.apiKeyHint"></p>
+      <div x-show="editUsesKey()">
+        <label class="form-label" for="edit-key" x-t="provider.apiKey"></label>
+        <input class="form-control" id="edit-key" type="password" autocomplete="off" x-bind:value="edit ? edit.apiKey : ''" x-on:input="setEditKey($event)">
+        <p class="rl-hint" x-t="provider.apiKeyHint"></p>
+        <div class="rl-inline">
+          <button type="button" class="btn btn-sm" x-bind:disabled="!edit || edit.checking || edit.apiKey === ''" x-on:click="checkEdit()"><span x-t="providers.check"></span></button>
+          <span class="badge badge-ok" x-show="edit && edit.check && edit.check.valid" x-t="providers.valid"></span>
+          <span class="badge badge-err" x-show="edit && edit.check && !edit.check.valid && !edit.check.unsupported" x-t="providers.invalid"></span>
+        </div>
+        <p class="rl-error" x-show="edit && edit.check && !edit.check.valid && edit.check.error" x-text="edit.check ? edit.check.error : ''"></p>
+      </div>
       <div class="form-check form-switch rl-switch">
         <input class="form-check-input" type="checkbox" id="edit-active" role="switch" x-bind:checked="edit ? edit.isActive : false" x-on:change="toggleEditActive()">
         <label class="form-check-label" for="edit-active" x-t="keys.active"></label>

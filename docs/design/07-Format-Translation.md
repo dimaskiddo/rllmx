@@ -81,7 +81,7 @@ The upstream JSON is about 4.3 MB. It is decoded one provider at a time under a 
 - Client headers never reach the upstream raw; the pipeline passes derived values.
 - The shape follows 9router 0.5.123 (Clean-Room). It changes only when a step says so, and the rows kept are the ones a security rule or a router improvement requires.
 
-A request is adapted when all of these hold: the upstream format is Claude, the connection is a login of a provider whose data sets `disguise`, its token begins `sk-ant-oat`, and the client is not Claude Code (a Claude Code client is native: its body is already right). Then, in this order, on the finished body:
+A request is adapted when all of these hold: the upstream format is Claude, the connection is a login of a provider whose data sets `disguise`, its token begins `sk-ant-oat`, and the client is not Claude Code (a Claude Code client's shape is already right; only its billing line, which the hub text drops, is put back on the finished body, so the upstream still sees the client's own). Then, in this order, on the finished body:
 1. a billing block becomes `system[0]` (a string system becomes two blocks; nothing is added if `system[0]` already starts with the prefix). Its `cch` is the first five hex characters of SHA-256 over the body as it stood before this step, the build part is three random hex characters, and the version is the one this router advertises (`UPSTREAM_CLAUDE_CLI_VERSION`, else the latest published Claude Code, never below the build's floor `.322`);
 2. `metadata.user_id` is added when the client sent none: `{"device_id":…,"account_uuid":…,"session_id":…}`, the ids derived from the token and the session from `app/gateway/conversation` with any `claude:` prefix removed;
 3. every `tool_result` carries `is_error`, true when the client reported a failure and false otherwise, because the Zed wire refuses a block without it;
@@ -133,6 +133,7 @@ A provider's `transport` names the few body edits it needs, as data. The codecs 
 |---|---|
 | `quirks.preserveCacheControl` | A Claude client's cache marker on a text block is kept when the upstream is OpenAI format and reads it (the alicode family). Without it the marker never leaves, and a plain text message stays a string |
 | `quirks.requireClaudeToolType` | A Claude-format tool with no `type` is sent as `custom` (MiniMax). A typed tool is never touched |
+| `quirks.keepContextManagement` | A Claude client's `context_management` block stays on the body for an upstream that implements it (the `claude` data file; an `anthropic-compatible-*` node gets it from its kind). A gateway fronting another engine must not set it |
 | `reasoningInject` (`all`, `toolCalls`) | An assistant turn with no reasoning text gets a single space as `reasoning_content`, for upstreams that refuse a thinking conversation without it. `toolCalls` limits it to turns that called a tool. With no provider setting the model decides: `kimi-*` gets `toolCalls`, a name holding `deepseek` gets `all`. The provider's scope beats the model's |
 | model `upstreamId` | The id sent on the wire when it differs from the id clients use (blackbox). The usage row keeps the client's id |
 | Capability `dropOutputConfig` | MiniMax drops `output_config` (a `capabilities.json` pattern row, as before) |
@@ -140,7 +141,7 @@ A provider's `transport` names the few body edits it needs, as data. The codecs 
 ### Claude Preparation (`prepareClaude`)
 
 Every body bound for a Claude upstream, translated or not, ends here.
-- `output_config` goes when the provider quirk `dropOutputConfig` says so; `context_management` goes unless the provider is Anthropic or an `anthropic-compatible-*` node.
+- `output_config` goes when the provider quirk `dropOutputConfig` says so; `context_management` goes unless the transport sets `keepContextManagement`, which the `claude` data file and every `anthropic-compatible-*` node do because Anthropic implements the field.
 - A rejected `disabled` thinking type becomes the model's `thinkingOffType`; forced tool choice is relaxed where the model refuses it; `max_tokens` is cut to the model's `maxOutput` and kept above the thinking budget.
 - Cache markers: the last system block and the last cacheable tool (not `defer_loading`) get 1h, the last assistant block 5m, and the final tool results of an agent loop 5m while fewer than four markers are set; a conversation with no assistant turn yet marks its last message instead. Client markers are dropped, so at most four are ever sent. A tool-call conversation keeps its tools, system and earlier messages byte-identical from turn to turn (tested), which is what lets the upstream read its cache. Cache writes of the one hour lifetime are priced at `cache_creation_1h`, else twice the input rate (`PARITY.md` §4).
 - History repair: blank messages go, text after a `tool_use` goes, neighbouring turns of one role merge with tool results first, a user turn is restored when the client did not end on the assistant.
@@ -247,7 +248,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 
 ---
 
-**The 0.5.123 sync.** The OpenAI to Claude writer drops a leading `x-anthropic-billing-header:` line from a system message, as the Claude reader always did; the OpenAI stream reader reads a delta whose `content` is a list of parts (Mistral), taking `text` parts as the answer and `thinking` parts as reasoning; `MergeUsage` lets a later report that carries cache counts replace an earlier prompt that carried none, because that earlier figure is the input before cache accounting (the maximum would count the cached tokens twice); a Gemini thinking level is clamped into the set the model serves (`xhigh` falls to `high`, `max` is the highest, `minimal` rises to the floor), with the set carried on `Ctx.Levels`.
+**The 0.5.123 sync.** The OpenAI to Claude writer drops a leading `x-anthropic-billing-header:` line from a system message, as the Claude reader always did, because a line that came from another format is not the client's own; a Claude Code client's line is put back after preparation, because the reference forwards a native request with it; the OpenAI stream reader reads a delta whose `content` is a list of parts (Mistral), taking `text` parts as the answer and `thinking` parts as reasoning; `MergeUsage` lets a later report that carries cache counts replace an earlier prompt that carried none, because that earlier figure is the input before cache accounting (the maximum would count the cached tokens twice); a Gemini thinking level is clamped into the set the model serves (`xhigh` falls to `high`, `max` is the highest, `minimal` rises to the floor), with the set carried on `Ctx.Levels`.
 
 **The 0.5.116 sync.**
 
@@ -262,6 +263,8 @@ One row per lesson; the decision is what the code does because of it.
 | Finding | Decision |
 |---|---|
 | A same-format request must not lose what the hub does not model. | Unknown top-level fields ride in `Extra` and are written back to the same format. |
+| 4.34: the reader drops the client's `x-anthropic-billing-header:` line, and a Claude Code client was never disguised, so a native request reached Anthropic without the line the reference forwards. | A native identifier is not a reason to strip the client's own bytes: `BillingOf` reads the line off the incoming Claude body and `WithBillingLine` puts it back on the finished body. |
+| 4.34: the writer dropped `context_management` unless a capability flag was set, and nothing set it, though the design says Anthropic keeps it. | The provider's transport decides, as every other body edit does: `claude.json` sets `keepContextManagement`, and an `anthropic-compatible-*` node gets it from its kind. |
 | Two encodings of one request must be byte-identical so an upstream can read its prompt cache. | Every object is written through an ordered encoder, never a Go map. |
 | A conversation ending with many parallel tool results was the only input that could exceed four cache markers. | A dedicated test now produces it. |
 | An enum whose declared type was `integer` came out `integer` or `string` depending on walk order. | An enum is always strings with an explicit `string` type. |

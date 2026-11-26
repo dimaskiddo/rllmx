@@ -98,6 +98,12 @@ export function sortModels(items) {
   return items.slice().sort((a, b) => custom(a) - custom(b));
 }
 
+// checkAllowsSave is true once a key check passed or said it cannot judge the
+// provider. Anything else is a refusal and keeps the connection unsaved.
+export function checkAllowsSave(check) {
+  return !!check && (check.valid || check.unsupported === true);
+}
+
 // cooldownOf is the soonest future model lock on a connection, or 0.
 export function cooldownOf(conn, now) {
   let soonest = 0;

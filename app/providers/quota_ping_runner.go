@@ -124,7 +124,7 @@ func (r *quotaPingRunner) tick(ctx context.Context) {
 		if model == "" {
 			continue
 		}
-		if err := r.ping(ctx, conn.Provider, model); err != nil {
+		if err := r.ping(ctx, conn, model); err != nil {
 			r.mu.Lock()
 			r.failed[conn.ID] = now.Add(quotaPingCooldown)
 			r.mu.Unlock()
@@ -203,21 +203,30 @@ func (r *quotaPingRunner) pingModel(provider string) string {
 
 // ping sends one minimal request through the pipeline and asks nothing of the
 // answer. A stream a provider forces is discarded.
-func (r *quotaPingRunner) ping(ctx context.Context, provider, model string) error {
+func (r *quotaPingRunner) ping(ctx context.Context, conn repository.Connection, model string) error {
 	pipe, err := r.http.Pipe.Get()
 	if err != nil {
 		return err
 	}
-	body := []byte(`{"model":"` + provider + "/" + model + `","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}`)
-	in := pipeline.Input{
-		Path: "/v1/chat/completions", Body: body, Caller: identity.Probe(),
-		RequestID: "autoping-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-	}
-	out := pipe.Handle(ctx, in, discardOpener)
+	requestID := "autoping-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	out := pipe.Handle(ctx, pingInput(conn.ID, conn.Provider, model, requestID), discardOpener)
 	if out.Status != http.StatusOK {
 		return fmt.Errorf("quota ping: status %d", out.Status)
 	}
 	return nil
+}
+
+// pingInput is one warm-up request: the provider's first chat model, pinned to
+// the connection whose window was read, so a refusal locks that account and no
+// other.
+func pingInput(connID, provider, model, requestID string) pipeline.Input {
+	return pipeline.Input{
+		Path:       "/v1/chat/completions",
+		Body:       []byte(`{"model":"` + provider + "/" + model + `","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}`),
+		Caller:     identity.Probe(),
+		RequestID:  requestID,
+		Connection: connID,
+	}
 }
 
 // discardWriter swallows an answer the ping does not read.

@@ -55,7 +55,8 @@ type Outcome struct {
 
 // Fail locks the connection when its credential is at fault. The backoff level
 // is read inside the write, so concurrent failures all count. The error text is
-// stored for the dashboard, cut short, and never logged.
+// stored for the dashboard, cut short, and logged so an operator can read the
+// upstream's own reason.
 func (r *Reporter) Fail(ctx context.Context, in FailInput) (Outcome, error) {
 	if in.ConnID == "" {
 		return Outcome{}, nil
@@ -66,6 +67,9 @@ func (r *Reporter) Fail(ctx context.Context, in FailInput) (Outcome, error) {
 	}
 	probe := classify(0)
 	if !probe.Fallback {
+		if r.log != nil {
+			r.log.Warningf("upstream refused provider=%s model=%s conn=%s status=%d text=%q", in.Provider, in.Model, in.ConnID, in.Status, in.Text)
+		}
 		return Outcome{RequestScoped: probe.RequestScoped}, nil
 	}
 	model := in.Model
@@ -81,7 +85,7 @@ func (r *Reporter) Fail(ctx context.Context, in FailInput) (Outcome, error) {
 		return Outcome{}, err
 	}
 	if r.log != nil {
-		r.log.Infof("account lock provider=%s model=%s conn=%s status=%d cooldown=%s", in.Provider, in.Model, in.ConnID, in.Status, d.Cooldown)
+		r.log.Warningf("account lock provider=%s model=%s conn=%s status=%d cooldown=%s text=%q", in.Provider, in.Model, in.ConnID, in.Status, d.Cooldown, in.Text)
 	}
 	return Outcome{Fallback: true}, nil
 }

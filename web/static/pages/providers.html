@@ -207,13 +207,13 @@
       <input class="form-control" id="node-prefix" maxlength="32" required x-bind:value="add.prefix" x-on:input="setField('add.prefix', $event)">
       <div x-show="add.type === 'openai-compatible'">
         <label class="form-label" for="node-api-type" x-t="providers.apiType"></label>
-        <select class="form-select" id="node-api-type" x-bind:value="add.apiType" x-on:change="setField('add.apiType', $event)">
+        <select class="form-select" id="node-api-type" x-bind:value="add.apiType" x-on:change="setCheckedField('add.apiType', $event)">
           <option value="chat" x-t="providers.apiChat"></option>
           <option value="responses" x-t="providers.apiResponses"></option>
         </select>
       </div>
       <label class="form-label" for="node-base-url" x-t="providers.baseUrl"></label>
-      <input class="form-control" id="node-base-url" x-bind:value="add.baseUrl" x-on:input="setField('add.baseUrl', $event)" x-bind:placeholder="label('providers.baseUrlHint')">
+      <input class="form-control" id="node-base-url" x-bind:value="add.baseUrl" x-on:input="setCheckedField('add.baseUrl', $event)" x-bind:placeholder="label('providers.baseUrlHint')">
       <label class="form-label" for="node-key" x-t="providers.checkKey"></label>
       <input class="form-control" id="node-key" type="password" autocomplete="off" x-bind:value="add.apiKey" x-on:input="setCheckedField('add.apiKey', $event)">
       <label class="form-label" for="node-model" x-t="providers.modelId"></label>

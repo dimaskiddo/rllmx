@@ -57,6 +57,35 @@ func TestAnExistingBillingBlockIsNotInjectedTwice(t *testing.T) {
 	}
 }
 
+const clientBilling = "x-anthropic-billing-header: cc_version=2.1.322.abc; cc_entrypoint=sdk-cli; cch=12345;"
+
+func TestBillingOfReadsTheLineOutOfAStringOrAnArray(t *testing.T) {
+	for _, tc := range []struct{ name, body, want string }{
+		{"array", `{"system":[{"type":"text","text":"` + clientBilling + `"},{"type":"text","text":"rest"}]}`, clientBilling},
+		{"string", `{"system":"` + clientBilling + `\nrest"}`, clientBilling},
+		{"another first block", `{"system":[{"type":"text","text":"rest"}]}`, ""},
+		{"no system", `{"messages":[]}`, ""},
+		{"a line without the prefix", `{"system":"hello"}`, ""},
+	} {
+		if got := BillingOf([]byte(tc.body)); got != tc.want {
+			t.Errorf("%s: %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestWithBillingLinePutsTheClientsOwnLineBack(t *testing.T) {
+	out := WithBillingLine([]byte(`{"system":[{"type":"text","text":"You are Claude Code."}],"messages":[]}`), clientBilling)
+	if gjson.GetBytes(out, "system.0.text").String() != clientBilling || gjson.GetBytes(out, "system.1.text").String() != "You are Claude Code." {
+		t.Fatalf("%s", out)
+	}
+	if again := WithBillingLine(out, clientBilling); gjson.GetBytes(again, "system.#").Int() != 2 {
+		t.Fatalf("the line was added twice: %s", again)
+	}
+	if got := string(WithBillingLine([]byte(`{"messages":[]}`), "hello")); got != `{"messages":[]}` {
+		t.Fatalf("a line without the prefix changed the body: %s", got)
+	}
+}
+
 func TestTheUserIDIsClaudeCodesAndStablePerAccount(t *testing.T) {
 	out, _ := Cloak([]byte(cloakBody), disguise())
 	uid := gjson.GetBytes(out, "metadata.user_id").String()

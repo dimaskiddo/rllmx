@@ -19,3 +19,19 @@ func TestTheDashScopeFamilyKeepsCacheMarkers(t *testing.T) {
 		}
 	}
 }
+
+// Claude Code sends a context-editing block Anthropic implements, so its own
+// provider keeps it; a gateway fronting another engine must not be given it.
+func TestTheClaudeProviderKeepsTheContextManagementField(t *testing.T) {
+	reg, err := Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, ok := reg.ByID("claude")
+	if !ok {
+		t.Fatal("claude is missing")
+	}
+	if !e.Transport.Quirks.KeepContextManagement {
+		t.Error("claude drops the client's context_management")
+	}
+}

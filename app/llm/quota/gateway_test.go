@@ -29,7 +29,7 @@ func TestSyntheticReadsItsRequestBucketsAndTheWeeklyPool(t *testing.T) {
 	if sub.Used != 125 || sub.Total != 500 || sub.RemainingPercentage != 75 || sub.ResetAt == nil {
 		t.Errorf("subscription %+v", sub)
 	}
-	if h := out.Quotas["Search (hourly)"]; h.Used != 250 || h.Total != 250 || h.RemainingPercentage != 0 {
+	if h := out.Quotas["Search (Hourly)"]; h.Used != 250 || h.Total != 250 || h.RemainingPercentage != 0 {
 		t.Errorf("search %+v", h)
 	}
 	if w := out.Quotas["Weekly"]; w.Total != 100 || w.Used != 15.5 || w.RemainingPercentage != 84.5 || w.ResetAt == nil {

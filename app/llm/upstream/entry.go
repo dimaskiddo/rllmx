@@ -276,6 +276,9 @@ type Quirks struct {
 	// a passed-through stream delta that carries no `reasoning_content` of its own,
 	// for an upstream that streams thinking under the other name.
 	ReasoningAliasFields bool `json:"reasoningAliasFields,omitempty"`
+	// KeepContextManagement leaves a Claude client's context-editing block on
+	// the body for an upstream that implements it.
+	KeepContextManagement bool `json:"keepContextManagement,omitempty"`
 }
 
 // Reasoning scopes a provider may name.

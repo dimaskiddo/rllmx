@@ -93,7 +93,7 @@
     <span class="text-secondary" x-text="pagination.page + ' / ' + pagination.totalPages"></span>
     <button type="button" class="btn btn-sm" x-bind:disabled="pagination.page >= pagination.totalPages" x-on:click="turnClientPage(1)" x-t="quota.next"></button>
   </div>
-  <dialog class="rl-dialog" x-ref="expiry" aria-labelledby="quota-expiry-title">
+  <dialog class="rl-dialog rl-dialog-lg" x-ref="expiry" aria-labelledby="quota-expiry-title">
     <button type="button" class="btn btn-sm btn-ghost rl-dialog-close" x-tip="common.close" x-on:click="closeExpiry()"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.close"></span></button>
     <h2 id="quota-expiry-title" x-t="quota.expiryTitle"></h2>
     <p class="text-secondary" x-text="expiry.name"></p>

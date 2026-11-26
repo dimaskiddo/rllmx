@@ -69,7 +69,7 @@ flowchart TD
     F --> G[Later success: ClearLocks]
 ```
 
-- Lock values are ISO-8601 UTC strings with milliseconds in the connection's JSON `data`. `lastError` is cut to 200 characters. The error text is stored for the dashboard and **never logged**; the log line carries provider, model, status and cooldown.
+- Lock values are ISO-8601 UTC strings with milliseconds in the connection's JSON `data`. `lastError` is cut to 200 characters. The error text is stored for the dashboard and logged at WARN for the operator — shortened, scrubbed by the redacting channel, with provider, model, connection, status and, when a lock is written, the cooldown. A refusal of the request itself gets its own line and writes no lock.
 - A success (`Succeed`, `ConnectionsRepo.ClearLocks`) removes that model's lock, the account-level lock and every lock that has ended. `testStatus` returns to `active` and the error fields and `backoffLevel` reset only when no lock in the future remains.
 
 ---
@@ -110,4 +110,5 @@ One row per lesson; the decision is what the code does because of it.
 | Twelve concurrent 429s must store level 12, not twelve times level 1. | `Reporter.Fail` classifies with the level read inside the lock transaction. |
 | A 401 or a 5xx between two 429s must not restart their backoff. | Only a backoff rule raises the level; a provider-reported reset is the one thing that clears it. |
 | A slow success must not undo the failure of a faster, later request. | `Succeed` passes when the request began, and a lock written after it is left alone. |
+| 4.34: the upstream's own message was stored for the dashboard and kept out of the log, so a 429 left an operator with a status and no reason. | `Reporter.Fail` logs the shortened message at WARN, through the redacting channel, with provider, model, connection and status; a request-scoped refusal gets its own line. |
 

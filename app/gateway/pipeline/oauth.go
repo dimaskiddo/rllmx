@@ -118,9 +118,15 @@ func (c *call) prepare(conn repository.Connection) sent {
 		headers["anthropic-beta"] = betaList(o.Beta, c.dest.model, c.body, clientFlags(c.in.Header))
 	}
 	session := c.session(conn)
-	if o.Disguise && c.dest.format == upstream.FormatClaude && c.client != ClientClaude && strings.HasPrefix(token, claudeOAuthPrefix) {
-		body, names := translate.Cloak(c.body, &translate.Disguise{Seed: token, Session: session, Tools: true, Version: c.p.d.ClaudeCLI.Version()})
-		out.body, out.names, out.cloaked = body, names, true
+	if o.Disguise && c.dest.format == upstream.FormatClaude && strings.HasPrefix(token, claudeOAuthPrefix) {
+		if c.client == ClientClaude {
+			// The reader takes the client's billing line out of the hub text; a
+			// native client gets it back so the upstream still sees its own shape.
+			out.body = translate.WithBillingLine(out.body, translate.BillingOf(c.in.Body))
+		} else {
+			body, names := translate.Cloak(c.body, &translate.Disguise{Seed: token, Session: session, Tools: true, Version: c.p.d.ClaudeCLI.Version()})
+			out.body, out.names, out.cloaked = body, names, true
+		}
 	}
 	if o.Session != nil {
 		if sid := sessionHeader(o.Session, session, conn.ID, c.p.d.Sessions, out.body); sid != "" {
