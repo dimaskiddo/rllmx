@@ -18,7 +18,7 @@
     <div class="card-header rl-card-head">
       <h2 class="rl-card-title" x-t="provider.node"></h2>
       <div class="rl-inline">
-        <button type="button" class="btn btn-sm" x-on:click="openAddKey()"><span class="rl-icon" x-icon="plus"></span><span x-t="provider.addKey"></span></button>
+        <button type="button" class="btn btn-sm" x-on:click="openAddKey()"><span class="rl-icon" x-icon="plus"></span><span x-t="provider.addConnection"></span></button>
         <button type="button" class="btn btn-sm" x-on:click="openNode()"><span class="rl-icon" x-icon="pencil"></span><span x-t="common.edit"></span></button>
         <button type="button" class="btn btn-sm btn-outline-danger" x-on:click="deleteNode()"><span class="rl-icon" x-icon="trash"></span><span x-t="common.delete"></span></button>
       </div>
@@ -56,7 +56,7 @@
         <button type="button" class="btn btn-sm" x-show="connections.length > 0 && !testRun" x-on:click="testSelected()"><span class="rl-icon" x-icon="activity"></span><span x-t="provider.testOneByOne"></span></button>
         <button type="button" class="btn btn-sm" x-show="testRun && testRun.on" x-on:click="stopTesting()"><span x-t="provider.stop"></span></button>
         <button type="button" class="btn btn-sm btn-outline-danger" x-show="selected.length > 0" x-on:click="removeSelected()"><span class="rl-icon" x-icon="trash"></span><span x-t="provider.deleteSelected"></span></button>
-        <button type="button" class="btn btn-sm btn-primary" x-show="canAddKey()" x-on:click="openAddKey()"><span class="rl-icon" x-icon="plus"></span><span x-t="provider.addKey"></span></button>
+        <button type="button" class="btn btn-sm btn-primary" x-show="canAddKey()" x-on:click="openAddKey()"><span class="rl-icon" x-icon="plus"></span><span x-t="provider.addConnection"></span></button>
         <button type="button" class="btn btn-sm" x-show="loginOffer() && loginOffer().enabled && loginOffer().flow !== 'import'" x-on:click="openLogin('oauth')"><span class="rl-icon" x-icon="log-in"></span><span x-t="provider.addLogin"></span></button>
         <button type="button" class="btn btn-sm" x-show="loginOffer() && !loginOffer().enabled && loginOffer().flow !== 'import'" x-bind:disabled="true"><span class="rl-icon" x-icon="log-in"></span><span x-t="provider.loginDisabled"></span></button>
         <button type="button" class="btn btn-sm" x-show="loginOffer() && loginOffer().pat" x-on:click="openLogin('pat')"><span x-t="provider.pat"></span></button>
@@ -182,16 +182,24 @@
   <dialog class="rl-dialog" x-ref="addDlg" x-on:close="forgetAdd()" aria-labelledby="dlg-addDlg-title">
     <button type="button" class="btn btn-sm btn-ghost rl-dialog-close" x-tip="common.close" x-on:click="$el.closest('dialog').close()"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.close"></span></button>
     <form x-on:submit.prevent="saveAdd()">
-      <h2 id="dlg-addDlg-title" x-t="provider.addKeyTitle"></h2>
-      <p class="rl-hint" x-t="provider.addKeyHint"></p>
+      <h2 id="dlg-addDlg-title" x-t="provider.addConnectionTitle"></h2>
+      <p class="rl-hint" x-t="provider.addConnectionHint"></p>
       <label class="form-label" for="add-name" x-t="provider.name"></label>
       <input class="form-control" id="add-name" x-ref="addName" maxlength="256" required x-bind:value="add.name" x-on:input="setField('add.name', $event)">
       <label class="form-label" for="add-key" x-t="provider.apiKey"></label>
-      <input class="form-control" id="add-key" type="password" autocomplete="off" required x-bind:value="add.key" x-on:input="setAddKey($event)">
+      <div class="rl-key-row">
+        <input class="form-control" id="add-key" type="password" autocomplete="off" required x-bind:value="add.key" x-on:input="setAddKey($event)">
+        <button type="button" class="btn btn-sm" x-bind:disabled="add.checking || add.key === ''" x-on:click="checkAdd()"><span x-t="providers.check"></span></button>
+      </div>
+      <div class="rl-check">
+        <span class="badge badge-ok" x-show="add.check && add.check.valid" x-t="providers.valid"></span>
+        <span class="badge badge-err" x-show="add.check && !add.check.valid && !add.check.unsupported" x-t="providers.invalid"></span>
+      </div>
+      <p class="rl-error" x-show="add.check && !add.check.valid && add.check.error" x-text="add.check ? add.check.error : ''"></p>
       <label class="form-label" for="add-model" x-t="provider.defaultModel"></label>
-      <input class="form-control" id="add-model" x-bind:value="add.defaultModel" x-on:input="setAddModel($event)">
+      <input class="form-control" id="add-model" maxlength="256" x-bind:value="add.defaultModel" x-on:input="setAddModel($event)">
       <label class="form-label" for="add-priority" x-t="provider.priority"></label>
-      <input class="form-control" id="add-priority" type="number" min="1" x-bind:value="add.priority" x-on:input="setField('add.priority', $event)">
+      <input class="form-control" id="add-priority" type="number" min="1" max="1000000" x-bind:value="add.priority" x-on:input="setField('add.priority', $event)">
       <div x-show="controlKeyField()">
         <label class="form-label" for="add-control-key" x-t="provider.controlKey"></label>
         <input class="form-control" id="add-control-key" type="password" autocomplete="off" x-bind:value="add.controlKey" x-on:input="setField('add.controlKey', $event)">
@@ -216,12 +224,6 @@
         </template>
         <button type="button" class="btn btn-sm rl-field-add" x-on:click="addPsdRow()"><span class="rl-icon" x-icon="plus"></span><span x-t="provider.addExtra"></span></button>
       </fieldset>
-      <div class="rl-inline">
-        <button type="button" class="btn btn-sm" x-bind:disabled="add.checking || add.key === ''" x-on:click="checkAdd()"><span x-t="providers.check"></span></button>
-        <span class="badge badge-ok" x-show="add.check && add.check.valid" x-t="providers.valid"></span>
-        <span class="badge badge-err" x-show="add.check && !add.check.valid && !add.check.unsupported" x-t="providers.invalid"></span>
-      </div>
-      <p class="rl-error" x-show="add.check && !add.check.valid && add.check.error" x-text="add.check ? add.check.error : ''"></p>
       <p class="rl-error" x-show="add.error" x-text="add.error"></p>
       <div class="rl-dialog-actions">
         <button type="button" class="btn" x-on:click="closeAddKey()" x-t="common.cancel"></button>
@@ -258,10 +260,9 @@
     <button type="button" class="btn btn-sm btn-ghost rl-dialog-close" x-tip="common.close" x-on:click="$el.closest('dialog').close()"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.close"></span></button>
     <form x-on:submit.prevent="saveEdit()" x-show="edit">
       <h2 id="dlg-editDlg-title" x-t="provider.editTitle"></h2>
+      <p class="rl-hint" x-t="provider.editHint"></p>
       <label class="form-label" for="edit-name" x-t="provider.name"></label>
       <input class="form-control" id="edit-name" x-ref="editName" maxlength="256" x-bind:value="edit ? edit.name : ''" x-on:input="setField('edit.name', $event)">
-      <label class="form-label" for="edit-priority" x-t="provider.priority"></label>
-      <input class="form-control" id="edit-priority" type="number" min="1" max="1000000" x-bind:value="edit ? edit.priority : ''" x-on:input="setField('edit.priority', $event)">
       <div x-show="editUsesKey()">
         <label class="form-label" for="edit-key" x-t="provider.apiKey"></label>
         <div class="rl-key-row">
@@ -275,6 +276,10 @@
         </div>
         <p class="rl-error" x-show="edit && edit.check && !edit.check.valid && edit.check.error" x-text="edit.check ? edit.check.error : ''"></p>
       </div>
+      <label class="form-label" for="edit-model" x-t="provider.defaultModel"></label>
+      <input class="form-control" id="edit-model" maxlength="256" x-bind:value="edit ? edit.defaultModel : ''" x-on:input="setField('edit.defaultModel', $event)">
+      <label class="form-label" for="edit-priority" x-t="provider.priority"></label>
+      <input class="form-control" id="edit-priority" type="number" min="1" max="1000000" x-bind:value="edit ? edit.priority : ''" x-on:input="setField('edit.priority', $event)">
       <div class="form-check form-switch rl-switch">
         <input class="form-check-input" type="checkbox" id="edit-active" role="switch" x-bind:checked="edit ? edit.isActive : false" x-on:change="toggleEditActive()">
         <label class="form-check-label" for="edit-active" x-t="keys.active"></label>
@@ -312,12 +317,13 @@
     </form>
   </dialog>
 
-  <dialog class="rl-dialog" x-ref="nodeDlg" aria-labelledby="dlg-nodeDlg-title">
+  <dialog class="rl-dialog" x-ref="nodeDlg" x-on:close="forgetNode()" aria-labelledby="dlg-nodeDlg-title">
     <button type="button" class="btn btn-sm btn-ghost rl-dialog-close" x-tip="common.close" x-on:click="$el.closest('dialog').close()"><span class="rl-icon" x-icon="x"></span><span class="visually-hidden" x-t="common.close"></span></button>
     <form x-on:submit.prevent="saveNode()">
       <h2 id="dlg-nodeDlg-title" x-t="provider.nodeEdit"></h2>
+      <p class="rl-hint" x-text="label('providers.nodeTypes.' + (node && node.type === 'anthropic-compatible' ? 'anthropic' : 'openai'))"></p>
       <label class="form-label" for="node-edit-name" x-t="providers.name"></label>
-      <input class="form-control" id="node-edit-name" x-bind:value="nodeForm.name" x-on:input="setField('nodeForm.name', $event)" required>
+      <input class="form-control" id="node-edit-name" maxlength="64" x-bind:value="nodeForm.name" x-on:input="setField('nodeForm.name', $event)" required>
       <label class="form-label" for="node-edit-prefix" x-t="providers.prefix"></label>
       <input class="form-control" id="node-edit-prefix" maxlength="32" x-bind:value="nodeForm.prefix" x-on:input="setField('nodeForm.prefix', $event)" required>
       <div x-show="node && node.type === 'openai-compatible'">
@@ -329,6 +335,18 @@
       </div>
       <label class="form-label" for="node-edit-base" x-t="providers.baseUrl"></label>
       <input class="form-control" id="node-edit-base" x-bind:value="nodeForm.baseUrl" x-on:input="setField('nodeForm.baseUrl', $event)" required>
+      <label class="form-label" for="node-edit-key" x-t="providers.checkKey"></label>
+      <div class="rl-key-row">
+        <input class="form-control" id="node-edit-key" type="password" autocomplete="off" x-bind:value="nodeForm.apiKey" x-on:input="setNodeChecked('apiKey', $event)">
+        <button type="button" class="btn btn-sm" x-bind:disabled="nodeForm.checking || nodeForm.apiKey === '' || nodeForm.baseUrl === ''" x-on:click="checkNodeEdit()"><span x-t="providers.check"></span></button>
+      </div>
+      <label class="form-label" for="node-edit-model" x-t="providers.modelId"></label>
+      <input class="form-control" id="node-edit-model" x-bind:value="nodeForm.modelId" x-on:input="setNodeChecked('modelId', $event)">
+      <div class="rl-check">
+        <span class="badge badge-ok" x-show="nodeForm.check && nodeForm.check.valid" x-t="providers.valid"></span>
+        <span class="badge badge-err" x-show="nodeForm.check && !nodeForm.check.valid" x-t="providers.invalid"></span>
+      </div>
+      <p class="rl-error" x-show="nodeForm.check && !nodeForm.check.valid && nodeForm.check.error" x-text="nodeForm.check ? nodeForm.check.error : ''"></p>
       <p class="rl-error" x-show="nodeForm.error" x-text="nodeForm.error"></p>
       <div class="rl-dialog-actions">
         <button type="button" class="btn" x-on:click="closeNode()" x-t="common.cancel"></button>

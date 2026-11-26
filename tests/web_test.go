@@ -3305,14 +3305,16 @@ func TestTheControlKeyHasItsOwnPasswordInputAndStaysOutOfTheFieldEditor(t *testi
 	}
 }
 
-// An OAuth login has no key to type and no model to order, and the reference's
-// edit dialog offers neither an automatic priority nor a default model either.
-func TestAnOAuthConnectionEditsNoKeyOrModel(t *testing.T) {
+// An OAuth login has no key to type, and no provider here sets a priority by
+// hand, so the edit dialog offers neither. The default model is the account's
+// own answer to what it serves, so the add and edit dialogs offer it alike.
+func TestAnOAuthConnectionEditsNoKeyAndNoAutomaticPriority(t *testing.T) {
 	html := readWeb(t, "static/pages/provider.html")
-	for _, id := range []string{"edit-global", "edit-model"} {
-		if strings.Contains(html, `id="`+id+`"`) {
-			t.Errorf("the edit dialog still offers %s", id)
-		}
+	if strings.Contains(html, `id="edit-global"`) {
+		t.Error("the edit dialog still offers an automatic priority")
+	}
+	if !strings.Contains(html, `id="edit-model"`) {
+		t.Error("the edit dialog does not offer the default model the add dialog does")
 	}
 	if !strings.Contains(html, `x-show="editUsesKey()"`) {
 		t.Error("the API key input is not tied to the connection's kind")
@@ -3324,10 +3326,11 @@ func TestAnOAuthConnectionEditsNoKeyOrModel(t *testing.T) {
 		}
 	}
 	body := methodBody(js, "editBody")
-	for _, gone := range []string{"defaultModel", "globalPriority"} {
-		if strings.Contains(body, gone) {
-			t.Errorf("editBody still sends %s", gone)
-		}
+	if strings.Contains(body, "globalPriority") {
+		t.Error("editBody still sends an automatic priority")
+	}
+	if !strings.Contains(body, "defaultModel") {
+		t.Error("editBody does not send the default model the dialog edits")
 	}
 }
 

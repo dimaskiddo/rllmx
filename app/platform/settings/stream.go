@@ -8,24 +8,19 @@ import (
 
 // Stream is the validated view of the STREAM_* settings.
 type Stream struct {
+	Notices
+
 	FirstChunk time.Duration
 	Stall      time.Duration
 	UsageWait  time.Duration
 }
 
-// LoadStream reads and checks the STREAM_* settings. A value out of range stops
-// the start.
+// LoadStream reads the STREAM_* settings. Each is a tuning value: an unreadable
+// or out-of-range one uses its default and is reported.
 func LoadStream(cfg config.Config) (*Stream, error) {
 	s := &Stream{}
-	var err error
-	if s.FirstChunk, err = duration(cfg, "stream.first_chunk_timeout", "STREAM_FIRST_CHUNK_TIMEOUT", 5*time.Second, time.Hour); err != nil {
-		return nil, err
-	}
-	if s.Stall, err = duration(cfg, "stream.stall_timeout", "STREAM_STALL_TIMEOUT", 5*time.Second, time.Hour); err != nil {
-		return nil, err
-	}
-	if s.UsageWait, err = duration(cfg, "stream.usage_wait", "STREAM_USAGE_WAIT", 100*time.Millisecond, 30*time.Second); err != nil {
-		return nil, err
-	}
+	s.FirstChunk = duration(cfg, "stream.first_chunk_timeout", "STREAM_FIRST_CHUNK_TIMEOUT", 5*time.Second, time.Hour, 200*time.Second, &s.Notices)
+	s.Stall = duration(cfg, "stream.stall_timeout", "STREAM_STALL_TIMEOUT", 5*time.Second, time.Hour, 6*time.Minute, &s.Notices)
+	s.UsageWait = duration(cfg, "stream.usage_wait", "STREAM_USAGE_WAIT", 100*time.Millisecond, 30*time.Second, 3*time.Second, &s.Notices)
 	return s, nil
 }

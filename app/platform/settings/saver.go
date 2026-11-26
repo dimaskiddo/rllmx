@@ -10,6 +10,8 @@ import (
 
 // Saver is the validated view of the SAVER_* settings.
 type Saver struct {
+	Notices
+
 	// HeadroomURL is the sidecar's address when the settings row holds none.
 	// Empty means the row's default stands.
 	HeadroomURL string

@@ -318,10 +318,13 @@ func byLastUse(conns []repository.Connection, newest bool) []repository.Connecti
 	return out
 }
 
-// recordUse persists the rotation state. A failed write only costs rotation
-// accuracy, so the request is served anyway.
+// recordUse persists the rotation state. The use happened whether or not the
+// caller is still waiting, so the write runs on its own budget. A failed write
+// only costs rotation accuracy, and the request is served anyway.
 func (s *Selector) recordUse(ctx context.Context, c repository.Connection, sticky bool, now time.Time) {
-	if err := s.conns.TouchUsageAt(ctx, c.ID, sticky, useTime(now, c)); err != nil && s.log != nil {
+	wctx, cancel := reportCtx(ctx)
+	defer cancel()
+	if err := s.conns.TouchUsageAt(wctx, c.ID, sticky, useTime(now, c)); err != nil && s.log != nil {
 		s.log.Warningf("account: recording a connection use failed for provider %s: %v", c.Provider, err)
 	}
 }

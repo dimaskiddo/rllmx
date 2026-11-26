@@ -3,7 +3,6 @@ package settings
 import (
 	"encoding/hex"
 	"errors"
-	"fmt"
 
 	"github.com/goravel/framework/contracts/config"
 )
@@ -33,6 +32,8 @@ var (
 
 // Store is the validated view of the settings the data stores need.
 type Store struct {
+	Notices
+
 	// Secret is the 32-byte key behind DB_ENCRYPTION_SECRET, empty for a
 	// command that never touches a secret. Treat it as a secret: it is never
 	// printed or logged.
@@ -88,11 +89,8 @@ func LoadDatabase(cfg config.Config) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	days := cfg.GetInt(retentionKey, 90)
-	if days < minRetention || days > maxRetention {
-		return nil, fmt.Errorf("settings: ANALYTICS_RETENTION_DAYS: must be between %d and %d", minRetention, maxRetention)
-	}
-	s := &Store{RetentionDays: days, Engine: e, DataDir: dir}
+	s := &Store{Engine: e, DataDir: dir}
+	s.RetentionDays = number(cfg, retentionKey, "ANALYTICS_RETENTION_DAYS", minRetention, maxRetention, 90, &s.Notices)
 	if e == EnginePostgres {
 		s.PGSchema = cfg.GetString(pgSchemaKey)
 	} else {

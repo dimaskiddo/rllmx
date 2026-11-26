@@ -2,7 +2,6 @@ package settings
 
 import (
 	"crypto/tls"
-	"fmt"
 	"strings"
 	"time"
 
@@ -15,12 +14,17 @@ import (
 const (
 	minConnectTimeout = time.Second
 	maxConnectTimeout = 10 * time.Minute
+
+	maxRateRPM   = 100000
+	maxRateBurst = 10000
 )
 
 // Upstream is the validated view of the outbound network settings. The allow
 // list comes from the environment on purpose: a dashboard session must not be
 // able to widen where this program may connect.
 type Upstream struct {
+	Notices
+
 	ConnectTimeout time.Duration
 	// Allow is nil when nothing private is reachable.
 	Allow *network.Allow
@@ -50,81 +54,78 @@ const (
 	KiroOff KiroCreateResponse = "off"
 )
 
-// LoadUpstream reads and checks the UPSTREAM_* settings. A bad allow-list entry
-// stops the start and the error never repeats the entry.
+// LoadUpstream reads the UPSTREAM_* settings. The allow list and only it names
+// where the program may connect, so a bad entry stops the start; the rest tune
+// the outbound call and fall back to their defaults with a notice.
 func LoadUpstream(cfg config.Config) (*Upstream, error) {
 	u := &Upstream{}
-	var err error
-	if u.ConnectTimeout, err = duration(cfg, "upstream.connect_timeout", "UPSTREAM_CONNECT_TIMEOUT", minConnectTimeout, maxConnectTimeout); err != nil {
+	u.ConnectTimeout = duration(cfg, "upstream.connect_timeout", "UPSTREAM_CONNECT_TIMEOUT", minConnectTimeout, maxConnectTimeout, 60*time.Second, &u.Notices)
+	allow, err := network.ParseAllow(cfg.GetString("upstream.allow_private"))
+	if err != nil {
 		return nil, err
 	}
-	if u.Allow, err = network.ParseAllow(cfg.GetString("upstream.allow_private")); err != nil {
-		return nil, err
+	u.Allow = allow
+	u.Curves = curveSet(cfg.GetString("upstream.tls_curve"), &u.Notices)
+	u.ClaudeCLIVersion = cliVersion(cfg.GetString("upstream.claude_cli_version"), &u.Notices)
+	rate := ratelimit.Config{
+		RPM:   number(cfg, "upstream.rate_limit_rpm", "UPSTREAM_RATE_LIMIT_RPM", 0, maxRateRPM, 60, &u.Notices),
+		Burst: number(cfg, "upstream.rate_limit_burst", "UPSTREAM_RATE_LIMIT_BURST", 1, maxRateBurst, 10, &u.Notices),
 	}
-	if u.Curves, err = curveSet(cfg.GetString("upstream.tls_curve")); err != nil {
-		return nil, err
-	}
-	if u.ClaudeCLIVersion, err = cliVersion(cfg.GetString("upstream.claude_cli_version")); err != nil {
-		return nil, err
-	}
-	rate := ratelimit.Config{RPM: cfg.GetInt("upstream.rate_limit_rpm", 60), Burst: cfg.GetInt("upstream.rate_limit_burst", 10)}
-	if rate.MaxWait, err = duration(cfg, "upstream.rate_limit_max_wait", "UPSTREAM_RATE_LIMIT_MAX_WAIT", 0, 10*time.Minute); err != nil {
-		return nil, err
-	}
-	if err := rate.Valid(); err != nil {
-		return nil, fmt.Errorf("settings: UPSTREAM_RATE_LIMIT_RPM/BURST/MAX_WAIT: %w", err)
-	}
+	rate.MaxWait = duration(cfg, "upstream.rate_limit_max_wait", "UPSTREAM_RATE_LIMIT_MAX_WAIT", 0, 10*time.Minute, 30*time.Second, &u.Notices)
 	u.RateLimit = rate
-	if u.KiroCreateResponse, err = kiroMode(cfg.GetString("upstream.kiro_create_response")); err != nil {
-		return nil, err
-	}
+	u.KiroCreateResponse = kiroMode(cfg.GetString("upstream.kiro_create_response"), &u.Notices)
 	return u, nil
 }
 
 // cliVersion reads the pinned Claude Code version: empty, or three dot-separated
 // numbers. The floor is applied where the version is used.
-func cliVersion(raw string) (string, error) {
+func cliVersion(raw string, n *Notices) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return "", nil
+		return ""
 	}
 	parts := strings.Split(raw, ".")
 	if len(parts) != 3 {
-		return "", fmt.Errorf("UPSTREAM_CLAUDE_CLI_VERSION must be x.y.z")
+		n.warn("UPSTREAM_CLAUDE_CLI_VERSION", "must be x.y.z", "the published version")
+		return ""
 	}
 	for _, p := range parts {
 		if p == "" || len(p) > 6 {
-			return "", fmt.Errorf("UPSTREAM_CLAUDE_CLI_VERSION must be x.y.z")
+			n.warn("UPSTREAM_CLAUDE_CLI_VERSION", "must be x.y.z", "the published version")
+			return ""
 		}
 		for _, r := range p {
 			if r < '0' || r > '9' {
-				return "", fmt.Errorf("UPSTREAM_CLAUDE_CLI_VERSION must be x.y.z")
+				n.warn("UPSTREAM_CLAUDE_CLI_VERSION", "must be x.y.z", "the published version")
+				return ""
 			}
 		}
 	}
-	return raw, nil
+	return raw
 }
 
 // curveSet reads the curve setting: x25519 offers only that group, default
-// offers the standard list.
-func curveSet(raw string) ([]tls.CurveID, error) {
+// offers the standard list. An unreadable value keeps x25519, the stricter set.
+func curveSet(raw string, n *Notices) []tls.CurveID {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "", "x25519":
-		return []tls.CurveID{tls.X25519}, nil
+		return []tls.CurveID{tls.X25519}
 	case "default":
-		return nil, nil
+		return nil
 	}
-	return nil, fmt.Errorf("UPSTREAM_TLS_CURVE must be x25519 or default")
+	n.warn("UPSTREAM_TLS_CURVE", "must be x25519 or default", "x25519")
+	return []tls.CurveID{tls.X25519}
 }
 
 // kiroMode reads the transport setting. A refusal names the variable and never
 // the value.
-func kiroMode(raw string) (KiroCreateResponse, error) {
+func kiroMode(raw string, n *Notices) KiroCreateResponse {
 	switch m := KiroCreateResponse(strings.ToLower(strings.TrimSpace(raw))); m {
 	case "":
-		return KiroAuto, nil
+		return KiroAuto
 	case KiroAuto, KiroAlways, KiroOff:
-		return m, nil
+		return m
 	}
-	return "", fmt.Errorf("UPSTREAM_KIRO_CREATE_RESPONSE must be auto, always or off")
+	n.warn("UPSTREAM_KIRO_CREATE_RESPONSE", "must be auto, always or off", string(KiroAuto))
+	return KiroAuto
 }

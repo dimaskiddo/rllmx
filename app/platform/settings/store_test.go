@@ -85,9 +85,13 @@ func TestRetentionBounds(t *testing.T) {
 		}
 	}
 	for _, bad := range []int{0, -1, 36501} {
-		_, err := loadServer(storeValues(map[string]any{"database.analytics.retention_days": bad}))
-		if err == nil || !strings.Contains(err.Error(), "ANALYTICS_RETENTION_DAYS") {
-			t.Errorf("%d: error = %v", bad, err)
+		s, err := loadServer(storeValues(map[string]any{"database.analytics.retention_days": bad}))
+		if err != nil {
+			t.Errorf("%d: a tuning value stopped the start: %v", bad, err)
+			continue
+		}
+		if s.RetentionDays != 90 || len(s.Warnings) != 1 || !strings.Contains(s.Warnings[0], "ANALYTICS_RETENTION_DAYS") {
+			t.Errorf("%d: retention %d, warnings %v", bad, s.RetentionDays, s.Warnings)
 		}
 	}
 }

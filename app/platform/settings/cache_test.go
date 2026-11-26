@@ -98,10 +98,25 @@ func TestResponseCacheLimitsHaveDefaultsAndRanges(t *testing.T) {
 	if err != nil || !c.Shared || c.ResponseMaxBytes != 9<<20 {
 		t.Fatalf("the limits must survive a Redis host: %+v %v", c, err)
 	}
-	for key, name := range map[string]string{"cache.response.max_entries": "CACHE_RESPONSE_MAX_ENTRIES", "cache.response.max_mb": "CACHE_RESPONSE_MAX_MB"} {
+	for key, c := range map[string]struct {
+		name string
+		def  int64
+	}{
+		"cache.response.max_entries": {"CACHE_RESPONSE_MAX_ENTRIES", 1000},
+		"cache.response.max_mb":      {"CACHE_RESPONSE_MAX_MB", 64 << 20},
+	} {
 		for _, bad := range []int{0, -1, 100001 + 5000} {
-			if _, err := LoadCache(cacheValues(map[string]any{key: bad})); err == nil || !strings.Contains(err.Error(), name) {
-				t.Errorf("%s=%d: %v", name, bad, err)
+			got, err := LoadCache(cacheValues(map[string]any{key: bad}))
+			if err != nil {
+				t.Errorf("%s=%d stopped the start: %v", c.name, bad, err)
+				continue
+			}
+			value := int64(got.ResponseMaxEntries)
+			if key == "cache.response.max_mb" {
+				value = got.ResponseMaxBytes
+			}
+			if value != c.def || len(got.Warnings) != 1 || !strings.Contains(got.Warnings[0], c.name) {
+				t.Errorf("%s=%d: %d %v", c.name, bad, value, got.Warnings)
 			}
 		}
 	}

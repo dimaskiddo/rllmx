@@ -41,11 +41,12 @@ func TestLoadServerDefaults(t *testing.T) {
 
 func TestCompressionAndH2CTakeOnlyABoolean(t *testing.T) {
 	for _, tc := range []struct {
-		key, env string
-		field    func(*Server) bool
+		key, env  string
+		field     func(*Server) bool
+		defaultOn bool
 	}{
-		{"http.compression", "HTTP_COMPRESSION", func(s *Server) bool { return s.Compression }},
-		{"http.h2c", "HTTP_H2C", func(s *Server) bool { return s.H2C }},
+		{"http.compression", "HTTP_COMPRESSION", func(s *Server) bool { return s.Compression }, true},
+		{"http.h2c", "HTTP_H2C", func(s *Server) bool { return s.H2C }, false},
 	} {
 		for text, want := range map[string]bool{"true": true, "false": false, "1": true, "0": false, "TRUE": true} {
 			s, err := loadWith(t, map[string]any{tc.key: text})
@@ -54,14 +55,22 @@ func TestCompressionAndH2CTakeOnlyABoolean(t *testing.T) {
 			}
 		}
 		// A typo must not silently switch compression off (its default is on) or
-		// h2c on, so an unreadable word is refused, by name and never by value.
+		// h2c on: an unreadable word keeps the default and is reported, by name
+		// and never by value.
 		for _, bad := range []string{"maybe", "yes please", "enable", "nope"} {
-			_, err := loadWith(t, map[string]any{tc.key: bad})
-			if err == nil || !strings.Contains(err.Error(), tc.env) {
-				t.Errorf("%s=%s: error = %v", tc.env, bad, err)
+			s, err := loadWith(t, map[string]any{tc.key: bad})
+			if err != nil {
+				t.Errorf("%s=%s: a tuning value stopped the start: %v", tc.env, bad, err)
+				continue
 			}
-			if err != nil && strings.Contains(err.Error(), bad) {
-				t.Errorf("%s=%s: the error quotes the value: %v", tc.env, bad, err)
+			if tc.field(s) != tc.defaultOn {
+				t.Errorf("%s=%s: %v, want the default", tc.env, bad, tc.field(s))
+			}
+			if len(s.Warnings) != 1 || !strings.Contains(s.Warnings[0], tc.env) {
+				t.Errorf("%s=%s: warnings = %v", tc.env, bad, s.Warnings)
+			}
+			if len(s.Warnings) == 1 && strings.Contains(s.Warnings[0], bad) {
+				t.Errorf("%s=%s: the warning quotes the value: %v", tc.env, bad, s.Warnings)
 			}
 		}
 	}
@@ -84,12 +93,16 @@ func TestServerDurationBounds(t *testing.T) {
 			}
 		}
 		for _, v := range c.bad {
-			_, err := loadWith(t, map[string]any{c.key: v})
-			if err == nil || !strings.Contains(err.Error(), c.env) {
-				t.Errorf("%s=%s: error = %v", c.env, v, err)
+			s, err := loadWith(t, map[string]any{c.key: v})
+			if err != nil {
+				t.Errorf("%s=%s: a tuning value stopped the start: %v", c.env, v, err)
+				continue
 			}
-			if err != nil && strings.Contains(err.Error(), v) && len(v) > 3 {
-				t.Errorf("%s=%s: the error quotes the value: %v", c.env, v, err)
+			if len(s.Warnings) != 1 || !strings.Contains(s.Warnings[0], c.env) {
+				t.Errorf("%s=%s: warnings = %v", c.env, v, s.Warnings)
+			}
+			if len(s.Warnings) == 1 && len(v) > 3 && strings.Contains(s.Warnings[0], v) {
+				t.Errorf("%s=%s: the warning quotes the value: %v", c.env, v, s.Warnings)
 			}
 		}
 	}
@@ -107,8 +120,13 @@ func TestServerPortAndBodyBounds(t *testing.T) {
 		}
 	}
 	for _, v := range []int{0, -5, 1<<20 + 1} {
-		if _, err := loadWith(t, map[string]any{"http.guard.max_body_mb": v}); err == nil || !strings.Contains(err.Error(), "SERVER_MAX_BODY_MB") {
-			t.Errorf("max body %d: error = %v", v, err)
+		s, err := loadWith(t, map[string]any{"http.guard.max_body_mb": v})
+		if err != nil {
+			t.Errorf("max body %d stopped the start: %v", v, err)
+			continue
+		}
+		if s.MaxBodyMB != 128 || len(s.Warnings) != 1 || !strings.Contains(s.Warnings[0], "SERVER_MAX_BODY_MB") {
+			t.Errorf("max body %d: %d %v", v, s.MaxBodyMB, s.Warnings)
 		}
 	}
 	if s, err := loadWith(t, map[string]any{"http.guard.max_body_mb": 7, "http.guard.trust_loopback": false}); err != nil || s.MaxBodyMB != 7 || s.TrustLoopback {
@@ -205,8 +223,9 @@ func TestTheUserCapIsReadAndChecked(t *testing.T) {
 		t.Fatalf("%d %v", s.MaxUsers, err)
 	}
 	for _, bad := range []int{0, -1, 100001} {
-		if _, err := loadWith(t, map[string]any{"auth.max_users": bad}); err == nil {
-			t.Errorf("auth.max_users=%d was accepted", bad)
+		s, err := loadWith(t, map[string]any{"auth.max_users": bad})
+		if err != nil || s.MaxUsers != 200 || len(s.Warnings) != 1 || !strings.Contains(s.Warnings[0], "AUTH_MAX_USERS") {
+			t.Errorf("auth.max_users=%d: %d %v %v", bad, s.MaxUsers, s.Warnings, err)
 		}
 	}
 }
@@ -219,9 +238,9 @@ func TestTheSessionLifetimeIsReadAndBounded(t *testing.T) {
 		t.Fatalf("%v %v", s.SessionTTL, err)
 	}
 	for _, bad := range []string{"4m", "721h", "0s", "-1h", "soon"} {
-		_, err := loadWith(t, map[string]any{"auth.session_ttl": bad})
-		if err == nil || !strings.Contains(err.Error(), "AUTH_SESSION_TTL") || strings.Contains(err.Error(), "value "+bad) {
-			t.Errorf("auth.session_ttl=%q: %v", bad, err)
+		s, err := loadWith(t, map[string]any{"auth.session_ttl": bad})
+		if err != nil || s.SessionTTL != 24*time.Hour || len(s.Warnings) != 1 || !strings.Contains(s.Warnings[0], "AUTH_SESSION_TTL") || strings.Contains(s.Warnings[0], "value "+bad) {
+			t.Errorf("auth.session_ttl=%q: %v %v %v", bad, s.SessionTTL, s.Warnings, err)
 		}
 	}
 }

@@ -33,6 +33,17 @@ func NewReporter(c ConnWriter, l log.Log, now func() time.Time) *Reporter {
 	return &Reporter{conns: c, log: l, now: now}
 }
 
+// reportBudget bounds a lock write once it is decided. The write is the
+// account's, so a caller that has already gone neither cancels it nor leaves a
+// warning behind, and a wedged database cannot hold it forever. It outlasts the
+// store's busy wait, which a statement may spend queueing behind another writer
+// before it does any work of its own.
+const reportBudget = 15 * time.Second
+
+func reportCtx(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), reportBudget)
+}
+
 // FailInput describes one failed upstream attempt.
 type FailInput struct {
 	ConnID   string
@@ -77,7 +88,9 @@ func (r *Reporter) Fail(ctx context.Context, in FailInput) (Outcome, error) {
 		model = ""
 	}
 	var d Decision
-	_, err := r.conns.LockFromLevel(ctx, in.ConnID, model, in.Status, in.Text, func(level int) (time.Time, int, bool) {
+	wctx, cancel := reportCtx(ctx)
+	defer cancel()
+	_, err := r.conns.LockFromLevel(wctx, in.ConnID, model, in.Status, in.Text, func(level int) (time.Time, int, bool) {
 		d = classify(level)
 		return now.Add(d.Cooldown), d.NextLevel, true
 	})
@@ -96,5 +109,7 @@ func (r *Reporter) Succeed(ctx context.Context, connID, model string, started ti
 	if connID == "" {
 		return nil
 	}
-	return r.conns.ClearLocks(ctx, connID, model, r.now(), started)
+	wctx, cancel := reportCtx(ctx)
+	defer cancel()
+	return r.conns.ClearLocks(wctx, connID, model, r.now(), started)
 }

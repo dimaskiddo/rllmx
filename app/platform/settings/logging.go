@@ -45,13 +45,15 @@ func ParseLogLevel(v string) (string, error) {
 	return v, nil
 }
 
-// CheckLogging refuses a LOG_OUTPUT that names no sink or a LOG_LEVEL the
-// framework would silently read as debug. The channels are built before this
-// runs, so a bad value keeps its default until the start stops.
-func CheckLogging(cfg config.Config) error {
+// CheckLogging reads LOG_OUTPUT and LOG_LEVEL. Both decide how much is written
+// where, not where the program connects or whom it trusts, so an unreadable one
+// keeps its default and is reported. The channels are built before this runs,
+// so each reader falls back on its own too.
+func CheckLogging(cfg config.Config, n *Notices) {
 	if _, err := ParseLogOutput(cfg.GetString(logOutputKey, "both")); err != nil {
-		return err
+		n.warn("LOG_OUTPUT", "must be file, stdout or both", "both")
 	}
-	_, err := ParseLogLevel(cfg.GetString("logging.channels.single.level", "info"))
-	return err
+	if _, err := ParseLogLevel(cfg.GetString("logging.channels.single.level", "info")); err != nil {
+		n.warn("LOG_LEVEL", "must be debug, info, warning or error", "info")
+	}
 }

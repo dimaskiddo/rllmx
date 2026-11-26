@@ -134,13 +134,17 @@ type HTTP struct {
 	Hermes *hermes.Reader
 }
 
-// HTTPOf returns the bound HTTP pieces. A missing binding means the provider is
-// not registered, which is a bug in the program, so it panics.
+// HTTPOf returns the bound HTTP pieces. A build that failed panics with the
+// provider's own error, which the start prints as one line; a missing binding
+// means the provider is not registered, a bug in the program, and panics too.
 func HTTPOf(app foundation.Application) *HTTP {
 	v, err := app.Make(BindingHTTP)
+	if err != nil {
+		panic(err)
+	}
 	h, ok := v.(*HTTP)
-	if err != nil || !ok || h == nil {
-		panic(fmt.Sprintf("providers: %s is not bound: %v", BindingHTTP, err))
+	if !ok || h == nil {
+		panic("providers: " + BindingHTTP + " is not bound")
 	}
 	return h
 }
@@ -359,8 +363,8 @@ func wireCatalogSync(h *HTTP, app foundation.Application, cfg config.Config) err
 // runner creates it after every provider has registered.
 func sessionSecretSource(cfg config.Config, logf func(format string, args ...any)) (func() []byte, error) {
 	if raw := cfg.GetString("jwt.secret"); raw != "" {
-		if len(raw) < 32 {
-			return nil, errors.New("providers: JWT_SECRET: must be at least 32 characters")
+		if err := settings.CheckJWT(cfg); err != nil {
+			return nil, err
 		}
 		return func() []byte { return []byte(raw) }, nil
 	}

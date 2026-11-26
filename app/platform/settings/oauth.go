@@ -45,6 +45,8 @@ var sharedClients = map[string]string{"grok-cli": "xai", "minimax-code-global": 
 
 // OAuth is the validated view of the OAUTH_* settings.
 type OAuth struct {
+	Notices
+
 	// CallbackHost is the address the fixed-port login listener binds to.
 	CallbackHost string
 	// BackgroundRefresh turns the periodic refresh pass on.
@@ -69,14 +71,8 @@ func LoadOAuth(cfg config.Config) (*OAuth, error) {
 	}
 	o.CallbackHost = addr.String()
 	o.BackgroundRefresh = cfg.GetBool("oauth.background_refresh")
-	o.RefreshDelay = cfg.GetDuration("oauth.refresh_delay")
-	if o.RefreshDelay < 0 || o.RefreshDelay > maxRefreshGap {
-		return nil, fmt.Errorf("settings: OAUTH_REFRESH_DELAY: must be a duration between 0s and %s", maxRefreshGap)
-	}
-	o.RefreshGoogleDelay = cfg.GetDuration("oauth.refresh_google_delay")
-	if o.RefreshGoogleDelay < 0 || o.RefreshGoogleDelay > maxRefreshGap {
-		return nil, fmt.Errorf("settings: OAUTH_REFRESH_GOOGLE_DELAY: must be a duration between 0s and %s", maxRefreshGap)
-	}
+	o.RefreshDelay = duration(cfg, "oauth.refresh_delay", "OAUTH_REFRESH_DELAY", 0, maxRefreshGap, 1500*time.Millisecond, &o.Notices)
+	o.RefreshGoogleDelay = duration(cfg, "oauth.refresh_google_delay", "OAUTH_REFRESH_GOOGLE_DELAY", 0, maxRefreshGap, 12*time.Second, &o.Notices)
 	for id, c := range oauthSecrets {
 		v := strings.TrimSpace(cfg.GetString(c.key))
 		if len(v) > maxClientIDLen || strings.ContainsFunc(v, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) {

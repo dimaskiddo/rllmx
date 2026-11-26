@@ -56,9 +56,11 @@ type Catalog struct {
 	Registry *upstream.Registry
 	Caps     *upstream.Capabilities
 	Resolver Resolver
-	Conns    Connections
-	Nodes    Nodes
-	KV       KV
+	// Combos lists the named routes beside the models; nil lists none.
+	Combos Combos
+	Conns  Connections
+	Nodes  Nodes
+	KV     KV
 	// Fetch and Cache are optional: without Fetch a node shows only the models
 	// it was given; without Cache every request fetches.
 	Fetch NodeFetch
@@ -93,7 +95,11 @@ func (c *Catalog) List(ctx context.Context, caller identity.Caller) ([]Entry, er
 		}
 		byProvider[cn.Provider] = append(byProvider[cn.Provider], cn)
 	}
-	if len(byProvider) == 0 && !c.hasNoAuth() {
+	combos, err := c.comboEntries(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(byProvider) == 0 && len(combos) == 0 && !c.hasNoAuth() {
 		return []Entry{}, nil
 	}
 	custom, err := c.KV.List(ctx, repository.ScopeCustomModels)
@@ -105,7 +111,9 @@ func (c *Catalog) List(ctx context.Context, caller identity.Caller) ([]Entry, er
 		return nil, err
 	}
 
-	var out []Entry
+	// A combo comes first: a client reads the list in order, and a name it can
+	// call should be ahead of the models that name routes through.
+	out := combos
 	for _, e := range c.Registry.All() {
 		cs := byProvider[e.ID]
 		if len(cs) == 0 {
@@ -312,7 +320,11 @@ func (c *Catalog) visible(ctx context.Context, caller identity.Caller, list []En
 	}
 	out := make([]Entry, 0, len(list))
 	for _, e := range list {
-		if allow.Target(routing.Target{Provider: e.Provider, Model: e.Model}) {
+		t := routing.Target{Provider: e.Provider, Model: e.Model}
+		if e.Combo != "" {
+			t = routing.Target{Combo: e.Combo}
+		}
+		if allow.Target(t) {
 			out = append(out, e)
 		}
 	}

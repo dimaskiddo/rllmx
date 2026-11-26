@@ -1,9 +1,10 @@
 package main
 
 import (
-	// The distroless image carries no zoneinfo, and day rollups and log times
-	// read the local zone.
-	_ "time/tzdata"
+	"os"
+	"runtime"
+
+	"github.com/goravel/framework/support/color"
 
 	"rllmx/bootstrap"
 )
@@ -15,6 +16,25 @@ var (
 )
 
 func main() {
+	// A start that cannot go on reports one line and stops, whether it was a
+	// setting, a store or a runner that refused. Anything that is not a plain
+	// error is a bug in this program and keeps its stack.
+	defer func() {
+		switch r := recover().(type) {
+		case nil:
+		case runtime.Error:
+			panic(r)
+		case error:
+			color.Errorln(r.Error())
+			os.Exit(1)
+		case string:
+			color.Errorln(r)
+			os.Exit(1)
+		default:
+			panic(r)
+		}
+	}()
+
 	app := bootstrap.Boot(version, commit)
 
 	app.Start()

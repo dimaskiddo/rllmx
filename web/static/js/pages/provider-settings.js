@@ -4,6 +4,7 @@ import { api, patchSettings } from "/static/js/ui/api.js";
 import { ask } from "/static/js/ui/dialog.js";
 import { t } from "/static/js/ui/i18n.js";
 import { toast } from "/static/js/ui/toast.js";
+import { checkAllowsSave } from "/static/js/pages/provider-status.js";
 
 // strategyEntry reads a provider's stored strategy as the object form. Older
 // rows hold the bare word, which the selector reads as its fallbackStrategy.
@@ -67,7 +68,10 @@ export const settingsMethods = {
   },
 
   openNode() {
-    this.nodeForm = { name: this.node.name, prefix: this.node.prefix || "", apiType: this.node.apiType || "chat", baseUrl: this.node.baseUrl || "", error: "", busy: false };
+    this.nodeForm = {
+      name: this.node.name, prefix: this.node.prefix || "", apiType: this.node.apiType || "chat",
+      baseUrl: this.node.baseUrl || "", apiKey: "", modelId: "", check: null, checking: false, error: "", busy: false,
+    };
     this.$refs.nodeDlg.showModal();
   },
 
@@ -75,10 +79,50 @@ export const settingsMethods = {
     this.$refs.nodeDlg.close();
   },
 
+  // The check key is a typed secret, so it goes whichever way the dialog did.
+  forgetNode() {
+    if (this.nodeForm) {
+      this.nodeForm.apiKey = "";
+      this.nodeForm.check = null;
+    }
+  },
+
+  // The key here is given to the check only; the node keeps the credential it
+  // already has.
+  setNodeChecked(field, event) {
+    this.nodeForm[field] = event.target.value;
+    this.nodeForm.check = null;
+  },
+
+  async checkNodeEdit() {
+    this.nodeForm.checking = true;
+    this.nodeForm.check = null;
+    this.nodeForm.error = "";
+    try {
+      this.nodeForm.check = await api("/api/provider-nodes/validate", {
+        method: "POST",
+        body: { baseUrl: this.nodeForm.baseUrl, apiKey: this.nodeForm.apiKey, type: this.node.type, modelId: this.nodeForm.modelId },
+      });
+    } catch (err) {
+      this.nodeForm.error = err.message;
+    } finally {
+      this.nodeForm.checking = false;
+    }
+  },
+
   async saveNode() {
     this.nodeForm.error = "";
     this.nodeForm.busy = true;
     try {
+      if (this.nodeForm.apiKey !== "") {
+        await this.checkNodeEdit();
+        if (!checkAllowsSave(this.nodeForm.check)) {
+          if (this.nodeForm.error === "") {
+            this.nodeForm.error = t("provider.checkRequired");
+          }
+          return;
+        }
+      }
       const body = { name: this.nodeForm.name, prefix: this.nodeForm.prefix, baseUrl: this.nodeForm.baseUrl, type: this.node.type };
       if (this.node.type === "openai-compatible") {
         body.apiType = this.nodeForm.apiType;

@@ -31,7 +31,10 @@ type Entry struct {
 	Model    string
 	Name     string
 	OwnedBy  string
-	Caps     upstream.Capability
+	// Combo is the name of the named route this entry stands for, or empty for
+	// a model. A caller's allowed list names a combo rather than a model.
+	Combo string
+	Caps  upstream.Capability
 	// Levels are the reasoning levels a client may ask for; empty for a model
 	// with no reasoning.
 	Levels []string
@@ -103,8 +106,12 @@ func (e Entry) Gemini() GeminiModel {
 	if name == "" {
 		name = e.Model
 	}
+	description := e.OwnedBy + " model " + e.Model
+	if e.Combo != "" {
+		description = "combo"
+	}
 	return GeminiModel{
-		Name: "models/" + e.ID, DisplayName: name, Description: e.OwnedBy + " model " + e.Model,
+		Name: "models/" + e.ID, DisplayName: name, Description: description,
 		SupportedGenerationMethods: []string{"generateContent", "streamGenerateContent"},
 		InputTokenLimit:            e.Caps.ContextWindow, OutputTokenLimit: e.Caps.MaxOutput,
 	}

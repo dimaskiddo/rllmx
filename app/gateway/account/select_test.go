@@ -252,6 +252,18 @@ func TestTwoUsesInOneMillisecondStillOrder(t *testing.T) {
 	}
 }
 
+// The use happened whether or not the caller is still waiting for its answer.
+func TestAUseIsRecordedEvenWhenTheCallerHasGone(t *testing.T) {
+	r := newRig(t, `{"fallbackStrategy":"round-robin"}`)
+	c := r.add(t, "p", "a", nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	r.sel.recordUse(ctx, c, true, r.clock())
+	if _, ok := r.get(t, c.ID).Doc().GetString("lastUsedAt"); !ok {
+		t.Fatal("the use of a connection was not recorded because its caller left")
+	}
+}
+
 func TestStickyLimitReading(t *testing.T) {
 	cases := map[string]struct {
 		settings string

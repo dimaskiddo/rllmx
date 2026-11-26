@@ -63,10 +63,11 @@ func buildCatalog(app foundation.Application) (*catalog.Catalog, error) {
 	if err != nil {
 		return nil, err
 	}
+	resolver := &routing.Resolver{Registry: h.Registry, Snapshot: snap}
 	c := &catalog.Catalog{
 		Registry: h.Registry, Caps: h.Capabilities,
-		Resolver: &routing.Resolver{Registry: h.Registry, Snapshot: snap},
-		Conns:    store.Connections(), Nodes: store.Nodes(), KV: store.KV(),
+		Resolver: resolver, Combos: resolver,
+		Conns: store.Connections(), Nodes: store.Nodes(), KV: store.KV(),
 		Fetch: nodeFetch(h.Checker), Log: app.MakeLog(), Created: time.Now().Unix(),
 	}
 	if ch := cacheOrNil(app); ch != nil {

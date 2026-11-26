@@ -24,22 +24,28 @@ func TestLoadStreamReadsTheDefaults(t *testing.T) {
 	}
 }
 
-func TestLoadStreamRefusesValuesOutOfRange(t *testing.T) {
+// Every stream setting is a tuning value: one that is out of range or unreadable
+// keeps the default and is reported, and the stream still runs.
+func TestLoadStreamWarnsAndKeepsTheDefaults(t *testing.T) {
 	cases := map[string][3]string{
-		"STREAM_FIRST_CHUNK_TIMEOUT": {"1s", "360s", "3s"},
-		"STREAM_STALL_TIMEOUT":       {"200s", "2h", "3s"},
-		"STREAM_USAGE_WAIT":          {"200s", "360s", "50ms"},
+		"STREAM_FIRST_CHUNK_TIMEOUT":  {"1s", "360s", "3s"},
+		"STREAM_STALL_TIMEOUT":        {"200s", "2h", "3s"},
+		"STREAM_USAGE_WAIT":           {"200s", "360s", "50ms"},
+		"STREAM_USAGE_WAIT ":          {"200s", "360s", "31s"},
+		"STREAM_FIRST_CHUNK_TIMEOUT ": {"not a duration", "360s", "3s"},
 	}
 	for name, v := range cases {
-		_, err := LoadStream(streamValues(v[0], v[1], v[2]))
-		if err == nil || !strings.Contains(err.Error(), name) {
-			t.Errorf("%s: err %v", name, err)
+		s, err := LoadStream(streamValues(v[0], v[1], v[2]))
+		if err != nil {
+			t.Errorf("%s: a tuning value stopped the start: %v", name, err)
+			continue
+		}
+		if len(s.Warnings) != 1 || !strings.Contains(s.Warnings[0], strings.TrimSpace(name)) {
+			t.Errorf("%s: warnings = %v", name, s.Warnings)
 		}
 	}
-	if _, err := LoadStream(streamValues("200s", "360s", "31s")); err == nil {
-		t.Error("a usage wait over 30s was accepted")
-	}
-	if _, err := LoadStream(streamValues("not a duration", "360s", "3s")); err == nil {
-		t.Error("a malformed duration was accepted")
+	s, _ := LoadStream(streamValues("1s", "2h", "3s"))
+	if s.FirstChunk != 200*time.Second || s.Stall != 6*time.Minute {
+		t.Fatalf("defaults = %+v", s)
 	}
 }

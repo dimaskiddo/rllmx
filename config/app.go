@@ -14,15 +14,21 @@ import (
 )
 
 // Boot is the WithConfig hook. It runs after the framework has read the .env
-// file and before any provider, and stops the start on a .env entry the code
-// does not read or a setting out of range, then makes the data folder (see
-// prepare). Goravel's own .env errors exit 0; these exit 1.
+// file and before any provider: an entry the code does not read, a value that
+// names storage, identity, trust or a dial target, or a data folder that cannot
+// be prepared stops the start with one line. A tuning value that cannot be read
+// is replaced by its default and reported once. Goravel's own .env errors exit
+// 0; these exit 1.
 func Boot() {
 	cfg := facades.Config()
-	err := check(support.EnvFilePath, cfg)
+	var notices settings.Notices
+	err := check(support.EnvFilePath, cfg, &notices)
 	if err == nil {
 		dir := cfg.GetString("app.data_dir")
 		err = prepare(dir, databaseFile(cfg.GetString("database.default"), dir))
+	}
+	for _, w := range notices.Warnings {
+		color.Warnln(w)
 	}
 	if err != nil {
 		color.Errorln(err.Error())
@@ -30,33 +36,74 @@ func Boot() {
 	}
 }
 
-// check is what Boot refuses to start on: a .env entry the code does not read,
-// a server, Redis or secret setting that is malformed, or a data directory that
-// cannot be resolved. A missing DB_ENCRYPTION_SECRET passes here: only opening
-// the store requires it.
-func check(envFile string, cfg contractsconfig.Config) error {
+// check is what Boot refuses to start on, and where a setting that has a safe
+// default is replaced by it. Every group is read here, so no setting is first
+// validated after the providers have started.
+func check(envFile string, cfg contractsconfig.Config, notices *settings.Notices) error {
 	if err := settings.CheckEnvFile(envFile); err != nil {
 		return err
 	}
-	if _, err := settings.LoadServer(cfg); err != nil {
+	srv, err := settings.LoadServer(cfg)
+	if err != nil {
 		return err
 	}
-	if _, err := settings.LoadCache(cfg); err != nil {
+	notices.Warnings = append(notices.Warnings, srv.Warnings...)
+	cache, err := settings.LoadCache(cfg)
+	if err != nil {
 		return err
 	}
-	if err := settings.CheckLogging(cfg); err != nil {
-		return err
-	}
+	notices.Warnings = append(notices.Warnings, cache.Warnings...)
+	settings.CheckLogging(cfg, notices)
 	if err := settings.CheckSecretFormat(cfg); err != nil {
 		return err
 	}
-	if _, err := settings.LoadUpstream(cfg); err != nil {
+	if err := settings.CheckJWT(cfg); err != nil {
 		return err
 	}
+	up, err := settings.LoadUpstream(cfg)
+	if err != nil {
+		return err
+	}
+	notices.Warnings = append(notices.Warnings, up.Warnings...)
 	if err := settings.CheckConnection(cfg); err != nil {
 		return err
 	}
-	_, err := settings.ResolveDataDir(cfg.GetString("app.data_dir"))
+	db, err := settings.LoadDatabase(cfg)
+	if err != nil {
+		return err
+	}
+	notices.Warnings = append(notices.Warnings, db.Warnings...)
+	stream, err := settings.LoadStream(cfg)
+	if err != nil {
+		return err
+	}
+	notices.Warnings = append(notices.Warnings, stream.Warnings...)
+	oauth, err := settings.LoadOAuth(cfg)
+	if err != nil {
+		return err
+	}
+	notices.Warnings = append(notices.Warnings, oauth.Warnings...)
+	media, err := settings.LoadMedia(cfg)
+	if err != nil {
+		return err
+	}
+	notices.Warnings = append(notices.Warnings, media.Warnings...)
+	saver, err := settings.LoadSaver(cfg)
+	if err != nil {
+		return err
+	}
+	notices.Warnings = append(notices.Warnings, saver.Warnings...)
+	captcha, err := settings.LoadCaptcha(cfg)
+	if err != nil {
+		return err
+	}
+	notices.Warnings = append(notices.Warnings, captcha.Warnings...)
+	metrics, err := settings.LoadMetrics(cfg)
+	if err != nil {
+		return err
+	}
+	notices.Warnings = append(notices.Warnings, metrics.Warnings...)
+	_, err = settings.ResolveDataDir(cfg.GetString("app.data_dir"))
 	return err
 }
 

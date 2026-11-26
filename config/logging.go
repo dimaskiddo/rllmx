@@ -66,6 +66,18 @@ func logSinks(output settings.LogOutput, cfg contractsconfig.Config, file log.Lo
 	return sinks
 }
 
+// logLevel reads LOG_LEVEL once for the channels. An unreadable value uses info:
+// the channels are built before Boot can report it, and debug, the framework's
+// own fallback, is the loudest setting.
+func logLevel(cfg contractsconfig.Config) string {
+	raw, _ := cfg.Env("LOG_LEVEL", "info").(string)
+	level, err := settings.ParseLogLevel(raw)
+	if err != nil {
+		return "info"
+	}
+	return level
+}
+
 // logDriver puts the redactor in front of the drivers, with the console ring as
 // a second reader. Order matters: redaction runs first, so no sink and no ring
 // ever holds a secret.
@@ -111,14 +123,14 @@ func init() {
 				"driver":    "custom",
 				"via":       logDriver(logSinks(output, config, logger.NewSingle(config, json.New()))...),
 				"path":      logFile,
-				"level":     config.Env("LOG_LEVEL", "info"),
+				"level":     logLevel(config),
 				"formatter": "text",
 			},
 			"daily": map[string]any{
 				"driver":    "custom",
 				"via":       logDriver(logSinks(output, config, logger.NewDaily(config, json.New()))...),
 				"path":      logFile,
-				"level":     config.Env("LOG_LEVEL", "info"),
+				"level":     logLevel(config),
 				"days":      7,
 				"formatter": "text",
 			},

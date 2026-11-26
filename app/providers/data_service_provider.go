@@ -3,7 +3,6 @@ package providers
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/goravel/framework/contracts/binding"
@@ -40,13 +39,17 @@ type Data struct {
 	Jobs   *data.JobSet
 }
 
-// DataOf returns the bound data pieces. A missing binding means the provider is
-// not registered, which is a bug in the program, so it panics.
+// DataOf returns the bound data pieces. A build that failed panics with the
+// provider's own error, which the start prints as one line; a missing binding
+// means the provider is not registered, a bug in the program, and panics too.
 func DataOf(app foundation.Application) *Data {
 	v, err := app.Make(BindingData)
+	if err != nil {
+		panic(err)
+	}
 	d, ok := v.(*Data)
-	if err != nil || !ok || d == nil {
-		panic(fmt.Sprintf("providers: %s is not bound: %v", BindingData, err))
+	if !ok || d == nil {
+		panic("providers: " + BindingData + " is not bound")
 	}
 	return d
 }

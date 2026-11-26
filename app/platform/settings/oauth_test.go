@@ -44,8 +44,6 @@ func TestOAuthSettingsRefuseBadValuesWithoutRepeatingThem(t *testing.T) {
 		"id with a space":     {"oauth.codex_client_id": "a b"},
 		"id with a newline":   {"oauth.codex_client_id": "a\nb"},
 		"id too long":         {"oauth.claude_client_id": strings.Repeat("x", maxClientIDLen+1)},
-		"delay too long":      {"oauth.refresh_delay": "61s"},
-		"delay negative":      {"oauth.refresh_delay": "-1s"},
 	} {
 		_, err := LoadOAuth(oauthConfig(over))
 		if err == nil {
@@ -56,6 +54,16 @@ func TestOAuthSettingsRefuseBadValuesWithoutRepeatingThem(t *testing.T) {
 			if s, _ := v.(string); len(s) > 3 && strings.Contains(err.Error(), s) {
 				t.Errorf("%s: the error repeats the value: %v", name, err)
 			}
+		}
+	}
+	for _, bad := range []string{"61s", "-1s", "soon"} {
+		o, err := LoadOAuth(oauthConfig(map[string]any{"oauth.refresh_delay": bad}))
+		if err != nil {
+			t.Errorf("refresh delay %q stopped the start: %v", bad, err)
+			continue
+		}
+		if o.RefreshDelay != 1500*time.Millisecond || len(o.Warnings) != 1 || !strings.Contains(o.Warnings[0], "OAUTH_REFRESH_DELAY") {
+			t.Errorf("refresh delay %q: %v %v", bad, o.RefreshDelay, o.Warnings)
 		}
 	}
 }

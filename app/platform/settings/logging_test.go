@@ -39,12 +39,26 @@ func TestParseLogOutputRefusesAnUnknownSink(t *testing.T) {
 	}
 }
 
-func TestCheckLoggingReadsTheStoredValue(t *testing.T) {
-	if err := CheckLogging(tests.Config{Values: map[string]any{"logging.output": "file"}}); err != nil {
-		t.Fatal(err)
+// Where log lines go and how loud they are tuning values: a value nobody can
+// read keeps its default and is reported, and the start goes on.
+func TestCheckLoggingWarnsAndKeepsTheDefaults(t *testing.T) {
+	var n Notices
+	CheckLogging(tests.Config{Values: map[string]any{"logging.output": "file"}}, &n)
+	if len(n.Warnings) != 0 {
+		t.Fatalf("a readable value warned: %v", n.Warnings)
 	}
-	if err := CheckLogging(tests.Config{Values: map[string]any{"logging.output": "terminal"}}); err == nil {
-		t.Fatal("terminal names no sink")
+	CheckLogging(tests.Config{Values: map[string]any{
+		"logging.output":                "terminal",
+		"logging.channels.single.level": "verbose",
+	}}, &n)
+	if len(n.Warnings) != 2 {
+		t.Fatalf("warnings = %v, want LOG_OUTPUT and LOG_LEVEL", n.Warnings)
+	}
+	for _, want := range []string{"LOG_OUTPUT", "LOG_LEVEL", "; using "} {
+		joined := strings.Join(n.Warnings, "\n")
+		if !strings.Contains(joined, want) {
+			t.Errorf("no warning carries %q: %v", want, n.Warnings)
+		}
 	}
 }
 

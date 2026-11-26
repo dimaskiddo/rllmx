@@ -13,12 +13,16 @@ import (
 // BindingCache is the container key of the grouped cache the request path reads.
 const BindingCache = "rllmx.cache"
 
-// CacheOf returns the bound cache. A missing binding means the provider is not
-// registered, which is a bug in the program, so it panics.
+// CacheOf returns the bound cache. A build that failed panics with the
+// provider's own error, which the start prints as one line; a missing binding
+// means the provider is not registered, a bug in the program, and panics too.
 func CacheOf(app foundation.Application) *cache.Cache {
 	v, err := app.Make(BindingCache)
+	if err != nil {
+		panic(err)
+	}
 	c, ok := v.(*cache.Cache)
-	if err != nil || !ok || c == nil {
+	if !ok || c == nil {
 		panic("providers: " + BindingCache + " is not bound")
 	}
 	return c
@@ -50,11 +54,6 @@ func (r *CacheServiceProvider) Register(app foundation.Application) {
 		s, err := settings.LoadCache(cfg)
 		if err != nil {
 			return nil, err
-		}
-		// The warning names no value, so it is safe to print once at start-up
-		// rather than only when something first reads the cache.
-		for _, w := range s.Warnings {
-			log.Warning(w)
 		}
 		opts := []cache.Option{cache.WithLog(log)}
 		if !s.Shared {

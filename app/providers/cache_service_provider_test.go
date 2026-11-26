@@ -12,6 +12,7 @@ import (
 	"github.com/goravel/framework/contracts/config"
 
 	"rllmx/app/platform/cache"
+	"rllmx/app/platform/settings"
 	"rllmx/tests"
 )
 
@@ -98,19 +99,20 @@ func TestWithARedisHostTheSharedStoreIsChosen(t *testing.T) {
 	}
 }
 
+// The warning is the loader's: the configuration gate prints it once at start,
+// before any provider binds, and it never repeats a configured value.
 func TestANonLoopbackRedisWarnsOnceWithoutAValue(t *testing.T) {
-	_, log, _, err := resolveCache(t, cacheValues(map[string]any{
+	s, err := settings.LoadCache(cacheValues(map[string]any{
 		"database.redis.default.host":     "cache.example.test",
 		"database.redis.default.password": "pw-should-not-appear",
 	}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	lines := log.Lines()
-	if len(lines) != 1 || !strings.Contains(lines[0], "not this machine") {
-		t.Fatalf("lines = %v", lines)
+	if len(s.Warnings) != 1 || !strings.Contains(s.Warnings[0], "not this machine") {
+		t.Fatalf("warnings = %v", s.Warnings)
 	}
-	for _, l := range lines {
+	for _, l := range s.Warnings {
 		for _, leak := range []string{"cache.example.test", "pw-should-not-appear"} {
 			if strings.Contains(l, leak) {
 				t.Errorf("the warning repeated %q: %s", leak, l)

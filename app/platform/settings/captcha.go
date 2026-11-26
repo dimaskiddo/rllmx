@@ -17,6 +17,8 @@ const maxKeyLen = 256
 // Captcha is the validated view of the AUTH_CAPTCHA_* settings. A zero value
 // serves no challenge.
 type Captcha struct {
+	Notices
+
 	// Provider is empty when the sign-in page asks no challenge.
 	Provider string
 	// SiteKey is public: the page hands it to the provider's script.

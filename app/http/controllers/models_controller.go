@@ -168,9 +168,13 @@ func (m *ModelsController) Tags(ctx contractshttp.Context) contractshttp.Respons
 	out := make([]tag, 0, len(entries))
 	for _, e := range entries {
 		sum := sha256.Sum256([]byte(e.ID))
+		family := e.Provider
+		if family == "" {
+			family = e.OwnedBy
+		}
 		out = append(out, tag{
 			Name: e.ID, Model: e.ID, ModifiedAt: modified, Digest: hex.EncodeToString(sum[:]),
-			Details: tagDetail{Format: "safetensors", Family: e.Provider},
+			Details: tagDetail{Format: "safetensors", Family: family},
 		})
 	}
 	respondJSON(ctx, nethttp.StatusOK, map[string]any{"models": out})

@@ -2,10 +2,8 @@ package settings
 
 import (
 	"errors"
-	"fmt"
 	"net/netip"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -29,6 +27,8 @@ const (
 // come from the framework's Config, so the environment over .env precedence and
 // defaults are the framework's own.
 type Server struct {
+	Notices
+
 	Host string
 	Port int
 	// URL is the base address people reach the gateway at, or empty.
@@ -69,7 +69,6 @@ func LoadServer(cfg config.Config) (*Server, error) {
 		HeaderLimitKiB: cfg.GetInt("http.drivers.gin.header_limit", 64),
 		CertFile:       cfg.GetString("http.tls.ssl.cert"),
 		KeyFile:        cfg.GetString("http.tls.ssl.key"),
-		MaxBodyMB:      cfg.GetInt("http.guard.max_body_mb", 128),
 		TrustLoopback:  cfg.GetBool("http.guard.trust_loopback", true),
 	}
 	if s.Port < 1 || s.Port > 65535 {
@@ -78,34 +77,17 @@ func LoadServer(cfg config.Config) (*Server, error) {
 	if (s.CertFile == "") != (s.KeyFile == "") {
 		return nil, errors.New("settings: http.tls.ssl: set both the certificate and the key, or neither")
 	}
-	if s.MaxBodyMB < 1 || s.MaxBodyMB > 1<<20 {
-		return nil, fmt.Errorf("settings: SERVER_MAX_BODY_MB: must be between 1 and %d", 1<<20)
-	}
-	s.MaxUsers = cfg.GetInt("auth.max_users", 200)
-	if s.MaxUsers < 1 || s.MaxUsers > 100000 {
-		return nil, errors.New("settings: AUTH_MAX_USERS: must be between 1 and 100000")
-	}
+	s.MaxBodyMB = number(cfg, "http.guard.max_body_mb", "SERVER_MAX_BODY_MB", 1, 1<<20, 128, &s.Notices)
+	s.MaxUsers = number(cfg, "auth.max_users", "AUTH_MAX_USERS", 1, 100000, 200, &s.Notices)
+	s.ReadHeaderTimeout = duration(cfg, "http.server.read_header_timeout", "HTTP_SERVER_READ_HEADER_TIMEOUT", minReadHeaderTimeout, maxReadHeaderTimeout, 10*time.Second, &s.Notices)
+	s.IdleTimeout = duration(cfg, "http.server.idle_timeout", "HTTP_SERVER_IDLE_TIMEOUT", minIdleTimeout, maxIdleTimeout, 2*time.Minute, &s.Notices)
+	s.ShutdownGrace = duration(cfg, "http.server.shutdown_grace", "HTTP_SERVER_SHUTDOWN_GRACE", minShutdownGrace, maxShutdownGrace, 30*time.Second, &s.Notices)
+	s.SessionTTL = duration(cfg, "auth.session_ttl", "AUTH_SESSION_TTL", minSessionTTL, maxSessionTTL, 24*time.Hour, &s.Notices)
+	s.Compression = switchOf(cfg, "http.compression", "HTTP_COMPRESSION", true, &s.Notices)
+	s.H2C = switchOf(cfg, "http.h2c", "HTTP_H2C", false, &s.Notices)
 
 	var err error
-	if s.ReadHeaderTimeout, err = duration(cfg, "http.server.read_header_timeout", "HTTP_SERVER_READ_HEADER_TIMEOUT", minReadHeaderTimeout, maxReadHeaderTimeout); err != nil {
-		return nil, err
-	}
-	if s.IdleTimeout, err = duration(cfg, "http.server.idle_timeout", "HTTP_SERVER_IDLE_TIMEOUT", minIdleTimeout, maxIdleTimeout); err != nil {
-		return nil, err
-	}
-	if s.ShutdownGrace, err = duration(cfg, "http.server.shutdown_grace", "HTTP_SERVER_SHUTDOWN_GRACE", minShutdownGrace, maxShutdownGrace); err != nil {
-		return nil, err
-	}
-	if s.SessionTTL, err = duration(cfg, "auth.session_ttl", "AUTH_SESSION_TTL", minSessionTTL, maxSessionTTL); err != nil {
-		return nil, err
-	}
 	if s.TrustedProxies, err = parseProxies(cfg.GetString("http.guard.trusted_proxies")); err != nil {
-		return nil, err
-	}
-	if s.Compression, err = switchOf(cfg, "http.compression", "HTTP_COMPRESSION", true); err != nil {
-		return nil, err
-	}
-	if s.H2C, err = switchOf(cfg, "http.h2c", "HTTP_H2C", false); err != nil {
 		return nil, err
 	}
 	if s.URL, err = parseURL(cfg.GetString("http.url")); err != nil {
@@ -114,28 +96,9 @@ func LoadServer(cfg config.Config) (*Server, error) {
 	return s, nil
 }
 
-// switchOf reads an on-or-off setting. The framework's own bool reader turns any
-// word it does not know into false, which would switch compression off on a
-// typo, so the text is read here and an unreadable one is refused by name.
-func switchOf(cfg config.Config, key, env string, def bool) (bool, error) {
-	raw := strings.TrimSpace(cfg.GetString(key, strconv.FormatBool(def)))
-	if raw == "" {
-		return def, nil
-	}
-	v, err := strconv.ParseBool(raw)
-	if err != nil {
-		return false, fmt.Errorf("settings: %s: must be true or false", env)
-	}
-	return v, nil
-}
-
-func duration(cfg config.Config, key, env string, lo, hi time.Duration) (time.Duration, error) {
-	d := cfg.GetDuration(key)
-	if d < lo || d > hi {
-		return 0, fmt.Errorf("settings: %s: must be a duration between %s and %s", env, lo, hi)
-	}
-	return d, nil
-}
+// switchOf and duration live in values.go: every tuning setting falls back to
+// its default with a notice, and only a value naming storage, identity, trust
+// or a dial target stops the start.
 
 // parseProxies accepts addresses and CIDR ranges separated by commas. A bare
 // address becomes a single-host range.

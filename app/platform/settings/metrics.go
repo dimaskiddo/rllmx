@@ -18,6 +18,8 @@ const (
 // Metrics is the validated view of the METRICS_* settings. A zero value serves
 // no endpoint.
 type Metrics struct {
+	Notices
+
 	Token    string
 	Username string
 	Password string

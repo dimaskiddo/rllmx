@@ -215,11 +215,13 @@
       <label class="form-label" for="node-base-url" x-t="providers.baseUrl"></label>
       <input class="form-control" id="node-base-url" x-bind:value="add.baseUrl" x-on:input="setCheckedField('add.baseUrl', $event)" x-bind:placeholder="label('providers.baseUrlHint')">
       <label class="form-label" for="node-key" x-t="providers.checkKey"></label>
-      <input class="form-control" id="node-key" type="password" autocomplete="off" x-bind:value="add.apiKey" x-on:input="setCheckedField('add.apiKey', $event)">
+      <div class="rl-key-row">
+        <input class="form-control" id="node-key" type="password" autocomplete="off" x-bind:value="add.apiKey" x-on:input="setCheckedField('add.apiKey', $event)">
+        <button type="button" class="btn btn-sm" x-bind:disabled="add.checking || add.apiKey === '' || add.baseUrl === ''" x-on:click="checkNode()"><span x-t="providers.check"></span></button>
+      </div>
       <label class="form-label" for="node-model" x-t="providers.modelId"></label>
       <input class="form-control" id="node-model" x-bind:value="add.modelId" x-on:input="setCheckedField('add.modelId', $event)">
-      <div class="rl-inline">
-        <button type="button" class="btn btn-sm" x-bind:disabled="add.checking || add.apiKey === '' || add.baseUrl === ''" x-on:click="checkNode()"><span x-t="providers.check"></span></button>
+      <div class="rl-check">
         <span class="badge badge-ok" x-show="add.check && add.check.valid" x-t="providers.valid"></span>
         <span class="badge badge-err" x-show="add.check && !add.check.valid" x-t="providers.invalid"></span>
       </div>

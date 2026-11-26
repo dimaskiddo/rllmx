@@ -36,8 +36,9 @@ func TestTheTLScurveIsX25519UnlessTheStandardListIsAskedFor(t *testing.T) {
 	if len(u.Curves) != 0 {
 		t.Fatalf("default gave %v, want the standard list", u.Curves)
 	}
-	if _, err := LoadUpstream(upstreamValues("secp256r1")); err == nil || !strings.Contains(err.Error(), "UPSTREAM_TLS_CURVE") {
-		t.Fatalf("a curve this router does not offer was accepted: %v", err)
+	u, err = LoadUpstream(upstreamValues("secp256r1"))
+	if err != nil || len(u.Curves) != 1 || u.Curves[0] != tls.X25519 || len(u.Warnings) != 1 || !strings.Contains(u.Warnings[0], "UPSTREAM_TLS_CURVE") {
+		t.Fatalf("a curve this router does not offer: %v %v %v", u.Curves, u.Warnings, err)
 	}
 }
 
@@ -52,8 +53,9 @@ func TestTheClaudeCLIVersionPin(t *testing.T) {
 		t.Fatalf("%+v %v", u, err)
 	}
 	for _, bad := range []string{"2.1", "2.1.4.0", "2.1.x", "v2.1.4", "2..4", "2.1.1234567"} {
-		if _, err := LoadUpstream(values(bad)); err == nil || !strings.Contains(err.Error(), "UPSTREAM_CLAUDE_CLI_VERSION") {
-			t.Errorf("%q: %v", bad, err)
+		u, err := LoadUpstream(values(bad))
+		if err != nil || u.ClaudeCLIVersion != "" || len(u.Warnings) != 1 || !strings.Contains(u.Warnings[0], "UPSTREAM_CLAUDE_CLI_VERSION") {
+			t.Errorf("%q: %q %v %v", bad, u.ClaudeCLIVersion, u.Warnings, err)
 		}
 	}
 }
@@ -68,9 +70,13 @@ func TestTheKiroCreateResponseModeIsAutoUnlessSaidOtherwise(t *testing.T) {
 		}
 	}
 	for _, bad := range []string{"on", "true", "1", "sometimes", "auto,off"} {
-		_, err := LoadUpstream(kiroValues(bad))
-		if err == nil || !strings.Contains(err.Error(), "UPSTREAM_KIRO_CREATE_RESPONSE") || strings.Contains(err.Error(), bad) {
-			t.Errorf("%q: %v, want a refusal that names the variable and not the value", bad, err)
+		u, err := LoadUpstream(kiroValues(bad))
+		if err != nil {
+			t.Errorf("%q: a transport tuning value stopped the start: %v", bad, err)
+			continue
+		}
+		if u.KiroCreateResponse != KiroAuto || len(u.Warnings) != 1 || !strings.Contains(u.Warnings[0], "UPSTREAM_KIRO_CREATE_RESPONSE") || strings.Contains(u.Warnings[0], bad) {
+			t.Errorf("%q: %v %v, want the default and a warning naming the variable only", bad, u.KiroCreateResponse, u.Warnings)
 		}
 	}
 }

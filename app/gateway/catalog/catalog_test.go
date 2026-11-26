@@ -57,14 +57,37 @@ type fakeNodes struct{ list []repository.Node }
 
 func (f *fakeNodes) List(context.Context, string) ([]repository.Node, error) { return f.list, nil }
 
+type fakeCombos struct {
+	list []repository.Combo
+	err  error
+}
+
+func (f *fakeCombos) comboList() ([]repository.Combo, error) {
+	if f == nil {
+		return nil, nil
+	}
+	return f.list, f.err
+}
+
 type rig struct {
-	t     *testing.T
-	c     *Catalog
-	kv    *fakeKV
-	conns *fakeConns
-	nodes *fakeNodes
-	asked atomic.Int32
-	reply func(nodeType, base, key string) ([]Model, error)
+	t      *testing.T
+	c      *Catalog
+	kv     *fakeKV
+	conns  *fakeConns
+	nodes  *fakeNodes
+	combos *fakeCombos
+	asked  atomic.Int32
+	reply  func(nodeType, base, key string) ([]Model, error)
+}
+
+// wire builds the catalog over one resolver, shared by routing and by the combo
+// list so both read the rig's rows.
+func (r *rig) wire(reg *upstream.Registry, caps *upstream.Capabilities) {
+	res := &routing.Resolver{Registry: reg, Snapshot: routing.NewSnapshot(routingSource{r}, nil)}
+	r.c = &Catalog{
+		Registry: reg, Caps: caps, Resolver: res, Combos: res,
+		Conns: r.conns, Nodes: r.nodes, KV: r.kv, Created: 1700000000,
+	}
 }
 
 func conn(id, provider, data string) repository.Connection {
@@ -82,18 +105,15 @@ func newRig(t *testing.T) *rig {
 		t.Fatal(err)
 	}
 	r := &rig{t: t, kv: &fakeKV{scopes: map[string]map[string]string{}, disabled: map[string][]string{}}, conns: &fakeConns{}, nodes: &fakeNodes{}}
-	r.c = &Catalog{
-		Registry: reg, Caps: caps, Conns: r.conns, Nodes: r.nodes, KV: r.kv, Created: 1700000000,
-		Resolver: &routing.Resolver{Registry: reg, Snapshot: routing.NewSnapshot(routingSource{r}, nil)},
-		Fetch: func(_ context.Context, nt, base, key string) ([]Model, error) {
-			r.asked.Add(1)
-			if r.reply == nil {
-				return nil, errors.New("down")
-			}
-			return r.reply(nt, base, key)
-		},
-		Cache: cache.New(tests.NewCache()),
+	r.wire(reg, caps)
+	r.c.Fetch = func(_ context.Context, nt, base, key string) ([]Model, error) {
+		r.asked.Add(1)
+		if r.reply == nil {
+			return nil, errors.New("down")
+		}
+		return r.reply(nt, base, key)
 	}
+	r.c.Cache = cache.New(tests.NewCache())
 	return r
 }
 
@@ -110,9 +130,21 @@ func (s routingSource) Nodes(context.Context) ([]routing.Node, error) {
 	}
 	return out, nil
 }
-func (s routingSource) ComboNames(context.Context) ([]string, error) { return nil, nil }
+func (s routingSource) ComboNames(context.Context) ([]string, error) {
+	rows, err := s.r.combos.comboList()
+	out := make([]string, 0, len(rows))
+	for _, c := range rows {
+		out = append(out, c.Name)
+	}
+	return out, err
+}
 func (s routingSource) Combos(context.Context) (map[string]repository.Combo, error) {
-	return nil, nil
+	rows, err := s.r.combos.comboList()
+	out := make(map[string]repository.Combo, len(rows))
+	for _, c := range rows {
+		out[c.Name] = c
+	}
+	return out, err
 }
 func (s routingSource) ActiveProviders(context.Context) ([]string, error) {
 	return nil, nil
@@ -188,10 +220,7 @@ func TestAProviderThatNeedsNoCredentialIsListedWithNothingConnected(t *testing.T
 		t.Fatal(err)
 	}
 	r := &rig{t: t, kv: &fakeKV{scopes: map[string]map[string]string{}, disabled: map[string][]string{}}, conns: &fakeConns{}, nodes: &fakeNodes{}}
-	r.c = &Catalog{
-		Registry: reg, Caps: caps, Conns: r.conns, Nodes: r.nodes, KV: r.kv, Created: 1700000000,
-		Resolver: &routing.Resolver{Registry: reg, Snapshot: routing.NewSnapshot(routingSource{r}, nil)},
-	}
+	r.wire(reg, caps)
 	if got := r.ids(anyone); len(got) != 1 || got[0] != "free/fm" {
 		t.Fatalf("%v", got)
 	}
@@ -428,6 +457,97 @@ func TestGetFindsOnlyAListedModelAndEntriesRenderEveryShape(t *testing.T) {
 	}
 }
 
+// A combo is a name a client may call, so it belongs in the list; it comes
+// before the models because that is the order a client reads.
+func TestAComboIsListedFirstAndByName(t *testing.T) {
+	r := newRig(t)
+	r.conns.list = []repository.Connection{conn("c1", "alpha", `{"apiKey":"k"}`), conn("c2", "codex", `{"apiKey":"k"}`)}
+	r.combos = &fakeCombos{list: []repository.Combo{{Name: "fast", Models: []string{"al/a1", "cx/gpt-a"}}}}
+	list, err := r.c.List(context.Background(), anyone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) == 0 || list[0].ID != "fast" {
+		t.Fatalf("the combo is not the first entry: %+v", list)
+	}
+	e := list[0]
+	if e.Name != "fast" || e.OwnedBy != "combo" || e.Model != "" || e.Combo != "fast" {
+		t.Fatalf("%+v", e)
+	}
+	if o := e.OpenAI(r.c.Created); o.OwnedBy != "combo" || o.ContextLength <= 0 || o.MaxCompletionTokens <= 0 {
+		t.Fatalf("%+v", o)
+	}
+	if got := e.Gemini().Description; got != "combo" {
+		t.Fatalf("the combo read as a model: %q", got)
+	}
+}
+
+func TestAComboIsListedWithNothingConnected(t *testing.T) {
+	r := newRig(t)
+	r.combos = &fakeCombos{list: []repository.Combo{{Name: "fast", Models: []string{"al/a1"}}}}
+	got := r.ids(anyone)
+	if len(got) != 1 || got[0] != "fast" {
+		t.Fatalf("%v", got)
+	}
+}
+
+// A combo whose members cannot be resolved costs it its limits, not its place
+// in the list: the name is still one a client may call.
+func TestAComboThatResolvesToNothingIsStillListed(t *testing.T) {
+	r := newRig(t)
+	r.conns.list = []repository.Connection{conn("c1", "alpha", `{"apiKey":"k"}`)}
+	r.combos = &fakeCombos{list: []repository.Combo{{Name: "broken", Models: []string{"broken"}}}}
+	e, ok, err := r.c.Get(context.Background(), anyone, "broken")
+	if err != nil || !ok || e.Combo != "broken" {
+		t.Fatalf("%+v %v %v", e, ok, err)
+	}
+	if e.Caps.ContextWindow != 0 || e.Caps.MaxOutput != 0 {
+		t.Fatalf("a combo with no resolvable member kept limits: %+v", e.Caps)
+	}
+}
+
+func TestAWebComboStaysOutOfTheChatList(t *testing.T) {
+	r := newRig(t)
+	r.conns.list = []repository.Connection{conn("c1", "alpha", `{"apiKey":"k"}`)}
+	r.combos = &fakeCombos{list: []repository.Combo{
+		{Name: "search", Kind: "webSearch", Models: []string{"al/a1"}},
+		{Name: "chat", Kind: "llm", Models: []string{"al/a1"}},
+	}}
+	if got := r.ids(anyone); !has(got, "chat") || has(got, "search") {
+		t.Fatalf("%v", got)
+	}
+}
+
+func TestARestrictedKeySeesOnlyTheCombosItNames(t *testing.T) {
+	r := newRig(t)
+	r.conns.list = []repository.Connection{conn("c1", "alpha", `{"apiKey":"k"}`)}
+	r.combos = &fakeCombos{list: []repository.Combo{{Name: "fast", Models: []string{"al/a1"}}}}
+	if got := r.ids(identity.Caller{Restricted: true, Allow: []string{"fast"}}); len(got) != 1 || got[0] != "fast" {
+		t.Fatalf("a key naming the combo sees %v", got)
+	}
+	if got := r.ids(identity.Caller{Restricted: true, Allow: []string{"al/a1"}}); has(got, "fast") {
+		t.Fatalf("a key naming a member saw the combo: %v", got)
+	}
+}
+
+// Any member may answer, so the combo promises the smallest limit any of them
+// knows, and offers tools only when every member does.
+func TestComboCapabilitiesTakeTheSmallestLimitAndNeedEveryMemberForTools(t *testing.T) {
+	out := aggregateCaps([]upstream.Capability{
+		{Vision: true, Tools: true, Reasoning: true, ContextWindow: 200000, MaxOutput: 32000},
+		{Tools: false, ContextWindow: 100000, MaxOutput: 8000},
+	})
+	if out.ContextWindow != 100000 || out.MaxOutput != 8000 {
+		t.Fatalf("%+v", out)
+	}
+	if !out.Vision || out.Tools || !out.Reasoning {
+		t.Fatalf("%+v", out)
+	}
+	if zero := aggregateCaps(nil); zero.ContextWindow != 0 || zero.MaxOutput != 0 || zero.Tools {
+		t.Fatalf("%+v", zero)
+	}
+}
+
 func FuzzRegistryModels(f *testing.F) {
 	f.Add("alpha|x|llm", `{"id":"y","name":"n"}`)
 	f.Add("al|"+strings.Repeat("z", 400), `{`)
@@ -512,10 +632,7 @@ func TestAnImageModelOfAChatProviderIsNotListedAsAChatModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := &rig{t: t, kv: &fakeKV{scopes: map[string]map[string]string{}, disabled: map[string][]string{}}, conns: &fakeConns{}, nodes: &fakeNodes{}}
-	r.c = &Catalog{
-		Registry: reg, Caps: caps, Conns: r.conns, Nodes: r.nodes, KV: r.kv, Created: 1700000000,
-		Resolver: &routing.Resolver{Registry: reg, Snapshot: routing.NewSnapshot(routingSource{r}, nil)},
-	}
+	r.wire(reg, caps)
 	if got := r.ids(anyone); len(got) != 1 || got[0] != "free/fm" {
 		t.Fatalf("%v", got)
 	}

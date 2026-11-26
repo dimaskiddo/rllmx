@@ -200,6 +200,14 @@
       <h2 id="combo-suggest-title" x-t="combos.suggestTitle"></h2>
       <p class="rl-hint" x-t="combos.suggestHint"></p>
 
+      <label class="form-label" for="suggest-name" x-t="combos.name"></label>
+      <input class="form-control" id="suggest-name" type="text" maxlength="100" x-bind:value="suggest.name" x-on:input="setField('suggest.name', $event)">
+      <label class="form-label" for="suggest-limit" x-t="combos.limit"></label>
+      <input class="form-control" id="suggest-limit" type="number" min="1" max="50" x-bind:value="suggest.limit" x-on:change="setLimit($event)">
+      <label class="form-label" for="suggest-prompt" x-t="combos.prompt"></label>
+      <textarea class="form-control" id="suggest-prompt" rows="2" x-bind:value="suggest.prompt" x-on:input="setField('suggest.prompt', $event)" x-on:blur="runSuggest(false)"></textarea>
+
+      <h3 class="rl-card-title rl-block-start" x-t="combos.weights"></h3>
       <div class="rl-fields">
         <div>
           <label class="form-label" for="w-reliability" x-t="combos.weightReliability"></label>
@@ -232,20 +240,6 @@
             <input class="form-range" id="w-quality" type="range" min="0" max="1" step="0.05" x-bind:value="suggest.weights.quality" x-on:change="runSuggest(false)" x-on:input="setWeight('quality', $event)">
             <div class="rl-range-scale"><span>0%</span><span>100%</span></div>
           </div>
-        </div>
-      </div>
-
-      <label class="form-label" for="suggest-prompt" x-t="combos.prompt"></label>
-      <textarea class="form-control" id="suggest-prompt" rows="2" x-bind:value="suggest.prompt" x-on:input="setField('suggest.prompt', $event)" x-on:blur="runSuggest(false)"></textarea>
-
-      <div class="rl-fields">
-        <div>
-          <label class="form-label" for="suggest-name" x-t="combos.name"></label>
-          <input class="form-control" id="suggest-name" type="text" maxlength="100" x-bind:value="suggest.name" x-on:input="setField('suggest.name', $event)">
-        </div>
-        <div>
-          <label class="form-label" for="suggest-limit" x-t="combos.limit"></label>
-          <input class="form-control" id="suggest-limit" type="number" min="1" max="50" x-bind:value="suggest.limit" x-on:change="setLimit($event)">
         </div>
       </div>
 

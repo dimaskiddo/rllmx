@@ -22,11 +22,15 @@ func TestLoadMediaReadsTheDefaults(t *testing.T) {
 	}
 }
 
-func TestLoadMediaRefusesAValueOutOfRange(t *testing.T) {
+func TestLoadMediaWarnsOnAVideoTimeoutOutOfRange(t *testing.T) {
 	for _, v := range []string{"1s", "11m", "not a duration"} {
-		_, err := LoadMedia(mediaValues(v))
-		if err == nil || !strings.Contains(err.Error(), "MEDIA_VIDEO_TIMEOUT") {
-			t.Errorf("%s: err %v", v, err)
+		m, err := LoadMedia(mediaValues(v))
+		if err != nil {
+			t.Errorf("%s stopped the start: %v", v, err)
+			continue
+		}
+		if m.VideoTimeout != 120*time.Second || len(m.Warnings) != 1 || !strings.Contains(m.Warnings[0], "MEDIA_VIDEO_TIMEOUT") {
+			t.Errorf("%s: %v %v", v, m.VideoTimeout, m.Warnings)
 		}
 	}
 }
