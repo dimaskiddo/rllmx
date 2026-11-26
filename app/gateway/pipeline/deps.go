@@ -31,6 +31,9 @@ type Resolver interface {
 // Selector picks the next usable account of a provider.
 type Selector interface {
 	Select(ctx context.Context, req account.Request) (account.Selection, error)
+	// Peek makes the same pick without recording a use, for a request that
+	// never reaches an account.
+	Peek(ctx context.Context, req account.Request) (account.Selection, error)
 }
 
 // Reporter records how an account did.

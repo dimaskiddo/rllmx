@@ -1017,6 +1017,18 @@ func TestTheRequestLogNamesABudgetRefusal(t *testing.T) {
 			t.Errorf("%s is missing from a locale", key)
 		}
 	}
+	// The two 429s read apart in words, and the code survives beside them.
+	for key, want := range map[string]string{
+		"usage.class.key_quota":  "Budget Rate Limited",
+		"usage.class.rate_limit": "Upstream Rate Limited",
+	} {
+		if en[key] != want {
+			t.Errorf("%s reads %q, want %q", key, en[key], want)
+		}
+	}
+	if !strings.Contains(js, `/^\d{3}$/.test(parts[0])`) {
+		t.Error("a spelled-out failure drops its status code")
+	}
 	if !strings.Contains(readWeb(t, "static/pages/usage.html"), `x-bind:class="muted(row.account)"`) {
 		t.Error("an account that was never chosen does not read as one")
 	}

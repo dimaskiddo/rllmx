@@ -32,6 +32,9 @@ import (
 // Selector picks the next usable account of a provider.
 type Selector interface {
 	Select(ctx context.Context, req account.Request) (account.Selection, error)
+	// Peek makes the same pick without recording a use, for a request that
+	// never reaches an account.
+	Peek(ctx context.Context, req account.Request) (account.Selection, error)
 }
 
 // Reporter records how an account did.
@@ -282,6 +285,7 @@ func (p *Pipeline) run(ctx context.Context, kind string, in Input, req parsed) O
 	if out, ok := p.budget(ctx, in.Caller); !ok {
 		// The key's own budget, not the provider's pace: the row says which.
 		row.Status, row.ErrorClass = out.Status, "key_quota"
+		p.nameIntendedAccount(ctx, ref.Provider, ref.Model, model, in.ConnectionID, row)
 		return out
 	}
 	cfg := entry.Media.Config(kind)
@@ -289,6 +293,21 @@ func (p *Pipeline) run(ctx context.Context, kind string, in Input, req parsed) O
 		return bad(http.StatusBadRequest, "This provider does not serve that model here")
 	}
 	return p.serve(ctx, kind, in, ref, entry, cfg, req, ref.Model, row)
+}
+
+// nameIntendedAccount names the account a refused request would have reached,
+// so its row is not a row of dashes. The pick records nothing: no use happened.
+func (p *Pipeline) nameIntendedAccount(ctx context.Context, provider, lockModel, model, prefer string, row *analytics.Record) {
+	if p.d.Selector == nil {
+		return
+	}
+	found, err := p.d.Selector.Peek(ctx, account.Request{
+		Provider: provider, Model: lockModel, RequestedModel: model, Prefer: prefer,
+	})
+	if err != nil {
+		return
+	}
+	row.ConnectionID = found.Conn.ID
 }
 
 // mayCall reports whether the caller may use the resolved service. A key that is

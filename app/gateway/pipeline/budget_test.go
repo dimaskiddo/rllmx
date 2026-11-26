@@ -29,7 +29,7 @@ func refused() spend {
 
 func TestASpentBudgetIsAnsweredBeforeAnyCall(t *testing.T) {
 	r := newRig(t, tests.Reply{ContentType: "application/json", Body: okJSON})
-	r.conn("forced", "k1")
+	conn := r.conn("forced", "k1")
 	r.p.d.Budget = refused()
 	out, _ := r.do("/v1/chat/completions", `{"model":"forced/fm","messages":[{"role":"user","content":"hi"}]}`)
 	if out.Status != http.StatusTooManyRequests {
@@ -50,15 +50,26 @@ func TestASpentBudgetIsAnsweredBeforeAnyCall(t *testing.T) {
 	if len(r.up.Calls()) != 0 {
 		t.Fatal("a spent budget reached the provider")
 	}
-	// The row still names what the key asked for, so the log line is not a row
-	// of dashes, and its class says the key's budget rather than the provider's
-	// pace.
+	// The row still names what the key asked for and the account it would have
+	// reached, so the log line is not a row of dashes; the class says the key's
+	// budget rather than the provider's pace, and attempt 0 says nothing was sent.
 	rows := r.rows.All()
 	if len(rows) != 1 {
 		t.Fatalf("rows %d", len(rows))
 	}
 	if row := rows[0]; row.Provider != "forced" || row.Model != "fm" || row.ErrorClass != "key_quota" {
 		t.Fatalf("row %+v", row)
+	}
+	if row := rows[0]; row.ConnectionID != conn.ID || row.Attempt != 0 {
+		t.Fatalf("row names account %q at attempt %d", row.ConnectionID, row.Attempt)
+	}
+	// The peek must not have recorded a use on that account.
+	c, ok, err := r.st.Connections().Get(context.Background(), conn.ID)
+	if err != nil || !ok {
+		t.Fatalf("reading the connection: %v %v", ok, err)
+	}
+	if _, used := c.Doc().GetString("lastUsedAt"); used {
+		t.Fatal("naming the intended account recorded a use")
 	}
 }
 

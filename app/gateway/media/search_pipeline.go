@@ -75,6 +75,7 @@ func (p *Pipeline) service(ctx context.Context, kind string, in Input) Output {
 	if out, ok := p.budget(ctx, in.Caller); !ok {
 		// The key's own budget, not the provider's pace: the row says which.
 		row.Status, row.ErrorClass = out.Status, "key_quota"
+		p.nameIntendedAccount(ctx, id, "", name, in.ConnectionID, row)
 		return out
 	}
 	cfg := entry.Media.Config(kind)

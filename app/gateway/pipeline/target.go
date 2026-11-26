@@ -57,6 +57,7 @@ func (c *call) resolve(ctx context.Context) (Output, bool) {
 		}
 	}
 	if out, ok := c.budget(ctx); !ok {
+		c.nameIntendedAccount(ctx, t)
 		return out, false
 	}
 	// A media model is never a chat model: the two areas share one registry, so

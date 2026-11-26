@@ -138,6 +138,17 @@ func (s *Selector) needsLock(ctx context.Context, provider string) bool {
 // Select returns the connection that should serve req. It fails with
 // ErrNoConnections, an *AllLockedError, or the error of a failed read.
 func (s *Selector) Select(ctx context.Context, req Request) (Selection, error) {
+	return s.pick(ctx, req, true)
+}
+
+// Peek reports the connection Select would choose now, without recording the
+// use: a request refused before dispatch spends no account's rotation, but its
+// row can still name the account it would have reached.
+func (s *Selector) Peek(ctx context.Context, req Request) (Selection, error) {
+	return s.pick(ctx, req, false)
+}
+
+func (s *Selector) pick(ctx context.Context, req Request, write bool) (Selection, error) {
 	if err := ctx.Err(); err != nil {
 		return Selection{}, err
 	}
@@ -203,7 +214,7 @@ func (s *Selector) Select(ctx context.Context, req Request) (Selection, error) {
 		}
 	}
 
-	conn, err := s.choose(ctx, usable, req.Provider, now)
+	conn, err := s.choose(ctx, usable, req.Provider, now, write)
 	if err != nil {
 		return Selection{}, err
 	}
@@ -261,7 +272,7 @@ func allLocked(locked []repository.Connection, model string, now time.Time, held
 	return &AllLockedError{RetryAt: first, Human: FormatRetryAfter(first, now), LastError: last, LastErrorCode: code}
 }
 
-func (s *Selector) choose(ctx context.Context, usable []repository.Connection, provider string, now time.Time) (repository.Connection, error) {
+func (s *Selector) choose(ctx context.Context, usable []repository.Connection, provider string, now time.Time, write bool) (repository.Connection, error) {
 	settings, err := s.settings.get(ctx)
 	if err != nil {
 		return repository.Connection{}, err
@@ -269,21 +280,26 @@ func (s *Selector) choose(ctx context.Context, usable []repository.Connection, p
 	if strategyFor(settings, provider) != strategyRound {
 		return usable[0], nil
 	}
-	return s.roundRobin(ctx, usable, stickyLimit(settings, provider), now), nil
+	return s.roundRobin(ctx, usable, stickyLimit(settings, provider), now, write), nil
 }
 
 // roundRobin stays on the most recently used connection until it has served
 // limit requests in a row, then moves to the least recently used one. Both the
-// counter and the time are stored, so the rotation survives a restart.
-func (s *Selector) roundRobin(ctx context.Context, usable []repository.Connection, limit int, now time.Time) repository.Connection {
+// counter and the time are stored, so the rotation survives a restart. A peek
+// reads the same two fields and writes neither.
+func (s *Selector) roundRobin(ctx context.Context, usable []repository.Connection, limit int, now time.Time, write bool) repository.Connection {
 	current := byLastUse(usable, true)[0]
 	count, _ := current.Doc().GetInt("consecutiveUseCount")
 	if lastUse(current) != "" && int(count) < limit {
-		s.recordUse(ctx, current, true, now)
+		if write {
+			s.recordUse(ctx, current, true, now)
+		}
 		return current
 	}
 	next := byLastUse(usable, false)[0]
-	s.recordUse(ctx, next, false, now)
+	if write {
+		s.recordUse(ctx, next, false, now)
+	}
 	return next
 }
 

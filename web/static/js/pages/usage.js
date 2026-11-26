@@ -360,7 +360,10 @@ window.Alpine.data("usagePage", () => Object.assign({
     // alone and older rows a bare code.
     const parts = status.split(" ");
     const word = failureWords[parts[parts.length - 1]];
-    return word ? t(word) : t("usage.failed") + " " + status;
+    if (word) {
+      return (/^\d{3}$/.test(parts[0]) ? parts[0] + " " : "") + t(word);
+    }
+    return t("usage.failed") + " " + status;
   },
 
   muted(value) {

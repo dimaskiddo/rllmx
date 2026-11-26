@@ -131,6 +131,10 @@ func (lockedSelector) Select(context.Context, account.Request) (account.Selectio
 	return account.Selection{}, &account.AllLockedError{RetryAt: time.Now().Add(time.Minute)}
 }
 
+func (l lockedSelector) Peek(ctx context.Context, req account.Request) (account.Selection, error) {
+	return l.Select(ctx, req)
+}
+
 func TestAFixedRefusalWordReachesTheClient(t *testing.T) {
 	st := twoAccounts(t)
 	p := gatewaymedia.New(gatewaymedia.Deps{

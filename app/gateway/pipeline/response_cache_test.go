@@ -43,6 +43,10 @@ func (failingSelector) Select(context.Context, account.Request) (account.Selecti
 	return account.Selection{}, errors.New("a cache hit asked for an account")
 }
 
+func (f failingSelector) Peek(ctx context.Context, req account.Request) (account.Selection, error) {
+	return f.Select(ctx, req)
+}
+
 type cacheRig struct {
 	*rig
 	flags *flags

@@ -11,9 +11,12 @@ import (
 
 	"rllmx/app/access/identity"
 	"rllmx/app/access/quota"
+	"rllmx/app/gateway/account"
 	gatewaymedia "rllmx/app/gateway/media"
 	mediamux "rllmx/app/llm/media/mux"
 	"rllmx/app/llm/upstream"
+	"rllmx/app/store/repository"
+	"rllmx/tests/store"
 	"rllmx/tests/usage"
 )
 
@@ -40,10 +43,18 @@ func budgetPipeline(t *testing.T, id, entry string, b gatewaymedia.Budget) (*gat
 	if err != nil {
 		t.Fatal(err)
 	}
+	// One active account, so a refusal has an account it would have reached.
+	st := store.Migrated(t)
+	if _, err := st.Connections().Create(context.Background(), repository.ConnInput{
+		Provider: id, AuthType: "apikey", Name: "a", Fields: map[string]string{"apiKey": `"k"`},
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
 	rows := &usage.Sink{}
 	return gatewaymedia.New(gatewaymedia.Deps{
 		Registry: reg, Adapters: mediamux.New(mediamux.Options{}), Client: gatewaymedia.HTTP{},
 		Budget: b, Usage: rows, Now: time.Now,
+		Selector: account.NewSelector(account.SelectorOptions{Conns: st.Connections(), Settings: st.Settings()}),
 	}), rows
 }
 
@@ -69,6 +80,9 @@ func TestASpentBudgetStopsAnImageBeforeAnyCall(t *testing.T) {
 	if len(got) != 1 || got[0].ErrorClass != "key_quota" || got[0].Model != "gpt-image-1" {
 		t.Fatalf("rows %+v", got)
 	}
+	if got[0].ConnectionID == "" {
+		t.Fatal("the refusal names no account")
+	}
 }
 
 func TestASpentBudgetStopsASearchBeforeAnyCall(t *testing.T) {
@@ -80,7 +94,7 @@ func TestASpentBudgetStopsASearchBeforeAnyCall(t *testing.T) {
 	if out.Status != http.StatusTooManyRequests || !strings.Contains(string(out.Body), "insufficient_quota") {
 		t.Fatalf("%d %s", out.Status, out.Body)
 	}
-	if got := rows.All(); len(got) != 1 || got[0].ErrorClass != "key_quota" {
+	if got := rows.All(); len(got) != 1 || got[0].ErrorClass != "key_quota" || got[0].ConnectionID == "" {
 		t.Fatalf("rows %+v", got)
 	}
 }

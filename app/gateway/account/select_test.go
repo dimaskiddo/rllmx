@@ -210,6 +210,43 @@ func TestRoundRobinStaysThenRotates(t *testing.T) {
 	_, _ = a, b
 }
 
+func TestAPeekNamesTheAccountWithoutRecordingTheUse(t *testing.T) {
+	r := newRig(t, `{"fallbackStrategy":"round-robin","stickyRoundRobinLimit":2}`)
+	a := r.add(t, "p", "a", nil)
+	r.add(t, "p", "b", nil)
+	req := Request{Provider: "p", Model: "m"}
+	first, err := r.sel.Peek(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := r.sel.Peek(context.Background(), req)
+	if err != nil || second.Conn.ID != first.Conn.ID {
+		t.Fatalf("two peeks answered %q then %q (%v)", first.Conn.Name, second.Conn.Name, err)
+	}
+	if _, ok := r.get(t, a.ID).Doc().GetString("lastUsedAt"); ok {
+		t.Fatal("a peek recorded a use")
+	}
+	if n, _ := r.get(t, a.ID).Doc().GetInt("consecutiveUseCount"); n != 0 {
+		t.Fatalf("a peek moved the rotation count to %d", n)
+	}
+	if got := r.pick(t, req).Name; got != first.Conn.Name {
+		t.Fatalf("the next pick chose %q, but the peek named %q", got, first.Conn.Name)
+	}
+	// The sticky branch reads the count and the time too, and must raise neither.
+	r.advance(time.Millisecond)
+	used, _ := r.get(t, a.ID).Doc().GetString("lastUsedAt")
+	third, err := r.sel.Peek(context.Background(), req)
+	if err != nil || third.Conn.ID != a.ID {
+		t.Fatalf("the sticky peek answered %q (%v)", third.Conn.Name, err)
+	}
+	if after, _ := r.get(t, a.ID).Doc().GetString("lastUsedAt"); after != used {
+		t.Fatal("a peek moved the last use")
+	}
+	if n, _ := r.get(t, a.ID).Doc().GetInt("consecutiveUseCount"); n != 1 {
+		t.Fatalf("a peek moved the rotation count to %d", n)
+	}
+}
+
 func TestRoundRobinSurvivesAFreshSelector(t *testing.T) {
 	r := newRig(t, `{"fallbackStrategy":"round-robin","stickyRoundRobinLimit":3}`)
 	r.add(t, "p", "a", nil)

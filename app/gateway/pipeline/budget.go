@@ -5,6 +5,8 @@ import (
 	"net/http"
 
 	"rllmx/app/access/quota"
+	"rllmx/app/gateway/account"
+	"rllmx/app/llm/routing"
 	"rllmx/app/platform/failure"
 )
 
@@ -40,4 +42,21 @@ func (c *call) refuseBudget(ref quota.Refusal) Output {
 		h[k] = v
 	}
 	return Output{Status: http.StatusTooManyRequests, Header: h, Body: failure.Quota(c.failureFormat(), "The API key's budget is spent")}
+}
+
+// nameIntendedAccount names the account a refused request would have reached,
+// so its row is not a row of dashes. The pick records nothing: no use happened.
+// A combo has no account of its own, so it is left out.
+func (c *call) nameIntendedAccount(ctx context.Context, t routing.Target) {
+	if t.Combo != "" || c.p.d.Selector == nil {
+		return
+	}
+	found, err := c.p.d.Selector.Peek(ctx, account.Request{
+		Provider: t.Provider, Model: t.Model, RequestedModel: c.requested,
+		Prefer: c.in.Connection, Hold: c.hold(),
+	})
+	if err != nil {
+		return
+	}
+	c.row.ConnectionID = found.Conn.ID
 }
