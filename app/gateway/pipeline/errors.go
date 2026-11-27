@@ -55,6 +55,16 @@ func (c *call) closed() Output {
 	return Output{Status: statusClientClosed}
 }
 
+// stopped answers a request whose context ended. Only a cancel is the client
+// leaving; a passed deadline belongs to whoever set it — a probe, the router's
+// own question, a combo wait — and is a timeout.
+func (c *call) stopped(ctx context.Context) Output {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return c.fail(http.StatusGatewayTimeout, "timeout", "The request ran out of time")
+	}
+	return c.closed()
+}
+
 // internal answers a failure of the router's own, with nothing of the cause.
 // refuseModel answers a key that may not call the model it named.
 func (c *call) refuseModel() Output {
@@ -63,7 +73,7 @@ func (c *call) refuseModel() Output {
 
 func (c *call) internal(ctx context.Context, err error) Output {
 	if ctx.Err() != nil {
-		return c.closed()
+		return c.stopped(ctx)
 	}
 	if c.p.d.Log != nil {
 		c.p.d.Log.Warningf("pipeline: %v", err)

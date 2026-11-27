@@ -80,7 +80,7 @@ DDL follows the reference (`src/lib/db/schema.js`, pinned in `PARITY.md`). Every
 | `providerConnections.data` | `displayName`, `accessToken`, `refreshToken`, `idToken`, `apiKey`, `expiresAt`, `expiresIn`, `lastRefreshAt`, `projectId`, `testStatus`, `lastError`, `errorCode`, `lastErrorAt`, `backoffLevel`, `lastUsedAt`, `consecutiveUseCount`, dynamic `modelLock_<model>`, `providerSpecificData` (copilot token, base URL, API type, account id, device id, enabled models, assigned model,.) · the five per-connection proxy keys are removed by the import and by the start of a database that carries them (design 14, D214) |
 | `providerNodes.data` | prefix, base URL, API type |
 | `combos.models` | JSON array |
-| `kv` scopes | `modelAliases`, `customModels` (key `providerAlias\|id\|type`), `mitmAlias`, `pricing`, `disabledModels`. Go-only scopes use the prefix `rllm`: `rllmKeyLimits` (key = API key id), `rllmAuth/sessionEpoch`, `rllmCrypto/check` |
+| `kv` scopes | `modelAliases`, `customModels` (key `providerAlias\|id\|type`; a flag missing from its `caps` is undeclared, not off, and a learned vision flag is written here with `sjson` so the row's other fields survive), `mitmAlias`, `pricing`, `disabledModels`. Go-only scopes use the prefix `rllm`: `rllmKeyLimits` (key = API key id), `rllmAuth/sessionEpoch`, `rllmCrypto/check` |
 
 ### Row Editing
 
@@ -155,7 +155,7 @@ flowchart TD
 | Location | SQLite `${DATA_DIR}/db/analytics.sqlite`, created with `auto_vacuum=INCREMENTAL` (verified on open, warning if another mode). PostgreSQL: schema `rllmx_analytics` on the main server or the database named by `DB_DATABASE_ANALYTICS`, created before its tables (`Schema` has no create-schema call, so `CREATE SCHEMA IF NOT EXISTS` goes through `Statement`; `HasTable` looks in every schema, so PostgreSQL names are schema-qualified) |
 | Planning | The analytics tables are planned and created by their own idempotent pass in `app/store/analytics`, not through the framework's `migrations` table. A migration that runs on another connection is recorded in the default connection's table, and this file can be deleted and recreated on its own |
 | Privacy | The row type has no field for a body, header, prompt or upstream message; a test fails if one is added. Writing is unconditional |
-| `errorClass` | One of `none`, `auth`, `access_denied`, `key_quota`, `rate_limit`, `quota`, `invalid_request`, `not_found`, `no_account`, `upstream_5xx`, `network`, `timeout`, `stream_stall`, `client_closed`, `unknown`; anything else is stored as `unknown` |
+| `errorClass` | One of `none`, `auth`, `access_denied`, `key_quota`, `rate_limit`, `quota`, `invalid_request`, `not_found`, `no_account`, `upstream_5xx`, `network`, `timeout`, `stream_stall`, `client_closed`, `capacity`, `expired`, `unknown`; anything else is stored as `unknown`. `capacity` and `expired` are the two the pipeline writes for a pacer refusal and a reconnect-needed account. |
 | API key | Stored by id and `apiKeyName` (copied at write time, 64 characters, control characters removed; the only free text), never the secret |
 | `estimated` | `1` when token counts were guessed because the provider reported none; old rows read 0 |
 

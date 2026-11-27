@@ -42,6 +42,10 @@ type Job struct {
 	Now func() time.Time
 	// MaxBytes caps what a translated stream may add up to; zero is MaxCollected.
 	MaxBytes int
+	// Keepalive writes a comment line after that much silence on a stream that
+	// is already open, so a client or a proxy does not time it out while the
+	// upstream is thinking. Zero sends none; an NDJSON client must leave it 0.
+	Keepalive time.Duration
 	// ReasoningAliasFields copies a string `reasoning` into `reasoning_content`
 	// on each passed-through OpenAI delta that carries none of its own.
 	ReasoningAliasFields bool
@@ -68,6 +72,10 @@ func Run(ctx context.Context, j Job) Result {
 	}
 	r := &runner{j: j, track: NewTracker(j.UpstreamFormat), start: j.Now(), pull: newPull(j.Body, j.Source, j.Timers)}
 	defer r.pull.stop()
+	if j.Keepalive > 0 {
+		r.keep = time.NewTimer(j.Keepalive)
+		defer r.keep.Stop()
+	}
 	if j.UpstreamFormat == j.ClientFormat {
 		r.passthrough(ctx)
 	} else {
@@ -89,6 +97,38 @@ type runner struct {
 	// streamed counts the text, reasoning and tool-call bytes the codecs were
 	// given, which is what their writers keep until the stream ends.
 	streamed int
+	// keep is the quiet-stream timer; nil when the job asked for none.
+	keep *time.Timer
+}
+
+// KeepaliveFrame is a comment line every SSE reader ignores. It carries no
+// event, so a client's parser sees nothing and a proxy sees a byte.
+const KeepaliveFrame = ": keepalive\n\n"
+
+// keepC is the keepalive timer's channel, or nil when it is off; a nil channel
+// never fires, so both loops can select on it unconditionally.
+func (r *runner) keepC() <-chan time.Time {
+	if r.keep == nil {
+		return nil
+	}
+	return r.keep.C
+}
+
+// resetKeep restarts the quiet-stream timer after a real event.
+func (r *runner) resetKeep() {
+	if r.keep != nil {
+		r.keep.Reset(r.j.Keepalive)
+	}
+}
+
+// keepalive answers a quiet open stream with one comment line and reports
+// whether the client took it.
+func (r *runner) keepalive() bool {
+	if err := r.j.Client.Raw([]byte(KeepaliveFrame)); err != nil {
+		r.err = ErrClientGone
+		return false
+	}
+	return true
 }
 
 func (r *runner) limit() int {
@@ -179,7 +219,15 @@ func (r *runner) translate(ctx context.Context) {
 		}
 	}()
 	for {
-		ev, err := r.pull.next(ctx, usageDeadline)
+		ev, err := r.pull.next(ctx, usageDeadline, r.keepC())
+		if errors.Is(err, errKeepalive) {
+			if !r.keepalive() {
+				return
+			}
+			r.resetKeep()
+			continue
+		}
+		r.resetKeep()
 		if errors.Is(err, errUsageWait) {
 			r.send(writer.Close())
 			return

@@ -110,7 +110,7 @@ func (c *call) serveFail(ctx context.Context) (Output, *accountFail) {
 		if c.p.d.Pacer != nil {
 			if err := c.p.d.Pacer.Wait(ctx, sel.Conn.ID); err != nil {
 				if ctx.Err() != nil {
-					return c.closed(), nil
+					return c.stopped(ctx), nil
 				}
 				if c.p.d.Log != nil {
 					c.p.d.Log.Warningf("pipeline: %v", err)
@@ -174,7 +174,7 @@ func (c *call) serveFail(ctx context.Context) (Output, *accountFail) {
 
 func (c *call) noAccount(ctx context.Context, err error, last *accountFail, sawExpired bool) Output {
 	if ctx.Err() != nil {
-		return c.closed()
+		return c.stopped(ctx)
 	}
 	var locked *account.AllLockedError
 	switch {

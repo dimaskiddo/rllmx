@@ -101,7 +101,35 @@ func (c *call) accept(ctx context.Context) {
 	if err := c.p.d.Reporter.Succeed(ctx, c.row.ConnectionID, c.dest.model, c.attemptStart); err != nil && c.p.d.Log != nil {
 		c.p.d.Log.Warningf("pipeline: clearing locks failed: %v", err)
 	}
+	c.learnVision(ctx)
 }
+
+// learnVision records a custom model that answered a turn carrying an image when
+// the tables said nothing about its vision, so the next request orders it as
+// one. A table's answer is never rewritten, and a built-in model has no row.
+func (c *call) learnVision(ctx context.Context) {
+	if c.p.d.Declarer == nil || c.req == nil || c.dest.provider == "" || !translate.DetectNeeds(c.req).Vision {
+		return
+	}
+	if c.p.d.Caps.For(c.dest.provider, c.dest.model).VisionSet {
+		return
+	}
+	on := true
+	lctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), learnBudget)
+	defer cancel()
+	if err := c.p.d.Declarer.Remember(lctx, c.dest.provider, c.dest.model, upstream.Declared{Vision: &on}); err != nil {
+		if c.p.d.Log != nil {
+			c.p.d.Log.Warningf("pipeline: recording a learned capability failed: %v", err)
+		}
+		return
+	}
+	if c.p.d.Log != nil {
+		c.p.d.Log.Infof("caps: %s/%s now reads images", logName(c.dest.provider), logName(c.dest.model))
+	}
+}
+
+// learnBudget bounds the write that records a learned capability.
+const learnBudget = 2 * time.Second
 
 func (c *call) buffered(ctx context.Context, resp executor.Response) (Output, *accountFail) {
 	raw, err := file.ReadCapped(resp.Body, c.p.d.MaxAnswer)
@@ -207,9 +235,15 @@ func (c *call) relay(ctx context.Context, resp executor.Response, src stream.Sou
 	if c.stripInvisible(ctx) {
 		client = stripClient{Client: lc}
 	}
+	keep := c.p.d.Keepalive
+	if c.format == translate.FormatOllama {
+		// NDJSON has no comment line, so a keepalive there would be a broken frame.
+		keep = 0
+	}
 	res := stream.Run(ctx, stream.Job{
 		Body: resp.Body, Source: src, UpstreamFormat: c.dest.format, ClientFormat: c.format, Ctx: c.tctx,
 		Client: client, Timers: c.timers(), RequestBytes: len(c.body), Buffer: true, Now: c.p.d.Now,
+		Keepalive:            keep,
 		Rewrite:              c.restoreEvent(),
 		ReasoningAliasFields: c.dest.entry.Transport.Quirks.ReasoningAliasFields,
 	})

@@ -7,6 +7,7 @@
   "name": [
     "(^|[-_/:.])(vision|vl|vlm|multimodal|omni|visual)([-_/:.]|$)",
     "[0-9]\\.[0-9]+v([-_/:.]|$)",
-    "(^|[-_/:.])(llava|pixtral|internvl|cogvlm|minicpm-v|moondream|idefics|fuyu)"
+    "(^|[-_/:.])(llava|pixtral|internvl|cogvlm|minicpm-v|moondream|idefics|fuyu)",
+    "(^|[-_/:.])glm-[0-9]+v([-_/:.]|$)"
   ]
 }

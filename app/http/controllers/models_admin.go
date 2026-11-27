@@ -33,7 +33,10 @@ type modelAdminCaps struct {
 
 // modelAdminView is one model as the dashboard lists it.
 type modelAdminView struct {
-	Provider    string         `json:"provider"`
+	Provider string `json:"provider"`
+	// ProviderID is the registry id a request resolves to, while Provider is the
+	// alias the page shows. A member named by a probe carries the id.
+	ProviderID  string         `json:"providerId"`
 	Model       string         `json:"model"`
 	Name        string         `json:"name"`
 	FullModel   string         `json:"fullModel"`
@@ -80,7 +83,7 @@ func (m *ModelsController) AdminList(ctx contractshttp.Context) contractshttp.Re
 		for _, mm := range lists[i] {
 			full := owner + "/" + mm.ID
 			v := modelAdminView{
-				Provider: owner, Model: mm.ID, Name: mm.Name, FullModel: full,
+				Provider: owner, ProviderID: e.ID, Model: mm.ID, Name: mm.Name, FullModel: full,
 				RoutedModel: full, Alias: mm.ID, Source: mm.Source, Kind: mm.Kind,
 			}
 			if a, ok := byTarget[e.ID+"/"+mm.ID]; ok {
@@ -268,28 +271,14 @@ func customKey(owner, id, kind string) string { return owner + "|" + id + "|" + 
 // vision or reasoning custom model sorts and adapts as one. A read failure
 // leaves the previous set alone.
 func (m *ModelsController) refreshDeclared(rc context.Context) {
-	if m.Caps == nil || m.DB == nil {
+	if m.Caps == nil {
 		return
 	}
 	st := m.store()
 	if st == nil {
 		return
 	}
-	raw, err := st.KV().List(rc, repository.ScopeCustomModels)
-	if err != nil {
-		return
-	}
-	all := make(map[string]upstream.Capability, len(raw))
-	for _, body := range raw {
-		var stored customModel
-		if json.Unmarshal([]byte(body), &stored) != nil || stored.ProviderAlias == "" || stored.ID == "" {
-			continue
-		}
-		all[stored.ProviderAlias+"/"+stored.ID] = upstream.Capability{
-			Vision: stored.Caps["vision"], Reasoning: stored.Caps["reasoning"],
-		}
-	}
-	m.Caps.SetCustom(all)
+	_ = catalog.LoadDeclared(rc, st.KV(), m.Caps)
 }
 
 // AddCustomModel answers POST /api/models/custom: one upsert.
@@ -299,12 +288,12 @@ func (m *ModelsController) AddCustomModel(ctx contractshttp.Context) contractsht
 		return storageDown(ctx)
 	}
 	var b struct {
-		ProviderAlias string          `json:"providerAlias"`
-		ID            string          `json:"id"`
-		Type          string          `json:"type"`
-		Name          string          `json:"name"`
-		Caps          map[string]bool `json:"caps"`
-		Transport     string          `json:"transport"`
+		ProviderAlias string           `json:"providerAlias"`
+		ID            string           `json:"id"`
+		Type          string           `json:"type"`
+		Name          string           `json:"name"`
+		Caps          map[string]*bool `json:"caps"`
+		Transport     string           `json:"transport"`
 	}
 	if err := bindJSON(ctx, &b); err != nil {
 		return flat(ctx, nethttp.StatusBadRequest, "Invalid request body")
@@ -333,10 +322,12 @@ func (m *ModelsController) AddCustomModel(ctx contractshttp.Context) contractsht
 		stored.Name = id
 	}
 	if len(b.Caps) > 0 {
+		// A flag the dialog did not send stays undeclared: the resolved table
+		// decides it, and an omitted box on the add form is not "off".
 		stored.Caps = map[string]bool{}
 		for _, k := range []string{"vision", "reasoning"} {
-			if v, ok := b.Caps[k]; ok {
-				stored.Caps[k] = v
+			if v, ok := b.Caps[k]; ok && v != nil {
+				stored.Caps[k] = *v
 			}
 		}
 	}

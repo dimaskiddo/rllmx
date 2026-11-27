@@ -107,7 +107,7 @@ func collectUpTo(ctx context.Context, body io.ReadCloser, src Source, format str
 		return nil
 	}
 	for {
-		ev, err := p.next(ctx, nil)
+		ev, err := p.next(ctx, nil, nil)
 		if errors.Is(err, io.EOF) {
 			for _, ch := range reader.Flush() {
 				if err := absorb(ch); err != nil {

@@ -73,6 +73,12 @@ func TestResolutionOrder(t *testing.T) {
 	if !got.Tools || got.Vision || got.Reasoning || got.ContextWindow != 200000 || got.MaxOutput != 64000 {
 		t.Errorf("defaults: %+v", got)
 	}
+	if got.VisionSet {
+		t.Error("a model the tables never mention claims a vision answer")
+	}
+	if !c.For("openai", "gpt-4o").VisionSet {
+		t.Error("a model row is not known about vision")
+	}
 }
 
 func TestVisionFromTheNameNeverOverridesTheNotVisionList(t *testing.T) {
@@ -220,17 +226,19 @@ func TestACapabilityErrorRepeatsNoTableContent(t *testing.T) {
 	}
 }
 
-// What an operator declares for a custom model reaches the lookup, so a vision
-// or reasoning model of their own sorts and adapts as one.
+// What an operator declares for a custom model reaches the lookup, under the
+// alias the dashboard stores or the id a request resolves to, and a declared
+// flag wins both ways.
 func TestADeclaredCustomModelCarriesItsCapabilities(t *testing.T) {
 	c := caps(t)
 	const provider, model = "my-endpoint", "my-model"
 	if c.For(provider, model).Vision {
 		t.Fatal("the fixture is already a vision model")
 	}
-	c.SetCustom(map[string]Capability{
-		provider + "/" + model: {Vision: true, Reasoning: true},
-		"other/model":          {Vision: true},
+	on, off := true, false
+	c.SetCustom(map[string]Declared{
+		provider + "/" + model: {Vision: &on, Reasoning: &on},
+		"other/model":          {Vision: &on},
 	})
 	got := c.For(provider, model)
 	if !got.Vision || !got.Reasoning {
@@ -238,6 +246,19 @@ func TestADeclaredCustomModelCarriesItsCapabilities(t *testing.T) {
 	}
 	if c.For(provider, "another-model").Vision {
 		t.Fatal("another model took the declaration")
+	}
+	// A declared "off" wins over a table that says otherwise.
+	if !c.For("openai", "gpt-4o").Vision {
+		t.Fatal("the fixture is not a vision model")
+	}
+	c.SetCustom(map[string]Declared{"openai/gpt-4o": {Vision: &off}})
+	if c.For("openai", "gpt-4o").Vision {
+		t.Fatal("a declared off was ignored")
+	}
+	// An alias the dashboard stored reaches the id a request names.
+	c.SetCustom(map[string]Declared{"cc/my-custom": {Vision: &on}})
+	if !c.For("cc", "my-custom").Vision || !c.For("claude", "my-custom").Vision {
+		t.Fatal("a declaration stored under the alias was lost")
 	}
 }
 
@@ -335,8 +356,8 @@ func TestQwenModelsAreAskedToThinkTheQwenWay(t *testing.T) {
 	if got := c.For("openai", "qwq-32b"); got.ThinkingFormat != "qwen" || got.ThinkingCanOff {
 		t.Errorf("qwq always thinks: %+v", got)
 	}
-	if got := c.For("openai", "qwen3-max"); !got.Vision || got.ContextWindow != 1000000 || got.MaxOutput != 65536 {
-		t.Errorf("a more specific row did not win over the family one: %+v", got)
+	if got := c.For("openai", "qwen3-max"); got.Vision || got.ContextWindow != 1000000 || got.MaxOutput != 65536 {
+		t.Errorf("Alibaba's Max line is text only: %+v", got)
 	}
 	if got := c.For("qwencloud", "deepseek-v4-pro-0813"); got.ThinkingFormat != "deepseek" {
 		t.Errorf("a row of another family on the same provider changed: %+v", got)
@@ -366,5 +387,54 @@ func TestAProviderMayNameTheQwenShapeForAllItsModels(t *testing.T) {
 	ok := `{"id":"a","category":"apikey","transport":{"baseUrl":"https://x.example/v1/chat","thinkingFormat":"qwen"},"models":[]}`
 	if _, err := Load(fstest.MapFS{"data/a.json": file(ok)}, "data"); err != nil {
 		t.Fatalf("the shape the writer reads was refused: %v", err)
+	}
+}
+
+func TestTheMiMoFamilyReadsImages(t *testing.T) {
+	c := caps(t)
+	for _, model := range []string{"mimo-v2.6-flash", "mimo-v2.6-pro", "mimo-v2.5-pro", "mimo-v2-omni", "mimo-v2-flash"} {
+		if got := c.For("xiaomi-mimo", model); !got.Vision || !got.Reasoning {
+			t.Errorf("%s: %+v", model, got)
+		}
+	}
+}
+
+// The families every provider shares a name with answer vision and reasoning the
+// same way, and a provider that gates one says so with a row of its own.
+func TestTheSharedFamiliesAnswerVisionAndReasoning(t *testing.T) {
+	c := caps(t)
+	for _, tc := range []struct {
+		provider, model string
+		vision, reason  bool
+	}{
+		{"kimi", "kimi-k2.6", true, true},
+		{"kimi", "k3.1-pro", true, true},
+		{"opencode-go", "kimi-k2.5", true, true},
+		{"codebuddy-intl", "kimi-k2.6", true, true},
+		{"minimax", "MiniMax-M3", true, true},
+		{"minimax", "MiniMax-M2.7", false, true},
+		{"openrouter", "minimax/minimax-m3", true, true},
+		{"deepseek", "deepseek-v4.1-flash", true, true},
+		{"deepseek", "deepseek-chat", false, false},
+		{"alitp-intl", "qwen3.7-max", false, true},
+		{"alitp-intl", "qwen4-max", true, true},
+		{"openai", "qwen3-max", false, true},
+		{"openai", "gpt-oss-120b", false, true},
+		{"openai", "gpt-4-turbo", true, false},
+		{"openai", "claude-3-5-sonnet", true, false},
+		{"openai", "grok-code-fast-1", false, true},
+		{"openai", "llama-4-maverick", true, false},
+		{"openai", "o1-mini", false, true},
+		{"nous", "meituan/longcat-2.5-preview:free", true, true},
+		{"opencode-go", "claude-haiku-5-5", true, true},
+		{"codebuddy-intl", "glm-5v-turbo", true, true},
+		{"xiaomi-mimo", "mimo-v2.6-flash", true, true},
+		// The one provider that answers a shared name differently.
+		{"commandcode", "xiaomi/mimo-v2.5-pro", false, true},
+	} {
+		got := c.For(tc.provider, tc.model)
+		if got.Vision != tc.vision || got.Reasoning != tc.reason {
+			t.Errorf("%s/%s: vision=%v reasoning=%v, want %v %v", tc.provider, tc.model, got.Vision, got.Reasoning, tc.vision, tc.reason)
+		}
 	}
 }

@@ -19,8 +19,22 @@ func TestLoadStreamReadsTheDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.FirstChunk != 200*time.Second || s.Stall != 360*time.Second || s.UsageWait != 3*time.Second {
+	if s.FirstChunk != 200*time.Second || s.Stall != 360*time.Second || s.UsageWait != 3*time.Second || s.Keepalive != 15*time.Second {
 		t.Fatalf("%+v", s)
+	}
+}
+
+func TestAKeepaliveOutOfRangeKeepsItsDefaultAndZeroTurnsItOff(t *testing.T) {
+	s, err := LoadStream(tests.Config{Values: map[string]any{"stream.keepalive": "6m"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Keepalive != 15*time.Second || len(s.Warnings) != 1 || !strings.Contains(s.Warnings[0], "STREAM_KEEPALIVE") {
+		t.Fatalf("%+v %v", s, s.Warnings)
+	}
+	off, _ := LoadStream(tests.Config{Values: map[string]any{"stream.keepalive": "0s"}})
+	if off.Keepalive != 0 {
+		t.Fatalf("0 was not accepted: %v", off.Keepalive)
 	}
 }
 

@@ -75,6 +75,14 @@ func TestTheModelListCarriesCapsAndTheAliasThatPointsAtIt(t *testing.T) {
 	if _, ok := found["caps"].(map[string]any)["contextWindow"]; !ok {
 		t.Fatalf("no caps: %v", found)
 	}
+	// A member is named by the registry id a request resolves to, while the page
+	// shows the alias; a combo maps its caps by both.
+	for _, raw := range list {
+		e := raw.(map[string]any)
+		if e["provider"] == "cc" && e["providerId"] != "claude" {
+			t.Fatalf("an aliased row names its id as %v", e["providerId"])
+		}
+	}
 }
 
 func TestTheModelListNamesACustomModelsKindForTheProviderPage(t *testing.T) {
@@ -273,5 +281,32 @@ func TestUnavailableAccountWithoutALockIsListedOnce(t *testing.T) {
 	e := models[0].(map[string]any)
 	if e["status"] != "unavailable" || e["model"] != "__all" || e["lastError"] != "boom" {
 		t.Fatalf("%v", e)
+	}
+}
+
+// The page stores the provider's alias; a request resolves the registry id, and
+// an unticked box on the edit form must turn the flag off rather than be lost.
+func TestADeclaredFlagReachesTheLookupUnderTheAliasThePageStores(t *testing.T) {
+	m, c := newModelAdmin(t)
+	m.ok(t, "POST", "/api/models/custom", `{"providerAlias":"cc","id":"claude-z","type":"llm","caps":{"vision":true}}`, 200)
+	if !c.Caps.For("claude", "claude-z").Vision {
+		t.Fatal("the declared vision did not reach the id a request names")
+	}
+	found := false
+	for _, raw := range m.ok(t, "GET", "/api/models", "", 200)["models"].([]any) {
+		row := raw.(map[string]any)
+		if row["model"] == "claude-z" {
+			found = true
+			if row["caps"].(map[string]any)["vision"] != true {
+				t.Fatalf("the page shows %v", row["caps"])
+			}
+		}
+	}
+	if !found {
+		t.Fatal("the custom model is not listed")
+	}
+	m.ok(t, "POST", "/api/models/custom", `{"providerAlias":"cc","id":"claude-z","type":"llm","caps":{"vision":false}}`, 200)
+	if c.Caps.For("claude", "claude-z").Vision {
+		t.Fatal("a declared off was ignored")
 	}
 }

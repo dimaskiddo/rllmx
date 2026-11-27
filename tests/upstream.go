@@ -31,6 +31,9 @@ type Reply struct {
 	Hang bool
 	// Silent sends the status and headers, then holds the body open and quiet.
 	Silent bool
+	// ThenSilent holds the body open and quiet after the chunks, so a test can
+	// watch what a stream sends while the upstream is still thinking.
+	ThenSilent bool
 	// Header adds response headers.
 	Header map[string]string
 }
@@ -131,6 +134,12 @@ func (u *Upstream) serve(w http.ResponseWriter, r *http.Request) {
 			case <-r.Context().Done():
 				return
 			}
+		}
+	}
+	if rep.ThenSilent {
+		select {
+		case <-u.done:
+		case <-r.Context().Done():
 		}
 	}
 }

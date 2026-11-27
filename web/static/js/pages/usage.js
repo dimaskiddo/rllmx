@@ -7,11 +7,25 @@ import { formatMethods } from "/static/js/ui/format.js";
 
 const periods = ["today", "24h", "7d", "30d", "60d", "all"];
 
-// A failure whose class changes what the reader should do gets a word of its
-// own; the rest keep their code.
+// Every stored failure class gets a word: the reader acts on the reason, not
+// the code. A class this map does not know keeps its code.
 const failureWords = {
-  key_quota: "usage.class.key_quota",
+  client_closed: "usage.class.client_closed",
+  timeout: "usage.class.timeout",
+  stream_stall: "usage.class.stream_stall",
+  network: "usage.class.network",
+  upstream_5xx: "usage.class.upstream_5xx",
   rate_limit: "usage.class.rate_limit",
+  key_quota: "usage.class.key_quota",
+  quota: "usage.class.quota",
+  auth: "usage.class.auth",
+  access_denied: "usage.class.access_denied",
+  expired: "usage.class.expired",
+  no_account: "usage.class.no_account",
+  capacity: "usage.class.capacity",
+  invalid_request: "usage.class.invalid_request",
+  not_found: "usage.class.not_found",
+  unknown: "usage.class.unknown",
 };
 
 function emptyStats() {

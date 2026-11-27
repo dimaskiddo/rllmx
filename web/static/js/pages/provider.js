@@ -37,7 +37,7 @@ window.Alpine.data("providerPage", () => Object.assign({
   bulk: { text: "", results: null, busy: false, error: "" },
   nodeForm: { name: "", prefix: "", apiType: "chat", baseUrl: "", error: "", busy: false },
   models: { items: [], disabled: [], byTarget: {}, test: {}, error: "", loading: false },
-  modelAdd: { id: "", name: "", vision: false, reasoning: false, error: "", busy: false },
+  modelAdd: { id: "", name: "", vision: false, reasoning: false, editing: false, error: "", busy: false },
   aliasForm: { open: false, model: "", alias: "", error: "" },
   overrides: { rows: [], error: "", busy: false },
   login: {

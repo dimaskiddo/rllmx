@@ -231,7 +231,7 @@ func TestRunnersReturnsTheServerRunner(t *testing.T) {
 	}
 	app := &fakeApp{values: map[any]any{BindingHTTP: bound, BindingData: &Data{Gate: data.NewGate()}}, route: tests.NewRoute(t), log: &tests.Log{}}
 	runners := (&ServerServiceProvider{}).Runners(app)
-	if len(runners) != 6 || runners[0].Signature() != "rllmx:http" || !runners[0].ShouldRun() {
+	if len(runners) != 7 || runners[0].Signature() != "rllmx:http" || !runners[0].ShouldRun() {
 		t.Fatalf("runners = %v", runners)
 	}
 	if runners[2].Signature() != "rllmx.claude-cli" || !runners[2].ShouldRun() {
@@ -245,6 +245,9 @@ func TestRunnersReturnsTheServerRunner(t *testing.T) {
 	}
 	if runners[5].Signature() != "rllmx.catalog" || !runners[5].ShouldRun() {
 		t.Fatalf("the catalog runner is missing: %v", runners[5].Signature())
+	}
+	if runners[6].Signature() != "rllmx.declared" || !runners[6].ShouldRun() {
+		t.Fatalf("the custom-capability runner is missing: %v", runners[6].Signature())
 	}
 	withPriority, ok := runners[0].(foundation.RunnerWithShutdownPriority)
 	if !ok || withPriority.ShutdownPriority() >= 0 {

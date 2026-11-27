@@ -37,13 +37,20 @@ var ErrSyncRunning = errors.New("upstream: a catalog sync is already running")
 // overlayAliases maps a local provider id to the models.dev one for the
 // gateways models.dev files under another name.
 var overlayAliases = map[string]string{
-	"github":        "github-copilot",
-	"glm":           "zai",
-	"glm-cn":        "zhipuai",
-	"claude":        "anthropic",
-	"gemini":        "google",
-	"kimi":          "moonshotai",
-	"cloudflare-ai": "cloudflare-workers-ai",
+	"github":            "github-copilot",
+	"glm":               "zai",
+	"glm-cn":            "zhipuai",
+	"claude":            "anthropic",
+	"gemini":            "google",
+	"kimi":              "moonshotai",
+	"cloudflare-ai":     "cloudflare-workers-ai",
+	"bedrock":           "amazon-bedrock",
+	"ollama":            "ollama-cloud",
+	"together":          "togetherai",
+	"fireworks":         "fireworks-ai",
+	"vercel-ai-gateway": "vercel",
+	"xiaomi-mimo":       "xiaomi",
+	"vertex":            "google-vertex",
 }
 
 // SyncResult is the outcome of one sync: "updated" or "unchanged".

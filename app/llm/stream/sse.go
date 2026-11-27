@@ -158,6 +158,11 @@ func (s *sink) writeLocked(frame []byte) error {
 	if err := s.rc.Flush(); err != nil {
 		return s.fail(err)
 	}
+	// A deadline left armed between frames resets an HTTP/2 stream with nothing
+	// pending, so it only ever bounds the write above.
+	if s.opt.WriteTimeout > 0 {
+		_ = s.rc.SetWriteDeadline(time.Time{})
+	}
 	return nil
 }
 

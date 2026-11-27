@@ -21,7 +21,15 @@ func (r *runner) passthrough(ctx context.Context) {
 	n := &normalizer{seen: map[int64]bool{}}
 	terminal := false
 	for {
-		ev, err := r.pull.next(ctx, nil)
+		ev, err := r.pull.next(ctx, nil, r.keepC())
+		if errors.Is(err, errKeepalive) {
+			if !r.keepalive() {
+				return
+			}
+			r.resetKeep()
+			continue
+		}
+		r.resetKeep()
 		if errors.Is(err, io.EOF) {
 			r.endPassthrough(terminal)
 			return

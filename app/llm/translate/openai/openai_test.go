@@ -331,3 +331,38 @@ func TestAToolMessageCarriesItsErrorState(t *testing.T) {
 		}
 	}
 }
+
+// An agent client may put the picture beside the content instead of inside it:
+// Ollama's `images`, the AI SDK's attachments, and an `image` block each have to
+// reach the hub, because a picture the reader ignores is one no model sees.
+func TestAnImageBesideTheContentIsRead(t *testing.T) {
+	body := `{"model":"m","messages":[
+		{"role":"user","content":"look","images":["data:image/png;base64,AAAA"]},
+		{"role":"user","content":"bare","images":["BBBB"]},
+		{"role":"user","content":[{"type":"text","text":"hi"},{"type":"image","image":{"url":"https://e/x.png"}}]},
+		{"role":"user","content":"see","experimental_attachments":[{"contentType":"image/jpeg","url":"https://e/y.jpg"},{"contentType":"application/pdf","url":"https://e/z.pdf"}]},
+		{"role":"user","content":"see","attachments":[{"contentType":"image/png","data":"CCCC"}]}]}`
+	r := mustRead(t, OpenAICodec{}, body)
+	if len(r.Messages) != 5 {
+		t.Fatalf("%d messages", len(r.Messages))
+	}
+	want := []translate.Part{
+		{Type: translate.PartImage, URL: "data:image/png;base64,AAAA"},
+		{Type: translate.PartImage, Data: "BBBB", MediaType: "image/png"},
+		{Type: translate.PartImage, URL: "https://e/x.png"},
+		{Type: translate.PartImage, URL: "https://e/y.jpg"},
+		{Type: translate.PartImage, URL: "data:image/png;base64,CCCC"},
+	}
+	for i, m := range r.Messages {
+		if len(m.Content) != 2 {
+			t.Fatalf("message %d kept %d parts: %+v", i, len(m.Content), m.Content)
+		}
+		got := m.Content[1]
+		if got.Type != want[i].Type || got.URL != want[i].URL || got.Data != want[i].Data || got.MediaType != want[i].MediaType {
+			t.Errorf("message %d: %+v, want %+v", i, got, want[i])
+		}
+	}
+	if !translate.DetectNeeds(r).Vision {
+		t.Error("an image beside the content is not a need")
+	}
+}

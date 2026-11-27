@@ -369,7 +369,7 @@ func (d *deadlineWriter) Write(p []byte) (int, error) {
 
 func (d *deadlineWriter) FlushError() error { return nil }
 
-func TestEachWriteGetsItsOwnDeadline(t *testing.T) {
+func TestEachWriteGetsItsOwnDeadlineAndClearsIt(t *testing.T) {
 	rw := &deadlineWriter{ResponseRecorder: httptest.NewRecorder()}
 	s, _ := NewSSE(rw, Options{WriteTimeout: 50 * time.Millisecond})
 	_ = s.Data("a")
@@ -377,15 +377,25 @@ func TestEachWriteGetsItsOwnDeadline(t *testing.T) {
 	_ = s.Data("b")
 	rw.mu.Lock()
 	defer rw.mu.Unlock()
-	if len(rw.set) < 2 {
-		t.Fatalf("%d deadlines set for 2 writes", len(rw.set))
+	var armed []time.Time
+	for _, d := range rw.set {
+		if !d.IsZero() {
+			armed = append(armed, d)
+		}
 	}
-	last := rw.set[len(rw.set)-1]
-	if !last.After(time.Now()) || time.Until(last) > 60*time.Millisecond {
+	if len(armed) != 2 {
+		t.Fatalf("%d deadlines armed for 2 writes", len(armed))
+	}
+	if last := armed[1]; !last.After(time.Now()) || time.Until(last) > 60*time.Millisecond {
 		t.Fatalf("the second write got a stale or distant deadline: %v from now", time.Until(last))
 	}
-	if gap := last.Sub(rw.set[0]); gap < 100*time.Millisecond {
+	if gap := armed[1].Sub(armed[0]); gap < 100*time.Millisecond {
 		t.Fatalf("deadlines %v apart: the deadline was set once, not before each write", gap)
+	}
+	// An armed deadline left between frames resets an HTTP/2 stream with nothing
+	// pending, so every frame must clear it again.
+	if !rw.set[len(rw.set)-1].IsZero() {
+		t.Fatal("the deadline stayed armed after the frame")
 	}
 }
 

@@ -16,9 +16,11 @@ type Pool struct {
 	Models     []string
 }
 
-// AdapterDefault is the model an enabled pool with no models falls back to, as
-// the reference does.
-const AdapterDefault = "opencode-zen/mimo-v2.6-flash-free"
+// AdapterDefault is the model an enabled pool with no models falls back to. It
+// is a vision model this build actually lists: the reference's own default names
+// a free lane model that is not in this registry, which left the pool empty and
+// the adapter a silent no-op.
+const AdapterDefault = "mimo/mimo-v2.6-flash"
 
 // AdaptersFor reads the stored capacityAdapter row. A missing row, or a kind it
 // does not name, reads as off; a name the row cannot use is dropped here rather
@@ -65,11 +67,13 @@ func AdapterKinds(n translate.Needs) []string {
 	return out
 }
 
-// KindMet reports whether a capability row covers one adapter kind.
+// KindMet reports whether a capability row covers one adapter kind. An unset
+// vision capability counts as met: the model is tried, and the adapter pool
+// exists for the models a table says cannot read the turn.
 func KindMet(kind string, c upstream.Capability) bool {
 	switch kind {
 	case "vision":
-		return c.Vision
+		return c.Vision || !c.VisionSet
 	case "pdf":
 		return c.PDF
 	case "audioInput":

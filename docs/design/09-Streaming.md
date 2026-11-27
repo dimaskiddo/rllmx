@@ -81,6 +81,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 119 | Error chunk (`response.failed` for Responses clients); completion on usage or stream end | Error never an answer; no timer |
 | 191 | OpenAI, Claude, Responses: missing `stream` false, as their APIs; Gemini streams by URL action (`:streamGenerateContent`), never body; only Ollama route streams unless body says `"stream": false`, as Ollama does | Matches each vendor's documented default; bare request returns one JSON body |
 | 219 | Ollama clients stream NDJSON through `stream.NewNDJSON` | The reference sent them SSE, which an Ollama client does not parse |
+| 466 | The SSE writer arms its 60 s write deadline only around a write and clears it once the frame is flushed, and every open SSE answer writes `: keepalive` after `STREAM_KEEPALIVE` (15 s) of silence — a comment line every SSE reader ignores. NDJSON gets none. **Built** | A pending write deadline is a stream reset on Go's HTTP/2 server even with nothing to write, so a chat that was merely thinking was cut at 60 s and recorded as a client leaving; the reference has no write deadline and no comment, so the same silence ends at the client's or proxy's own timeout |
 | 149 | HTML on any call, or type neither stream nor JSON on streaming one: 502 `upstream_5xx`, client's error shape, page title (no markup); account not locked, answer clears no lock; JSON, missing type pass as before | Client sees failing status instead of 200 carrying an error; gateway page says nothing about the credential |
 
 ---
@@ -96,4 +97,6 @@ One row per lesson; the decision is what the code does because of it.
 | `translate.ReadUsageEvent` made the old "two copies of each usage rule" note false. | The stream tracker calls the response readers. |
 | `NewSSE` and `NewNDJSON` must share flush, deadline and sticky error. | Both embed one `sink` by pointer; `go vet` rejects copying a mutex. |
 | A literal byte-order mark in Go source is a compile error. | The reader and its tests use the `bom` constant. |
+| 4.50: the sink armed a 60 s write deadline before every frame and left it armed. On HTTP/2 Go implements that deadline as an `AfterFunc` that resets the stream 60 s after the last frame with nothing pending, cancelling the request context; the row read `499 client_closed` with 0 tokens. | The deadline is cleared after each flush, so it bounds only the write in progress. A blocked write still fails at 60 s. |
+| 4.50: an open stream sent nothing while the upstream was thinking, and the upstream's own comment lines were dropped before they could keep anything alive. | `Job.Keepalive` writes `: keepalive` through the client after that much silence, for an SSE client only; the timer restarts on every real event, so a live stream sends nothing extra. |
 

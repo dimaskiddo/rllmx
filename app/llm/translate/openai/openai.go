@@ -84,6 +84,22 @@ func ReadOpenAIMessage(m gjson.Result) translate.Message {
 		msg.Role = translate.RoleSystem
 	}
 	msg.Content = ReadOpenAIContent(m.Get("content"))
+	// An agent client may put the picture beside the content instead of in it:
+	// Ollama and Hermes use `images`, the Vercel AI SDK uses `attachments` or
+	// `experimental_attachments`. An image that is not read here is an image no
+	// model ever sees.
+	for _, img := range m.Get("images").Array() {
+		if p, ok := imagePart(img); ok {
+			msg.Content = append(msg.Content, p)
+		}
+	}
+	for _, field := range []string{"attachments", "experimental_attachments"} {
+		for _, att := range m.Get(field).Array() {
+			if p, ok := imagePart(att); ok {
+				msg.Content = append(msg.Content, p)
+			}
+		}
+	}
 	// `reasoning` is the alias some providers stream; a non-string value (an
 	// object of provider details) is not thinking text.
 	reasoning := m.Get("reasoning_content").String()
@@ -106,6 +122,43 @@ func ReadOpenAIMessage(m gjson.Result) translate.Message {
 		msg.ToolCalls[0].Signature = sig
 	}
 	return msg
+}
+
+// imagePart reads one image an agent client put beside the content: a URL, a
+// data URL, a bare base64 string (Ollama's own array), or an attachment object
+// carrying url, contentType and data. An attachment that is not an image is not
+// a part, so a PDF attached beside the text is not sent as one.
+func imagePart(v gjson.Result) (translate.Part, bool) {
+	var url, mime, data string
+	switch {
+	case v.Type == gjson.String:
+		url = v.String()
+	case v.IsObject():
+		url = v.Get("url").String()
+		mime = v.Get("contentType").String()
+		if mime == "" {
+			mime = v.Get("mediaType").String()
+		}
+		data = v.Get("data").String()
+	default:
+		return translate.Part{}, false
+	}
+	if mime != "" && !strings.HasPrefix(mime, "image/") {
+		return translate.Part{}, false
+	}
+	if url == "" && data == "" {
+		return translate.Part{}, false
+	}
+	if mime == "" {
+		mime = "image/png"
+	}
+	if url == "" {
+		url = "data:" + mime + ";base64," + data
+	}
+	if !strings.HasPrefix(url, "data:") && !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+		return translate.Part{Type: translate.PartImage, Data: url, MediaType: mime}, true
+	}
+	return translate.Part{Type: translate.PartImage, URL: url}, true
 }
 
 // ArgsText is the arguments of a call as JSON text: a string stays as it is, an
@@ -141,6 +194,17 @@ func ReadOpenAIContent(c gjson.Result) []translate.Part {
 				url = p.Get("image_url").String()
 			}
 			parts = append(parts, translate.Part{Type: translate.PartImage, URL: url, Detail: p.Get("image_url.detail").String()})
+		case "image":
+			src := p.Get("image")
+			if !src.Exists() {
+				src = p.Get("image_url")
+			}
+			part, ok := imagePart(src)
+			if !ok {
+				continue
+			}
+			part.Detail = p.Get("image_url.detail").String()
+			parts = append(parts, part)
 		case "input_audio":
 			parts = append(parts, translate.Part{Type: translate.PartAudio, Data: p.Get("input_audio.data").String(), MediaType: "audio/" + p.Get("input_audio.format").String()})
 		case "file":

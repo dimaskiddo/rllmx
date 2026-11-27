@@ -1037,6 +1037,82 @@ func TestTheRequestLogNamesABudgetRefusal(t *testing.T) {
 	}
 }
 
+// Every class the analytics store accepts reads as words, not a class name.
+func TestEveryStoredFailureClassHasAWord(t *testing.T) {
+	raw, err := os.ReadFile("../app/store/analytics/record.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	block := regexp.MustCompile(`(?s)var errorClasses = map\[string\]bool\{(.*?)\n\}`).FindSubmatch(raw)
+	if block == nil {
+		t.Fatal("record.go holds no errorClasses table")
+	}
+	classes := regexp.MustCompile(`"([a-z_0-9]+)":\s*true`).FindAllStringSubmatch(string(block[1]), -1)
+	if len(classes) < 10 {
+		t.Fatalf("%d classes read, want the whole table", len(classes))
+	}
+	js := readWeb(t, "static/js/pages/usage.js")
+	en, id := loadTranslations(t, "en"), loadTranslations(t, "id")
+	for _, m := range classes {
+		class := m[1]
+		if class == "none" {
+			continue
+		}
+		key := "usage.class." + class
+		if !strings.Contains(js, class+`: "`+key+`"`) {
+			t.Errorf("statusWord has no word for %q", class)
+		}
+		if strings.TrimSpace(en[key]) == "" || strings.TrimSpace(id[key]) == "" {
+			t.Errorf("%s is missing from a locale", key)
+		}
+	}
+	if en["usage.class.client_closed"] != "Client Disconnected" {
+		t.Errorf("a client that left reads %q", en["usage.class.client_closed"])
+	}
+	// The pacer and the reconnect answer write these two; a class missing from
+	// the table is stored as "unknown", which is how they were lost before.
+	for _, class := range []string{"capacity", "expired"} {
+		if !strings.Contains(string(block[1]), `"`+class+`": true`) {
+			t.Errorf("the store does not keep the pipeline's %q class", class)
+		}
+	}
+}
+
+// A combo shows which members read a picture or think, wherever it names a model.
+func TestTheComboShowsMemberCapabilitiesInEveryList(t *testing.T) {
+	page := readWeb(t, "static/pages/combos.html")
+	if n := strings.Count(page, "capsOf(model)"); n < 3 {
+		t.Errorf("%d capability badges; want the member chips, the edit rows and the suggested rows", n)
+	}
+	js := readWeb(t, "static/js/pages/combos.js")
+	if !strings.Contains(js, `m.providerId + "/" + m.model`) {
+		t.Error("a member named by its registry id finds no caps")
+	}
+}
+
+// A stored capability is only useful if the page can change it: a custom model
+// row opens the dialog that sets Vision and Reasoning, and the save declares
+// both flags on an edit while an add sends only the ticked ones.
+func TestACustomModelsCapabilitiesCanBeEdited(t *testing.T) {
+	page := readWeb(t, "static/pages/provider.html")
+	for _, want := range []string{
+		`x-on:click="openModelEdit(model)"`,
+		`x-bind:disabled="model.source !== 'custom'"`,
+		`x-bind:readonly="modelAdd.editing"`,
+		`x-text="modelAdd.editing ? label('models.editTitle') : label('models.addTitle')"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the model dialog lacks %s", want)
+		}
+	}
+	js := readWeb(t, "static/js/pages/provider-models.js")
+	for _, want := range []string{"openModelEdit(row)", "if (this.modelAdd.editing) {", "caps.vision = this.modelAdd.vision"} {
+		if !strings.Contains(js, want) {
+			t.Errorf("the page script lacks %q", want)
+		}
+	}
+}
+
 // Stacked fields live in a two-column grid; the password line belongs under the
 // switch, not beside it.
 func TestTheSecurityCardGivesThePasswordItsOwnRow(t *testing.T) {

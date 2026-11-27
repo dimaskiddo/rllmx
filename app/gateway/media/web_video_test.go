@@ -357,3 +357,19 @@ func TestEveryEarlyRefusalLeavesOneUsageRow(t *testing.T) {
 		})
 	}
 }
+
+func TestACallerDeadlineIsATimeoutNotAClientWhoLeft(t *testing.T) {
+	p, sink := slowPipeline(t, time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	out := p.Videos(ctx, gatewaymedia.Input{
+		Path: "/v1/videos/generations", ContentType: "application/json",
+		Body: []byte(`{"model":"uc-web/default","prompt":"a wave"}`),
+	}, media.VideoGenerations)
+	if out.Status != http.StatusGatewayTimeout {
+		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+	if rows := sink.All(); len(rows) != 1 || rows[0].ErrorClass != "timeout" {
+		t.Fatalf("%+v", rows)
+	}
+}

@@ -84,6 +84,11 @@ func (c *call) routeLine() string {
 		if t := c.req.Thinking; t.Set() {
 			b.WriteString(" · THINK " + logName(text.FirstNonEmpty(t.Level, t.Mode)))
 		}
+		// The one case an image does not reach the model: a table that says the
+		// model cannot read it. The line names no content, only the decision.
+		if translate.DetectNeeds(c.req).Vision && !c.p.d.Caps.For(c.dest.provider, c.dest.model).Vision {
+			b.WriteString(" · IMAGE omitted")
+		}
 	}
 	if name := c.row.ComboName; name != "" {
 		b.WriteString(` · COMBO "` + logName(name) + `"`)

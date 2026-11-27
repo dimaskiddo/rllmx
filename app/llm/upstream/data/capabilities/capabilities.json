@@ -3,7 +3,9 @@
     "opencode-go": {
       "claude-haiku-5-5": {
         "reasoning": true,
-        "thinkingFormat": "claude-adaptive"
+        "thinkingFormat": "claude-adaptive",
+        "vision": true,
+        "search": true
       }
     },
     "github": {
@@ -31,11 +33,14 @@
       },
       "meituan/longcat-2.5-preview:free": {
         "reasoning": true,
-        "thinkingFormat": "nous"
+        "thinkingFormat": "nous",
+        "vision": true
       },
       "stepfun/step-5-preview:free": {
         "reasoning": true,
-        "thinkingFormat": "nous"
+        "thinkingFormat": "nous",
+        "vision": true,
+        "videoInput": true
       },
       "upstage/solar-mini4:free": {
         "reasoning": true,
@@ -43,7 +48,9 @@
       },
       "stepfun/step-3.7-flash:free": {
         "reasoning": true,
-        "thinkingFormat": "nous"
+        "thinkingFormat": "nous",
+        "vision": true,
+        "videoInput": true
       },
       "poolside/laguna-s-2.1:free": {
         "reasoning": true,
@@ -62,12 +69,16 @@
       "kimi-k3": {
         "reasoning": true,
         "thinkingFormat": "kimi",
-        "thinkingCanDisable": false
+        "thinkingCanDisable": false,
+        "vision": true,
+        "videoInput": true
       },
       "k3": {
         "reasoning": true,
         "thinkingFormat": "kimi",
-        "thinkingCanDisable": false
+        "thinkingCanDisable": false,
+        "vision": true,
+        "videoInput": true
       },
       "k3.1-pro": {
         "vision": true,
@@ -75,7 +86,8 @@
         "thinkingFormat": "kimi",
         "thinkingCanDisable": false,
         "contextWindow": 1048576,
-        "maxOutput": 131072
+        "maxOutput": 131072,
+        "videoInput": true
       },
       "k3.1-pro-highspeed": {
         "vision": true,
@@ -83,42 +95,57 @@
         "thinkingFormat": "kimi",
         "thinkingCanDisable": false,
         "contextWindow": 1048576,
-        "maxOutput": 131072
+        "maxOutput": 131072,
+        "videoInput": true
       },
       "kimi-for-coding": {
         "reasoning": true,
         "thinkingFormat": "kimi",
-        "thinkingCanDisable": false
+        "thinkingCanDisable": false,
+        "vision": true,
+        "videoInput": true
       },
       "kimi-for-coding-highspeed": {
         "reasoning": true,
         "thinkingFormat": "kimi",
-        "thinkingCanDisable": false
+        "thinkingCanDisable": false,
+        "vision": true,
+        "videoInput": true
       },
       "kimi-k2.7-code": {
         "reasoning": true,
         "thinkingFormat": "kimi",
-        "thinkingCanDisable": false
+        "thinkingCanDisable": false,
+        "vision": true,
+        "videoInput": true
       },
       "kimi-k2.7-code-highspeed": {
         "reasoning": true,
         "thinkingFormat": "kimi",
-        "thinkingCanDisable": false
+        "thinkingCanDisable": false,
+        "vision": true,
+        "videoInput": true
       },
       "kimi-k2.6": {
         "reasoning": true,
         "thinkingFormat": "kimi",
-        "thinkingCanDisable": true
+        "thinkingCanDisable": true,
+        "vision": true,
+        "videoInput": true
       },
       "kimi-k2.5": {
         "reasoning": true,
         "thinkingFormat": "kimi",
-        "thinkingCanDisable": true
+        "thinkingCanDisable": true,
+        "vision": true,
+        "videoInput": true
       },
       "kimi-k2.5-thinking": {
         "reasoning": true,
         "thinkingFormat": "kimi",
-        "thinkingCanDisable": true
+        "thinkingCanDisable": true,
+        "vision": true,
+        "videoInput": true
       },
       "kimi-latest": {
         "reasoning": true,
@@ -301,7 +328,8 @@
         "thinkingFormat": "openai",
         "thinkingCanDisable": false,
         "contextWindow": 164000,
-        "maxOutput": 32000
+        "maxOutput": 32000,
+        "videoInput": true
       },
       "hy3-preview": {
         "vision": true,
@@ -388,6 +416,20 @@
         "thinkingCanDisable": true,
         "contextWindow": 1000000,
         "maxOutput": 393216
+      },
+      "kimi-k2.6": {
+        "vision": true,
+        "videoInput": true,
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": true
+      },
+      "kimi-k2.7": {
+        "vision": true,
+        "videoInput": true,
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "thinkingCanDisable": true
       }
     },
     "minimax-code": {
@@ -626,6 +668,67 @@
         "contextWindow": 1000000,
         "maxOutput": 393216
       }
+    },
+    "alitp-intl": {
+      "qwen4-max": {
+        "vision": true,
+        "videoInput": true,
+        "reasoning": true,
+        "contextWindow": 1000000,
+        "maxOutput": 393216,
+        "thinkingFormat": "qwen"
+      },
+      "qwen4-max-preview": {
+        "vision": true,
+        "videoInput": true,
+        "reasoning": true,
+        "contextWindow": 1000000,
+        "maxOutput": 393216,
+        "thinkingFormat": "qwen"
+      },
+      "qwen3.8-max": {
+        "vision": true,
+        "videoInput": true,
+        "reasoning": true,
+        "contextWindow": 1000000,
+        "maxOutput": 131072,
+        "thinkingFormat": "qwen"
+      },
+      "qwen3.8-flash": {
+        "vision": true,
+        "reasoning": true,
+        "contextWindow": 1000000,
+        "maxOutput": 131072,
+        "thinkingFormat": "qwen"
+      },
+      "qwen3.7-max": {
+        "reasoning": true,
+        "contextWindow": 1000000,
+        "maxOutput": 131072,
+        "thinkingFormat": "qwen"
+      },
+      "qwen3.7-plus": {
+        "vision": true,
+        "reasoning": true,
+        "contextWindow": 1000000,
+        "maxOutput": 131072,
+        "thinkingFormat": "qwen"
+      },
+      "deepseek-v4-pro-0813": {
+        "reasoning": true,
+        "thinkingFormat": "deepseek",
+        "contextWindow": 1000000,
+        "maxOutput": 393216
+      }
+    },
+    "commandcode": {
+      "xiaomi/mimo-v2.5-pro": {
+        "reasoning": true,
+        "thinkingFormat": "deepseek",
+        "thinkingCanDisable": false,
+        "contextWindow": 262144,
+        "maxOutput": 131072
+      }
     }
   },
   "models": {
@@ -776,6 +879,21 @@
       "thinkingFormat": "claude-adaptive",
       "contextWindow": 1000000,
       "maxOutput": 128000
+    },
+    "o1-mini": {
+      "reasoning": true,
+      "thinkingFormat": "openai",
+      "thinkingCanDisable": false
+    },
+    "gpt-4-turbo": {
+      "vision": true
+    },
+    "deepseek-flash": {
+      "vision": true,
+      "reasoning": true,
+      "thinkingFormat": "deepseek",
+      "contextWindow": 131072,
+      "maxOutput": 8192
     }
   },
   "patterns": [
@@ -826,7 +944,13 @@
       }
     },
     {
-      "pattern": "claude-*",
+      "pattern": "*claude-3*",
+      "set": {
+        "vision": true
+      }
+    },
+    {
+      "pattern": "*claude-*",
       "set": {
         "vision": true,
         "pdf": true,
@@ -964,6 +1088,16 @@
       }
     },
     {
+      "pattern": "*deepseek-v4.*",
+      "set": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "deepseek",
+        "contextWindow": 1000000,
+        "maxOutput": 384000
+      }
+    },
+    {
       "pattern": "deepseek-v4*",
       "set": {
         "reasoning": true,
@@ -980,7 +1114,22 @@
       }
     },
     {
-      "pattern": "grok-*",
+      "pattern": "*grok*image*",
+      "set": {
+        "imageOutput": true
+      }
+    },
+    {
+      "pattern": "*grok-code*",
+      "set": {
+        "reasoning": true,
+        "thinkingFormat": "openai",
+        "contextWindow": 256000,
+        "maxOutput": 64000
+      }
+    },
+    {
+      "pattern": "*grok-*",
       "set": {
         "vision": true,
         "search": true,
@@ -988,6 +1137,23 @@
         "thinkingFormat": "openai",
         "contextWindow": 256000,
         "maxOutput": 64000
+      }
+    },
+    {
+      "pattern": "*gpt-oss*",
+      "set": {
+        "reasoning": true,
+        "thinkingFormat": "openai"
+      }
+    },
+    {
+      "pattern": "*deepseek-r1*",
+      "set": {
+        "reasoning": true,
+        "thinkingFormat": "deepseek",
+        "thinkingCanDisable": false,
+        "contextWindow": 131072,
+        "maxOutput": 8192
       }
     },
     {
@@ -1023,7 +1189,6 @@
       "set": {
         "reasoning": true,
         "thinkingFormat": "qwen",
-        "vision": true,
         "contextWindow": 1000000,
         "maxOutput": 65536
       }
@@ -1133,6 +1298,203 @@
         "thinkingFormat": "zai",
         "contextWindow": 200000,
         "maxOutput": 128000
+      }
+    },
+    {
+      "provider": "minimax",
+      "pattern": "minimax-m3*",
+      "set": {
+        "vision": true,
+        "reasoning": true,
+        "dropOutputConfig": true
+      }
+    },
+    {
+      "provider": "minimax-cn",
+      "pattern": "minimax-m3*",
+      "set": {
+        "vision": true,
+        "reasoning": true,
+        "dropOutputConfig": true
+      }
+    },
+    {
+      "provider": "minimax",
+      "pattern": "minimax-m2*",
+      "set": {
+        "reasoning": true,
+        "thinkingCanDisable": false,
+        "dropOutputConfig": true
+      }
+    },
+    {
+      "provider": "minimax-cn",
+      "pattern": "minimax-m2*",
+      "set": {
+        "reasoning": true,
+        "thinkingCanDisable": false,
+        "dropOutputConfig": true
+      }
+    },
+    {
+      "pattern": "*minimax*m3*",
+      "set": {
+        "vision": true,
+        "reasoning": true
+      }
+    },
+    {
+      "pattern": "*kimi*k3*",
+      "set": {
+        "vision": true,
+        "videoInput": true,
+        "reasoning": true,
+        "thinkingFormat": "kimi",
+        "thinkingCanDisable": false
+      }
+    },
+    {
+      "pattern": "*kimi*k2.7*code*",
+      "set": {
+        "vision": true,
+        "videoInput": true,
+        "reasoning": true,
+        "thinkingFormat": "kimi",
+        "thinkingCanDisable": false
+      }
+    },
+    {
+      "pattern": "*kimi*k2.5*",
+      "set": {
+        "vision": true,
+        "videoInput": true,
+        "reasoning": true,
+        "thinkingFormat": "kimi",
+        "thinkingCanDisable": true
+      }
+    },
+    {
+      "pattern": "*kimi*k2.6*",
+      "set": {
+        "vision": true,
+        "videoInput": true,
+        "reasoning": true,
+        "thinkingFormat": "kimi",
+        "thinkingCanDisable": true
+      }
+    },
+    {
+      "pattern": "*kimi*k2.7*",
+      "set": {
+        "vision": true,
+        "videoInput": true,
+        "reasoning": true,
+        "thinkingFormat": "kimi",
+        "thinkingCanDisable": true
+      }
+    },
+    {
+      "pattern": "*kimi*k2.8*",
+      "set": {
+        "vision": true,
+        "videoInput": true,
+        "reasoning": true,
+        "thinkingFormat": "kimi",
+        "thinkingCanDisable": true
+      }
+    },
+    {
+      "pattern": "*kimi*",
+      "set": {
+        "reasoning": true,
+        "thinkingFormat": "kimi"
+      }
+    },
+    {
+      "pattern": "*muse*spark*",
+      "set": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "openai"
+      }
+    },
+    {
+      "pattern": "*llama-4*",
+      "set": {
+        "vision": true
+      }
+    },
+    {
+      "pattern": "*laguna*",
+      "set": {
+        "reasoning": true
+      }
+    },
+    {
+      "pattern": "*nemotron*",
+      "set": {
+        "reasoning": true
+      }
+    },
+    {
+      "pattern": "*hunyuan*",
+      "set": {
+        "reasoning": true
+      }
+    },
+    {
+      "pattern": "hy3*",
+      "set": {
+        "reasoning": true
+      }
+    },
+    {
+      "pattern": "*mimo*v2.6*",
+      "set": {
+        "vision": true,
+        "audioInput": true,
+        "videoInput": true,
+        "reasoning": true,
+        "thinkingFormat": "deepseek",
+        "thinkingCanDisable": false,
+        "contextWindow": 1048576,
+        "maxOutput": 131072
+      }
+    },
+    {
+      "pattern": "*mimo*v2.5*",
+      "set": {
+        "vision": true,
+        "audioInput": true,
+        "videoInput": true,
+        "reasoning": true,
+        "thinkingFormat": "deepseek",
+        "thinkingCanDisable": false,
+        "contextWindow": 1048576,
+        "maxOutput": 131072
+      }
+    },
+    {
+      "pattern": "*mimo*omni*",
+      "set": {
+        "vision": true,
+        "audioInput": true,
+        "reasoning": true,
+        "thinkingFormat": "deepseek",
+        "thinkingCanDisable": false,
+        "contextWindow": 262144,
+        "maxOutput": 131072
+      }
+    },
+    {
+      "pattern": "*mimo*",
+      "set": {
+        "vision": true,
+        "reasoning": true,
+        "thinkingFormat": "deepseek",
+        "thinkingCanDisable": false,
+        "contextWindow": 262144,
+        "maxOutput": 131072
       }
     },
     {

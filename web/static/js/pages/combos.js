@@ -59,7 +59,7 @@ window.Alpine.data("combosPage", () => Object.assign({
         if (!m.caps) {
           continue;
         }
-        for (const key of [m.fullModel, m.routedModel, m.alias, m.provider + "/" + m.model]) {
+        for (const key of [m.fullModel, m.routedModel, m.alias, m.provider + "/" + m.model, m.providerId + "/" + m.model]) {
           if (key && !capsBy[key]) {
             capsBy[key] = m.caps;
           }

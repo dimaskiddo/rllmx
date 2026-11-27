@@ -237,22 +237,24 @@ func TestThinkingIsDroppedWhenTheLastTurnIsNotTheUsers(t *testing.T) {
 	}
 }
 
-func TestStripUnreadableKeepsTheTurn(t *testing.T) {
+func TestStripUnreadableKeepsTheTurnAndSaysWhatItLeft(t *testing.T) {
 	r := &Request{Messages: []Message{
 		{Role: RoleUser, Content: []Part{{Type: PartText, Text: "see"}, {Type: PartImage, URL: "u"}, {Type: PartAudio}, {Type: PartFile, MediaType: "application/pdf"}}},
 		{Role: RoleUser, Content: []Part{{Type: PartImage, URL: "only"}}},
 	}}
-	StripUnreadable(r, upstream.Capability{})
-	if len(r.Messages[0].Content) != 1 || r.Messages[0].Content[0].Text != "see" {
-		t.Errorf("%+v", r.Messages[0].Content)
+	StripUnreadable(r, upstream.Capability{VisionSet: true})
+	got := r.Messages[0].Content
+	if len(got) != 4 || got[0].Text != "see" || got[1].Text != omittedImage || got[2].Text != omittedAudio || got[3].Text != omittedFile {
+		t.Errorf("%+v", got)
 	}
-	if len(r.Messages) != 2 || len(r.Messages[1].Content) != 1 || r.Messages[1].Content[0].Type != PartText {
-		t.Errorf("an emptied message must stay as an empty text turn: %+v", r.Messages[1])
+	only := r.Messages[1].Content
+	if len(only) != 1 || only[0].Text != omittedImage {
+		t.Errorf("an image-only turn reads %+v", only)
 	}
 	r2 := &Request{Messages: []Message{{Role: RoleUser, Content: []Part{{Type: PartImage, URL: "u"}, {Type: PartFile, MediaType: "video/mp4"}}}}}
 	StripUnreadable(r2, upstream.Capability{Vision: true})
-	if len(r2.Messages[0].Content) != 1 || r2.Messages[0].Content[0].Type != PartImage {
-		t.Errorf("a readable image was removed or a video kept: %+v", r2.Messages[0].Content)
+	if c := r2.Messages[0].Content; len(c) != 2 || c[0].Type != PartImage || c[1].Text != omittedFile {
+		t.Errorf("a readable image was removed or a video kept: %+v", c)
 	}
 }
 
@@ -353,13 +355,13 @@ func TestPrepareAppliesTheConcernsTogether(t *testing.T) {
 		},
 	}
 	c := NewCtx(FormatOpenAI, FormatOpenAI)
-	c.Caps = upstream.Capability{MaxOutput: 8000, Tools: true}
+	c.Caps = upstream.Capability{MaxOutput: 8000, Tools: true, VisionSet: true}
 	Prepare(r, c)
 	if *r.Params.MaxTokens != 8000 {
 		t.Errorf("max tokens %d", *r.Params.MaxTokens)
 	}
-	if len(r.Messages[0].Content) != 1 {
-		t.Errorf("the image stayed for a text-only model")
+	if c := r.Messages[0].Content; len(c) != 2 || c[1].Text != earlierImage {
+		t.Errorf("the image for a text-only model reads %+v", c)
 	}
 	if r.Messages[1].ToolCalls[0].ID != "badid" || r.Messages[2].Role != RoleTool {
 		t.Errorf("tool calls: %+v", r.Messages[1:])

@@ -42,6 +42,12 @@ type Reporter interface {
 	Succeed(ctx context.Context, connID, model string, started time.Time) error
 }
 
+// Declarer records a capability a request proved about a model, so the next one
+// orders it as one. Only a custom model has a row to record into.
+type Declarer interface {
+	Remember(ctx context.Context, provider, model string, d upstream.Declared) error
+}
+
 // Projects finds an account's Cloud Code project with its access token.
 type Projects interface {
 	Project(ctx context.Context, conn repository.Connection, access string) (string, error)
@@ -121,6 +127,8 @@ type Deps struct {
 	Resolver Resolver
 	Selector Selector
 	Reporter Reporter
+	// Declarer records a capability a custom model proved; nil learns nothing.
+	Declarer Declarer
 	Executor executor.Executor
 	Nodes    Nodes
 	Registry *upstream.Registry
@@ -188,6 +196,10 @@ type Deps struct {
 	Timers   stream.Timers
 	// BodyTimeout bounds reading a whole non-stream answer; zero means ten minutes.
 	BodyTimeout time.Duration
+	// Keepalive writes a comment line after that much silence on an open SSE
+	// answer, so a client that times out on silence keeps the stream. Zero sends
+	// none.
+	Keepalive time.Duration
 	// MaxAnswer bounds a buffered upstream answer in bytes; zero means 64 MiB.
 	MaxAnswer int64
 	Log       log.Log

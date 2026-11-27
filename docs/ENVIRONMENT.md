@@ -136,6 +136,7 @@ The values in `.env.example` are the vendors' published installed-app values, no
 | `STREAM_FIRST_CHUNK_TIMEOUT` | `200s` | How long to wait for the first event of a streamed answer, which is the time a model needs to read a long prompt. 5s to 1h. |
 | `STREAM_STALL_TIMEOUT` | `360s` | How long a stream may stay silent before it is cut and the client gets an error. 5s to 1h. |
 | `STREAM_USAGE_WAIT` | `3s` | How long a finished turn waits for the usage report some upstreams send after it. 100ms to 30s. |
+| `STREAM_KEEPALIVE` | `15s` | How long an open event stream may stay silent before a comment line is sent, so a client or proxy that times out on silence keeps the connection while the upstream is thinking. 0 turns it off; Ollama's NDJSON answer never gets one. 0 to 5m. |
 
 ## Data
 

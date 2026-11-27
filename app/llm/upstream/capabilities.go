@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 )
 
@@ -37,6 +38,10 @@ type Capability struct {
 	Search      bool `json:"search"`
 	Tools       bool `json:"tools"`
 	Reasoning   bool `json:"reasoning"`
+	// VisionSet is true when a table, the catalog or an operator said something
+	// about vision. A model we know nothing about is tried with an image rather
+	// than stripped, so this is what tells the two apart.
+	VisionSet bool `json:"-"`
 	// ThinkingFormat is how a thinking request is written on the wire, or empty
 	// to follow the transport format.
 	ThinkingFormat string `json:"thinkingFormat,omitempty"`
@@ -159,8 +164,10 @@ type Capabilities struct {
 	// overlay is the synced catalog, swapped whole; nil means the tables alone.
 	overlay atomic.Pointer[Overlay]
 	// custom is what an operator declared for a custom model, keyed
-	// "provider/model" and swapped whole.
-	custom atomic.Pointer[map[string]Capability]
+	// "provider/model" and swapped whole. declareMu serializes the swap with the
+	// read-modify-write a learned capability does.
+	custom    atomic.Pointer[map[string]Declared]
+	declareMu sync.Mutex
 }
 
 // LoadCapabilities reads the embedded tables. A bad table is an error.
@@ -343,11 +350,19 @@ func modelNames(model string) []string {
 	return names
 }
 
+// Declared is what an operator said about one custom model. A nil flag means
+// the operator said nothing and the resolved table stands; a set flag wins, so
+// unticking Vision turns it off.
+type Declared struct {
+	Vision    *bool
+	Reasoning *bool
+}
+
 // For resolves what a model can do: the provider's own row, then the exact
 // model, then the first matching glob, over the defaults, then the synced
 // catalog. Only a provider row is returned as written; the other steps turn
 // vision on when the name says so, and a name on the not-vision list never gets
-// it.
+// it. An operator's declaration then replaces the flags it names.
 func (c *Capabilities) For(provider, model string) Capability {
 	out, providerRow := c.table(provider, model)
 	if !providerRow {
@@ -355,8 +370,12 @@ func (c *Capabilities) For(provider, model string) Capability {
 		c.finish(&out, model)
 	}
 	if d, ok := c.declared(provider, model); ok {
-		out.Vision = out.Vision || d.Vision
-		out.Reasoning = out.Reasoning || d.Reasoning
+		if d.Vision != nil {
+			out.Vision, out.VisionSet = *d.Vision, true
+		}
+		if d.Reasoning != nil {
+			out.Reasoning = *d.Reasoning
+		}
 	}
 	if c.registry != nil {
 		if id, ok := c.registry.Resolve(provider); ok {
@@ -369,18 +388,52 @@ func (c *Capabilities) For(provider, model string) Capability {
 }
 
 // SetCustom replaces the capabilities an operator declared for custom models.
-func (c *Capabilities) SetCustom(all map[string]Capability) {
+func (c *Capabilities) SetCustom(all map[string]Declared) {
+	c.declareMu.Lock()
+	defer c.declareMu.Unlock()
 	c.custom.Store(&all)
 }
 
-// declared is what an operator said about one custom model.
-func (c *Capabilities) declared(provider, model string) (Capability, bool) {
+// Declare records one capability a request proved a custom model has, keeping
+// every other entry as it is.
+func (c *Capabilities) Declare(provider, model string, d Declared) {
+	c.declareMu.Lock()
+	defer c.declareMu.Unlock()
+	old := c.custom.Load()
+	next := make(map[string]Declared, 1)
+	if old != nil {
+		for k, v := range *old {
+			next[k] = v
+		}
+	}
+	key := provider + "/" + model
+	d.Vision, d.Reasoning = mergeFlag(next[key].Vision, d.Vision), mergeFlag(next[key].Reasoning, d.Reasoning)
+	next[key] = d
+	c.custom.Store(&next)
+}
+
+// mergeFlag keeps the old declaration for a flag the new one does not name.
+func mergeFlag(old, next *bool) *bool {
+	if next != nil {
+		return next
+	}
+	return old
+}
+
+// declared is what an operator said about one custom model, under any name the
+// provider is known by: the dashboard stores the alias, and a request resolves
+// to the registry id.
+func (c *Capabilities) declared(provider, model string) (Declared, bool) {
 	all := c.custom.Load()
 	if all == nil {
-		return Capability{}, false
+		return Declared{}, false
 	}
-	v, ok := (*all)[provider+"/"+model]
-	return v, ok
+	for _, o := range c.owners(provider) {
+		if d, ok := (*all)[o+"/"+model]; ok {
+			return d, true
+		}
+	}
+	return Declared{}, false
 }
 
 // Base resolves without the synced catalog: what the tables say on their own.
@@ -395,7 +448,7 @@ func (c *Capabilities) Base(provider, model string) Capability {
 
 func (c *Capabilities) finish(out *Capability, model string) {
 	if !out.Vision && c.looksLikeVision(model) {
-		out.Vision = true
+		out.Vision, out.VisionSet = true, true
 	}
 }
 
@@ -410,7 +463,7 @@ func (c *Capabilities) refine(out *Capability, provider, model string) {
 	limitsDone := false
 	for _, o := range c.owners(provider) {
 		if m, ok := ov.Models[o+":"+id]; ok {
-			out.Vision = out.Vision || m.Vision
+			out.Vision, out.VisionSet = out.Vision || m.Vision, true
 			out.PDF = out.PDF || m.PDF
 			out.AudioInput = out.AudioInput || m.AudioInput
 			out.VideoInput = out.VideoInput || m.VideoInput
@@ -440,6 +493,7 @@ func (c *Capabilities) table(provider, model string) (Capability, bool) {
 		for _, n := range names {
 			if raw, ok := c.caps.Providers[o][n]; ok {
 				apply(raw)
+				out.VisionSet = true
 				return out, true
 			}
 		}
@@ -459,10 +513,12 @@ func (c *Capabilities) table(provider, model string) (Capability, bool) {
 			}
 			if anyMatch(r.re, names) {
 				apply(r.set)
+				matched = true
 				break
 			}
 		}
 	}
+	out.VisionSet = matched
 	return out, false
 }
 

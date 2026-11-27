@@ -532,7 +532,9 @@ func TestARetryWaitThatTheClientEndsAnswersClosed(t *testing.T) {
 // fallback models tried first, and keeps its own place behind them.
 func TestASoloModelTakesTheCapacityAdapter(t *testing.T) {
 	const on = `{"capacityAdapter":{"vision":{"enabled":true,"models":["gem/g-vision"]}}}`
-	body := imageBody("forced/fm", "data:image/png;base64,iVBORw0KGgo=")
+	// A model the tables call text-only: a model they never mention is tried with
+	// the image first, so it would not need the adapter.
+	body := imageBody("forced/deepseek-chat", "data:image/png;base64,iVBORw0KGgo=")
 
 	r := newRig(t, tests.Reply{ContentType: "application/json", Body: geminiOK})
 	r.conn("forced", "k1")
@@ -562,7 +564,7 @@ func TestASoloModelTakesTheCapacityAdapter(t *testing.T) {
 // A combo whose members are all text-only sends an image turn to the configured
 // vision adapter, ahead of its own members.
 func TestAComboWithNoVisionMemberTakesTheAdapter(t *testing.T) {
-	r := comboRig(t, []string{"forced/fm", "wire/short"}, tests.Reply{ContentType: "application/json", Body: geminiOK})
+	r := comboRig(t, []string{"forced/deepseek-chat", "wire/deepseek-chat"}, tests.Reply{ContentType: "application/json", Body: geminiOK})
 	r.conn("gem", "k2")
 	r.conn("forced", "k1")
 	r.conn("wire", "k3")

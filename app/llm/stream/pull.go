@@ -16,6 +16,7 @@ var (
 	ErrClientGone = errors.New("stream: the client went away")
 	ErrUpstream   = errors.New("stream: the upstream stream failed")
 	errUsageWait  = errors.New("stream: the usage report did not arrive in time")
+	errKeepalive  = errors.New("stream: nothing to send yet")
 )
 
 // Timers are the three waits that bound a stream. A zero value disables one.
@@ -76,7 +77,7 @@ func (p *pull) stop() {
 
 // next waits for one event. extra, when set, is a deadline for the usage report
 // that overrides the stall wait.
-func (p *pull) next(ctx context.Context, extra <-chan time.Time) (Event, error) {
+func (p *pull) next(ctx context.Context, extra, keep <-chan time.Time) (Event, error) {
 	var limit time.Duration
 	cause := ErrStall
 	if !p.got {
@@ -111,5 +112,7 @@ func (p *pull) next(ctx context.Context, extra <-chan time.Time) (Event, error) 
 		return Event{}, cause
 	case <-extra:
 		return Event{}, errUsageWait
+	case <-keep:
+		return Event{}, errKeepalive
 	}
 }

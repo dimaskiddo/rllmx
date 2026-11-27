@@ -224,6 +224,59 @@ func TestABrokenStreamIs502NotA504(t *testing.T) {
 	}
 }
 
+func (f *fakeClient) sawKeepalive() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, b := range f.raw {
+		if string(b) == KeepaliveFrame {
+			return true
+		}
+	}
+	return false
+}
+
+func TestASilentOpenStreamSendsAKeepaliveComment(t *testing.T) {
+	body, pw := newSlowBody()
+	c := &fakeClient{}
+	j := job(body, "openai", "claude", c)
+	j.Keepalive = 5 * time.Millisecond
+	done := make(chan Result, 1)
+	go func() { done <- Run(context.Background(), j) }()
+	if _, err := pw.Write([]byte("data: {\"id\":\"chatcmpl-abc12345\",\"choices\":[{\"delta\":{\"content\":\"a\"}}]}\n\n")); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for !c.sawKeepalive() && time.Now().Before(deadline) {
+		time.Sleep(2 * time.Millisecond)
+	}
+	_ = pw.Close()
+	res := <-done
+	if !c.sawKeepalive() {
+		t.Fatal("a quiet open stream sent no keepalive")
+	}
+	if !res.Wrote || res.Err != nil {
+		t.Fatalf("%+v", res)
+	}
+}
+
+func TestNoKeepaliveCommentWithoutTheSetting(t *testing.T) {
+	body, pw := newSlowBody()
+	c := &fakeClient{}
+	done := make(chan Result, 1)
+	go func() { done <- Run(context.Background(), job(body, "openai", "claude", c)) }()
+	if _, err := pw.Write([]byte("data: {\"id\":\"chatcmpl-abc12345\",\"choices\":[{\"delta\":{\"content\":\"a\"}}]}\n\n")); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(30 * time.Millisecond)
+	_ = pw.Close()
+	if res := <-done; res.Err != nil {
+		t.Fatalf("%+v", res)
+	}
+	if c.sawKeepalive() {
+		t.Fatal("a stream that asked for no keepalive sent one")
+	}
+}
+
 func TestAClientThatLeavesStopsTheUpstream(t *testing.T) {
 	body, pw := newSlowBody()
 	c := &fakeClient{failAfter: 1}

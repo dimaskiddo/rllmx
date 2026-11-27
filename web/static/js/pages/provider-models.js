@@ -215,9 +215,20 @@ export const modelMethods = {
   },
 
   openModelAdd() {
-    this.modelAdd = { id: "", name: "", vision: false, reasoning: false, error: "", busy: false };
+    this.modelAdd = { id: "", name: "", vision: false, reasoning: false, editing: false, error: "", busy: false };
     this.$refs.modelDlg.showModal();
     this.$refs.modelId.focus();
+  },
+
+  // openModelEdit opens the same dialog on a custom row, so its two capability
+  // flags can be changed. The id is the row's; the save is the existing upsert.
+  openModelEdit(row) {
+    const caps = (row && row.caps) || {};
+    this.modelAdd = {
+      id: row.id, name: row.name || "", vision: !!caps.vision, reasoning: !!caps.reasoning,
+      editing: true, error: "", busy: false,
+    };
+    this.$refs.modelDlg.showModal();
   },
 
   closeModelAdd() {
@@ -235,12 +246,25 @@ export const modelMethods = {
   async addCustomModel() {
     this.modelAdd.error = "";
     this.modelAdd.busy = true;
+    // An edit says both flags, so an unticked box turns one off. An add sends
+    // only the ticked ones: a box left alone is "not declared", not "off".
+    const caps = {};
+    if (this.modelAdd.editing) {
+      caps.vision = this.modelAdd.vision;
+      caps.reasoning = this.modelAdd.reasoning;
+    } else {
+      if (this.modelAdd.vision) {
+        caps.vision = true;
+      }
+      if (this.modelAdd.reasoning) {
+        caps.reasoning = true;
+      }
+    }
     try {
       await api("/api/models/custom", {
         method: "POST",
         body: {
-          providerAlias: this.owner(), id: this.modelAdd.id, type: "llm", name: this.modelAdd.name,
-          caps: { vision: this.modelAdd.vision, reasoning: this.modelAdd.reasoning },
+          providerAlias: this.owner(), id: this.modelAdd.id, type: "llm", name: this.modelAdd.name, caps,
         },
       });
       this.closeModelAdd();

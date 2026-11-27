@@ -3,6 +3,7 @@ package combo
 import (
 	"context"
 	"testing"
+	"time"
 
 	"rllmx/app/llm/routing"
 	"rllmx/app/llm/translate"
@@ -118,7 +119,7 @@ func TestARotationOfOneAdvancesEveryRequest(t *testing.T) {
 
 func TestTheCapableMemberComesFirstWhateverTheStrategy(t *testing.T) {
 	vision := func(m routing.Member) upstream.Capability {
-		return upstream.Capability{Vision: m.Model == "vision"}
+		return upstream.Capability{Vision: m.Model == "vision", VisionSet: true}
 	}
 	m := members("text", "vision")
 	needs := translate.Needs{Vision: true}
@@ -167,7 +168,7 @@ func TestAGlobalFusionStrategyKeepsItsPanelDefaults(t *testing.T) {
 
 func TestRoundRobinRotatesInsideTheCapableTier(t *testing.T) {
 	caps := func(m routing.Member) upstream.Capability {
-		return upstream.Capability{Vision: m.Model == "v1" || m.Model == "v2"}
+		return upstream.Capability{Vision: m.Model == "v1" || m.Model == "v2", VisionSet: true}
 	}
 	m := members("text", "v1", "v2")
 	needs := translate.Needs{Vision: true}
@@ -183,5 +184,41 @@ func TestRoundRobinRotatesInsideTheCapableTier(t *testing.T) {
 	}
 	if leads[0] == leads[1] || leads[0] != leads[2] {
 		t.Fatalf("the capable members did not alternate: %v", leads)
+	}
+}
+
+func visionCaps(m routing.Member) upstream.Capability {
+	return upstream.Capability{Vision: m.Model == "vision", VisionSet: true}
+}
+
+func TestASmartChoiceCannotOutrankAMemberThatReadsTheTurn(t *testing.T) {
+	router := &scriptedRouter{choice: Choice{Model: "text", Confidence: 0.9}}
+	smart := &Smart{Router: router, Sticky: NewSticky(), Session: "s1", Now: func() time.Time { return time.Unix(100, 0) }}
+	p := Policy{Name: "c", Strategy: StrategySmart, Threshold: 0.5}
+	got, _ := Order(context.Background(), p, members("text", "vision"), visionCaps, nil, translate.Needs{Vision: true}, NewRotation(), smart)
+	if names(got)[0] != "vision" {
+		t.Fatalf("%v", names(got))
+	}
+}
+
+func TestAnOpenBreakerDoesNotCrossTheCapabilityLine(t *testing.T) {
+	m := []routing.Member{{Provider: "vision-p", Model: "vision"}, {Provider: "text-p", Model: "text"}}
+	open := func(provider string) bool { return provider == "vision-p" }
+	got, _ := Order(context.Background(), Policy{Name: "c", Strategy: StrategyFallback}, m, visionCaps, open, translate.Needs{Vision: true}, NewRotation(), nil)
+	if names(got)[0] != "vision" {
+		t.Fatalf("%v", names(got))
+	}
+}
+
+func TestAMemberTheTablesNeverMentionStaysInTheCapableTier(t *testing.T) {
+	caps := func(m routing.Member) upstream.Capability {
+		if m.Model == "text" {
+			return upstream.Capability{VisionSet: true}
+		}
+		return upstream.Capability{}
+	}
+	got, _ := Order(context.Background(), Policy{Name: "c", Strategy: StrategyFallback}, members("text", "unknown"), caps, nil, translate.Needs{Vision: true}, NewRotation(), nil)
+	if names(got)[0] != "unknown" {
+		t.Fatalf("%v", names(got))
 	}
 }

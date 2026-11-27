@@ -173,6 +173,7 @@
             <div class="rl-list-main">
               <button type="button" class="rl-drag" data-drag x-tip="combos.drag"><span class="rl-icon" x-icon="grip-vertical"></span><span class="visually-hidden" x-t="combos.drag"></span></button>
               <code class="rl-code" x-text="model"></code>
+              <span class="rl-cap" x-show="capsOf(model) && capsOf(model).vision" x-tip="models.vision"><span class="rl-icon" x-icon="eye"></span><span class="visually-hidden" x-t="models.vision"></span></span><span class="rl-cap" x-show="capsOf(model) && capsOf(model).reasoning" x-tip="models.reasoning"><span class="rl-icon" x-icon="brain"></span><span class="visually-hidden" x-t="models.reasoning"></span></span>
             </div>
             <div class="rl-list-actions">
               <button type="button" class="btn btn-sm btn-ghost" x-on:click="moveModel(index, -1)" x-tip="combos.moveUp"><span class="rl-icon" x-icon="arrow-up"></span><span class="visually-hidden" x-t="combos.moveUp"></span></button>
@@ -260,6 +261,7 @@
             <div class="rl-list-main">
               <span class="badge" x-text="'#' + (index + 1)"></span>
               <code class="rl-code" x-text="model"></code>
+              <span class="rl-cap" x-show="capsOf(model) && capsOf(model).vision" x-tip="models.vision"><span class="rl-icon" x-icon="eye"></span><span class="visually-hidden" x-t="models.vision"></span></span><span class="rl-cap" x-show="capsOf(model) && capsOf(model).reasoning" x-tip="models.reasoning"><span class="rl-icon" x-icon="brain"></span><span class="visually-hidden" x-t="models.reasoning"></span></span>
             </div>
           </li>
         </template>

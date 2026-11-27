@@ -89,7 +89,7 @@ func (c *call) walkCombo(ctx context.Context, order []routing.Member) Output {
 			return out
 		}
 		if ctx.Err() != nil {
-			return c.closed()
+			return c.stopped(ctx)
 		}
 		if out.Status == 0 {
 			out = c.upstreamFail(fail)
@@ -134,7 +134,7 @@ func (c *call) settleRetry(ctx context.Context, fail *accountFail, out Output, l
 			return out, true
 		}
 		if !sleep(ctx, wait) {
-			return c.closed(), true
+			return c.stopped(ctx), true
 		}
 	}
 	return out, lastMember

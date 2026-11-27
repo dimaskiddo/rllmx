@@ -146,9 +146,19 @@ func Order(ctx context.Context, p Policy, members []routing.Member, caps Caps, o
 			out = append(state.Rotate(p.Name, out[:capable:capable], p.RotationLimit), out[capable:]...)
 		}
 	case StrategySmart:
-		out = p.smartOrder(ctx, out, smart)
+		// The router reorders the members that can read the turn; one that
+		// cannot stays behind them, where the walk reaches it only if every
+		// capable member failed.
+		if capable > 0 {
+			out = append(p.smartOrder(ctx, out[:capable:capable], smart), out[capable:]...)
+		} else {
+			out = p.smartOrder(ctx, out, smart)
+		}
 	}
-	return byHealth(out, open), true
+	// An open breaker moves a member behind the rest, never across the
+	// capability line: the only model that can read the turn is not sent last
+	// behind ones that cannot.
+	return append(byHealth(out[:capable:capable], open), byHealth(out[capable:], open)...), true
 }
 
 // Smart is what a smart strategy needs: the router that names a member, the

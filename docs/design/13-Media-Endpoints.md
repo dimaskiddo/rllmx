@@ -117,4 +117,5 @@ One row per lesson; the decision is what the code does because of it.
 | A web session rotates its cookie in the middle of a call. | The answer carries the fresh value and the pipeline writes it back through one store method, never through the OAuth refresher. |
 | Turnstile cannot be solved without a browser. | A demand answers a fixed word; the reference falls back to Playwright, and spawning a browser is outside this router's rules. |
 | A web video is rendered inside the create. | The create answers the completed generation, and the job route refuses with a fixed word. |
+| 4.46: a search that outran its own 15 s budget was recorded as 499 `client_closed` — the outer budget ends the context `timedOut` passes through, and the caller read any ended context as a client leaving. | `stopped` writes the row on all three paths: the caller's deadline is a 504 `timeout`, a cancel stays 499. The two 15 s budgets are kept as they are. |
 

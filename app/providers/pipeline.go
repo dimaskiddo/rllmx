@@ -85,6 +85,7 @@ func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.P
 		Resolver: &routing.Resolver{Registry: h.Registry, Snapshot: snap},
 		Selector: selector,
 		Reporter: account.NewReporter(store.Connections(), log, nil),
+		Declarer: declaredStore{store: store, reg: h.Registry, caps: h.Capabilities, log: log},
 		Executor: mux.New(&executor.Default{Client: client}, mux.Options{
 			PeekIdle: h.Stream.Stall, VertexTokens: h.Google.Vertex, MimoCookies: h.Google.Mimo, OpenCodeClient: freeLane,
 			ZedTokens: h.Zed, FreebuffSessions: h.Freebuff, QoderKey: qoderKey(h.Registry), Cache: cacheOrNil(app),
@@ -121,6 +122,7 @@ func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.P
 		Quota:         h.Google.Quota,
 		ClaudeCLI:     h.ClaudeCLI,
 		Timers:        stream.Timers{FirstChunk: h.Stream.FirstChunk, Stall: h.Stream.Stall, UsageWait: h.Stream.UsageWait},
+		Keepalive:     h.Stream.Keepalive,
 		Log:           log,
 	})
 }

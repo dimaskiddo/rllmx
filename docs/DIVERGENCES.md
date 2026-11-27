@@ -11,12 +11,12 @@ Each row carries a stable identifier, what we do differently and why it is bette
 | 1 | HTTP Server & Routing | 14 | [01-…](design/01-HTTP-Server-and-Routing.md) |
 | 2 | Authentication & Access | 37 | [02-…](design/02-Authentication-and-Access.md) |
 | 3 | Request Pipeline | 7 | [03-…](design/03-Request-Pipeline.md) |
-| 4 | Model Resolution & Combos | 29 | [04-…](design/04-Model-Resolution-and-Combos.md) |
+| 4 | Model Resolution & Combos | 30 | [04-…](design/04-Model-Resolution-and-Combos.md) |
 | 5 | Account Selection, Error Rules & Backoff | 5 | [05-…](design/05-Account-Selection-and-Backoff.md) |
 | 6 | OAuth & Token Refresh | 33 | [06-…](design/06-OAuth-and-Token-Refresh.md) |
 | 7 | Format Translation | 29 | [07-…](design/07-Format-Translation.md) |
 | 8 | Executors | 60 | [08-…](design/08-Executors.md) |
-| 9 | Streaming | 10 | [09-…](design/09-Streaming.md) |
+| 9 | Streaming | 11 | [09-…](design/09-Streaming.md) |
 | 10 | Token Savers | 9 | [10-…](design/10-Token-Savers.md) |
 | 11 | Skills, Session & Auto Plan | 32 | [11-…](design/11-Skills-Session-and-Auto-Plan.md) |
 | 12 | Health, Circuit Breaker & Probe | 10 | [12-…](design/12-Health-Circuit-Breaker-and-Probe.md) |
@@ -67,5 +67,7 @@ How a row is counted:
 | 425 | 06, 18 |
 | 426, 427 | 02, 18 |
 | 428 | 10, 18 |
+| 465 | 04 |
+| 466 | 09 |
 
 A divergence in a `done` design document is built and tested; in a `todo` one it is a decision taken, not yet code.

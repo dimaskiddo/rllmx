@@ -238,7 +238,7 @@ func (c *call) executeFailed(ctx context.Context, err error) (Output, *accountFa
 	case errors.Is(err, context.DeadlineExceeded) && ctx.Err() != nil:
 		return Output{}, &accountFail{status: http.StatusGatewayTimeout, class: "timeout", text: "The upstream did not answer in time"}
 	case ctx.Err() != nil:
-		return c.closed(), nil
+		return c.stopped(ctx), nil
 	}
 	return Output{}, &accountFail{status: http.StatusBadGateway, class: "network", text: "The upstream could not be reached"}
 }

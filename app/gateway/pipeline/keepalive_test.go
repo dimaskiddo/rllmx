@@ -1,0 +1,105 @@
+package pipeline
+
+import (
+	"context"
+	"sync"
+	"testing"
+	"time"
+
+	"rllmx/app/access/identity"
+	"rllmx/app/llm/stream"
+	"rllmx/app/llm/translate"
+	"rllmx/tests"
+)
+
+// rawRecorder is a client that keeps what the stream wrote raw and counts the
+// frames, so a test can wait for the stream to open.
+type rawRecorder struct {
+	mu     sync.Mutex
+	raws   [][]byte
+	frames int
+}
+
+func (r *rawRecorder) Frame(translate.Frame) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.frames++
+	return nil
+}
+
+func (r *rawRecorder) sawFrame() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.frames > 0
+}
+
+func (r *rawRecorder) Raw(b []byte) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.raws = append(r.raws, append([]byte(nil), b...))
+	return nil
+}
+
+func (r *rawRecorder) sawKeepalive() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, b := range r.raws {
+		if string(b) == stream.KeepaliveFrame {
+			return true
+		}
+	}
+	return false
+}
+
+func openRecorded(t *testing.T, r *rig, path, body string, c *rawRecorder, ctx context.Context) chan Output {
+	t.Helper()
+	done := make(chan Output, 1)
+	go func() {
+		done <- r.p.Handle(ctx, Input{
+			Path: path, Body: []byte(body), Caller: identity.Caller{ID: "key-1", Name: "ci"}, RequestID: "rid-ka",
+		}, func() (stream.Client, error) { return c, nil })
+	}()
+	return done
+}
+
+// A client that times out on silence keeps the answer because the stream says
+// something while the upstream is still thinking.
+func TestAStreamedAnswerKeepsAnSseClientAlive(t *testing.T) {
+	r := newRig(t, tests.Reply{ContentType: "text/event-stream", Chunks: sseChunks()[:2], Pause: time.Millisecond, ThenSilent: true})
+	r.conn("forced", "k1")
+	r.p.d.Keepalive = 5 * time.Millisecond
+	c := &rawRecorder{}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := openRecorded(t, r, "/v1/chat/completions", `{"model":"forced/fm","stream":true,"messages":[{"role":"user","content":"hi"}]}`, c, ctx)
+	deadline := time.Now().Add(2 * time.Second)
+	for !c.sawKeepalive() && time.Now().Before(deadline) {
+		time.Sleep(2 * time.Millisecond)
+	}
+	cancel()
+	<-done
+	if !c.sawKeepalive() {
+		t.Fatal("a quiet open stream sent no keepalive")
+	}
+}
+
+// NDJSON has no comment line, so an Ollama answer must never get one.
+func TestAnOllamaStreamGetsNoComment(t *testing.T) {
+	// The upstream speaks OpenAI SSE; the client asked for Ollama's NDJSON.
+	r := newRig(t, tests.Reply{ContentType: "text/event-stream", Chunks: sseChunks()[:2], ThenSilent: true})
+	r.conn("forced", "k1")
+	r.p.d.Keepalive = 5 * time.Millisecond
+	c := &rawRecorder{}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := openRecorded(t, r, "/v1/api/chat", `{"model":"forced/fm","stream":true,"messages":[{"role":"user","content":"hi"}]}`, c, ctx)
+	deadline := time.Now().Add(2 * time.Second)
+	for !c.sawFrame() && time.Now().Before(deadline) {
+		time.Sleep(2 * time.Millisecond)
+	}
+	// The upstream is now silent; an SSE client would be getting comments here.
+	time.Sleep(25 * time.Millisecond)
+	cancel()
+	<-done
+	if c.sawKeepalive() {
+		t.Fatal("an Ollama stream got a comment line")
+	}
+}

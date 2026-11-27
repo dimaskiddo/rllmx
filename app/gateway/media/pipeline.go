@@ -535,10 +535,20 @@ func (p *Pipeline) binary(ctx context.Context, body []byte) ([]byte, map[string]
 	return raw, map[string]string{"Content-Type": mime, "Content-Disposition": `inline; filename="image.` + ext + `"`}, true
 }
 
+// stopped answers a request whose context ended: a cancel is the client
+// leaving, while a passed deadline is the call's own budget running out.
+func stopped(ctx context.Context, row *analytics.Record) Output {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		row.Status, row.ErrorClass = http.StatusGatewayTimeout, "timeout"
+		return failureOutput(http.StatusGatewayTimeout, "The provider did not answer in time")
+	}
+	row.Status, row.ErrorClass = 499, "client_closed"
+	return failureOutput(499, "The client closed the request")
+}
+
 func (p *Pipeline) noAccount(ctx context.Context, err error, provider, model string, row *analytics.Record) Output {
 	if ctx.Err() != nil {
-		row.Status, row.ErrorClass = 499, "client_closed"
-		return failureOutput(499, "The client closed the request")
+		return stopped(ctx, row)
 	}
 	var locked *account.AllLockedError
 	switch {
@@ -616,8 +626,7 @@ func (p *Pipeline) try(ctx context.Context, kind string, adapter media.Handler, 
 			return p.accountFailed(ctx, conn, ref, lockModel, pe.Status, row, nil, pe.Text, noReport)
 		}
 		if ctx.Err() != nil {
-			row.Status, row.ErrorClass = 499, "client_closed"
-			return failureOutput(499, "The client closed the request"), true
+			return stopped(ctx, row), true
 		}
 		row.Status, row.ErrorClass = http.StatusBadGateway, "network"
 		return failureOutput(http.StatusBadGateway, "The provider could not be reached"), true
@@ -639,8 +648,7 @@ func (p *Pipeline) try(ctx context.Context, kind string, adapter media.Handler, 
 // the account's fault, so it neither locks nor reports it; a refusal is.
 func (p *Pipeline) mintFailed(ctx context.Context, err error, conn repository.Connection, ref upstream.MediaRef, lockModel string, row *analytics.Record, noReport bool) (Output, bool) {
 	if ctx.Err() != nil {
-		row.Status, row.ErrorClass = http.StatusGatewayTimeout, "timeout"
-		return failureOutput(http.StatusGatewayTimeout, "The provider did not answer in time"), true
+		return stopped(ctx, row), true
 	}
 	p.logRefresh(ref, err)
 	if oauth.ClassOf(err) == oauth.ClassTransport {
