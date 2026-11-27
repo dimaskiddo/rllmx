@@ -65,7 +65,6 @@ Both modes are built, and password login keeps working unless SSO-only mode is c
 |---|---|---|
 | `UPSTREAM_CONNECT_TIMEOUT` | `60s` | How long one outbound connection may take to establish and to start answering. 1s to 10m. |
 | `UPSTREAM_ALLOW_PRIVATE` | empty (public only) | Addresses, CIDR ranges or host names this program may reach when they are not public: loopback, the private ranges, carrier-grade NAT. Needed for a provider or identity provider on your own network, for example `10.0.0.0/8,idp.internal`. Link-local and the cloud metadata addresses are refused even when listed here. |
-| `UPSTREAM_COMPRESSION` | `gzip` | How a JSON request body is compressed: `gzip`, `brotli`, or `off`. Bodies under 1 KiB, a body the executor signs itself, and a request whose headers already name an encoding are sent as they are. |
 | `UPSTREAM_TLS_CURVE` | `x25519` | The TLS key-exchange group outbound calls offer. `x25519` offers only that group, which changes the ClientHello enough for a network that resets the standard offer; `default` offers the standard list. |
 | `UPSTREAM_RATE_LIMIT_RPM` | `60` | Outbound calls a minute one connection may make. Requests beyond this queue until a slot frees; it is per connection, so a second account of the same provider adds its own allowance. `0` turns pacing off. |
 | `UPSTREAM_RATE_LIMIT_BURST` | `10` | Calls that may leave at once before the rate applies. At least 1. |

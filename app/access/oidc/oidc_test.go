@@ -346,15 +346,12 @@ func TestEmailFallsBackToPreferredUsername(t *testing.T) {
 	}
 }
 
-func TestDisplayNamePicksAFallback(t *testing.T) {
-	if got := DisplayName(Claims{Name: "Ops", Email: "a@b.test"}); got != "Ops" {
+func TestFullNameIsOnlyWhatTheProviderSent(t *testing.T) {
+	if got := FullName(Claims{Name: " Ops ", Email: "a@b.test"}); got != "Ops" {
 		t.Fatal(got)
 	}
-	if got := DisplayName(Claims{Subject: "s"}); got != "s" {
-		t.Fatal(got)
-	}
-	if got := DisplayName(Claims{}); got != "OIDC user" {
-		t.Fatal(got)
+	if got := FullName(Claims{Subject: "s", Email: "a@b.test", PreferredUsername: "p"}); got != "" {
+		t.Fatalf("a fallback leaked in as a full name: %q", got)
 	}
 }
 

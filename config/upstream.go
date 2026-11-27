@@ -35,8 +35,5 @@ func init() {
 		// The key MiniMax Code signs its account calls with. It is configuration,
 		// never a literal in the code; empty leaves that reading unavailable.
 		"minimax_sign_secret": config.Env("UPSTREAM_MINIMAX_SIGN_SECRET", ""),
-		// How a JSON request body is compressed: gzip, brotli or off. Small bodies
-		// and a provider that signs its own body are left alone.
-		"compression": config.Env("UPSTREAM_COMPRESSION", "gzip"),
 	})
 }

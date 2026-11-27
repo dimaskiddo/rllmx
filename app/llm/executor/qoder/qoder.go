@@ -138,8 +138,6 @@ func (q *Qoder) Execute(ctx context.Context, req executor.Request) (executor.Res
 	req.Body = []byte(encoded)
 	req.Stream = true
 	req.NoRedirect = true
-	// The signature covers the encoded body, so it must leave as signed.
-	req.NoCompress = true
 	// The credential is the signature, so the auth block is replaced rather than
 	// inherited: it would put the token in a plain header.
 	req.Auth = &upstream.Auth{Headers: info}

@@ -18,12 +18,9 @@ func Email(c Claims) (addr string, exactOnly bool, ok bool) {
 	return p, true, true
 }
 
-// DisplayName picks what the dashboard shows. It is never used for access.
-func DisplayName(c Claims) string {
-	for _, v := range []string{c.Name, c.Email, c.PreferredUsername, c.Subject} {
-		if strings.TrimSpace(v) != "" {
-			return strings.TrimSpace(v)
-		}
-	}
-	return "OIDC user"
+// FullName is the name the provider reports, or empty when it reports none. It
+// has no fallback: a fallback would overwrite a stored full name with an
+// address on every sign-in. It is never used for access.
+func FullName(c Claims) string {
+	return strings.TrimSpace(c.Name)
 }

@@ -38,15 +38,12 @@ func Email(a Assertion, set Settings) (addr string, exactOnly bool, ok bool) {
 	return "", false, false
 }
 
-// Name picks what the dashboard shows. It is never used for access.
+// Name is the full name the assertion carries, or empty when it carries none.
+// The NameID is not a fallback: it is an identifier, and a provider may make it
+// opaque. It is never used for access.
 func Name(a Assertion, set Settings) string {
-	if v, ok := attribute(a, set.AttributeName, nameAttributes); ok {
-		return v
-	}
-	if v := strings.TrimSpace(a.Subject.NameID.Value); v != "" && len(v) <= maxClaimBytes {
-		return v
-	}
-	return "SAML user"
+	v, _ := attribute(a, set.AttributeName, nameAttributes)
+	return v
 }
 
 // attribute returns the first value of the configured attribute, else of the

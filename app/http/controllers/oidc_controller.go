@@ -199,7 +199,7 @@ func (c *OIDCController) Callback(ctx contractshttp.Context) contractshttp.Respo
 		return c.fail(ctx, base, sso.CodeNoEmail)
 	}
 
-	cookie, issued := c.Auth.IssueSSO(r.Context(), auth.MethodOIDC, email, oidc.DisplayName(claims), exactOnly, c.Trust.SecureRequest(r))
+	cookie, issued := c.Auth.IssueSSO(r.Context(), auth.MethodOIDC, email, oidc.FullName(claims), exactOnly, c.Trust.SecureRequest(r))
 	if !issued {
 		c.countFailure(key)
 		return c.fail(ctx, base, sso.CodeNoAccount)

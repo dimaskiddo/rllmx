@@ -59,7 +59,10 @@ func TestNamePrefersTheConfiguredAttributeThenCommonSpellings(t *testing.T) {
 	if got := Name(a, Settings{}); got != "Display" {
 		t.Fatalf("%q: the first common spelling did not win", got)
 	}
-	if got := Name(assertionWith(nil, ""), Settings{}); got != "SAML user" {
+	if got := Name(assertionWith(nil, ""), Settings{}); got != "" {
 		t.Fatalf("%q", got)
+	}
+	if got := Name(assertionWith(nil, "nameid@example.com"), Settings{}); got != "" {
+		t.Fatalf("%q: the NameID became a full name", got)
 	}
 }

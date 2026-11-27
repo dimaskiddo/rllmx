@@ -1,8 +1,6 @@
 package executor
 
 import (
-	"bytes"
-	"compress/gzip"
 	"context"
 	"errors"
 	"io"
@@ -12,127 +10,32 @@ import (
 	"testing"
 	"time"
 
-	"github.com/andybalholm/brotli"
-
 	"rllmx/app/llm/upstream"
-	"rllmx/app/platform/network"
 	"rllmx/tests"
 	"rllmx/tests/llm"
 )
 
-func decodeBody(t *testing.T, enc string, body []byte) []byte {
-	t.Helper()
-	var r io.Reader
-	switch enc {
-	case "gzip":
-		zr, err := gzip.NewReader(bytes.NewReader(body))
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer zr.Close()
-		r = zr
-	case "br":
-		r = brotli.NewReader(bytes.NewReader(body))
-	default:
-		t.Fatalf("unknown encoding %q", enc)
-	}
-	out, err := io.ReadAll(r)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return out
-}
-
-func TestABigJSONBodyIsCompressedUnlessToldOtherwise(t *testing.T) {
+func TestARequestBodyLeavesAsItWasBuilt(t *testing.T) {
 	original := []byte(`{"messages":[{"role":"user","content":"` + strings.Repeat("x", 4096) + `"}]}`)
-	for _, tc := range []struct {
-		name string
-		enc  network.Compression
-		want string
-	}{
-		{"gzip", network.CompressionGzip, "gzip"},
-		{"brotli", network.CompressionBrotli, "br"},
-		{"off", network.CompressionOff, ""},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			up := tests.NewUpstream(t, tests.Reply{Body: `{}`})
-			var signed []byte
-			resp, err := run(t, &Default{Client: up.Client(), Compression: tc.enc}, Request{
-				URL: up.URL, Body: original, Key: llm.Secret, Auth: llm.Bearer(),
-				Sign: func(_ string, _ string, _ http.Header, body []byte) error {
-					signed = append([]byte(nil), body...)
-					return nil
-				},
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			resp.Body.Close()
-			call := up.Calls()[0]
-			if got := call.Header.Get("Content-Encoding"); got != tc.want {
-				t.Fatalf("Content-Encoding = %q, want %q", got, tc.want)
-			}
-			if string(call.Body) != string(signed) {
-				t.Fatal("the signer saw a body other than the one that left")
-			}
-			if tc.want == "" {
-				if string(call.Body) != string(original) {
-					t.Fatal("the body was changed with compression off")
-				}
-				return
-			}
-			if got := decodeBody(t, tc.want, call.Body); string(got) != string(original) {
-				t.Fatalf("the decoded body = %q", got)
-			}
-			if len(call.Body) >= len(original) {
-				t.Fatalf("the body did not shrink: %d >= %d", len(call.Body), len(original))
-			}
-		})
-	}
-}
-
-func TestABodyThatGainsNothingIsNotCompressed(t *testing.T) {
 	up := tests.NewUpstream(t, tests.Reply{Body: `{}`})
-	resp, err := run(t, &Default{Client: up.Client(), Compression: network.CompressionGzip}, Request{
-		URL: up.URL, Method: http.MethodGet, Body: []byte(`{"a":"` + strings.Repeat("x", 4096) + `"}`), Key: llm.Secret, Auth: llm.Bearer(),
+	var signed []byte
+	resp, err := run(t, &Default{Client: up.Client()}, Request{
+		URL: up.URL, Body: original, Key: llm.Secret, Auth: llm.Bearer(),
+		Sign: func(_ string, _ string, _ http.Header, body []byte) error {
+			signed = append([]byte(nil), body...)
+			return nil
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	if got := up.Calls()[0].Header.Get("Content-Encoding"); got != "" {
-		t.Fatalf("a small GET body was encoded: %q", got)
+	call := up.Calls()[0]
+	if got := call.Header.Get("Content-Encoding"); got != "" {
+		t.Fatalf("Content-Encoding = %q: a provider that cannot decode it answers 400", got)
 	}
-	textPlain := upstream.Entry{Transport: upstream.Transport{Headers: map[string]string{"Content-Type": "text/plain"}}}
-	for _, tc := range []struct {
-		name string
-		req  Request
-	}{
-		{"a body under the threshold", Request{URL: up.URL, Body: []byte(`{"a":"` + strings.Repeat("x", 1000) + `"}`)}},
-		{"a body a signer owns", Request{URL: up.URL, Body: []byte(`{"a":"` + strings.Repeat("x", 4096) + `"}`), NoCompress: true}},
-		{"a body already encoded", Request{URL: up.URL, Body: []byte(`{"a":"` + strings.Repeat("x", 4096) + `"}`), Overrides: map[string]string{"Content-Encoding": "identity"}}},
-		{"a body that is not JSON", Request{URL: up.URL, Body: []byte(strings.Repeat("x", 4096)), Entry: textPlain}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			up.Reset(tests.Reply{Body: `{}`})
-			tc.req.Key, tc.req.Auth = llm.Secret, llm.Bearer()
-			resp, err := run(t, &Default{Client: up.Client(), Compression: network.CompressionGzip}, tc.req)
-			if err != nil {
-				t.Fatal(err)
-			}
-			resp.Body.Close()
-			call := up.Calls()[0]
-			if tc.name == "a body already encoded" {
-				if call.Header.Get("Content-Encoding") != "identity" {
-					t.Fatalf("the operator's encoding was replaced: %q", call.Header.Get("Content-Encoding"))
-				}
-			} else if got := call.Header.Get("Content-Encoding"); got != "" {
-				t.Fatalf("the body was encoded: %q", got)
-			}
-			if string(call.Body) != string(tc.req.Body) {
-				t.Fatal("the body was changed")
-			}
-		})
+	if string(call.Body) != string(original) || string(signed) != string(original) {
+		t.Fatal("the body that left, or the one the signer saw, is not the one built")
 	}
 }
 

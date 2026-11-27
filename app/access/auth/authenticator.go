@@ -240,13 +240,17 @@ func (a *Authenticator) IsSSOAdmin(email string, exactOnly bool) bool {
 
 // IssueSSO signs a session started through a provider. An address on the admin
 // list is the admin; every other address is a standard user, provisioned on its
-// first sign-in with a password nobody knows.
+// first sign-in with a password nobody knows. An empty name means the provider
+// sent none, and leaves a stored name alone.
 func (a *Authenticator) IssueSSO(ctx context.Context, method, email, name string, exactOnly, secure bool) (contractshttp.Cookie, bool) {
 	mode := a.Mode(ctx)
 	if (method == MethodOIDC && !mode.OIDC) || (method == MethodSAML && !mode.SAML) || method == MethodPassword {
 		return contractshttp.Cookie{}, false
 	}
 	if a.IsSSOAdmin(email, exactOnly) {
+		if name == "" {
+			name = email
+		}
 		return a.Issue(ctx, method, email, name, secure)
 	}
 	u, ok := a.ssoUser(ctx, email, name, exactOnly)
