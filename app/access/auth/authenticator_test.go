@@ -166,6 +166,53 @@ func TestSingleSignOnProvisionsAnUnlistedAddressAsAStandardUser(t *testing.T) {
 	}
 }
 
+// The provider's full name is stored beside the username, refreshed on every
+// sign-in, and shown as the session name.
+func TestSingleSignOnKeepsTheProvidersFullName(t *testing.T) {
+	a, s := newUserAuth(t)
+	ctx := context.Background()
+	enableOIDC(t, a, s)
+
+	cookie, ok := a.IssueSSO(ctx, MethodOIDC, "anyone@example.com", "Anyone Smith", false, false)
+	if !ok {
+		t.Fatal("the sign-in was refused")
+	}
+	u, found := a.Users.ByEmail(ctx, "anyone@example.com")
+	if !found || u.FullName != "Anyone Smith" || u.SSOName != "Anyone Smith" {
+		t.Fatalf("%+v %v", u, found)
+	}
+	if info, _ := a.SessionInfo(withCookie(cookie.Value)); info.Name != "Anyone Smith" {
+		t.Fatalf("session name = %q", info.Name)
+	}
+
+	// A later sign-in replaces the stored name; an empty one leaves it.
+	again, ok := a.IssueSSO(ctx, MethodOIDC, "anyone@example.com", "A. Smith", false, false)
+	if !ok {
+		t.Fatal("the second sign-in was refused")
+	}
+	if u, _ = a.Users.ByEmail(ctx, "anyone@example.com"); u.FullName != "A. Smith" || u.SSOName != "A. Smith" {
+		t.Fatalf("%+v", u)
+	}
+	if info, _ := a.SessionInfo(withCookie(again.Value)); info.Name != "A. Smith" {
+		t.Fatalf("session name = %q", info.Name)
+	}
+	if _, ok := a.IssueSSO(ctx, MethodOIDC, "anyone@example.com", "", false, false); !ok {
+		t.Fatal("a sign-in with no name was refused")
+	}
+	if u, _ = a.Users.ByEmail(ctx, "anyone@example.com"); u.FullName != "A. Smith" {
+		t.Fatalf("an empty name erased the stored one: %+v", u)
+	}
+
+	// A password user the address matches keeps its own name.
+	addStandardUser(t, a, "u2", "Boss", "boss@example.com")
+	if _, ok := a.IssueSSO(ctx, MethodOIDC, "boss@example.com", "The Boss", false, false); !ok {
+		t.Fatal("a password user was refused")
+	}
+	if u, _ := a.Users.ByEmail(ctx, "boss@example.com"); u.FullName != "" {
+		t.Fatalf("a password user's name was overwritten: %+v", u)
+	}
+}
+
 func TestAnEditableClaimNeverSignsInAsAnAccount(t *testing.T) {
 	a, s := newUserAuth(t)
 	ctx := context.Background()

@@ -61,7 +61,7 @@ DDL follows the reference (`src/lib/db/schema.js`, pinned in `PARITY.md`). Every
 
 | Table | Columns | Indexes |
 |---|---|---|
-| `users` | `id PK`, `username NOT NULL UNIQUE`, `email UNIQUE` (NULL when empty), `password NOT NULL` (the bcrypt hash), `provisioned INTEGER DEFAULT 0`, `createdAt NOT NULL` | the two unique constraints |
+| `users` | `id PK`, `username NOT NULL UNIQUE`, `email UNIQUE` (NULL when empty), `password NOT NULL` (the bcrypt hash), `provisioned INTEGER DEFAULT 0`, `createdAt NOT NULL`, `fullName` and `ssoName` (NULL when empty; added columns) | the two unique constraints |
 | `userKeys` | `keyId PK`, `userId NOT NULL` | `idx_userkeys_user (userId)` |
 
 **Legacy usage tables.** 9router also has `usageHistory`, `usageDaily` and `requestDetails`, and a `proxyPools` table.

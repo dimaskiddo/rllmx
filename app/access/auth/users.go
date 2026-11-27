@@ -60,6 +60,10 @@ type User struct {
 	Hash        string
 	Provisioned bool
 	CreatedAt   string
+	// FullName is the display name the dashboard shows. SSOName is the last name
+	// a provider supplied, which the users page can re-apply.
+	FullName string
+	SSOName  string
 }
 
 // UserRepo reads and writes the user table. The list is small and bounded, so
@@ -105,7 +109,10 @@ func (r *UserRepo) List(ctx context.Context) ([]User, error) {
 }
 
 func userOf(row repository.UserRow) User {
-	return User{ID: row.ID, Username: row.Username, Email: row.Email, Hash: row.Password, Provisioned: row.Provisioned, CreatedAt: row.CreatedAt}
+	return User{
+		ID: row.ID, Username: row.Username, Email: row.Email, Hash: row.Password,
+		Provisioned: row.Provisioned, CreatedAt: row.CreatedAt, FullName: row.FullName, SSOName: row.SSOName,
+	}
 }
 
 // Get returns one user by id.
@@ -154,11 +161,15 @@ func (r *UserRepo) Put(ctx context.Context, u User) error {
 		}
 	}
 	u.Username, u.Email = name, email
+	u.FullName, u.SSOName = CleanFullName(u.FullName), CleanFullName(u.SSOName)
 	if fresh {
 		if u.CreatedAt == "" {
 			u.CreatedAt = time.Now().UTC().Format(time.RFC3339)
 		}
-		row := repository.UserRow{ID: u.ID, Username: u.Username, Email: u.Email, Password: u.Hash, Provisioned: u.Provisioned, CreatedAt: u.CreatedAt}
+		row := repository.UserRow{
+			ID: u.ID, Username: u.Username, Email: u.Email, Password: u.Hash,
+			Provisioned: u.Provisioned, CreatedAt: u.CreatedAt, FullName: u.FullName, SSOName: u.SSOName,
+		}
 		if err := st.Users().CreateWithin(ctx, row, r.limit); err != nil {
 			if errors.Is(err, repository.ErrFull) {
 				return ErrUserFull
@@ -167,7 +178,10 @@ func (r *UserRepo) Put(ctx context.Context, u User) error {
 		}
 		return nil
 	}
-	patch := repository.UserPatch{Username: &u.Username, Email: &u.Email, Password: &u.Hash, Provisioned: &u.Provisioned}
+	patch := repository.UserPatch{
+		Username: &u.Username, Email: &u.Email, Password: &u.Hash, Provisioned: &u.Provisioned,
+		FullName: &u.FullName, SSOName: &u.SSOName,
+	}
 	if _, err := st.Users().Update(ctx, u.ID, patch); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return ErrUserMissing
@@ -251,6 +265,16 @@ func CleanUser(username, email string) (string, string, error) {
 		return "", "", ErrUserEmail
 	}
 	return username, email, nil
+}
+
+// maxFullName is the longest display name stored, in bytes. It is text shown to
+// people, never an identity.
+const maxFullName = 128
+
+// CleanFullName keeps a provider's display name to printable text of a bounded
+// size. An empty result means the provider said nothing usable.
+func CleanFullName(s string) string {
+	return strings.TrimSpace(text.CutBytes(text.StripControl(s), maxFullName))
 }
 
 // NewUserID draws six lower-case characters, the alphabet the API key ids use,

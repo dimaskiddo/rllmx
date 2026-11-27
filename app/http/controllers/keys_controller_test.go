@@ -92,6 +92,7 @@ func newKeysRig(t *testing.T, guardAuth apphttp.Authenticator) *keysRig {
 	g.Handle(r, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/users", uc.List)
 	g.Handle(r, apphttp.ClassAlwaysProtected, nethttp.MethodPost, "/api/users", uc.Create)
 	g.Handle(r, apphttp.ClassAlwaysProtected, nethttp.MethodPut, "/api/users/{id}", uc.Update)
+	g.Handle(r, apphttp.ClassAlwaysProtected, nethttp.MethodPost, "/api/users/{id}/sso-sync", uc.SyncSSO)
 	g.Handle(r, apphttp.ClassAlwaysProtected, nethttp.MethodDelete, "/api/users/{id}", uc.Delete)
 	rig.route = r
 	rig.keys = c
@@ -609,6 +610,50 @@ func TestCreatingAUserChecksTheNameAndPassword(t *testing.T) {
 	list := rig.call(t, nethttp.MethodGet, "/api/users", "", keysLocalPeer)
 	if strings.Contains(list.Body.String(), "hash") {
 		t.Fatalf("the user list carries a hash: %s", list.Body.String())
+	}
+}
+
+// A full name is stored and shown apart from the username, and a provisioned
+// account can have the last provider name re-applied.
+func TestAFullNameAndTheProviderSyncOnAUser(t *testing.T) {
+	rig := newKeysRig(t, signedSession{})
+	rec := rig.call(t, nethttp.MethodPost, "/api/users", `{"name":"dimas","fullName":"Dimas Restu","password":"user-pass-1"}`, keysLocalPeer)
+	if rec.Code != nethttp.StatusCreated || !strings.Contains(rec.Body.String(), `"fullName":"Dimas Restu"`) {
+		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+	list := rig.call(t, nethttp.MethodGet, "/api/users", "", keysLocalPeer)
+	if !strings.Contains(list.Body.String(), `"fullName":"Dimas Restu"`) {
+		t.Fatalf("the list lost the full name: %s", list.Body.String())
+	}
+	if strings.Contains(list.Body.String(), "ssoName") {
+		t.Fatalf("the list exposes the provider's stored copy: %s", list.Body.String())
+	}
+	users, err := rig.users.Read(t.Context())
+	if err != nil || len(users) != 1 {
+		t.Fatalf("%+v %v", users, err)
+	}
+	id := users[0].ID
+	if rec := rig.call(t, nethttp.MethodPut, "/api/users/"+id, `{"fullName":"Dimas R."}`, keysLocalPeer); rec.Code != nethttp.StatusOK || !strings.Contains(rec.Body.String(), `"fullName":"Dimas R."`) {
+		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+
+	// A provisioned row with a stored SSO name can restore it.
+	if err := rig.users.Put(t.Context(), auth.User{
+		ID: "u2", Username: "sso", Hash: "h", Provisioned: true, FullName: "Edited", SSOName: "From Provider",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if rec := rig.call(t, nethttp.MethodPost, "/api/users/u2/sso-sync", "", keysLocalPeer); rec.Code != nethttp.StatusOK {
+		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+	if u, ok := rig.users.Get(t.Context(), "u2"); !ok || u.FullName != "From Provider" {
+		t.Fatalf("%+v %v", u, ok)
+	}
+	if rec := rig.call(t, nethttp.MethodPost, "/api/users/"+id+"/sso-sync", "", keysLocalPeer); rec.Code != nethttp.StatusConflict {
+		t.Fatalf("a user with no provider name answered %d", rec.Code)
+	}
+	if rec := rig.call(t, nethttp.MethodPost, "/api/users/nope/sso-sync", "", keysLocalPeer); rec.Code != nethttp.StatusNotFound {
+		t.Fatalf("an unknown user answered %d", rec.Code)
 	}
 }
 

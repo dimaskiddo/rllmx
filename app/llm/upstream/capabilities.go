@@ -356,6 +356,7 @@ func modelNames(model string) []string {
 type Declared struct {
 	Vision    *bool
 	Reasoning *bool
+	Audio     *bool
 }
 
 // For resolves what a model can do: the provider's own row, then the exact
@@ -375,6 +376,9 @@ func (c *Capabilities) For(provider, model string) Capability {
 		}
 		if d.Reasoning != nil {
 			out.Reasoning = *d.Reasoning
+		}
+		if d.Audio != nil {
+			out.AudioInput = *d.Audio
 		}
 	}
 	if c.registry != nil {
@@ -408,6 +412,7 @@ func (c *Capabilities) Declare(provider, model string, d Declared) {
 	}
 	key := provider + "/" + model
 	d.Vision, d.Reasoning = mergeFlag(next[key].Vision, d.Vision), mergeFlag(next[key].Reasoning, d.Reasoning)
+	d.Audio = mergeFlag(next[key].Audio, d.Audio)
 	next[key] = d
 	c.custom.Store(&next)
 }

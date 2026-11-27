@@ -40,8 +40,14 @@ export const modelMethods = {
       const custom = await api("/api/models/custom");
       const mine = (custom.models || []).filter((m) => m.providerAlias === this.owner());
       if (!this.entry) {
+        const aliases = await api("/api/models/alias");
         this.models.items = mine.map((m) => ({ id: m.id, name: m.name || "", source: "custom", type: m.type, full: m.providerAlias + "/" + m.id, caps: m.caps || null }));
         this.models.disabled = [];
+        const byTarget = {};
+        for (const alias of Object.keys(aliases.aliases || {})) {
+          byTarget[aliases.aliases[alias]] = alias;
+        }
+        this.models.byTarget = byTarget;
         return;
       }
       const [all, disabled, aliases] = await Promise.all([
@@ -215,17 +221,17 @@ export const modelMethods = {
   },
 
   openModelAdd() {
-    this.modelAdd = { id: "", name: "", vision: false, reasoning: false, editing: false, error: "", busy: false };
+    this.modelAdd = { id: "", name: "", vision: false, reasoning: false, audio: false, editing: false, error: "", busy: false };
     this.$refs.modelDlg.showModal();
     this.$refs.modelId.focus();
   },
 
-  // openModelEdit opens the same dialog on a custom row, so its two capability
+  // openModelEdit opens the same dialog on a custom row, so its capability
   // flags can be changed. The id is the row's; the save is the existing upsert.
   openModelEdit(row) {
     const caps = (row && row.caps) || {};
     this.modelAdd = {
-      id: row.id, name: row.name || "", vision: !!caps.vision, reasoning: !!caps.reasoning,
+      id: row.id, name: row.name || "", vision: !!caps.vision, reasoning: !!caps.reasoning, audio: !!caps.audio,
       editing: true, error: "", busy: false,
     };
     this.$refs.modelDlg.showModal();
@@ -243,6 +249,10 @@ export const modelMethods = {
     this.modelAdd.reasoning = !this.modelAdd.reasoning;
   },
 
+  toggleModelAudio() {
+    this.modelAdd.audio = !this.modelAdd.audio;
+  },
+
   async addCustomModel() {
     this.modelAdd.error = "";
     this.modelAdd.busy = true;
@@ -252,12 +262,16 @@ export const modelMethods = {
     if (this.modelAdd.editing) {
       caps.vision = this.modelAdd.vision;
       caps.reasoning = this.modelAdd.reasoning;
+      caps.audio = this.modelAdd.audio;
     } else {
       if (this.modelAdd.vision) {
         caps.vision = true;
       }
       if (this.modelAdd.reasoning) {
         caps.reasoning = true;
+      }
+      if (this.modelAdd.audio) {
+        caps.audio = true;
       }
     }
     try {

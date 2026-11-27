@@ -325,7 +325,7 @@ func (m *ModelsController) AddCustomModel(ctx contractshttp.Context) contractsht
 		// A flag the dialog did not send stays undeclared: the resolved table
 		// decides it, and an omitted box on the add form is not "off".
 		stored.Caps = map[string]bool{}
-		for _, k := range []string{"vision", "reasoning"} {
+		for _, k := range []string{"vision", "reasoning", "audio"} {
 			if v, ok := b.Caps[k]; ok && v != nil {
 				stored.Caps[k] = *v
 			}

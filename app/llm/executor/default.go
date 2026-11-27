@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"rllmx/app/llm/upstream"
+	"rllmx/app/platform/network"
 	"rllmx/app/platform/text"
 )
 
@@ -28,6 +29,8 @@ type Default struct {
 	// Sleep returns a channel that fires after d; nil uses a real timer. Tests
 	// pass a fake so retries cost no time.
 	Sleep func(time.Duration) <-chan time.Time
+	// Compression is how a JSON body may be encoded; empty sends it as it is.
+	Compression network.Compression
 }
 
 // Execute sends req. A status in the retry table is tried again in place, with
@@ -166,13 +169,24 @@ func (d *Default) Send(ctx context.Context, req Request) (Response, error) {
 	if method == "" {
 		method = http.MethodPost
 	}
-	hr, err := http.NewRequestWithContext(ctx, method, target, bytes.NewReader(req.Body))
+	header := http.Header{}
+	Headers(header, req, auth)
+	body := req.Body
+	if !req.NoCompress {
+		if out, enc := compressBody(d.Compression, method, body, header); enc != "" {
+			body = out
+			header.Set("Content-Encoding", enc)
+		}
+	}
+	hr, err := http.NewRequestWithContext(ctx, method, target, bytes.NewReader(body))
 	if err != nil {
 		return Response{}, fmt.Errorf("executor: build request: %w", ErrUnreachable)
 	}
-	Headers(hr.Header, req, auth)
+	hr.Header = header
 	if req.Sign != nil {
-		if err := req.Sign(method, target, hr.Header, req.Body); err != nil {
+		// The signer sees the bytes that leave, so a signature over the body stays
+		// valid after compression.
+		if err := req.Sign(method, target, hr.Header, body); err != nil {
 			return Response{}, fmt.Errorf("%w: %w", ErrBadAccount, err)
 		}
 	}

@@ -9,7 +9,7 @@ import { formatMethods, compactTokens } from "/static/js/ui/format.js";
 import { setPath } from "/static/js/ui/fields.js";
 import { modelEditorMethods } from "./combo-models.js";
 import { fieldMethods } from "/static/js/ui/fields.js";
-import { invalidateModelChoices, loadModelChoices, normalizeModelID } from "./model-choices.js";
+import { invalidateModelChoices, loadModelChoices, modelCapabilities, normalizeModelID } from "./model-choices.js";
 
 const emptyWeights = { reliability: 0.4, latency: 0.3, cost: 0.2, quality: 0.1 };
 
@@ -26,6 +26,8 @@ window.Alpine.data("combosPage", () => Object.assign({
   error: "",
   combos: [],
   choices: [],
+  visionChoices: [],
+  audioChoices: [],
   capsBy: {},
   adapter: null,
   adapterAdd: { vision: "", audioInput: "" },
@@ -54,18 +56,10 @@ window.Alpine.data("combosPage", () => Object.assign({
         api("/api/models").catch(() => ({ models: [] })),
       ]);
       const choices = await loadModelChoices({ models: models.models || [], combos: combos.combos || [] });
-      const capsBy = {};
-      for (const m of models.models || []) {
-        if (!m.caps) {
-          continue;
-        }
-        for (const key of [m.fullModel, m.routedModel, m.alias, m.provider + "/" + m.model, m.providerId + "/" + m.model]) {
-          if (key && !capsBy[key]) {
-            capsBy[key] = m.caps;
-          }
-        }
-      }
-      this.capsBy = capsBy;
+      this.capsBy = modelCapabilities();
+      const caps = this.capsBy;
+      this.visionChoices = choices.filter((name) => caps[name] && caps[name].vision === true);
+      this.audioChoices = choices.filter((name) => caps[name] && caps[name].audio === true);
       this.combos = combos.combos || [];
       this.choices = choices;
       this.adapter = this.adapterFrom(settings.capacityAdapter);

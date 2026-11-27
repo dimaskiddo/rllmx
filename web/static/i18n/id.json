@@ -725,6 +725,7 @@
   "users.deleted": "Pengguna dihapus",
   "users.editTitle": "Ubah pengguna",
   "users.email": "Email (opsional, untuk single sign-on)",
+  "users.fullName": "Nama lengkap (yang ditampilkan dasbor)",
   "users.empty": "Belum ada pengguna standar.",
   "users.hint": "Pengguna standar masuk dengan namanya sendiri dan hanya melihat kunci yang ditugaskan kepadanya, beserta pemakaian kunci itu.",
   "users.listTitle": "Akun",
@@ -735,5 +736,8 @@
   "users.passwordKeep": "Biarkan kosong untuk mempertahankan kata sandi saat ini.",
   "users.saved": "Pengguna disimpan",
   "users.sso": "SSO",
+  "users.ssoSync": "Terapkan ulang nama dari penyedia",
+  "users.ssoSyncHint": "Nama dari single sign-on menggantikan nama ini pada masuk berikutnya.",
+  "users.ssoSynced": "Nama dipulihkan dari penyedia",
   "users.title": "Pengguna"
 }

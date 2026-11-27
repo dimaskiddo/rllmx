@@ -95,7 +95,7 @@ var ownTables = []Table{
 	{Seq: 100, Name: "users", Columns: []Column{
 		{Name: "id", Type: tText, PK: true}, {Name: "username", Type: tText, NotNull: true, Unique: true},
 		{Name: "email", Type: tText, Unique: true}, txtNN("password"),
-		intDef("provisioned", "0"), txtNN("createdAt"),
+		intDef("provisioned", "0"), txtNN("createdAt"), added(txt("fullName")), added(txt("ssoName")),
 	}},
 	{Seq: 101, Name: "userKeys", Columns: []Column{
 		{Name: "keyId", Type: tText, PK: true}, txtNN("userId"),

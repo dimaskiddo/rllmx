@@ -86,7 +86,7 @@ func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.P
 		Selector: selector,
 		Reporter: account.NewReporter(store.Connections(), log, nil),
 		Declarer: declaredStore{store: store, reg: h.Registry, caps: h.Capabilities, log: log},
-		Executor: mux.New(&executor.Default{Client: client}, mux.Options{
+		Executor: mux.New(&executor.Default{Client: client, Compression: h.Upstream.Compression}, mux.Options{
 			PeekIdle: h.Stream.Stall, VertexTokens: h.Google.Vertex, MimoCookies: h.Google.Mimo, OpenCodeClient: freeLane,
 			ZedTokens: h.Zed, FreebuffSessions: h.Freebuff, QoderKey: qoderKey(h.Registry), Cache: cacheOrNil(app),
 			KiroCreateResponse: h.Upstream.KiroCreateResponse,

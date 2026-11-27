@@ -189,6 +189,7 @@ POST /api/skills/sync class=3
 POST /api/usage/{id}/claude-reset class=2
 POST /api/usage/{id}/codex-reset-credits class=2
 POST /api/users class=3
+POST /api/users/{id}/sso-sync class=3
 POST /v1/api/chat class=5
 POST /v1/audio/speech class=5
 POST /v1/audio/transcriptions class=5

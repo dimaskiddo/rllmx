@@ -20,7 +20,7 @@ func TestLoadDeclaredGivesTheResolverTheStoredFlags(t *testing.T) {
 	}
 	kv := &fakeKV{scopes: map[string]map[string]string{
 		repository.ScopeCustomModels: {
-			"cc|claude-custom|llm": `{"providerAlias":"cc","id":"claude-custom","type":"llm","caps":{"vision":true,"reasoning":false}}`,
+			"cc|claude-custom|llm": `{"providerAlias":"cc","id":"claude-custom","type":"llm","caps":{"vision":true,"reasoning":false,"audio":true}}`,
 			"broken":               `{`,
 			"no-owner":             `{"id":"x","caps":{"vision":true}}`,
 		},
@@ -29,7 +29,7 @@ func TestLoadDeclaredGivesTheResolverTheStoredFlags(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := caps.For("claude", "claude-custom")
-	if !got.Vision || got.Reasoning {
+	if !got.Vision || got.Reasoning || !got.AudioInput {
 		t.Fatalf("%+v", got)
 	}
 	if err := LoadDeclared(context.Background(), &fakeKV{err: errors.New("down")}, caps); err == nil {

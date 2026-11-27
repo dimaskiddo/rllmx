@@ -60,6 +60,9 @@ type Request struct {
 	// NoRedirect refuses a redirect instead of following it, for a request that
 	// carries a credential no other origin may be handed.
 	NoRedirect bool
+	// NoCompress keeps the body as it is: an executor that signs the bytes before
+	// Send would sign one body and send another.
+	NoCompress bool
 	// Renamed, when set, is told the tools this one call had to send under
 	// another name, as a map of the sent name to the caller's. It is called
 	// before the request goes out.

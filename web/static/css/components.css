@@ -431,6 +431,13 @@ dialog.rl-dialog > form > h2:first-child + .rl-hint {
   margin: 0;
 }
 
+/* A heading that leads with an icon centres the two on one line. */
+.rl-icon-title {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
 .rl-card-head {
   display: flex;
   flex-wrap: wrap;

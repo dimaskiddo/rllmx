@@ -23,6 +23,7 @@ One configuration for every upstream call (`network.NewTransport`, `network.NewC
 | Proxy | None. `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY` and `NO_PROXY` are not read |
 | Redirects | `MaxRedirects` 0 means the default of 5, a negative value follows none, a caller may lower it. Never https to http. Image prefetch, probes and the SSO client use 3; the key `Checker` refuses any redirect to another host, port or scheme |
 | Body cap | 1 MiB by default; a negative value turns the cap and the overall timeout off for streamed answers |
+| Request compression | A JSON body of 1 KiB or more leaves gzip-compressed (`UPSTREAM_COMPRESSION=gzip`, the default) or Brotli-compressed (`brotli`); `off` sends it as it is. A GET, a request whose headers already name a `Content-Encoding`, a body an executor signs itself (Qoder) and a body that does not shrink are sent as they are. Compression runs before the signer, so Bedrock's SigV4 covers the bytes that leave |
 
 **No outbound proxy.**
 
@@ -98,6 +99,7 @@ Deliberate differences from the references in this area. Numbers are stable and 
 | 96, 97 | Every probe uses guarded client; redirect to another host, port, scheme refused | Local request not a trusted target; typed key stays at one address |
 | 126 | The key `Checker` follows no redirect, and when the shared client follows one it refuses any hop that downgrades to plain HTTP | Credential never reaches another host or crosses to clear text |
 | 326 | The built-in page reader ignores `UPSTREAM_ALLOW_PRIVATE`: a page a client names is read only when it is public, on every hop, even when the operator listed a private range for a provider. **Built** | The list names providers the operator runs, not pages a caller may read and have handed back |
+| 470 | A JSON request body of 1 KiB or more leaves compressed: gzip by default, Brotli when `UPSTREAM_COMPRESSION=brotli`, `off` to disable. A body an executor signs itself, a request that already names a `Content-Encoding`, a GET and a body that does not shrink are sent as they are. **Built** | The reference sends every body as it is; a 220k-token prompt is about a megabyte on the wire |
 
 ---
 
@@ -136,5 +138,7 @@ A provider meters per account, so a burst of retries or parallel callers can loo
 | 4.55: a bare 30 s keepalive leaves Go's defaults, which declare a vanished peer dead after about two minutes | The guard's dialer states idle, interval and count: 30 s, 10 s, 3 |
 | HTTP/3 was considered as dns-proxy runs it (QUIC first, HTTP/2 fallback) | Deferred: it needs `quic-go` as a direct dependency, a UDP path through the SSRF guard, and a failed QUIC attempt on every provider that does not serve it. ROADMAP carries the row |
 | The reference caps its keep-alive at 4 s | Still not copied, and now less needed: a dead socket is found by the ping, and a re-dial resumes the TLS session |
+| 4.60: a request body is already a buffered `[]byte` at the one send path, and a signer sees the bytes only just before they leave | Compression lives in `Default.Send`, after the headers are built and before `req.Sign`: Bedrock signs the compressed bytes, while Qoder pre-signs its own body and sets `NoCompress`. Cursor, deepseek-web, media and the embedder build their own requests and are unchanged |
+| 4.60: a compressed body the provider does not decode fails the request, and not every provider documents request-side support | gzip is the default because every HTTP server reads it; Brotli is opt-in. The size, method, content-type and existing-encoding guards keep the practice to large JSON POSTs. Per-provider acceptance is listed in NOTES 3.1 |
 
 

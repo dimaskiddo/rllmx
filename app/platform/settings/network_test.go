@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"rllmx/app/platform/network"
 	"rllmx/tests"
 )
 
@@ -39,6 +40,34 @@ func TestTheTLScurveIsX25519UnlessTheStandardListIsAskedFor(t *testing.T) {
 	u, err = LoadUpstream(upstreamValues("secp256r1"))
 	if err != nil || len(u.Curves) != 1 || u.Curves[0] != tls.X25519 || len(u.Warnings) != 1 || !strings.Contains(u.Warnings[0], "UPSTREAM_TLS_CURVE") {
 		t.Fatalf("a curve this router does not offer: %v %v %v", u.Curves, u.Warnings, err)
+	}
+}
+
+func compressionValues(mode any) tests.Config {
+	c := upstreamValues("x25519")
+	c.Values["upstream.compression"] = mode
+	return c
+}
+
+func TestTheRequestCompressionIsGzipUnlessSaidOtherwise(t *testing.T) {
+	for raw, want := range map[string]network.Compression{
+		"": network.CompressionGzip, "gzip": network.CompressionGzip, " GZip ": network.CompressionGzip,
+		"brotli": network.CompressionBrotli, "BROTLI": network.CompressionBrotli, "off": network.CompressionOff, "Off": network.CompressionOff,
+	} {
+		u, err := LoadUpstream(compressionValues(raw))
+		if err != nil || u.Compression != want {
+			t.Errorf("%q: %v %v, want %v", raw, u.Compression, err, want)
+		}
+	}
+	for _, bad := range []string{"zstd", "on", "true", "gzip,br"} {
+		u, err := LoadUpstream(compressionValues(bad))
+		if err != nil {
+			t.Errorf("%q: a tuning value stopped the start: %v", bad, err)
+			continue
+		}
+		if u.Compression != network.CompressionGzip || len(u.Warnings) != 1 || !strings.Contains(u.Warnings[0], "UPSTREAM_COMPRESSION") {
+			t.Errorf("%q: %v %v, want gzip and a warning naming the variable", bad, u.Compression, u.Warnings)
+		}
 	}
 }
 

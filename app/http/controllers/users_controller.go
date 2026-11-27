@@ -25,6 +25,7 @@ type UsersController struct {
 type userView struct {
 	ID          string   `json:"id"`
 	Username    string   `json:"username"`
+	FullName    string   `json:"fullName,omitempty"`
 	Email       string   `json:"email,omitempty"`
 	CreatedAt   string   `json:"createdAt"`
 	Keys        []string `json:"keys"`
@@ -54,7 +55,7 @@ func (c *UsersController) List(ctx contractshttp.Context) contractshttp.Response
 	}
 	out := make([]userView, 0, len(users))
 	for _, u := range users {
-		view := userView{ID: u.ID, Username: u.Username, Email: u.Email, CreatedAt: u.CreatedAt, Keys: []string{}, Provisioned: u.Provisioned}
+		view := userView{ID: u.ID, Username: u.Username, FullName: u.FullName, Email: u.Email, CreatedAt: u.CreatedAt, Keys: []string{}, Provisioned: u.Provisioned}
 		for key, id := range owners {
 			if id == u.ID {
 				view.Keys = append(view.Keys, key)
@@ -73,6 +74,7 @@ func (c *UsersController) Create(ctx contractshttp.Context) contractshttp.Respon
 	}
 	var b struct {
 		Name     string `json:"name"`
+		FullName string `json:"fullName"`
 		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
@@ -91,12 +93,12 @@ func (c *UsersController) Create(ctx contractshttp.Context) contractshttp.Respon
 		return flat(ctx, nethttp.StatusInternalServerError, "Could not store the password")
 	}
 	u, err := c.Users.Add(ctx.Request().Origin().Context(), func(id string) auth.User {
-		return auth.User{ID: id, Username: name, Email: email, Hash: hash}
+		return auth.User{ID: id, Username: name, Email: email, Hash: hash, FullName: auth.CleanFullName(b.FullName)}
 	})
 	if err != nil {
 		return userRefused(ctx, err)
 	}
-	return ctx.Response().Json(nethttp.StatusCreated, contractshttp.Json{"user": userView{ID: u.ID, Username: u.Username, Email: u.Email, Keys: []string{}}})
+	return ctx.Response().Json(nethttp.StatusCreated, contractshttp.Json{"user": userView{ID: u.ID, Username: u.Username, FullName: u.FullName, Email: u.Email, Keys: []string{}}})
 }
 
 // Update answers PUT /api/users/{id}: name, email and, when one is sent, a new
@@ -112,6 +114,7 @@ func (c *UsersController) Update(ctx contractshttp.Context) contractshttp.Respon
 	}
 	var b struct {
 		Name     *string `json:"name"`
+		FullName *string `json:"fullName"`
 		Email    *string `json:"email"`
 		Password string  `json:"password"`
 	}
@@ -120,6 +123,9 @@ func (c *UsersController) Update(ctx contractshttp.Context) contractshttp.Respon
 	}
 	if b.Name != nil {
 		u.Username = *b.Name
+	}
+	if b.FullName != nil {
+		u.FullName = auth.CleanFullName(*b.FullName)
 	}
 	if b.Email != nil {
 		u.Email = *b.Email
@@ -138,7 +144,28 @@ func (c *UsersController) Update(ctx contractshttp.Context) contractshttp.Respon
 	if err := c.Users.Put(rc, u); err != nil {
 		return userRefused(ctx, err)
 	}
-	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"user": userView{ID: u.ID, Username: u.Username, Email: u.Email, Provisioned: u.Provisioned}})
+	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"user": userView{ID: u.ID, Username: u.Username, FullName: u.FullName, Email: u.Email, Provisioned: u.Provisioned}})
+}
+
+// SyncSSO answers POST /api/users/{id}/sso-sync: it re-applies the last name the
+// provider supplied. The IdP is not called; only the stored copy is used.
+func (c *UsersController) SyncSSO(ctx contractshttp.Context) contractshttp.Response {
+	if out := c.storeDown(ctx); out != nil {
+		return out
+	}
+	rc := ctx.Request().Origin().Context()
+	u, ok := c.Users.Get(rc, ctx.Request().Route("id"))
+	if !ok {
+		return flat(ctx, nethttp.StatusNotFound, "User not found")
+	}
+	if !u.Provisioned || u.SSOName == "" {
+		return flat(ctx, nethttp.StatusConflict, "That user has no name from the provider yet")
+	}
+	u.FullName = u.SSOName
+	if err := c.Users.Put(rc, u); err != nil {
+		return userRefused(ctx, err)
+	}
+	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"success": true, "fullName": u.FullName})
 }
 
 // Delete answers DELETE /api/users/{id}. The keys stay; the assignments go.

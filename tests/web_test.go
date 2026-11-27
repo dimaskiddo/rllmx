@@ -1078,15 +1078,94 @@ func TestEveryStoredFailureClassHasAWord(t *testing.T) {
 	}
 }
 
-// A combo shows which members read a picture or think, wherever it names a model.
+// A combo shows which members read a picture, a sound or a thought, wherever it
+// names a model, and a custom endpoint's models are in the same index.
 func TestTheComboShowsMemberCapabilitiesInEveryList(t *testing.T) {
 	page := readWeb(t, "static/pages/combos.html")
 	if n := strings.Count(page, "capsOf(model)"); n < 3 {
 		t.Errorf("%d capability badges; want the member chips, the edit rows and the suggested rows", n)
 	}
+	if n := strings.Count(page, `x-tip="models.audio"`); n < 4 {
+		t.Errorf("%d audio badges; want the card, the chip, the edit row and the suggested row", n)
+	}
+	choices := readWeb(t, "static/js/pages/model-choices.js")
+	for _, want := range []string{"export function modelCapabilities", `api("/api/models/custom")`, `m.providerId + "/" + m.model`, "put((prefixOf.get(m.providerAlias)"} {
+		if !strings.Contains(choices, want) {
+			t.Errorf("the shared index lacks %q", want)
+		}
+	}
 	js := readWeb(t, "static/js/pages/combos.js")
-	if !strings.Contains(js, `m.providerId + "/" + m.model`) {
-		t.Error("a member named by its registry id finds no caps")
+	if !strings.Contains(js, "modelCapabilities()") {
+		t.Error("the combo page builds its own capability index")
+	}
+}
+
+// An adapter heading leads with a capability icon, so the two sit on one
+// centred line instead of the icon's baseline.
+func TestTheAdapterHeadingsCentreTheirIcons(t *testing.T) {
+	page := readWeb(t, "static/pages/combos.html")
+	if n := strings.Count(page, `class="rl-card-title rl-icon-title"`); n != 2 {
+		t.Errorf("%d adapter headings centre their icon, want 2", n)
+	}
+	css := readWeb(t, "static/css/components.css")
+	block := regexp.MustCompile(`(?s)\.rl-icon-title \{[^}]*\}`).FindString(css)
+	if block == "" || !strings.Contains(block, "align-items: center;") || !strings.Contains(block, "gap: 0.375rem;") {
+		t.Errorf("the icon title is not a centred row: %s", block)
+	}
+}
+
+// The Models heading in the combo dialog is a section title, so the list under
+// it keeps a gap the first row does not add back.
+func TestTheComboModelListKeepsItsGap(t *testing.T) {
+	page := readWeb(t, "static/pages/combos.html")
+	if !regexp.MustCompile(`<ul class="rl-list rl-block-start" x-ref="modelList">`).MatchString(page) {
+		t.Error("the model list sits flush against its heading")
+	}
+}
+
+// The users page shows a full name apart from the username and lets an admin
+// re-apply the last name a provider supplied.
+func TestAnSSOUserKeepsItsFullName(t *testing.T) {
+	page := readWeb(t, "static/pages/users.html")
+	for _, want := range []string{
+		`id="user-fullname"`,
+		`x-on:click="syncSSO(user)"`,
+		`x-show="user.provisioned === true"`,
+		`user.fullName`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the users page lacks %s", want)
+		}
+	}
+	if strings.Contains(page, "user.ssoName") {
+		t.Error("the page exposes the provider's stored copy")
+	}
+	js := readWeb(t, "static/js/pages/users.js")
+	for _, want := range []string{"fullName:", "syncSSO(user)", "/sso-sync"} {
+		if !strings.Contains(js, want) {
+			t.Errorf("the users script lacks %q", want)
+		}
+	}
+}
+
+// A custom endpoint's models take an alias like any other model the page lists.
+func TestANodeModelCanBeAliased(t *testing.T) {
+	page := readWeb(t, "static/pages/provider.html")
+	button := regexp.MustCompile(`(?s)<button[^>]*openAlias\(model\.id\)[^>]*>`).FindString(page)
+	if button == "" {
+		t.Fatal("the model row has no alias button")
+	}
+	if strings.Contains(button, `x-show="!node"`) {
+		t.Error("a node page hides the alias button")
+	}
+	js := readWeb(t, "static/js/pages/provider-models.js")
+	start := strings.Index(js, "if (!this.entry) {")
+	if start < 0 {
+		t.Fatal("the node branch was not found")
+	}
+	end := strings.Index(js[start:], "return;")
+	if end < 0 || !strings.Contains(js[start:start+end], `api("/api/models/alias")`) {
+		t.Error("a node page does not read the alias table")
 	}
 }
 
@@ -1100,13 +1179,15 @@ func TestACustomModelsCapabilitiesCanBeEdited(t *testing.T) {
 		`x-bind:disabled="model.source !== 'custom'"`,
 		`x-bind:readonly="modelAdd.editing"`,
 		`x-text="modelAdd.editing ? label('models.editTitle') : label('models.addTitle')"`,
+		`id="model-audio"`,
+		`toggleModelAudio()`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("the model dialog lacks %s", want)
 		}
 	}
 	js := readWeb(t, "static/js/pages/provider-models.js")
-	for _, want := range []string{"openModelEdit(row)", "if (this.modelAdd.editing) {", "caps.vision = this.modelAdd.vision"} {
+	for _, want := range []string{"openModelEdit(row)", "if (this.modelAdd.editing) {", "caps.vision = this.modelAdd.vision", "caps.audio = this.modelAdd.audio"} {
 		if !strings.Contains(js, want) {
 			t.Errorf("the page script lacks %q", want)
 		}
@@ -3358,6 +3439,28 @@ func TestEverySearchBoxWaitsForAPauseInTheTyping(t *testing.T) {
 // A datalist built from `choices` reads an empty list when its page never
 // declares or fills it: Alpine logs an undefined variable and the picker offers
 // nothing. Every page that builds one fills it from the shared model list.
+// A capability pool offers only models whose resolved caps meet it.
+func TestTheAdapterPickersOfferOnlyCapableModels(t *testing.T) {
+	page := readWeb(t, "static/pages/combos.html")
+	for _, want := range []string{
+		`list="adapter-vision-choices"`,
+		`list="adapter-audio-choices"`,
+		`x-for="choice in visionChoices"`,
+		`x-for="choice in audioChoices"`,
+		`list="adapter-choices"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the adapter pickers lack %s", want)
+		}
+	}
+	js := readWeb(t, "static/js/pages/combos.js")
+	for _, want := range []string{"visionChoices: []", "audioChoices: []", "caps[name].vision", "caps[name].audio"} {
+		if !strings.Contains(js, want) {
+			t.Errorf("the page script lacks %q", want)
+		}
+	}
+}
+
 func TestEveryModelPickerIsFilledFromTheSharedList(t *testing.T) {
 	ours(t, func(name, body string) {
 		if !strings.HasPrefix(name, "static/pages/") || !strings.Contains(body, `in choices"`) {

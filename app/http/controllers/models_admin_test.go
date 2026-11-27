@@ -140,7 +140,7 @@ func TestACustomModelIsStoredInTheShapeTheCatalogReads(t *testing.T) {
 	m, _ := newModelAdmin(t)
 	ctx := context.Background()
 	out := m.ok(t, "POST", "/api/models/custom",
-		`{"providerAlias":"cc","id":"claude-x","type":"llm","name":"Claude X","caps":{"vision":true,"tools":true}}`, 200)
+		`{"providerAlias":"cc","id":"claude-x","type":"llm","name":"Claude X","caps":{"vision":true,"audio":true,"tools":true}}`, 200)
 	if out["added"] != true {
 		t.Fatalf("%v", out)
 	}
@@ -148,7 +148,7 @@ func TestACustomModelIsStoredInTheShapeTheCatalogReads(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("%v %v", ok, err)
 	}
-	for _, want := range []string{`"providerAlias":"cc"`, `"id":"claude-x"`, `"type":"llm"`, `"name":"Claude X"`, `"vision":true`} {
+	for _, want := range []string{`"providerAlias":"cc"`, `"id":"claude-x"`, `"type":"llm"`, `"name":"Claude X"`, `"vision":true`, `"audio":true`} {
 		if !strings.Contains(raw, want) {
 			t.Errorf("stored %s lacks %s", raw, want)
 		}

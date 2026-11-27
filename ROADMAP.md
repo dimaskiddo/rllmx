@@ -12,7 +12,7 @@ Status words: **built** (implemented and tested), **partial** (some behavior mis
 | Configuration, logging with redaction, maintenance jobs | built |
 | Password login, dashboard sessions, API keys | built |
 | CAPTCHA on the password form: Cloudflare Turnstile or Google reCAPTCHA v2, remote callers only, local callers exempt | built |
-| OIDC and SAML single sign-on | built |
+| OIDC and SAML single sign-on, with the provider's full name stored and refreshed at each sign-in | built |
 | API key management API | built |
 | Per-key model allow-lists | built |
 | Per-key request, token and cost budgets | built |
@@ -38,7 +38,7 @@ Status words: **built** (implemented and tested), **partial** (some behavior mis
 | Account selection, per-model locks, cooldown and backoff | built |
 | Format translation, streaming, usage and finish reasons | built |
 | Executors for the shipped providers | built |
-| Combos and routing strategies (fallback, round-robin, smart, fusion) | built |
+| Combos and routing strategies (fallback, round-robin, smart, fusion), with member capability badges and capability-filtered adapter pickers | built |
 | Vision and audio adapter: a per-capability fallback pool tried when no target model can read the turn | built |
 | Response cache | built |
 | Token savers (tool-output compaction, Headroom sidecar, built-in and custom prompts, watermark remover with an invisible-character strip) | built |
@@ -51,7 +51,7 @@ Status words: **built** (implemented and tested), **partial** (some behavior mis
 | Area | Status |
 |---|---|
 | OAuth logins (device and code flows), token refresh, bulk import | built |
-| Provider checks and probes | built |
+| Provider checks and probes; custom models declare vision, reasoning and audio, and a custom endpoint's models take an alias | built |
 | Live model catalog per account | built |
 | models.dev catalog sync and the capability overlay (`/api/models/catalog-sync`, `CATALOG_SYNC`) | built |
 
@@ -65,7 +65,7 @@ Status words: **built** (implemented and tested), **partial** (some behavior mis
 | Video generation | built |
 | Web search and page fetch | built |
 | Compression (gzip, Brotli), security headers, HTTP/2 on the plain listener | built |
-| Upstream connections: HTTP/2 health pings, TLS session resumption, a stated TCP keepalive | built |
+| Upstream connections: HTTP/2 health pings, TLS session resumption, a stated TCP keepalive, and request-body compression (gzip by default, Brotli optional) | built |
 | Upstream HTTP/3 (QUIC first, HTTP/2 fallback) | planned |
 | Web image and video providers | built |
 

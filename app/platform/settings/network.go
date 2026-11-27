@@ -38,6 +38,9 @@ type Upstream struct {
 	RateLimit ratelimit.Config
 	// KiroCreateResponse is when Kiro's second transport is used.
 	KiroCreateResponse KiroCreateResponse
+	// Compression is how a JSON request body may be compressed. A provider that
+	// pre-signs its body opts out at the executor.
+	Compression network.Compression
 }
 
 // KiroCreateResponse says when a Kiro request goes to the Responses transport
@@ -74,7 +77,22 @@ func LoadUpstream(cfg config.Config) (*Upstream, error) {
 	rate.MaxWait = duration(cfg, "upstream.rate_limit_max_wait", "UPSTREAM_RATE_LIMIT_MAX_WAIT", 0, 10*time.Minute, 30*time.Second, &u.Notices)
 	u.RateLimit = rate
 	u.KiroCreateResponse = kiroMode(cfg.GetString("upstream.kiro_create_response"), &u.Notices)
+	u.Compression = compressionMode(cfg.GetString("upstream.compression"), &u.Notices)
 	return u, nil
+}
+
+// compressionMode reads the request compression: gzip unless brotli or off is
+// named. An unreadable value keeps the default and says so.
+func compressionMode(raw string, n *Notices) network.Compression {
+	switch m := network.Compression(strings.ToLower(strings.TrimSpace(raw))); m {
+	case network.CompressionOff, network.CompressionGzip, network.CompressionBrotli:
+		return m
+	case "":
+		return network.CompressionGzip
+	default:
+		n.warn("UPSTREAM_COMPRESSION", "must be gzip, brotli or off", "gzip")
+		return network.CompressionGzip
+	}
 }
 
 // cliVersion reads the pinned Claude Code version: empty, or three dot-separated

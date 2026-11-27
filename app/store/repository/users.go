@@ -19,6 +19,10 @@ type UserRow struct {
 	Password    string
 	Provisioned bool
 	CreatedAt   string
+	// FullName is what the dashboard shows; SSOName is the last name a provider
+	// supplied, kept so an operator can re-apply it.
+	FullName string
+	SSOName  string
 }
 
 // UserPatch holds the fields an update may change; nil fields are left alone.
@@ -27,6 +31,8 @@ type UserPatch struct {
 	Email       *string
 	Password    *string
 	Provisioned *bool
+	FullName    *string
+	SSOName     *string
 }
 
 // UsersRepo reads and writes the users table and the key assignments beside it.
@@ -35,7 +41,7 @@ type UsersRepo struct{ s *Store }
 // Users returns the standard-user repository.
 func (s *Store) Users() *UsersRepo { return &UsersRepo{s} }
 
-const userCols = `"id","username","password","provisioned","createdAt"`
+const userCols = `"id","username","password","provisioned","createdAt","fullName","ssoName"`
 
 type userRow struct {
 	ID          string         `db:"id"`
@@ -44,12 +50,15 @@ type userRow struct {
 	Password    string         `db:"password"`
 	Provisioned sql.NullInt64  `db:"provisioned"`
 	CreatedAt   string         `db:"createdAt"`
+	FullName    sql.NullString `db:"fullName"`
+	SSOName     sql.NullString `db:"ssoName"`
 }
 
 func (r userRow) user() UserRow {
 	return UserRow{
 		ID: r.ID, Username: r.Username, Email: nullStr(r.Email), Password: r.Password,
 		Provisioned: r.Provisioned.Valid && r.Provisioned.Int64 == 1, CreatedAt: r.CreatedAt,
+		FullName: nullStr(r.FullName), SSOName: nullStr(r.SSOName),
 	}
 }
 
@@ -109,9 +118,10 @@ func (r *UsersRepo) CreateWithin(ctx context.Context, u UserRow, limit int) erro
 }
 
 func (r *UsersRepo) insert(x contractsdb.Tx, u UserRow) error {
-	return r.s.stmt(x, `INSERT INTO "users"(`+userCols+`,"email") VALUES(?,?,?,?,?,NULLIF(?,''))`,
+	return r.s.stmt(x, `INSERT INTO "users"(`+userCols+`,"email") VALUES(?,?,?,?,?,NULLIF(?,''),NULLIF(?,''),NULLIF(?,''))`,
 		dialect.StripNUL(u.ID), dialect.StripNUL(u.Username), dialect.StripNUL(u.Password),
-		dialect.BoolInt(u.Provisioned), dialect.StripNUL(u.CreatedAt), strings.ToLower(dialect.StripNUL(u.Email)))
+		dialect.BoolInt(u.Provisioned), dialect.StripNUL(u.CreatedAt),
+		dialect.StripNUL(u.FullName), dialect.StripNUL(u.SSOName), strings.ToLower(dialect.StripNUL(u.Email)))
 }
 
 // Update applies a patch to one user.
@@ -137,8 +147,14 @@ func (r *UsersRepo) Update(ctx context.Context, id string, patch UserPatch) (Use
 		if patch.Provisioned != nil {
 			u.Provisioned = *patch.Provisioned
 		}
-		if err := r.s.stmt(tx, `UPDATE "users" SET "username"=?,"email"=NULLIF(?,''),"password"=?,"provisioned"=? WHERE "id"=?`,
-			u.Username, u.Email, u.Password, dialect.BoolInt(u.Provisioned), u.ID); err != nil {
+		if patch.FullName != nil {
+			u.FullName = dialect.StripNUL(*patch.FullName)
+		}
+		if patch.SSOName != nil {
+			u.SSOName = dialect.StripNUL(*patch.SSOName)
+		}
+		if err := r.s.stmt(tx, `UPDATE "users" SET "username"=?,"email"=NULLIF(?,''),"password"=?,"provisioned"=?,"fullName"=NULLIF(?,''),"ssoName"=NULLIF(?,'') WHERE "id"=?`,
+			u.Username, u.Email, u.Password, dialect.BoolInt(u.Provisioned), u.FullName, u.SSOName, u.ID); err != nil {
 			return err
 		}
 		out = u

@@ -84,7 +84,7 @@
 
     <section class="card">
       <div class="card-header rl-card-head">
-        <h2 class="rl-card-title"><span class="rl-icon" x-icon="eye"></span> <span x-t="models.vision"></span></h2>
+        <h2 class="rl-card-title rl-icon-title"><span class="rl-icon" x-icon="eye"></span><span x-t="models.vision"></span></h2>
         <div class="rl-inline">
           <label class="form-check form-switch rl-switch" x-show="adapterBlock('vision').enabled">
             <input class="form-check-input" type="checkbox" role="switch" x-bind:aria-label="label('combos.adapterRotate') + ' ' + label('models.vision')" x-bind:checked="adapterBlock('vision').roundRobin" x-on:change="toggleAdapter('vision', 'roundRobin', $event)">
@@ -111,7 +111,7 @@
           </template>
         </ul>
         <div class="rl-inline" x-show="adapterBlock('vision').enabled">
-          <input class="form-control form-control-sm" type="text" list="adapter-choices" x-bind:placeholder="label('combos.adapterAdd')" x-bind:aria-label="label('combos.adapterAdd') + ' ' + label('models.vision')" x-bind:value="adapterAdd.vision" x-on:input="setAdapterAdd('vision', $event)">
+          <input class="form-control form-control-sm" type="text" list="adapter-vision-choices" x-bind:placeholder="label('combos.adapterAdd')" x-bind:aria-label="label('combos.adapterAdd') + ' ' + label('models.vision')" x-bind:value="adapterAdd.vision" x-on:input="setAdapterAdd('vision', $event)">
           <button type="button" class="btn btn-sm" x-on:click="addAdapterModel('vision')"><span class="rl-icon" x-icon="plus"></span><span x-t="common.add"></span></button>
         </div>
       </div>
@@ -119,7 +119,7 @@
 
     <section class="card">
       <div class="card-header rl-card-head">
-        <h2 class="rl-card-title"><span class="rl-icon" x-icon="audio-lines"></span> <span x-t="models.audio"></span></h2>
+        <h2 class="rl-card-title rl-icon-title"><span class="rl-icon" x-icon="audio-lines"></span><span x-t="models.audio"></span></h2>
         <div class="rl-inline">
           <label class="form-check form-switch rl-switch" x-show="adapterBlock('audioInput').enabled">
             <input class="form-check-input" type="checkbox" role="switch" x-bind:aria-label="label('combos.adapterRotate') + ' ' + label('models.audio')" x-bind:checked="adapterBlock('audioInput').roundRobin" x-on:change="toggleAdapter('audioInput', 'roundRobin', $event)">
@@ -146,7 +146,7 @@
           </template>
         </ul>
         <div class="rl-inline" x-show="adapterBlock('audioInput').enabled">
-          <input class="form-control form-control-sm" type="text" list="adapter-choices" x-bind:placeholder="label('combos.adapterAdd')" x-bind:aria-label="label('combos.adapterAdd') + ' ' + label('models.audio')" x-bind:value="adapterAdd.audioInput" x-on:input="setAdapterAdd('audioInput', $event)">
+          <input class="form-control form-control-sm" type="text" list="adapter-audio-choices" x-bind:placeholder="label('combos.adapterAdd')" x-bind:aria-label="label('combos.adapterAdd') + ' ' + label('models.audio')" x-bind:value="adapterAdd.audioInput" x-on:input="setAdapterAdd('audioInput', $event)">
           <button type="button" class="btn btn-sm" x-on:click="addAdapterModel('audioInput')"><span class="rl-icon" x-icon="plus"></span><span x-t="common.add"></span></button>
         </div>
       </div>
@@ -154,6 +154,12 @@
 
     <datalist id="adapter-choices">
       <template x-for="choice in choices" x-bind:key="choice"><option x-bind:value="choice"></option></template>
+    </datalist>
+    <datalist id="adapter-vision-choices">
+      <template x-for="choice in visionChoices" x-bind:key="choice"><option x-bind:value="choice"></option></template>
+    </datalist>
+    <datalist id="adapter-audio-choices">
+      <template x-for="choice in audioChoices" x-bind:key="choice"><option x-bind:value="choice"></option></template>
     </datalist>
   </div>
 
@@ -167,13 +173,13 @@
 
       <h3 class="rl-card-title" x-t="combos.modelsTitle"></h3>
       <p class="rl-hint" x-show="form.models.length === 0" x-t="combos.modelsEmpty"></p>
-      <ul class="rl-list" x-ref="modelList">
+      <ul class="rl-list rl-block-start" x-ref="modelList">
         <template x-for="(model, index) in form.models" x-bind:key="model">
           <li class="rl-list-row rl-model-row" x-bind:data-index="index">
             <div class="rl-list-main">
               <button type="button" class="rl-drag" data-drag x-tip="combos.drag"><span class="rl-icon" x-icon="grip-vertical"></span><span class="visually-hidden" x-t="combos.drag"></span></button>
               <code class="rl-code" x-text="model"></code>
-              <span class="rl-cap" x-show="capsOf(model) && capsOf(model).vision" x-tip="models.vision"><span class="rl-icon" x-icon="eye"></span><span class="visually-hidden" x-t="models.vision"></span></span><span class="rl-cap" x-show="capsOf(model) && capsOf(model).reasoning" x-tip="models.reasoning"><span class="rl-icon" x-icon="brain"></span><span class="visually-hidden" x-t="models.reasoning"></span></span>
+              <span class="rl-cap" x-show="capsOf(model) && capsOf(model).vision" x-tip="models.vision"><span class="rl-icon" x-icon="eye"></span><span class="visually-hidden" x-t="models.vision"></span></span><span class="rl-cap" x-show="capsOf(model) && capsOf(model).reasoning" x-tip="models.reasoning"><span class="rl-icon" x-icon="brain"></span><span class="visually-hidden" x-t="models.reasoning"></span></span><span class="rl-cap" x-show="capsOf(model) && capsOf(model).audio" x-tip="models.audio"><span class="rl-icon" x-icon="audio-lines"></span><span class="visually-hidden" x-t="models.audio"></span></span>
             </div>
             <div class="rl-list-actions">
               <button type="button" class="btn btn-sm btn-ghost" x-on:click="moveModel(index, -1)" x-tip="combos.moveUp"><span class="rl-icon" x-icon="arrow-up"></span><span class="visually-hidden" x-t="combos.moveUp"></span></button>
@@ -261,7 +267,7 @@
             <div class="rl-list-main">
               <span class="badge" x-text="'#' + (index + 1)"></span>
               <code class="rl-code" x-text="model"></code>
-              <span class="rl-cap" x-show="capsOf(model) && capsOf(model).vision" x-tip="models.vision"><span class="rl-icon" x-icon="eye"></span><span class="visually-hidden" x-t="models.vision"></span></span><span class="rl-cap" x-show="capsOf(model) && capsOf(model).reasoning" x-tip="models.reasoning"><span class="rl-icon" x-icon="brain"></span><span class="visually-hidden" x-t="models.reasoning"></span></span>
+              <span class="rl-cap" x-show="capsOf(model) && capsOf(model).vision" x-tip="models.vision"><span class="rl-icon" x-icon="eye"></span><span class="visually-hidden" x-t="models.vision"></span></span><span class="rl-cap" x-show="capsOf(model) && capsOf(model).reasoning" x-tip="models.reasoning"><span class="rl-icon" x-icon="brain"></span><span class="visually-hidden" x-t="models.reasoning"></span></span><span class="rl-cap" x-show="capsOf(model) && capsOf(model).audio" x-tip="models.audio"><span class="rl-icon" x-icon="audio-lines"></span><span class="visually-hidden" x-t="models.audio"></span></span>
             </div>
           </li>
         </template>

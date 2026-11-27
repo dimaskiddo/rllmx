@@ -32,6 +32,8 @@ window.Alpine.data("usersPage", () => ({
     this.userForm = {
       id: user ? user.id : "",
       name: user ? user.username : "",
+      fullName: user ? user.fullName || "" : "",
+      provisioned: user ? user.provisioned === true : false,
       email: user ? user.email || "" : "",
       password: "",
       error: "",
@@ -60,7 +62,7 @@ window.Alpine.data("usersPage", () => ({
     form.error = "";
     form.busy = true;
     try {
-      const body = { name: form.name, email: form.email };
+      const body = { name: form.name, fullName: form.fullName, email: form.email };
       if (form.password !== "") {
         body.password = form.password;
       }
@@ -76,6 +78,17 @@ window.Alpine.data("usersPage", () => ({
       form.error = err.message;
     } finally {
       form.busy = false;
+    }
+  },
+
+  // syncSSO restores the last name the provider supplied, after an edit.
+  async syncSSO(user) {
+    try {
+      await api("/api/users/" + encodeURIComponent(user.id) + "/sso-sync", { method: "POST" });
+      await this.load();
+      toast().success(t("users.ssoSynced"));
+    } catch (err) {
+      toast().error(err.message);
     }
   },
 

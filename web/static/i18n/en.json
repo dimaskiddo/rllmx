@@ -725,6 +725,7 @@
   "users.deleted": "User deleted",
   "users.editTitle": "Edit the user",
   "users.email": "Email (optional, for single sign-on)",
+  "users.fullName": "Full name (what the dashboard shows)",
   "users.empty": "No standard user yet.",
   "users.hint": "A standard user signs in with their own name and sees only the keys assigned to them, and those keys' usage.",
   "users.listTitle": "Accounts",
@@ -735,5 +736,8 @@
   "users.passwordKeep": "Leave empty to keep the current password.",
   "users.saved": "User saved",
   "users.sso": "SSO",
+  "users.ssoSync": "Re-apply the name from the provider",
+  "users.ssoSyncHint": "A name from single sign-on replaces this one at the next sign-in.",
+  "users.ssoSynced": "Name restored from the provider",
   "users.title": "Users"
 }

@@ -22,9 +22,11 @@
                 <span class="badge" x-show="user.provisioned === true" x-t="users.sso"></span>
                 <span class="badge" x-show="user.keys.length > 0" x-text="user.keys.length"></span>
               </div>
+              <p class="rl-hint" x-show="user.fullName && user.fullName !== user.username" x-text="user.fullName"></p>
               <p class="rl-hint" x-show="user.email && user.email !== user.username" x-text="user.email"></p>
             </div>
             <div class="rl-list-actions">
+              <button type="button" class="btn btn-sm btn-ghost" x-show="user.provisioned === true" x-on:click="syncSSO(user)" x-tip="users.ssoSync"><span class="rl-icon" x-icon="refresh-cw"></span><span class="visually-hidden" x-t="users.ssoSync"></span></button>
               <button type="button" class="btn btn-sm btn-ghost" x-on:click="openUser(user)" x-tip="common.edit"><span class="rl-icon" x-icon="pencil"></span><span class="visually-hidden" x-t="common.edit"></span></button>
               <button type="button" class="btn btn-sm btn-ghost-danger" x-on:click="removeUser(user)" x-tip="common.delete"><span class="rl-icon" x-icon="trash"></span><span class="visually-hidden" x-t="common.delete"></span></button>
             </div>
@@ -43,6 +45,9 @@
       </h2>
       <label class="form-label" for="user-name" x-t="users.name"></label>
       <input class="form-control" id="user-name" x-ref="userName" maxlength="64" required x-bind:value="userForm ? userForm.name : ''" x-on:input="setUser('name', $event)">
+      <label class="form-label" for="user-fullname" x-t="users.fullName"></label>
+      <input class="form-control" id="user-fullname" maxlength="128" x-bind:value="userForm ? userForm.fullName : ''" x-on:input="setUser('fullName', $event)">
+      <p class="rl-hint" x-show="userForm && userForm.provisioned" x-t="users.ssoSyncHint"></p>
       <label class="form-label" for="user-email" x-t="users.email"></label>
       <input class="form-control" id="user-email" type="email" maxlength="320" x-bind:value="userForm ? userForm.email : ''" x-on:input="setUser('email', $event)">
       <label class="form-label" for="user-password" x-t="users.password"></label>

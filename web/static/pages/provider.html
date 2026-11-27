@@ -136,7 +136,7 @@
               <button type="button" class="btn btn-sm btn-ghost" x-on:click="copyText(aliasOrFull(model))" x-tip="models.copy"><span class="rl-icon" x-icon="copy"></span><span class="visually-hidden" x-t="models.copy"></span></button>
               <button type="button" class="btn btn-sm btn-ghost" x-bind:disabled="testFor(model.id) && testFor(model.id).busy" x-on:click="testModel(model.id)" x-tip="models.test"><span class="rl-icon" x-icon="activity"></span><span class="visually-hidden" x-t="models.test"></span></button>
               <button type="button" class="btn btn-sm btn-ghost" x-bind:disabled="model.source !== 'custom'" x-on:click="openModelEdit(model)" x-tip="models.editCaps"><span class="rl-icon" x-icon="sliders-horizontal"></span><span class="visually-hidden" x-t="models.editCaps"></span></button>
-              <button type="button" class="btn btn-sm btn-ghost" x-show="!node" x-on:click="openAlias(model.id)" x-tip="models.alias"><span class="rl-icon" x-icon="pencil"></span><span class="visually-hidden" x-t="models.alias"></span></button>
+              <button type="button" class="btn btn-sm btn-ghost" x-on:click="openAlias(model.id)" x-tip="models.alias"><span class="rl-icon" x-icon="pencil"></span><span class="visually-hidden" x-t="models.alias"></span></button>
               <button type="button" class="btn btn-sm btn-ghost" x-show="!node" x-on:click="disableModel(model.id)" x-bind:disabled="busy('disable:' + model.id)" x-tip="models.disable"><span class="rl-icon" x-icon="pause"></span><span class="visually-hidden" x-t="models.disable"></span></button>
               <button type="button" class="btn btn-sm btn-ghost-danger" x-bind:disabled="model.source !== 'custom'" x-on:click="removeCustom(model)" x-bind:title="model.source === 'custom' ? label('common.delete') : label('models.builtinNoDelete')"><span class="rl-icon" x-icon="trash"></span><span class="visually-hidden" x-t="common.delete"></span></button>
             </div>
@@ -387,6 +387,10 @@
       <div class="form-check">
         <input class="form-check-input" type="checkbox" id="model-reasoning" x-bind:checked="modelAdd.reasoning" x-on:change="toggleModelReasoning()">
         <label class="form-check-label" for="model-reasoning" x-t="models.reasoning"></label>
+      </div>
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" id="model-audio" x-bind:checked="modelAdd.audio" x-on:change="toggleModelAudio()">
+        <label class="form-check-label" for="model-audio" x-t="models.audio"></label>
       </div>
       <p class="rl-error" x-show="modelAdd.error" x-text="modelAdd.error"></p>
       <div class="rl-dialog-actions">

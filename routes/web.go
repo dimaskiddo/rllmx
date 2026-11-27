@@ -138,6 +138,7 @@ func webAccess(router route.Route, guard *apphttp.Guard, base Base) {
 		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodGet, "/api/users", u.List)
 		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodPost, "/api/users", u.Create)
 		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodPut, "/api/users/{id}", u.Update)
+		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodPost, "/api/users/{id}/sso-sync", u.SyncSSO)
 		guard.Handle(router, apphttp.ClassAlwaysProtected, nethttp.MethodDelete, "/api/users/{id}", u.Delete)
 	}
 }

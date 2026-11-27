@@ -71,6 +71,45 @@ function withNodePrefix(value, prefixOf) {
   return prefix ? prefix + value.slice(at) : value;
 }
 
+// capsIndex maps every spelling a stored name may use to the capabilities the
+// row resolved to. The registry list wins; a node's custom row fills the gap
+// under the node id and the prefix a client types.
+function capsIndex(models, custom, aliases, prefixOf) {
+  const caps = {};
+  const put = (key, c) => {
+    if (key && c && !caps[key]) {
+      caps[key] = c;
+    }
+  };
+  for (const m of models) {
+    if (!m.caps) {
+      continue;
+    }
+    put(m.fullModel, m.caps);
+    put(m.routedModel, m.caps);
+    put(m.alias, m.caps);
+    put(m.provider + "/" + m.model, m.caps);
+    put(m.providerId + "/" + m.model, m.caps);
+  }
+  for (const m of custom) {
+    if (!m.caps) {
+      continue;
+    }
+    put(m.providerAlias + "/" + m.id, m.caps);
+    put((prefixOf.get(m.providerAlias) || m.providerAlias) + "/" + m.id, m.caps);
+  }
+  for (const alias in (aliases || {})) {
+    put(alias, caps[aliases[alias]]);
+  }
+  return caps;
+}
+
+// modelCapabilities is the index the combo page and its adapter pickers read.
+// It is empty until the choices are loaded, and shares their cache.
+export function modelCapabilities() {
+  return loaded ? loaded.caps : {};
+}
+
 // loadModelChoices reads what the pickers need and returns the sorted list: the
 // combo names, every alias's target and every live model. An alias key is left
 // out: it names no provider, so offered alone it reads as a model of its own.
@@ -105,6 +144,7 @@ export async function loadModelChoices(known) {
       return {
         choices: Array.from(new Set(names.concat(live).map((c) => c.trim()).filter(Boolean))).sort(),
         prefixOf: prefixOf,
+        caps: capsIndex(models.models || [], custom.models || [], aliases.aliases || {}, prefixOf),
       };
     })();
   }

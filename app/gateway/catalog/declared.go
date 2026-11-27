@@ -38,6 +38,9 @@ func LoadDeclared(ctx context.Context, kv KV, caps *upstream.Capabilities) error
 		if v, ok := stored.Caps["reasoning"]; ok {
 			d.Reasoning = &v
 		}
+		if v, ok := stored.Caps["audio"]; ok {
+			d.Audio = &v
+		}
 		all[stored.ProviderAlias+"/"+stored.ID] = d
 	}
 	caps.SetCustom(all)

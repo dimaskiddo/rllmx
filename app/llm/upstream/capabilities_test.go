@@ -237,12 +237,26 @@ func TestADeclaredCustomModelCarriesItsCapabilities(t *testing.T) {
 	}
 	on, off := true, false
 	c.SetCustom(map[string]Declared{
-		provider + "/" + model: {Vision: &on, Reasoning: &on},
+		provider + "/" + model: {Vision: &on, Reasoning: &on, Audio: &on},
 		"other/model":          {Vision: &on},
 	})
 	got := c.For(provider, model)
-	if !got.Vision || !got.Reasoning {
+	if !got.Vision || !got.Reasoning || !got.AudioInput {
 		t.Fatalf("%+v", got)
+	}
+	// A declared audio off wins over a table that says the model reads sound.
+	if !c.For("gemini", "gemini-2.5-pro").AudioInput {
+		t.Fatal("the fixture does not read audio")
+	}
+	c.SetCustom(map[string]Declared{"gemini/gemini-2.5-pro": {Audio: &off}})
+	if c.For("gemini", "gemini-2.5-pro").AudioInput {
+		t.Fatal("a declared audio off was ignored")
+	}
+	// The learned-vision path declares one flag and must keep the others.
+	c.SetCustom(map[string]Declared{provider + "/" + model: {Audio: &on}})
+	c.Declare(provider, model, Declared{Vision: &on})
+	if !c.For(provider, model).AudioInput {
+		t.Fatal("a declaration erased the audio flag")
 	}
 	if c.For(provider, "another-model").Vision {
 		t.Fatal("another model took the declaration")

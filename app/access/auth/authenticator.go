@@ -139,7 +139,16 @@ func (a *Authenticator) userSession(r *nethttp.Request, claims Claims, epoch str
 	if !a.modeAllows(r, claims) {
 		return Session{}, false
 	}
-	return Session{Role: RoleUser, UserID: u.ID, Name: u.Username, Email: u.Email, Method: claims.Method}, true
+	return Session{Role: RoleUser, UserID: u.ID, Name: displayName(u), Email: u.Email, Method: claims.Method}, true
+}
+
+// displayName is what the dashboard shows for a standard user: the provider's
+// full name when one was stored, else the username.
+func displayName(u User) string {
+	if u.FullName != "" {
+		return u.FullName
+	}
+	return u.Username
 }
 
 // adminSessionAllowed re-checks a provider session against the admin list; a
@@ -240,7 +249,7 @@ func (a *Authenticator) IssueSSO(ctx context.Context, method, email, name string
 	if a.IsSSOAdmin(email, exactOnly) {
 		return a.Issue(ctx, method, email, name, secure)
 	}
-	u, ok := a.ssoUser(ctx, email, exactOnly)
+	u, ok := a.ssoUser(ctx, email, name, exactOnly)
 	if !ok {
 		return contractshttp.Cookie{}, false
 	}
@@ -250,11 +259,21 @@ func (a *Authenticator) IssueSSO(ctx context.Context, method, email, name string
 // ssoUser is the standard user an address signs in as. An address from a
 // user-editable claim signs in as nobody: it is not proof of the address, so
 // matching it to an account would hand that account to whoever typed it.
-func (a *Authenticator) ssoUser(ctx context.Context, email string, exactOnly bool) (User, bool) {
+func (a *Authenticator) ssoUser(ctx context.Context, email, name string, exactOnly bool) (User, bool) {
 	if a.Users == nil || exactOnly || strings.TrimSpace(email) == "" {
 		return User{}, false
 	}
+	name = CleanFullName(name)
 	if u, ok := a.Users.ByEmail(ctx, email); ok {
+		if u.Provisioned && name != "" {
+			next := u
+			next.FullName, next.SSOName = name, name
+			// A failed write keeps the old name and the next sign-in retries; it
+			// must not deny the sign-in.
+			if a.Users.Put(ctx, next) == nil {
+				return next, true
+			}
+		}
 		return u, true
 	}
 	secret, err := NewUserPassword()
@@ -267,7 +286,10 @@ func (a *Authenticator) ssoUser(ctx context.Context, email string, exactOnly boo
 	}
 	provision := func(derived bool) error {
 		_, err := a.Users.Add(ctx, func(id string) User {
-			return User{ID: id, Username: ssoUsername(email, id, derived), Email: email, Hash: hash, Provisioned: true}
+			return User{
+				ID: id, Username: ssoUsername(email, id, derived), Email: email, Hash: hash,
+				Provisioned: true, FullName: name, SSOName: name,
+			}
 		})
 		return err
 	}
@@ -327,7 +349,7 @@ func (a *Authenticator) Issue(ctx context.Context, method, email, name string, s
 func (a *Authenticator) IssueUser(ctx context.Context, u User, method string, secure bool) (contractshttp.Cookie, bool) {
 	st := a.Store.Get(ctx)
 	claims := Claims{
-		Authenticated: true, Method: method, UID: u.ID, Email: u.Email, Name: u.Username,
+		Authenticated: true, Method: method, UID: u.ID, Email: u.Email, Name: displayName(u),
 		PV: PV(a.Secret(), u.Hash, st.Epoch),
 	}
 	return a.issue(claims, secure)

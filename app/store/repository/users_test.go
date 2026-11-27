@@ -40,6 +40,31 @@ func TestAUserRoundTripsThroughItsTable(t *testing.T) {
 	}
 }
 
+func TestAFullNameAndTheLastSSONameRoundTrip(t *testing.T) {
+	s := newMigrated(t)
+	r := s.Users()
+	ctx := context.Background()
+	if err := r.Create(ctx, UserRow{
+		ID: "u1", Username: "dimas", Password: "h", CreatedAt: "t",
+		FullName: "Dimas Restu", SSOName: "D. Restu",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, ok, err := r.Get(ctx, "u1")
+	if err != nil || !ok || got.FullName != "Dimas Restu" || got.SSOName != "D. Restu" {
+		t.Fatalf("%+v %v %v", got, ok, err)
+	}
+	empty := ""
+	got, err = r.Update(ctx, "u1", UserPatch{FullName: &empty})
+	if err != nil || got.FullName != "" || got.SSOName != "D. Restu" {
+		t.Fatalf("%+v %v", got, err)
+	}
+	restored := "Dimas Restu"
+	if got, err := r.Update(ctx, "u1", UserPatch{FullName: &restored}); err != nil || got.FullName != restored {
+		t.Fatalf("%+v %v", got, err)
+	}
+}
+
 func TestUsernameAndEmailAreUnique(t *testing.T) {
 	s := newMigrated(t)
 	r := s.Users()
