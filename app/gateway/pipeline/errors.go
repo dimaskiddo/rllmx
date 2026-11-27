@@ -41,6 +41,8 @@ func streamClass(err error) string {
 		return "timeout"
 	case errors.Is(err, stream.ErrClientGone):
 		return "client_closed"
+	case errors.Is(err, stream.ErrTruncated):
+		return "truncated"
 	}
 	return "upstream_5xx"
 }

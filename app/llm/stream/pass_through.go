@@ -23,6 +23,12 @@ func (r *runner) passthrough(ctx context.Context) {
 	for {
 		ev, err := r.pull.next(ctx, nil, r.keepC())
 		if errors.Is(err, errKeepalive) {
+			if !r.wrote {
+				// The client's stream is not open, and this window belongs to
+				// failover: a comment here would open it.
+				r.resetKeep()
+				continue
+			}
 			if !r.keepalive() {
 				return
 			}
@@ -40,7 +46,15 @@ func (r *runner) passthrough(ctx context.Context) {
 		}
 		r.sawEvent()
 		data := ev.Data
+		if reader.failed(ev.Name, data) {
+			r.fail(ErrUpstream, upstreamReason(reader.errorOf(ev.Name, data)))
+			return
+		}
 		if r.j.UpstreamFormat == translate.FormatOpenAI {
+			if isDone(r.j.UpstreamFormat, data) {
+				r.ended = true
+				continue
+			}
 			var keep bool
 			data, keep = n.fix(data)
 			if !keep {
@@ -57,15 +71,12 @@ func (r *runner) passthrough(ctx context.Context) {
 		}
 		r.track.Feed(data)
 		reader.count(r.track, data)
-		if reader.failed(data) {
-			r.fail(ErrUpstream, "The upstream stream ended with an error")
-			return
-		}
 		if f := reader.finish(data); f != "" {
 			r.finish = f
 		}
 		if r.j.UpstreamFormat == translate.FormatResponses && isResponsesTerminal(ev.Name, data) {
 			terminal = true
+			r.ended = true
 		}
 		if !r.send([]translate.Frame{{Event: ev.Name, Data: data}}) {
 			return
@@ -73,19 +84,28 @@ func (r *runner) passthrough(ctx context.Context) {
 	}
 }
 
-// endPassthrough closes a stream whose upstream ended. A Responses stream with
-// no terminal event is failed, so the client does not take a cut-off answer for
-// a finished one. OpenAI streams end with one [DONE]; Gemini and Ollama have no
-// end marker.
+// endPassthrough closes a stream whose upstream ended. A body that stopped
+// without a finish is a cut answer, so the client is told instead of being
+// handed an ending the upstream never sent. OpenAI streams end with one
+// [DONE]; Gemini and Ollama have no end marker.
 func (r *runner) endPassthrough(terminal bool) {
+	cut := r.cut(r.track.ContentLen())
 	switch r.j.UpstreamFormat {
 	case translate.FormatResponses:
-		if !terminal {
-			r.fail(ErrUpstream, "The upstream stream ended before it finished")
+		if cut || !terminal {
+			r.fail(ErrTruncated, ReasonText(ErrTruncated))
 		}
 		r.send([]translate.Frame{{Done: true}})
 	case translate.FormatOpenAI:
+		if cut {
+			r.fail(ErrTruncated, ReasonText(ErrTruncated))
+			return
+		}
 		r.send([]translate.Frame{{Done: true}})
+	default:
+		if cut {
+			r.fail(ErrTruncated, ReasonText(ErrTruncated))
+		}
 	}
 }
 
@@ -254,16 +274,41 @@ func (t *textReader) finish(data []byte) string {
 	return ""
 }
 
-// failed reports an error event inside the stream.
-func (t *textReader) failed(data []byte) bool {
+// failed reports an error event inside the stream. An event the source names
+// "error" is one whatever its body looks like, which is how a socket-framed
+// upstream reports a failure.
+func (t *textReader) failed(name string, data []byte) bool {
+	if name == "error" {
+		return true
+	}
 	get := func(path string) gjson.Result { return gjson.GetBytes(data, path) }
 	switch t.format {
 	case translate.FormatClaude:
 		return get("type").String() == "error"
 	case translate.FormatResponses:
-		return get("type").String() == "response.failed"
+		return get("type").String() == "response.failed" || get("type").String() == "error"
 	case translate.FormatOllama:
 		return get("error").Exists() && !get("message").Exists()
 	}
-	return get("error").IsObject()
+	e := get("error")
+	return e.IsObject() || e.Type == gjson.String
+}
+
+// errorOf reads the upstream's own words out of an error event, for the frame
+// the client is given.
+func (t *textReader) errorOf(name string, data []byte) *translate.ChunkError {
+	get := func(path string) gjson.Result { return gjson.GetBytes(data, path) }
+	if t.format == translate.FormatResponses {
+		if e := get("response.error"); e.IsObject() {
+			return translate.ReadErrorObject(e)
+		}
+	}
+	if e := get("error"); e.Exists() {
+		return translate.ReadErrorObject(e)
+	}
+	// An event named "error" whose body is the error itself.
+	if name == "error" {
+		return translate.ReadErrorObject(gjson.ParseBytes(data))
+	}
+	return &translate.ChunkError{}
 }

@@ -15,6 +15,7 @@ var (
 	ErrStall      = errors.New("stream: the upstream stopped sending data")
 	ErrClientGone = errors.New("stream: the client went away")
 	ErrUpstream   = errors.New("stream: the upstream stream failed")
+	ErrTruncated  = errors.New("stream: the upstream ended before it finished")
 	errUsageWait  = errors.New("stream: the usage report did not arrive in time")
 	errKeepalive  = errors.New("stream: nothing to send yet")
 )
@@ -44,6 +45,9 @@ type pull struct {
 	t     Timers
 	timer *time.Timer
 	got   bool
+	// deadline is when the running wait runs out. It survives a call that returns
+	// for a keepalive, because a comment we sent is not data the upstream sent.
+	deadline time.Time
 }
 
 func newPull(body io.ReadCloser, src Source, t Timers) *pull {
@@ -87,8 +91,12 @@ func (p *pull) next(ctx context.Context, extra, keep <-chan time.Time) (Event, e
 	}
 	var fire <-chan time.Time
 	if limit > 0 {
+		if p.deadline.IsZero() {
+			p.deadline = time.Now().Add(limit)
+		}
+		wait := max(time.Until(p.deadline), 0)
 		if p.timer == nil {
-			p.timer = time.NewTimer(limit)
+			p.timer = time.NewTimer(wait)
 		} else {
 			if !p.timer.Stop() {
 				select {
@@ -96,7 +104,7 @@ func (p *pull) next(ctx context.Context, extra, keep <-chan time.Time) (Event, e
 				default:
 				}
 			}
-			p.timer.Reset(limit)
+			p.timer.Reset(wait)
 		}
 		fire = p.timer.C
 	}
@@ -104,6 +112,7 @@ func (p *pull) next(ctx context.Context, extra, keep <-chan time.Time) (Event, e
 	case it := <-p.ch:
 		if it.err == nil {
 			p.got = true
+			p.deadline = time.Time{}
 		}
 		return it.ev, it.err
 	case <-ctx.Done():

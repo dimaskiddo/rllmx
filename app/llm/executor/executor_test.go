@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -287,6 +288,38 @@ func TestParseErrorReadsAProviderReset(t *testing.T) {
 	}
 	if !ParseError(429, []byte(`{"error":{"message":"x"}}`)).ResetAt.IsZero() {
 		t.Fatal("a reset appeared from nowhere")
+	}
+}
+
+func TestARetryAfterHeaderBecomesTheResetTime(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	h := http.Header{}
+	h.Set("Retry-After", "120")
+	if got := RetryAt(h, now); got.Sub(now) != 120*time.Second {
+		t.Fatalf("%v", got)
+	}
+	h.Set("Retry-After", now.Add(90*time.Second).UTC().Format(http.TimeFormat))
+	if got := RetryAt(h, now); got.Sub(now) != 90*time.Second {
+		t.Fatalf("%v", got)
+	}
+	h = http.Header{}
+	h.Set("X-RateLimit-Reset", strconv.FormatInt(now.Unix()+45, 10))
+	if got := RetryAt(h, now); got.Sub(now) != 45*time.Second {
+		t.Fatalf("%v", got)
+	}
+	h = http.Header{}
+	h.Set("X-RateLimit-Reset-After", "30")
+	if got := RetryAt(h, now); got.Sub(now) != 30*time.Second {
+		t.Fatalf("%v", got)
+	}
+	if !RetryAt(http.Header{}, now).IsZero() {
+		t.Fatal("a hint appeared from nowhere")
+	}
+	body := io.NopCloser(strings.NewReader(`{"error":{"resets_at":4102444800}}`))
+	stale := http.Header{}
+	stale.Set("Retry-After", "120")
+	if e := ReadErrorHeaders(429, stale, body); e.ResetAt.Unix() != 4102444800 {
+		t.Fatalf("the body's own reset lost to the header: %v", e.ResetAt)
 	}
 }
 

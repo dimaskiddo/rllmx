@@ -6,6 +6,8 @@ import (
 	"errors"
 	"io"
 	"net"
+	"net/http"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -33,6 +35,38 @@ type UpstreamError struct {
 func ReadError(status int, body io.Reader) UpstreamError {
 	raw := file.ReadUpTo(body, MaxErrorBody)
 	return ParseError(status, raw)
+}
+
+// ReadErrorHeaders reads an error body and takes the provider's own retry hint
+// from the response headers when the body names none.
+func ReadErrorHeaders(status int, h http.Header, body io.Reader) UpstreamError {
+	e := ReadError(status, body)
+	if e.ResetAt.IsZero() {
+		e.ResetAt = RetryAt(h, time.Now())
+	}
+	return e
+}
+
+// RetryAt is the moment a provider says to come back, read from the headers it
+// sends. A date, a count of seconds and a reset stamp all answer it.
+func RetryAt(h http.Header, now time.Time) time.Time {
+	if v := h.Get("Retry-After"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return now.Add(time.Duration(n) * time.Second)
+		}
+		if t, err := http.ParseTime(v); err == nil && t.After(now) {
+			return t
+		}
+	}
+	if n, err := strconv.Atoi(h.Get("X-RateLimit-Reset-After")); err == nil && n > 0 {
+		return now.Add(time.Duration(n) * time.Second)
+	}
+	if n, err := strconv.ParseInt(h.Get("X-RateLimit-Reset"), 10, 64); err == nil {
+		if t := time.Unix(n, 0); t.After(now) {
+			return t
+		}
+	}
+	return time.Time{}
 }
 
 // ParseError takes the message from the places providers put it, in this order:

@@ -114,6 +114,30 @@ func TestEveryAntigravityAccountSpentAnswersWithTheEarliestReset(t *testing.T) {
 	}
 }
 
+func TestAnUpstreamRateLimitTellsTheClientWhenToRetry(t *testing.T) {
+	r := newRig(t, tests.Reply{Status: 429, ContentType: "application/json", Body: `{"error":{"message":"rate limit reached"}}`, Header: map[string]string{"Retry-After": "120"}})
+	c := r.conn(nodeID, "k1")
+	out, _ := r.do("/v1/chat/completions", chatBody)
+	if out.Status != 429 {
+		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+	if got := out.Header.Get("Retry-After"); got != "120" && got != "119" {
+		t.Fatalf("Retry-After = %q", got)
+	}
+	if !r.lockedFor(c.ID, "gpt-x") {
+		t.Fatal("the provider's own reset did not reach the lock")
+	}
+}
+
+func TestARefusalWithNoHintInventsNoRetryAfter(t *testing.T) {
+	r := newRig(t, tests.Reply{Status: 429, ContentType: "application/json", Body: `{"error":{"message":"slow down"}}`})
+	r.conn(nodeID, "k1")
+	out, _ := r.do("/v1/chat/completions", chatBody)
+	if out.Status != 429 || out.Header.Get("Retry-After") != "" {
+		t.Fatalf("%d Retry-After = %q", out.Status, out.Header.Get("Retry-After"))
+	}
+}
+
 func TestAnAntigravityRefusalTheGateCannotPlaceFallsBackToTheCommonRules(t *testing.T) {
 	r := newRig(t, tests.Reply{Status: 429, ContentType: "application/json", Body: `{"error":{"message":"slow down","resets_at":4102444800}}`, Header: map[string]string{"Retry-After": "3600"}})
 	a := r.agy("TOK-A")

@@ -65,6 +65,8 @@ Status words: **built** (implemented and tested), **partial** (some behavior mis
 | Video generation | built |
 | Web search and page fetch | built |
 | Compression (gzip, Brotli), security headers, HTTP/2 on the plain listener | built |
+| Upstream connections: HTTP/2 health pings, TLS session resumption, a stated TCP keepalive | built |
+| Upstream HTTP/3 (QUIC first, HTTP/2 fallback) | planned |
 | Web image and video providers | built |
 
 ## Dashboard

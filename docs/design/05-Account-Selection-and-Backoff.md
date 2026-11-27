@@ -54,7 +54,7 @@ The circuit breaker is not here either, and never can be: it is per provider whi
 
 - Cooldown is `2 s x 2^(level-1)` for the **new** level, capped at 5 minutes. The new level is the stored one plus one, capped at 15, kept in `backoffLevel`.
 - The stored level is read inside the same database transaction that writes the lock (`ConnectionsRepo.LockFromLevel`), so concurrent failures all count.
-- A provider-reported reset time replaces the cooldown (level back to 0), capped at 30 minutes except for Antigravity. One in the past is ignored and does not turn a request-scoped error into a lock.
+- A provider-reported reset time replaces the cooldown (level back to 0), capped at 30 minutes except for Antigravity. One in the past is ignored and does not turn a request-scoped error into a lock. The reset is read from the error body (`resets_at`, `resets_in_seconds`) or, when the body names none, from the response headers (`Retry-After` as seconds or a date, `X-RateLimit-Reset-After`, `X-RateLimit-Reset`); the body wins.
 - GitHub's `you've reached your additional usage limit for your plan` on a 402 locks the whole account until the first instant of the next UTC month.
 
 ### Locking (`Reporter`)

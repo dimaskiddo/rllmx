@@ -629,6 +629,21 @@ func TestAStreamThatBreaksAfterBytesIsNotRetried(t *testing.T) {
 	}
 }
 
+func TestACutStreamIsRecordedAsTruncated(t *testing.T) {
+	r := newRig(t, tests.Reply{ContentType: "text/event-stream", Chunks: sseChunks()[:2]})
+	r.conn(nodeID, "k1")
+	out, rec := r.do("/v1/chat/completions", chatStream)
+	if !out.Streamed || !strings.Contains(rec.Body.String(), "ended before it finished") {
+		t.Fatalf("%+v %s", out, rec.Body.String())
+	}
+	if row := r.last(); row.Status != 502 || row.ErrorClass != "truncated" {
+		t.Fatalf("%+v", row)
+	}
+	if len(r.up.Calls()) != 1 {
+		t.Fatalf("a stream that opened was retried: %d calls", len(r.up.Calls()))
+	}
+}
+
 func TestANetworkFailureShowsNeitherAddressNorKey(t *testing.T) {
 	r := newRig(t)
 	r.conn(nodeID, "sk-very-secret")

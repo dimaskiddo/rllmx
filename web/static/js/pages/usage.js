@@ -13,6 +13,7 @@ const failureWords = {
   client_closed: "usage.class.client_closed",
   timeout: "usage.class.timeout",
   stream_stall: "usage.class.stream_stall",
+  truncated: "usage.class.truncated",
   network: "usage.class.network",
   upstream_5xx: "usage.class.upstream_5xx",
   rate_limit: "usage.class.rate_limit",

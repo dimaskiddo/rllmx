@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -9,6 +10,7 @@ import (
 
 	"rllmx/app/llm/translate"
 	"rllmx/app/platform/failure"
+	"rllmx/app/platform/text"
 )
 
 // Client is where a stream goes: an SSE or NDJSON writer.
@@ -97,6 +99,9 @@ type runner struct {
 	// streamed counts the text, reasoning and tool-call bytes the codecs were
 	// given, which is what their writers keep until the stream ends.
 	streamed int
+	// ended records the end marker an OpenAI stream closes with, which finishes
+	// the answer without naming a reason.
+	ended bool
 	// keep is the quiet-stream timer; nil when the job asked for none.
 	keep *time.Timer
 }
@@ -187,19 +192,52 @@ func (r *runner) fail(cause error, msg string) {
 }
 
 // ReasonText is the fixed message a client sees for each way a stream breaks.
-// It never repeats upstream text.
 func ReasonText(cause error) string {
 	switch {
 	case errors.Is(cause, ErrStall):
 		return "The upstream stopped sending data"
 	case errors.Is(cause, ErrFirstChunk):
 		return "The upstream did not start answering in time"
+	case errors.Is(cause, ErrTruncated):
+		return "The upstream stream ended before it finished"
 	case errors.Is(cause, ErrEventTooLarge):
 		return "The upstream sent an event that is too large"
 	case errors.Is(cause, ErrCollectedTooLarge):
 		return "The upstream answer is too large"
 	}
 	return "The upstream stream ended with an error"
+}
+
+// maxUpstreamReason bounds the upstream's own words a client is shown, the same
+// length the stored last-error gets.
+const maxUpstreamReason = 300
+
+// upstreamReason is the fixed sentence plus whatever the upstream said, because
+// a client that is told "an error" cannot tell a capacity blip from a bad
+// request. The text is stripped of markup and cut short before it leaves.
+func upstreamReason(e *translate.ChunkError) string {
+	detail := e.Type
+	if detail != "" && e.Message != "" {
+		detail += ": "
+	}
+	detail += e.Message
+	if d := text.StripMarkup(detail, maxUpstreamReason); d != "" {
+		return ReasonText(ErrUpstream) + ": " + d
+	}
+	return ReasonText(ErrUpstream)
+}
+
+// cut reports a stream that stopped without a finish, which ended the answer
+// early rather than completing it. content is what the stream carried, so an
+// empty answer stays the empty answer it always was.
+func (r *runner) cut(content int) bool {
+	return !r.ended && r.finish == "" && content > 0
+}
+
+// isDone reports the marker an OpenAI stream closes with. It finishes the
+// answer without naming a reason, so a body that stops after it did finish.
+func isDone(format string, data []byte) bool {
+	return format == translate.FormatOpenAI && string(bytes.TrimSpace(data)) == "[DONE]"
 }
 
 func (r *runner) translate(ctx context.Context) {
@@ -221,6 +259,12 @@ func (r *runner) translate(ctx context.Context) {
 	for {
 		ev, err := r.pull.next(ctx, usageDeadline, r.keepC())
 		if errors.Is(err, errKeepalive) {
+			if !r.wrote {
+				// The client's stream is not open, and this window belongs to
+				// failover: a comment here would open it.
+				r.resetKeep()
+				continue
+			}
 			if !r.keepalive() {
 				return
 			}
@@ -233,6 +277,10 @@ func (r *runner) translate(ctx context.Context) {
 			return
 		}
 		if errors.Is(err, io.EOF) {
+			if r.cut(r.streamed) {
+				r.fail(ErrTruncated, ReasonText(ErrTruncated))
+				return
+			}
 			for _, ch := range reader.Flush() {
 				if !r.chunk(writer, ch) {
 					return
@@ -246,10 +294,14 @@ func (r *runner) translate(ctx context.Context) {
 			return
 		}
 		r.sawEvent()
+		if isDone(r.j.UpstreamFormat, ev.Data) {
+			r.ended = true
+			continue
+		}
 		r.track.Feed(ev.Data)
 		for _, ch := range reader.Read(ev.Name, ev.Data) {
 			if ch.Err != nil {
-				r.fail(ErrUpstream, "The upstream stream ended with an error")
+				r.fail(ErrUpstream, upstreamReason(ch.Err))
 				return
 			}
 			if !r.chunk(writer, ch) {

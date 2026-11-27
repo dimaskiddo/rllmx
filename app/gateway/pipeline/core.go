@@ -94,7 +94,7 @@ func (c *call) try(ctx context.Context, conn repository.Connection) (Output, *ac
 	}
 	c.row.TTFBMs = c.p.d.Now().Sub(c.attemptStart).Milliseconds()
 	if resp.Status >= http.StatusBadRequest {
-		e := executor.ReadError(resp.Status, resp.Body)
+		e := executor.ReadErrorHeaders(resp.Status, resp.Header, resp.Body)
 		_ = resp.Body.Close()
 		fail := &accountFail{status: e.Status, text: e.Message, resetAt: e.ResetAt}
 		c.gate(ctx, conn, key, fail)

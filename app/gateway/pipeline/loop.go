@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
+	"time"
 
 	"rllmx/app/gateway/account"
 	"rllmx/app/llm/catalog"
@@ -208,7 +210,24 @@ func (c *call) upstreamFail(f *accountFail) Output {
 	if class == "" {
 		class = failure.ClassOf(f.status)
 	}
-	return c.fail(failure.ClientStatus(f.status), class, f.text)
+	out := c.fail(failure.ClientStatus(f.status), class, f.text)
+	// A client that is told when to come back stops guessing, and a provider's
+	// own hint is better than a backoff we would invent.
+	if at := f.resetAt; retryable(f.status) && at.After(c.p.d.Now()) {
+		secs := max(int64((at.Sub(c.p.d.Now())+time.Second-1)/time.Second), 1)
+		out.Header.Set("Retry-After", strconv.FormatInt(secs, 10))
+	}
+	return out
+}
+
+// retryable reports the statuses a client may come back from, which are the
+// ones a Retry-After speaks to.
+func retryable(status int) bool {
+	switch status {
+	case http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	}
+	return false
 }
 
 // expired answers a request that found only accounts to be reconnected. It is

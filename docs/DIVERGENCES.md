@@ -69,5 +69,6 @@ How a row is counted:
 | 428 | 10, 18 |
 | 465 | 04 |
 | 466 | 09 |
+| 467 | 07 |
 
 A divergence in a `done` design document is built and tested; in a `todo` one it is a decision taken, not yet code.

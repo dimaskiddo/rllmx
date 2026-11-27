@@ -235,6 +235,57 @@ func (f *fakeClient) sawKeepalive() bool {
 	return false
 }
 
+func (f *fakeClient) rawCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.raw)
+}
+
+func TestAKeepaliveDoesNotPostponeTheStall(t *testing.T) {
+	body, pw := newSlowBody()
+	c := &fakeClient{}
+	j := job(body, "openai", "claude", c)
+	j.Keepalive = 5 * time.Millisecond
+	j.Timers.Stall = 40 * time.Millisecond
+	done := make(chan Result, 1)
+	go func() { done <- Run(context.Background(), j) }()
+	if _, err := pw.Write([]byte("data: {\"id\":\"chatcmpl-abc12345\",\"choices\":[{\"delta\":{\"content\":\"a\"}}]}\n\n")); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case res := <-done:
+		if !errors.Is(res.Err, ErrStall) || res.Status != 504 {
+			t.Fatalf("%+v", res)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("a keepalive postponed the stall for good")
+	}
+	if !c.sawKeepalive() {
+		t.Fatal("the stream sent no comment before it stalled")
+	}
+	_ = pw.Close()
+}
+
+func TestNoKeepaliveBeforeTheFirstFrame(t *testing.T) {
+	body, pw := newSlowBody()
+	c := &fakeClient{}
+	j := job(body, "openai", "claude", c)
+	j.Keepalive = 5 * time.Millisecond
+	done := make(chan Result, 1)
+	go func() { done <- Run(context.Background(), j) }()
+	time.Sleep(30 * time.Millisecond)
+	if c.sawKeepalive() || c.rawCount() != 0 {
+		t.Fatal("a comment opened a stream that had not started")
+	}
+	if _, err := pw.Write([]byte("data: {\"id\":\"chatcmpl-abc12345\",\"choices\":[{\"delta\":{\"content\":\"a\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")); err != nil {
+		t.Fatal(err)
+	}
+	_ = pw.Close()
+	if res := <-done; res.Err != nil || !res.Wrote {
+		t.Fatalf("%+v", res)
+	}
+}
+
 func TestASilentOpenStreamSendsAKeepaliveComment(t *testing.T) {
 	body, pw := newSlowBody()
 	c := &fakeClient{}
@@ -249,6 +300,7 @@ func TestASilentOpenStreamSendsAKeepaliveComment(t *testing.T) {
 	for !c.sawKeepalive() && time.Now().Before(deadline) {
 		time.Sleep(2 * time.Millisecond)
 	}
+	_, _ = pw.Write([]byte("data: {\"id\":\"chatcmpl-abc12345\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"))
 	_ = pw.Close()
 	res := <-done
 	if !c.sawKeepalive() {
@@ -268,6 +320,7 @@ func TestNoKeepaliveCommentWithoutTheSetting(t *testing.T) {
 		t.Fatal(err)
 	}
 	time.Sleep(30 * time.Millisecond)
+	_, _ = pw.Write([]byte("data: {\"id\":\"chatcmpl-abc12345\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"))
 	_ = pw.Close()
 	if res := <-done; res.Err != nil {
 		t.Fatalf("%+v", res)
@@ -328,15 +381,90 @@ func TestAWriteErrorStopsAtTheFirstFailedFrame(t *testing.T) {
 	}
 }
 
-func TestAnUpstreamErrorEventFailsTheStreamInTheClientsShape(t *testing.T) {
+func TestAPassthroughErrorEventIsNotForwarded(t *testing.T) {
 	c := &fakeClient{}
-	body := sseBody("event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"secret upstream text\"}}\n\n")
+	body := sseBody("data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"hi\"}}\n\n" +
+		"event: error\ndata: {\"error\":{\"type\":\"throttlingException\",\"message\":\"throttled\"},\"upstreamOnly\":\"xyz\"}\n\n")
+	res := Run(context.Background(), job(body, "claude", "claude", c))
+	if res.Status != 502 || !errors.Is(res.Err, ErrUpstream) {
+		t.Fatalf("%+v", res)
+	}
+	if len(c.raw) != 1 || !bytes.Contains(c.raw[0], []byte("throttlingException: throttled")) || !bytes.Contains(c.raw[0], []byte("event: error")) {
+		t.Fatalf("the client's frame: %q", c.raw)
+	}
+	if strings.Contains(c.text(), "upstreamOnly") {
+		t.Fatalf("the upstream event was forwarded as it came: %s", c.text())
+	}
+}
+
+func TestACutPassthroughStreamIsNotFinished(t *testing.T) {
+	c := &fakeClient{}
+	res := Run(context.Background(), job(sseBody("data: {\"id\":\"chatcmpl-abc12345\",\"choices\":[{\"delta\":{\"content\":\"a\"}}]}\n\n"), "openai", "openai", c))
+	if !errors.Is(res.Err, ErrTruncated) || res.Status != 502 {
+		t.Fatalf("%+v", res)
+	}
+	if len(c.raw) != 1 || bytes.Contains(c.raw[0], []byte("[DONE]\n\n")) && !bytes.Contains(c.raw[0], []byte("error")) {
+		t.Fatalf("%q", c.raw)
+	}
+}
+
+func TestAnEmptyPassthroughStreamIsNotCut(t *testing.T) {
+	c := &fakeClient{}
+	res := Run(context.Background(), job(sseBody("data: [DONE]\n\n"), "openai", "openai", c))
+	if res.Err != nil || c.dones() != 1 {
+		t.Fatalf("%+v", res)
+	}
+}
+
+func TestAnUpstreamErrorEventCarriesItsOwnWords(t *testing.T) {
+	c := &fakeClient{}
+	body := sseBody("event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}\n\n")
 	res := Run(context.Background(), job(body, "claude", "openai-responses", c))
 	if res.Status != 502 || res.Err == nil {
 		t.Fatalf("%+v", res)
 	}
-	if len(c.raw) != 1 || !bytes.HasPrefix(c.raw[0], []byte("event: response.failed")) || bytes.Contains(c.raw[0], []byte("secret")) {
+	if len(c.raw) != 1 || !bytes.HasPrefix(c.raw[0], []byte("event: response.failed")) ||
+		!bytes.Contains(c.raw[0], []byte("overloaded_error: Overloaded")) {
 		t.Fatalf("%q", c.raw)
+	}
+}
+
+func TestAnUpstreamErrorCannotPutMarkupInTheFrame(t *testing.T) {
+	c := &fakeClient{}
+	body := sseBody("data: {\"error\":{\"message\":\"<b>bad</b><script>alert(1)</script>\"}}\n\n")
+	res := Run(context.Background(), job(body, "openai", "openai", c))
+	if res.Status != 502 {
+		t.Fatalf("%+v", res)
+	}
+	if len(c.raw) == 0 || bytes.Contains(c.raw[0], []byte("<script")) || !bytes.Contains(c.raw[0], []byte("bad")) {
+		t.Fatalf("%q", c.raw)
+	}
+}
+
+func TestAStreamThatStopsWithoutAFinishIsCut(t *testing.T) {
+	c := &fakeClient{}
+	res := Run(context.Background(), job(sseBody("data: {\"id\":\"chatcmpl-abc12345\",\"choices\":[{\"delta\":{\"content\":\"a\"}}]}\n\n"), "openai", "claude", c))
+	if !errors.Is(res.Err, ErrTruncated) || res.Status != 502 {
+		t.Fatalf("%+v", res)
+	}
+	if len(c.raw) != 1 || !bytes.Contains(c.raw[0], []byte("event: error")) {
+		t.Fatalf("a cut answer must be told, not closed as finished: %q", c.raw)
+	}
+}
+
+func TestADoneMarkerEndsAStreamWithNoFinish(t *testing.T) {
+	c := &fakeClient{}
+	res := Run(context.Background(), job(sseBody("data: {\"id\":\"chatcmpl-abc12345\",\"choices\":[{\"delta\":{\"content\":\"a\"}}]}\n\ndata: [DONE]\n\n"), "openai", "claude", c))
+	if res.Err != nil || !res.Wrote {
+		t.Fatalf("%+v", res)
+	}
+}
+
+func TestAnEmptyStreamIsNotCut(t *testing.T) {
+	c := &fakeClient{}
+	res := Run(context.Background(), job(sseBody("data: [DONE]\n\n"), "openai", "claude", c))
+	if res.Err != nil || res.Wrote {
+		t.Fatalf("%+v", res)
 	}
 }
 
@@ -413,6 +541,16 @@ func TestPassthroughKeepsEventNamesAndFailsAnUnfinishedResponsesStream(t *testin
 		"openai-responses", "openai-responses", ok))
 	if len(ok.raw) != 0 || ok.dones() != 1 {
 		t.Fatalf("a finished stream was failed: raw %q", ok.raw)
+	}
+}
+
+func TestAResponsesStreamEndedByItsTerminalEventIsNotCut(t *testing.T) {
+	c := &fakeClient{}
+	body := sseBody("event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"hi\"}\n\n" +
+		"event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":2,\"output_tokens\":1}}}\n\n")
+	res := Run(context.Background(), job(body, "openai-responses", "openai-responses", c))
+	if res.Err != nil || !res.Wrote || len(c.raw) != 0 {
+		t.Fatalf("%+v raw %q", res, c.raw)
 	}
 }
 

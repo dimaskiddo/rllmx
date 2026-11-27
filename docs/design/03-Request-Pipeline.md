@@ -155,4 +155,5 @@ One row per lesson; the decision is what the code does because of it.
 | A hit must not pay for an image fetch or a body translation. | The cache lookup sits between resolution and translation, keyed on the client's own bytes. |
 | `ChatController.Serve` reads the path only to pick the writer (`NewNDJSON` for Ollama, `NewSSE` otherwise). | One controller serves five formats; the fuzz target found `..0`, which the segment check now refuses. |
 | 4.46: a context whose deadline had passed in the pacer queue, a combo settle wait, `noAccount` or `internal` wrote a 499 `client_closed`, so the router's own budget read as a client that left — a probe and the smart router included. | `call.stopped`: `DeadlineExceeded` is a 504 `timeout`; a cancel is 499, which is the one thing a client's request context carries when it closes. |
+| 4.54: a final upstream 429 reached the client with no `Retry-After`, so a caller could only guess how long a disturbance would last. | `upstreamFail` sets `Retry-After` on a retryable answer (429, 502, 503, 504) when the upstream gave a reset, whether in its body or its headers. No hint is invented: an answer with none carries none. |
 

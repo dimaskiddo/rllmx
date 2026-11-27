@@ -218,6 +218,35 @@ func TestTheTransportReadsNoProxy(t *testing.T) {
 	}
 }
 
+func TestTheTransportChecksAnIdleHTTP2Connection(t *testing.T) {
+	tr := NewTransport(Options{})
+	if tr.HTTP2 == nil || tr.HTTP2.SendPingTimeout != pingIdle || tr.HTTP2.PingTimeout != pingTimeout {
+		t.Fatalf("no health ping: %+v", tr.HTTP2)
+	}
+	if !tr.ForceAttemptHTTP2 {
+		t.Fatal("HTTP/2 is not attempted, so the ping never runs")
+	}
+}
+
+func TestTheTransportResumesTLSSessions(t *testing.T) {
+	tr := NewTransport(Options{})
+	if tr.TLSClientConfig.ClientSessionCache == nil {
+		t.Fatal("a re-dial would pay a full handshake")
+	}
+	own := tls.NewLRUClientSessionCache(4)
+	if got := NewTransport(Options{TLS: &tls.Config{ClientSessionCache: own}}).TLSClientConfig.ClientSessionCache; got != own {
+		t.Fatal("the caller's own cache was replaced")
+	}
+}
+
+func TestTheDialerDeclaresItsKeepalive(t *testing.T) {
+	g := NewDialer(time.Second, nil)
+	cfg := g.dialer.KeepAliveConfig
+	if !cfg.Enable || cfg.Idle != 30*time.Second || cfg.Interval != 10*time.Second || cfg.Count != 3 {
+		t.Fatalf("%+v", cfg)
+	}
+}
+
 func TestTheGuardDescriptionNamesNoTarget(t *testing.T) {
 	allow, _ := ParseAllow("idp.internal.example")
 	g := NewDialer(time.Second, allow)

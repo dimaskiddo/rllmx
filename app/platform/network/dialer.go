@@ -18,9 +18,16 @@ const fallbackDelay = 250 * time.Millisecond
 // NewDialer is the SSRF guard. It resolves a name itself, keeps only permitted
 // addresses and connects to the address it checked, so the checked address is
 // the connected address: there is no window between the check and the dial in
-// which a second DNS answer could point somewhere else.
+// which a second DNS answer could point somewhere else. All three parts of the
+// keepalive are stated: with only an idle period, the defaults that follow
+// declare a vanished peer dead after about two minutes.
 func NewDialer(timeout time.Duration, allow *Allow) *Guard {
-	return &Guard{dialer: &net.Dialer{Timeout: timeout, KeepAlive: 30 * time.Second}, allow: allow}
+	return &Guard{
+		dialer: &net.Dialer{Timeout: timeout, KeepAliveConfig: net.KeepAliveConfig{
+			Enable: true, Idle: 30 * time.Second, Interval: 10 * time.Second, Count: 3,
+		}},
+		allow: allow,
+	}
 }
 
 // Guard is a dialer whose every connection passed the address check. It carries

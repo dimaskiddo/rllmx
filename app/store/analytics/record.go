@@ -65,7 +65,8 @@ var errorClasses = map[string]bool{
 	"none": true, "auth": true, "access_denied": true, "key_quota": true, "rate_limit": true, "quota": true,
 	"invalid_request": true, "not_found": true, "no_account": true, "upstream_5xx": true, "network": true,
 	"timeout": true, "stream_stall": true, "client_closed": true, "capacity": true, "expired": true,
-	"unknown": true,
+	"truncated": true,
+	"unknown":   true,
 }
 
 func clean(s string, limit int) string {

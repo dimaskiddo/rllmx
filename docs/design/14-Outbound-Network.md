@@ -131,5 +131,10 @@ A provider meters per account, so a burst of retries or parallel callers can loo
 | The image prefetch checkbox contradicted D326 | Closed as designed: a client's image URL is read from public addresses only, on every hop, whatever the operator's list says |
 | The reference paces nothing outbound; a burst only becomes a 429 and then a lock | The bucket is ours, and it is per connection because the provider meters the account |
 | A check that can answer "not supported" cannot be the only gate on a save | The answer carries `unsupported`, and the dashboard lets that one through; a cookie, AWS-signed or unprobed provider would otherwise never be addable |
+| 4.55: a pooled HTTP/2 connection can be dead with nothing being written to it, so the failure surfaced as a request that hung until the header timeout | The shared transport carries `HTTP2.SendPingTimeout` (30 s) and `PingTimeout` (15 s), which close a connection that stopped answering instead of waiting for a request to find out |
+| 4.55: the transport kept no TLS session, so a dropped or expired connection paid a full handshake on its next call | Each `NewTransport` owns an LRU session cache of 64, keyed by server name by the standard library; a caller's own cache (the local probe) is left alone |
+| 4.55: a bare 30 s keepalive leaves Go's defaults, which declare a vanished peer dead after about two minutes | The guard's dialer states idle, interval and count: 30 s, 10 s, 3 |
+| HTTP/3 was considered as dns-proxy runs it (QUIC first, HTTP/2 fallback) | Deferred: it needs `quic-go` as a direct dependency, a UDP path through the SSRF guard, and a failed QUIC attempt on every provider that does not serve it. ROADMAP carries the row |
+| The reference caps its keep-alive at 4 s | Still not copied, and now less needed: a dead socket is found by the ping, and a re-dial resumes the TLS session |
 
 

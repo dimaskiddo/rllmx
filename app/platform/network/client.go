@@ -13,6 +13,16 @@ const (
 	defaultBodyCap        = 1 << 20
 )
 
+// A pooled connection can be dead with nothing to write to notice it, so an
+// idle one is pinged instead of being found out by a request that hangs.
+const (
+	pingIdle    = 30 * time.Second
+	pingTimeout = 15 * time.Second
+	// sessionCache is how many resumed handshakes one transport keeps. A dropped
+	// connection then reconnects without paying a full handshake.
+	sessionCache = 64
+)
+
 // Options configure one guarded client. Zero values take the defaults above,
 // except MaxRedirects where zero means "the default of 5" and a negative value
 // means "follow none".
@@ -75,6 +85,11 @@ func NewTransport(o Options) *nethttp.Transport {
 	if len(o.Curves) > 0 {
 		tlsConfig.CurvePreferences = o.Curves
 	}
+	if tlsConfig.ClientSessionCache == nil {
+		// Keyed by server name, so one provider's ticket never answers another's
+		// handshake, and a caller's own cache (the local probe) is left alone.
+		tlsConfig.ClientSessionCache = tls.NewLRUClientSessionCache(sessionCache)
+	}
 	guard := NewDialer(o.connectTimeout(), o.Allow)
 	return &nethttp.Transport{
 		Proxy:                 nil,
@@ -87,9 +102,13 @@ func NewTransport(o Options) *nethttp.Transport {
 		MaxIdleConns:          100,
 		MaxIdleConnsPerHost:   10,
 		// Long on purpose: a dropped idle socket costs one immediate replay
-		// (executor.Default), and Go keeps no TLS session here, so a short pool
-		// would pay a full handshake after every pause.
+		// (executor.Default) and the re-dial resumes the TLS session, so the pool
+		// is not shortened to avoid a handshake.
 		IdleConnTimeout: 90 * time.Second,
+		HTTP2: &nethttp.HTTP2Config{
+			SendPingTimeout: pingIdle,
+			PingTimeout:     pingTimeout,
+		},
 	}
 }
 

@@ -664,6 +664,7 @@
   "usage.class.rate_limit": "Dibatasi Penyedia",
   "usage.class.stream_stall": "Stream Terhenti",
   "usage.class.timeout": "Waktu Habis",
+  "usage.class.truncated": "Jawaban Terpotong",
   "usage.class.unknown": "Galat Tidak Dikenal",
   "usage.class.upstream_5xx": "Galat Penyedia",
   "usage.cost": "Perkiraan biaya",

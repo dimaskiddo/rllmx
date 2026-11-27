@@ -664,6 +664,7 @@
   "usage.class.rate_limit": "Upstream Rate Limited",
   "usage.class.stream_stall": "Stream Stalled",
   "usage.class.timeout": "Timed Out",
+  "usage.class.truncated": "Truncated Answer",
   "usage.class.unknown": "Unknown Error",
   "usage.class.upstream_5xx": "Upstream Error",
   "usage.cost": "Est. cost",
