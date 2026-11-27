@@ -44,6 +44,9 @@ type Options struct {
 	// list; one entry offers only that group, which changes the ClientHello
 	// enough for a network that resets the default one.
 	Curves []tls.CurveID
+	// HTTP3 tries QUIC first and falls back to HTTP/2. A one-shot check leaves
+	// it off through DisableKeepAlives.
+	HTTP3 bool
 }
 
 func (o Options) connectTimeout() time.Duration {
@@ -72,6 +75,12 @@ func (o Options) BodyLimit() int64 {
 // NewTransport builds the one transport every outbound call shares. It reads no
 // proxy variable, verifies TLS and routes every dial through the guard.
 func NewTransport(o Options) *nethttp.Transport {
+	return newTransport(o, NewDialer(o.connectTimeout(), o.Allow))
+}
+
+// newTLSConfig builds the TLS settings a transport and its QUIC side share,
+// except that the QUIC side gives itself a separate session cache.
+func newTLSConfig(o Options) *tls.Config {
 	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
 	if o.TLS != nil {
 		tlsConfig = o.TLS.Clone()
@@ -90,11 +99,14 @@ func NewTransport(o Options) *nethttp.Transport {
 		// handshake, and a caller's own cache (the local probe) is left alone.
 		tlsConfig.ClientSessionCache = tls.NewLRUClientSessionCache(sessionCache)
 	}
-	guard := NewDialer(o.connectTimeout(), o.Allow)
+	return tlsConfig
+}
+
+func newTransport(o Options, guard *Guard) *nethttp.Transport {
 	return &nethttp.Transport{
 		Proxy:                 nil,
 		DialContext:           guard.DialContext,
-		TLSClientConfig:       tlsConfig,
+		TLSClientConfig:       newTLSConfig(o),
 		TLSHandshakeTimeout:   o.connectTimeout(),
 		ResponseHeaderTimeout: o.connectTimeout(),
 		ForceAttemptHTTP2:     true,
@@ -115,9 +127,19 @@ func NewTransport(o Options) *nethttp.Transport {
 // NewClient builds a guarded client. A response body is left for the caller to
 // cap with Limit, because only the caller knows whether the answer is small.
 func NewClient(o Options) *nethttp.Client {
+	guard := NewDialer(o.connectTimeout(), o.Allow)
+	h2 := newTransport(o, guard)
+	var transport nethttp.RoundTripper = h2
+	if o.HTTP3 && !o.DisableKeepAlives {
+		transport = &hybridTransport{
+			h2:    h2,
+			h3:    newHTTP3Transport(o, guard),
+			cache: &http3Cache{dead: map[string]time.Time{}},
+		}
+	}
 	max := o.redirects()
 	return &nethttp.Client{
-		Transport: NewTransport(o),
+		Transport: transport,
 		CheckRedirect: func(req *nethttp.Request, via []*nethttp.Request) error {
 			// via holds the requests already made, so a limit of 3 refuses the
 			// fourth redirect.

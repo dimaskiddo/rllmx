@@ -42,12 +42,6 @@ func TestTheTLScurveIsX25519UnlessTheStandardListIsAskedFor(t *testing.T) {
 	}
 }
 
-func compressionValues(mode any) tests.Config {
-	c := upstreamValues("x25519")
-	c.Values["upstream.compression"] = mode
-	return c
-}
-
 func TestTheClaudeCLIVersionPin(t *testing.T) {
 	values := func(v string) tests.Config {
 		return tests.Config{Values: map[string]any{
@@ -84,5 +78,23 @@ func TestTheKiroCreateResponseModeIsAutoUnlessSaidOtherwise(t *testing.T) {
 		if u.KiroCreateResponse != KiroAuto || len(u.Warnings) != 1 || !strings.Contains(u.Warnings[0], "UPSTREAM_KIRO_CREATE_RESPONSE") || strings.Contains(u.Warnings[0], bad) {
 			t.Errorf("%q: %v %v, want the default and a warning naming the variable only", bad, u.KiroCreateResponse, u.Warnings)
 		}
+	}
+}
+
+func TestHTTP3DefaultsOnAndCanBeForcedOff(t *testing.T) {
+	u, err := LoadUpstream(upstreamValues("x25519"))
+	if err != nil || !u.HTTP3 {
+		t.Fatalf("default: http3 %v, err %v", u.HTTP3, err)
+	}
+	c := upstreamValues("x25519")
+	c.Values["upstream.http3"] = false
+	u, err = LoadUpstream(c)
+	if err != nil || u.HTTP3 {
+		t.Fatalf("off: http3 %v, err %v", u.HTTP3, err)
+	}
+	c.Values["upstream.http3"] = "maybe"
+	u, err = LoadUpstream(c)
+	if err != nil || !u.HTTP3 || len(u.Warnings) != 1 || !strings.Contains(u.Warnings[0], "UPSTREAM_HTTP3") {
+		t.Fatalf("typo: http3 %v, warnings %v, err %v", u.HTTP3, u.Warnings, err)
 	}
 }

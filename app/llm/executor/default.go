@@ -50,10 +50,15 @@ func (d *Default) Execute(ctx context.Context, req Request) (Response, error) {
 	if req.Timeout > 0 && d.Client != nil {
 		strict := *d.Client
 		strict.Timeout = req.Timeout
-		if t, ok := strict.Transport.(*http.Transport); ok {
+		switch t := strict.Transport.(type) {
+		case *http.Transport:
 			copied := t.Clone()
 			copied.ResponseHeaderTimeout = req.Timeout
 			strict.Transport = copied
+		case interface {
+			WithResponseHeaderTimeout(time.Duration) http.RoundTripper
+		}:
+			strict.Transport = t.WithResponseHeaderTimeout(req.Timeout)
 		}
 		d = &Default{Client: &strict, Retry: d.Retry, Sleep: d.Sleep}
 	}

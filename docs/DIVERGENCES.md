@@ -21,7 +21,7 @@ Each row carries a stable identifier, what we do differently and why it is bette
 | 11 | Skills, Session & Auto Plan | 32 | [11-…](design/11-Skills-Session-and-Auto-Plan.md) |
 | 12 | Health, Circuit Breaker & Probe | 10 | [12-…](design/12-Health-Circuit-Breaker-and-Probe.md) |
 | 13 | Media Endpoints | 33 | [13-…](design/13-Media-Endpoints.md) |
-| 14 | Outbound Network | 12 | [14-…](design/14-Outbound-Network.md) |
+| 14 | Outbound Network | 13 | [14-…](design/14-Outbound-Network.md) |
 | 15 | Storage | 12 | [15-…](design/15-Storage.md) |
 | 16 | Usage, Pricing & Quota | 42 | [16-…](design/16-Usage-Pricing-and-Quota.md) |
 | 17 | Configuration | 6 | [17-…](design/17-Configuration.md) |
@@ -71,5 +71,6 @@ How a row is counted:
 | 466 | 09 |
 | 467 | 07 |
 | 468, 469 | 04 |
+| 471 | 14 |
 
 A divergence in a `done` design document is built and tested; in a `todo` one it is a decision taken, not yet code.

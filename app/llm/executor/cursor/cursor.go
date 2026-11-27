@@ -14,6 +14,7 @@ import (
 
 	"rllmx/app/llm/executor"
 	"rllmx/app/platform/cache"
+	"rllmx/app/platform/network"
 	"rllmx/app/store/dialect"
 )
 
@@ -230,6 +231,8 @@ func (b turnBody) Close() error { return b.close() }
 // do builds one call to the service. The credential, the identity headers and
 // the Connect framing are the same on both addresses, so they are set here once.
 func (c *Cursor) do(ctx context.Context, req executor.Request, machine string, stream bool, body io.Reader) (*http.Response, error) {
+	// The agent service speaks HTTP/2 only, so a QUIC attempt is a wasted dial.
+	ctx = network.WithoutHTTP3(ctx)
 	target, contentType := req.URL, "application/connect+proto"
 	if !stream {
 		target = strings.TrimSuffix(target, "/Run") + "/GetUsableModels"

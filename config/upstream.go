@@ -18,6 +18,9 @@ func init() {
 		// default for the standard list. One group changes the ClientHello enough
 		// for a network that resets the standard offer.
 		"tls_curve": config.Env("UPSTREAM_TLS_CURVE", "x25519"),
+		// A QUIC-first upstream call: HTTP/3 is tried first and HTTP/2 answers
+		// when the provider does not serve it.
+		"http3": config.Env("UPSTREAM_HTTP3", true),
 		// Outbound pacing per connection: how many calls a minute one connection
 		// may make, how many may leave at once, and how long a call may queue
 		// before it is refused instead. Zero turns pacing off.

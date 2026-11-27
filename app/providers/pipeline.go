@@ -73,7 +73,7 @@ func buildPipeline(ctx context.Context, app foundation.Application) (*pipeline.P
 
 	client := network.NewClient(network.Options{
 		ConnectTimeout: h.Upstream.ConnectTimeout, MaxRedirects: -1, Allow: h.Upstream.Allow, BodyCap: -1,
-		Curves: h.Upstream.Curves,
+		Curves: h.Upstream.Curves, HTTP3: h.Upstream.HTTP3,
 	})
 	// The free lane's gate reads the TLS offer itself, so that one lane goes
 	// through a client that lists the suites the tool's own client lists.

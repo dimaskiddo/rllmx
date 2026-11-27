@@ -31,6 +31,8 @@ type Upstream struct {
 	// Curves is the key-exchange set an outbound call offers; empty is the
 	// standard list.
 	Curves []tls.CurveID
+	// HTTP3 tries QUIC first and falls back to HTTP/2.
+	HTTP3 bool
 	// ClaudeCLIVersion pins the claude-cli/x.y.z fingerprint. Empty reads the
 	// latest published version from npm and keeps the built-in floor.
 	ClaudeCLIVersion string
@@ -66,6 +68,7 @@ func LoadUpstream(cfg config.Config) (*Upstream, error) {
 	}
 	u.Allow = allow
 	u.Curves = curveSet(cfg.GetString("upstream.tls_curve"), &u.Notices)
+	u.HTTP3 = switchOf(cfg, "upstream.http3", "UPSTREAM_HTTP3", true, &u.Notices)
 	u.ClaudeCLIVersion = cliVersion(cfg.GetString("upstream.claude_cli_version"), &u.Notices)
 	rate := ratelimit.Config{
 		RPM:   number(cfg, "upstream.rate_limit_rpm", "UPSTREAM_RATE_LIMIT_RPM", 0, maxRateRPM, 60, &u.Notices),
