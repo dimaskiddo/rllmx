@@ -105,11 +105,13 @@ func (c *call) try(ctx context.Context, conn repository.Connection) (Output, *ac
 
 // hold is the selector's view of the quota gate: an account it knows is spent
 // for the model is skipped until the gate's time. Only Antigravity has a gate.
-func (c *call) hold() func(string) (time.Time, bool) {
-	if c.p.d.Quota == nil || c.dest.provider != antigravityID {
+// The provider and model are named by the caller, because the pick can come
+// before the destination is set.
+func (c *call) hold(provider, model string) func(string) (time.Time, bool) {
+	if c.p.d.Quota == nil || provider != antigravityID {
 		return nil
 	}
-	return func(id string) (time.Time, bool) { return c.p.d.Quota.Skip(id, c.dest.model) }
+	return func(id string) (time.Time, bool) { return c.p.d.Quota.Skip(id, model) }
 }
 
 // gate asks the quota gate about an Antigravity refusal that means "out of

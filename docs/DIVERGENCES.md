@@ -11,15 +11,15 @@ Each row carries a stable identifier, what we do differently and why it is bette
 | 1 | HTTP Server & Routing | 14 | [01-…](design/01-HTTP-Server-and-Routing.md) |
 | 2 | Authentication & Access | 37 | [02-…](design/02-Authentication-and-Access.md) |
 | 3 | Request Pipeline | 7 | [03-…](design/03-Request-Pipeline.md) |
-| 4 | Model Resolution & Combos | 30 | [04-…](design/04-Model-Resolution-and-Combos.md) |
+| 4 | Model Resolution & Combos | 32 | [04-…](design/04-Model-Resolution-and-Combos.md) |
 | 5 | Account Selection, Error Rules & Backoff | 5 | [05-…](design/05-Account-Selection-and-Backoff.md) |
 | 6 | OAuth & Token Refresh | 33 | [06-…](design/06-OAuth-and-Token-Refresh.md) |
-| 7 | Format Translation | 29 | [07-…](design/07-Format-Translation.md) |
+| 7 | Format Translation | 30 | [07-…](design/07-Format-Translation.md) |
 | 8 | Executors | 60 | [08-…](design/08-Executors.md) |
 | 9 | Streaming | 11 | [09-…](design/09-Streaming.md) |
 | 10 | Token Savers | 9 | [10-…](design/10-Token-Savers.md) |
 | 11 | Skills, Session & Auto Plan | 32 | [11-…](design/11-Skills-Session-and-Auto-Plan.md) |
-| 12 | Health, Circuit Breaker & Probe | 10 | [12-…](design/12-Health-Circuit-Breaker-and-Probe.md) |
+| 12 | Health, Circuit Breaker & Probe | 11 | [12-…](design/12-Health-Circuit-Breaker-and-Probe.md) |
 | 13 | Media Endpoints | 33 | [13-…](design/13-Media-Endpoints.md) |
 | 14 | Outbound Network | 13 | [14-…](design/14-Outbound-Network.md) |
 | 15 | Storage | 12 | [15-…](design/15-Storage.md) |
@@ -31,7 +31,7 @@ Each row carries a stable identifier, what we do differently and why it is bette
 | 21 | API Key Limits | 4 | [21-…](design/21-API-Key-Limits.md) |
 | 22 | Deferred & Out of Scope | 1 | [22-…](design/22-Deferred-and-Out-of-Scope.md) |
 | 23 | CLI | 2 | [23-…](design/23-CLI.md) |
-| **Total** | | **417** | |
+| **Total** | | **423** | |
 
 ## Kinds
 
@@ -39,21 +39,21 @@ Each row is counted once, by the marker in its Why column.
 
 | Kind | Meaning | Rows |
 |---|---|---|
-| Improvement | Differs from the reference for a stated reason | 348 |
-| New Feature | Something the reference does not have | 4 |
-| Trade-Off | A deliberate cost | 17 |
-| Scope Cut | A reference feature not adopted | 24 |
-| Planned | Resolved by a named later change | 3 |
-| Temporary | Stopgap until a named later change | 5 |
-| Retired | A framework choice or a rule that no longer applies, or a behavior now the reference's own; the identifier stays citable | 16 |
+| Improvement | Differs from the reference for a stated reason | 381 |
+| New Feature | Something the reference does not have | 1 |
+| Trade-Off | A deliberate cost | 18 |
+| Scope Cut | A reference feature not adopted | 22 |
+| Planned | Resolved by a named later change | 0 |
+| Temporary | Stopgap until a named later change | 1 |
+| Retired | A framework choice or a rule that no longer applies, or a behavior now the reference's own; the identifier stays citable | 0 |
 | Built As Planned | Was only a schedule change and is now done | 0 |
-| **Total** | | **417** |
+| **Total** | | **423** |
 
 Each row names its own identifier; the design doc's `Divergences` table is the list.
 
 How a row is counted:
 - One row is one entry, even when its # cell lists several identifiers; that is how a rule and its mechanical companion stay together.
-- The marker in the row decides its kind. A row that is both a scope cut and marked planned counts as a scope cut.
+- The marker in the row decides its kind: the last parenthetical label in the Why column, and Improvement when there is none. `go test ./tests -run TestTheDivergenceIndexMatchesTheDocs` checks the row counts and the total against the docs, so the table cannot drift again.
 - 16 identifiers are used by two documents for different rows; the identifiers stay as they are because other docs cite them. They are listed below so no count silently merges two rows.
 
 ## Identifier collisions
@@ -67,10 +67,5 @@ How a row is counted:
 | 425 | 06, 18 |
 | 426, 427 | 02, 18 |
 | 428 | 10, 18 |
-| 465 | 04 |
-| 466 | 09 |
-| 467 | 07 |
-| 468, 469 | 04 |
-| 471 | 14 |
 
 A divergence in a `done` design document is built and tested; in a `todo` one it is a decision taken, not yet code.

@@ -629,3 +629,22 @@ func TestAComboWithNoVisionMemberTakesTheAdapter(t *testing.T) {
 		t.Fatalf("%+v", row)
 	}
 }
+
+// The panel's own hard timeout is not the account's fault: the members it
+// cancelled must not carry a lock, or a slow panel would spend an account.
+func TestAPanelTimeoutLocksNoAccount(t *testing.T) {
+	r := fusionRig(t, `{"comboStrategies":{"chain":{"fallbackStrategy":"fusion","fusionTuning":{"panelHardTimeoutMs":50}}}}`,
+		[]string{"forced/fm", "wire/short"},
+		tests.Reply{ContentType: "application/json", Hang: true})
+	a := r.conn("forced", "k1")
+	b := r.conn("wire", "k3")
+	out, _ := r.run("/v1/chat/completions", fusionAsk)
+	if out.Status < 400 {
+		t.Fatalf("a hung panel answered %d %s", out.Status, out.Body)
+	}
+	for _, id := range []string{a.ID, b.ID} {
+		if r.lockedFor(id, "fm") || r.lockedFor(id, "short") {
+			t.Fatal("the panel's timeout locked the account it cancelled")
+		}
+	}
+}

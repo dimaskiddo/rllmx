@@ -43,9 +43,10 @@ type Reporter interface {
 }
 
 // Declarer records a capability a request proved about a model, so the next one
-// orders it as one. Only a custom model has a row to record into.
+// orders it as one. Only a custom model has a row to record into; the answer
+// says whether there was one.
 type Declarer interface {
-	Remember(ctx context.Context, provider, model string, d upstream.Declared) error
+	Remember(ctx context.Context, provider, model string, d upstream.Declared) (bool, error)
 }
 
 // Projects finds an account's Cloud Code project with its access token.

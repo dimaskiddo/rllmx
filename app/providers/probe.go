@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/goravel/framework/contracts/foundation"
+	"github.com/goravel/framework/contracts/log"
 
 	"rllmx/app/gateway/catalog"
 	"rllmx/app/gateway/probe"
@@ -126,6 +127,7 @@ type probeRunner struct {
 	// check judges a connection's credential when it has no model to ping; nil
 	// leaves that fallback out.
 	check  func(ctx context.Context, st *repository.Store, conn repository.Connection) error
+	log    log.Log
 	ctx    context.Context
 	cancel context.CancelFunc
 }
@@ -133,7 +135,7 @@ type probeRunner struct {
 func newProbeRunner(app foundation.Application, probes *ProbeSource, h *HTTP) *probeRunner {
 	ctx, cancel := context.WithCancel(app.Context())
 	ctl := &controllers.ProvidersController{Registry: h.Registry, Checker: h.Checker, Refresher: h.Refresher}
-	return &probeRunner{app: app, probes: probes, check: ctl.CheckStored, ctx: ctx, cancel: cancel}
+	return &probeRunner{app: app, probes: probes, check: ctl.CheckStored, log: app.MakeLog(), ctx: ctx, cancel: cancel}
 }
 
 func (r *probeRunner) Signature() string { return "rllmx.probe" }
@@ -168,7 +170,7 @@ func (r *probeRunner) one(id string) {
 	if r.check != nil {
 		check = func(ctx context.Context) error { return r.check(ctx, store, conn) }
 	}
-	probeThenCheck(r.ctx, built.Prober, conn, check)
+	probeThenCheck(r.ctx, built.Prober, conn, check, r.log)
 }
 
 // connProber is the one method the runner needs from the prober.
@@ -178,11 +180,15 @@ type connProber interface {
 
 // probeThenCheck pings a connection and checks its key when there is no model
 // to ping, so a connection with nothing to call still reports on its status.
-func probeThenCheck(ctx context.Context, p connProber, conn repository.Connection, check func(context.Context) error) {
+func probeThenCheck(ctx context.Context, p connProber, conn repository.Connection, check func(context.Context) error, lg log.Log) {
 	if len(p.Connection(ctx, conn, false)) > 0 || check == nil {
 		return
 	}
-	_ = check(ctx)
+	// A check that could not run leaves the connection's status as it was; say
+	// so, or it stays unchecked with no trace of why.
+	if err := check(ctx); err != nil && ctx.Err() == nil && lg != nil {
+		lg.Warningf("probe: checking a connection's key failed: %v", err)
+	}
 }
 
 func (r *probeRunner) Shutdown() error {

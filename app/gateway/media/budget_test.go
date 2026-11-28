@@ -139,6 +139,24 @@ func TestABudgetCheckTheClientAbandonedIsNotAServerFault(t *testing.T) {
 	}
 }
 
+// A budget read that outlives the call's own deadline is a timeout, not the
+// client leaving: the same rule the chat route applies.
+func TestABudgetCheckThatOutlivesTheDeadlineIsATimeout(t *testing.T) {
+	p, rows := budgetPipeline(t, "openai", budgetImageEntry, stalled{})
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	out := p.Images(ctx, gatewaymedia.Input{
+		Path: "/v1/images/generations", Body: []byte(`{"model":"gpt-image-1","prompt":"p"}`),
+		Caller: identity.Caller{ID: "k1"},
+	})
+	if out.Status != 504 {
+		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+	if got := rows.All(); len(got) != 1 || got[0].ErrorClass != "timeout" || got[0].Status != 504 {
+		t.Fatalf("rows %+v", got)
+	}
+}
+
 func TestASearchRowCarriesTheQueryCost(t *testing.T) {
 	f := &fakeServer{body: `{"organic":[{"title":"A","link":"https://example.com/a"}]}`}
 	entry := `{"id":"serper","category":"apikey","display":{"name":"S"},

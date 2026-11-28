@@ -3,7 +3,7 @@
 import Alpine from "/static/lib/alpine.csp.js";
 import "./ui/directives.js";
 import { api } from "./ui/api.js";
-import { session } from "./ui/session.js";
+import { roleMethods, session } from "./ui/session.js";
 import { bindConfirm } from "./ui/dialog.js";
 import { load, locale, setLocale, t } from "./ui/i18n.js";
 import { startRouter } from "./router.js";
@@ -26,9 +26,6 @@ Alpine.data("shell", () => Object.assign({
     this.userName = who.user;
     this.needsPassword = who.needsPassword;
     this.$watch("$store.route.nav", () => this.closeNav());
-  },
-  isAdmin() {
-    return this.role !== "user";
   },
   isCurrent(href) {
     return this.$store.route.nav === href;
@@ -127,7 +124,7 @@ Alpine.data("shell", () => Object.assign({
       this.pw.busy = false;
     }
   },
-}, formatMethods));
+}, formatMethods, roleMethods));
 
 Alpine.store("toasts", toastStore());
 Alpine.store("route", { path: "", params: {}, nav: "/dashboard/endpoint" });

@@ -41,8 +41,8 @@ The analytics writer is wrapped by `metrics.Sink`, so every finished request —
 - Histograms: request time and time to first token, per provider and model, in ten buckets.
 - Read at scrape time: the in-flight table, one `_info` series per key (name and owning user, never the key) and per account (the page's own account name), the build, and the process and Go gauges.
 - Names stay out of the counters, so a rename does not split a series.
-- At most 20000 tuples; past it a tuple keeps its provider and model and files the rest under `other`, counted in a fold family.
-- `METRICS_TOKEN` or `METRICS_USERNAME` plus `METRICS_PASSWORD` gates the route; with neither it is not registered (404). A refusal counts toward the sign-in limiter.
+- At most 20000 tuples; past it a tuple keeps its provider and model and files the rest under `other`, counted in a fold family. The names themselves are capped at 2000 provider and model pairs (a pair past it is `other`), and the record is bounded as the stored row is before it is counted.
+- `METRICS_TOKEN` or `METRICS_USERNAME` plus `METRICS_PASSWORD` gates the route; with neither it is not registered (404). A refusal counts toward a limiter key of its own (`metrics:` plus the address), so a scrape neither spends nor clears the sign-in budget.
 - `docs/METRICS.md` is the operator guide — how to connect Prometheus and Grafana, every family, the query cookbook — and a test fails when the guide and the registry name different families.
 
 ### Pricing (`app/llm/upstream/pricing.go`, data `app/llm/upstream/data/pricing/prices.json`; built)
@@ -187,3 +187,4 @@ One row per lesson; the decision is what the code does because of it.
 | 4.68: a combo's failed row named the combo rather than the model that was tried, and a one-member fusion named it even on success. | The row names each member as the walk reaches it and the member whose failure answers; a pre-walk refusal keeps the combo name, because no member was chosen. |
 | 4.69: a budget read that failed logged `unknown`, and one the client abandoned logged a 503. | A genuine read failure stores `budget_unavailable` and the page reads "Budget Unavailable"; a request whose context ended is the 499 or 504 it was. |
 | 4.45: the class alone read `Failed 429 key_quota`, and the account cell was a dash because the budget is checked before any account is chosen. | `statusWord` spells the two 429s out with their code, and a refusal peeks at the selector: the same pick with nothing recorded, so the row names the account the request would have reached while no rotation moves. |
+| 4.74: the metrics sink counted a record before it was bounded and kept a client-chosen provider and model as raw labels, so invented names grew the series, the histograms and the scrape without end; a scrape used the sign-in limiter's key, so a good one cleared a password guesser's failures and bad ones locked the admin's sign-in. | The sink bounds the record first; provider and model pairs are capped at 2000 (the rest `other`); a scrape's limiter key is `metrics:` plus the address. |

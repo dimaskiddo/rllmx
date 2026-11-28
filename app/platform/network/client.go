@@ -134,7 +134,9 @@ func NewClient(o Options) *nethttp.Client {
 		transport = &hybridTransport{
 			h2:    h2,
 			h3:    newHTTP3Transport(o, guard),
-			cache: &http3Cache{dead: map[string]time.Time{}},
+			cache: newHTTP3Cache(),
+			// The same bound the HTTP/2 transport puts on response headers.
+			headerBound: o.connectTimeout(),
 		}
 	}
 	max := o.redirects()

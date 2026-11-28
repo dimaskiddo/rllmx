@@ -22,6 +22,17 @@ const (
 // small query.
 func (c *UsageController) Stream(ctx contractshttp.Context) contractshttp.Response {
 	rctx := ctx.Request().Origin().Context()
+	// A standard user's feed carries only their own keys, the same narrowing
+	// the stats and the log take. A key list that cannot be read is not "every
+	// key": the feed refuses before it opens.
+	keys, refused, ok := c.scope(ctx)
+	if !ok {
+		return refused
+	}
+	var accounts map[string]string
+	if keys == nil {
+		accounts = accountNames(rctx, c.store())
+	}
 	w := stream.WriterOf(ctx)
 	sse, err := stream.NewSSE(w, stream.Options{WriteTimeout: stream.DefaultWriteTimeout})
 	if err != nil {
@@ -36,16 +47,8 @@ func (c *UsageController) Stream(ctx contractshttp.Context) contractshttp.Respon
 		interval = usageBeat
 	}
 
-	// A standard user's feed carries only their own keys, the same narrowing
-	// the stats and the log take.
-	keys, _, _ := c.scope(ctx)
-	accounts := accountNames(rctx, c.store())
 	send := func(recent []usageRecent) error {
-		pending, active := c.live(accounts)
-		raw, err := json.Marshal(contractshttp.Json{
-			"pending": pending, "activeRequests": active, "recentRequests": recent,
-			"errorProvider": c.Inflight.ErrorProvider(),
-		})
+		raw, err := json.Marshal(c.feedFrame(keys, accounts, recent))
 		if err != nil {
 			return err
 		}
@@ -91,6 +94,23 @@ func (c *UsageController) Stream(ctx contractshttp.Context) contractshttp.Respon
 				return nil
 			}
 		}
+	}
+}
+
+// feedFrame is one frame of the feed. The live table names upstream accounts,
+// which are the operator's, so a scoped caller's frame carries empty rows where
+// the stats answer omits the table.
+func (c *UsageController) feedFrame(keys []string, accounts map[string]string, recent []usageRecent) contractshttp.Json {
+	if keys != nil {
+		return contractshttp.Json{
+			"pending": contractshttp.Json{}, "activeRequests": []usageActive{}, "recentRequests": recent,
+			"errorProvider": "",
+		}
+	}
+	pending, active := c.live(accounts)
+	return contractshttp.Json{
+		"pending": pending, "activeRequests": active, "recentRequests": recent,
+		"errorProvider": c.Inflight.ErrorProvider(),
 	}
 }
 

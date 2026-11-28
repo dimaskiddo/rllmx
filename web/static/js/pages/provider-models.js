@@ -7,6 +7,16 @@ import { t } from "/static/js/ui/i18n.js";
 import { toast } from "/static/js/ui/toast.js";
 import { modelRow, sortModels } from "./provider-status.js";
 
+// aliasTargets turns the alias table (alias to target) into the one the page
+// reads, a model's target to its alias.
+function aliasTargets(reply) {
+  const byTarget = {};
+  for (const alias of Object.keys(reply.aliases || {})) {
+    byTarget[reply.aliases[alias]] = alias;
+  }
+  return byTarget;
+}
+
 export const modelMethods = {
   owner() {
     return this.entry ? (this.entry.alias || this.entry.id) : this.id;
@@ -37,17 +47,12 @@ export const modelMethods = {
     this.models.error = "";
     this.models.loading = true;
     try {
-      const custom = await api("/api/models/custom");
-      const mine = (custom.models || []).filter((m) => m.providerAlias === this.owner());
       if (!this.entry) {
-        const aliases = await api("/api/models/alias");
+        const [custom, aliases] = await Promise.all([api("/api/models/custom"), api("/api/models/alias")]);
+        const mine = (custom.models || []).filter((m) => m.providerAlias === this.owner());
         this.models.items = mine.map((m) => ({ id: m.id, name: m.name || "", source: "custom", type: m.type, full: m.providerAlias + "/" + m.id, caps: m.caps || null }));
         this.models.disabled = [];
-        const byTarget = {};
-        for (const alias of Object.keys(aliases.aliases || {})) {
-          byTarget[aliases.aliases[alias]] = alias;
-        }
-        this.models.byTarget = byTarget;
+        this.models.byTarget = aliasTargets(aliases);
         return;
       }
       const [all, disabled, aliases] = await Promise.all([
@@ -58,11 +63,7 @@ export const modelMethods = {
       const names = [this.entry.id, this.entry.alias].filter(Boolean);
       this.models.items = (all.models || []).filter((m) => names.indexOf(m.provider) >= 0).map(modelRow);
       this.models.items = sortModels(this.models.items);
-      const byTarget = {};
-      for (const alias of Object.keys(aliases.aliases || {})) {
-        byTarget[aliases.aliases[alias]] = alias;
-      }
-      this.models.byTarget = byTarget;
+      this.models.byTarget = aliasTargets(aliases);
       const off = [];
       for (const name of names) {
         for (const id of ((disabled.disabled || {})[name] || [])) {

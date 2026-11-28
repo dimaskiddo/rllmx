@@ -344,23 +344,10 @@ func antigravityDelay(h http.Header, raw []byte, status, tries int, now time.Tim
 	return min(time.Second<<tries, ceiling), true
 }
 
-// headerDelay reads Retry-After (seconds or a date) and the rate-limit headers.
+// headerDelay is how long the provider's own headers say to wait.
 func headerDelay(h http.Header, now time.Time) time.Duration {
-	if v := h.Get("Retry-After"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			return time.Duration(n) * time.Second
-		}
-		if t, err := http.ParseTime(v); err == nil && t.After(now) {
-			return t.Sub(now)
-		}
-	}
-	if n, err := strconv.Atoi(h.Get("X-RateLimit-Reset-After")); err == nil && n > 0 {
-		return time.Duration(n) * time.Second
-	}
-	if n, err := strconv.ParseInt(h.Get("X-RateLimit-Reset"), 10, 64); err == nil {
-		if d := time.Unix(n, 0).Sub(now); d > 0 {
-			return d
-		}
+	if at := executor.RetryAt(h, now); !at.IsZero() {
+		return at.Sub(now)
 	}
 	return 0
 }

@@ -18,7 +18,7 @@ type Budget interface {
 // budget answers a key whose budget is spent, or fails closed when the usage
 // cannot be read. ok is false when the request must stop.
 func (c *call) budget(ctx context.Context) (Output, bool) {
-	if c.p.d.Budget == nil || c.in.Caller.ID == "" || c.in.Caller.Anonymous {
+	if c.p.d.Budget == nil || c.in.Caller.ID == "" || c.in.Caller.Anonymous || c.budgetPassed {
 		return Output{}, true
 	}
 	// A request whose context ended never reaches the provider: report the
@@ -37,6 +37,7 @@ func (c *call) budget(ctx context.Context) (Output, bool) {
 		return c.fail(http.StatusServiceUnavailable, "budget_unavailable", "The request budget cannot be checked"), false
 	}
 	if !ref.Refused {
+		c.budgetPassed = true
 		return Output{}, true
 	}
 	return c.refuseBudget(ref), false
@@ -61,7 +62,7 @@ func (c *call) nameIntendedAccount(ctx context.Context, t routing.Target) {
 	}
 	found, err := c.p.d.Selector.Peek(ctx, account.Request{
 		Provider: t.Provider, Model: t.Model, RequestedModel: c.requested,
-		Prefer: c.in.Connection, Hold: c.hold(),
+		Prefer: c.in.Connection, Hold: c.hold(t.Provider, t.Model),
 	})
 	if err != nil {
 		return

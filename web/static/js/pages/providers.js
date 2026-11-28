@@ -320,6 +320,11 @@ window.Alpine.data("providersPage", () => Object.assign({
     this.$refs.resultsDlg.showModal();
   },
 
+  closeResults() {
+    this.$refs.resultsDlg.close();
+    this.results = null;
+  },
+
   openAdd(type) {
     this.add = {
       type: type, name: "", prefix: "", apiType: "chat", baseUrl: "",

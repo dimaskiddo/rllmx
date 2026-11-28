@@ -8,6 +8,11 @@ import "rllmx/app/llm/upstream"
 // (Claude cache markers, Gemini turn order) happens inside the codec that
 // writes that format.
 func Prepare(r *Request, c *Ctx) {
+	// A field the hub does not model belongs to the format it came from; written
+	// into another one it is at best ignored and at worst refused.
+	if c.ClientFormat != c.TargetFormat {
+		r.Extra = nil
+	}
 	if c.Thinking.Set() {
 		r.Thinking = c.Thinking
 	}

@@ -37,6 +37,10 @@ func mintAgentKey(ctx context.Context, c *oauth.TokenClient, f oauth.Flow, acces
 	switch {
 	case err != nil:
 		return "", time.Time{}, "", &oauth.Error{Class: oauth.ClassTransport}
+	case status >= 500:
+		// The service is down, not the login: a 5xx is not a refusal, as the
+		// Copilot mint reads it.
+		return "", time.Time{}, "", &oauth.Error{Class: oauth.ClassTransport}
 	case status < 200 || status > 299:
 		return "", time.Time{}, "", &oauth.Error{Class: oauth.ClassRejected}
 	case !gjson.ValidBytes(raw):

@@ -22,7 +22,6 @@ const (
 	clientCommit  = "0fb762053c34788bb7760d5673f8a6d4c8589d50"
 	clientType    = "ide"
 	clientAgent   = "connect-es/1.6.1"
-	clientGhost   = "true"
 	deviceType    = "desktop"
 	// sessionNamespace is the fixed UUID namespace the session id is derived in,
 	// so one token keeps one session across restarts.

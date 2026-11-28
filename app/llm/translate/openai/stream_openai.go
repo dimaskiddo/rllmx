@@ -55,7 +55,7 @@ func (r *openAIReader) Read(_ string, data []byte) []translate.Chunk {
 			ch.ToolCalls = append(ch.ToolCalls, r.toolCall(tc))
 		}
 		if f := choice.Get("finish_reason").String(); f != "" {
-			ch.FinishReason = translate.FinishWithCalls(FinishFromOpenAI(f), r.calls)
+			ch.FinishReason = translate.FinishWithCalls(finishFromOpenAI(f), r.calls)
 		}
 	}
 	if ch.Text == "" && ch.Reasoning == "" && len(ch.ToolCalls) == 0 && ch.FinishReason == "" && ch.Usage == nil && r.started {
@@ -111,7 +111,7 @@ func ReadErrorObject(e gjson.Result) *translate.ChunkError {
 	return &translate.ChunkError{Type: e.Get("type").String(), Message: e.Get("message").String()}
 }
 
-func FinishFromOpenAI(f string) string {
+func finishFromOpenAI(f string) string {
 	switch f {
 	case translate.FinishLength, translate.FinishToolCalls, translate.FinishFilter:
 		return f

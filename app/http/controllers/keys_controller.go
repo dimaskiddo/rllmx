@@ -364,46 +364,9 @@ func (c *KeysController) Update(ctx contractshttp.Context) contractshttp.Respons
 			return flat(ctx, nethttp.StatusForbidden, "A standard user may only rename a key")
 		}
 	}
-	patch := repository.APIKeyPatch{}
-	if b.Name != nil {
-		name := strings.TrimSpace(*b.Name)
-		if !auth.ValidName(name) {
-			return flat(ctx, nethttp.StatusBadRequest, "The name must be 1 to 64 bytes with no control character")
-		}
-		patch.Name = &name
-	}
-	patch.IsActive = b.IsActive
-	// The owner is checked with the other fields, so a refusal leaves the key as
-	// it was.
-	if b.Owner != nil {
-		if c.Users == nil {
-			return storageDown(ctx)
-		}
-		if owner := strings.TrimSpace(*b.Owner); owner != "" {
-			if _, ok := c.Users.Get(ctx.Request().Origin().Context(), owner); !ok {
-				return flat(ctx, nethttp.StatusBadRequest, "That owner does not exist")
-			}
-		}
-	}
-	if len(b.Access) > 0 && string(b.Access) != "null" {
-		checked, err := auth.ValidateAccess(gjson.ParseBytes(b.Access))
-		if err != nil {
-			return flat(ctx, nethttp.StatusBadRequest, strings.ToUpper(err.Error()[:1])+err.Error()[1:])
-		}
-		patch.Access = &checked
-	}
-	// Every field is checked before any is stored, so a refusal leaves the key as
-	// it was.
-	var budget *quota.Limit
-	if len(b.Quota) > 0 && string(b.Quota) != "null" {
-		limit, err := quota.Validate(gjson.ParseBytes(b.Quota))
-		if err != nil {
-			return flat(ctx, nethttp.StatusBadRequest, strings.ToUpper(err.Error()[:1])+err.Error()[1:])
-		}
-		if c.Quota == nil {
-			return storageDown(ctx)
-		}
-		budget = &limit
+	patch, budget, out4, ok := c.checkedUpdate(ctx, b)
+	if !ok {
+		return out4
 	}
 	row, err := st.APIKeys().Update(ctx.Request().Origin().Context(), id, patch)
 	if errors.Is(err, repository.ErrNotFound) {
@@ -525,4 +488,57 @@ func (c *KeysController) changed() {
 	if c.Changed != nil {
 		c.Changed()
 	}
+}
+
+// keyUpdate is the body of POST /api/keys/{id} (PATCH semantics).
+type keyUpdate struct {
+	Name          *string         `json:"name"`
+	IsActive      *bool           `json:"isActive"`
+	Access        json.RawMessage `json:"access"`
+	Quota         json.RawMessage `json:"quota"`
+	ResponseCache *bool           `json:"responseCache"`
+	Owner         *string         `json:"owner"`
+}
+
+// checkedUpdate validates every field before any is stored, so a refusal leaves
+// the key as it was.
+func (c *KeysController) checkedUpdate(ctx contractshttp.Context, b keyUpdate) (repository.APIKeyPatch, *quota.Limit, contractshttp.Response, bool) {
+	patch := repository.APIKeyPatch{}
+	if b.Name != nil {
+		name := strings.TrimSpace(*b.Name)
+		if !auth.ValidName(name) {
+			return patch, nil, flat(ctx, nethttp.StatusBadRequest, "The name must be 1 to 64 bytes with no control character"), false
+		}
+		patch.Name = &name
+	}
+	patch.IsActive = b.IsActive
+	if b.Owner != nil {
+		if c.Users == nil {
+			return patch, nil, storageDown(ctx), false
+		}
+		if owner := strings.TrimSpace(*b.Owner); owner != "" {
+			if _, ok := c.Users.Get(ctx.Request().Origin().Context(), owner); !ok {
+				return patch, nil, flat(ctx, nethttp.StatusBadRequest, "That owner does not exist"), false
+			}
+		}
+	}
+	if len(b.Access) > 0 && string(b.Access) != "null" {
+		checked, err := auth.ValidateAccess(gjson.ParseBytes(b.Access))
+		if err != nil {
+			return patch, nil, flat(ctx, nethttp.StatusBadRequest, strings.ToUpper(err.Error()[:1])+err.Error()[1:]), false
+		}
+		patch.Access = &checked
+	}
+	var budget *quota.Limit
+	if len(b.Quota) > 0 && string(b.Quota) != "null" {
+		limit, err := quota.Validate(gjson.ParseBytes(b.Quota))
+		if err != nil {
+			return patch, nil, flat(ctx, nethttp.StatusBadRequest, strings.ToUpper(err.Error()[:1])+err.Error()[1:]), false
+		}
+		if c.Quota == nil {
+			return patch, nil, storageDown(ctx), false
+		}
+		budget = &limit
+	}
+	return patch, budget, nil, true
 }

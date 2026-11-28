@@ -214,15 +214,9 @@ func (s *Store) Migrate(ctx context.Context) ([]string, error) {
 		})
 	}
 
-	var warns []string
-	if !seedMeta {
-		stored, err := s.metaValue(ctx, "backupSchemaVersion")
-		if err != nil {
-			return nil, fmt.Errorf("repository: read _meta: %w", err)
-		}
-		if v, perr := strconv.Atoi(stored); perr == nil && v > backupSchemaVersion {
-			warns = append(warns, fmt.Sprintf("database schema version %d is newer than this program knows (%d); only known tables and columns are used", v, backupSchemaVersion))
-		}
+	warns, err := s.newerSchemaWarning(ctx, seedMeta)
+	if err != nil {
+		return nil, err
 	}
 
 	hasCheck, err := s.checkState(s.on(ctx))
@@ -270,8 +264,29 @@ func (s *Store) Migrate(ctx context.Context) ([]string, error) {
 		}
 	}
 
+	return s.sealAfter(ctx, seedMeta, proxyRows, warns)
+}
+
+// newerSchemaWarning says so when the database was written by a newer schema.
+func (s *Store) newerSchemaWarning(ctx context.Context, seedMeta bool) ([]string, error) {
+	if seedMeta {
+		return nil, nil
+	}
+	stored, err := s.metaValue(ctx, "backupSchemaVersion")
+	if err != nil {
+		return nil, fmt.Errorf("repository: read _meta: %w", err)
+	}
+	if v, perr := strconv.Atoi(stored); perr == nil && v > backupSchemaVersion {
+		return []string{fmt.Sprintf("database schema version %d is newer than this program knows (%d); only known tables and columns are used", v, backupSchemaVersion)}, nil
+	}
+	return nil, nil
+}
+
+// sealAfter seals the plain secrets in one transaction and writes the check row,
+// then rebuilds the file so no plain copy stays in free pages or the WAL.
+func (s *Store) sealAfter(ctx context.Context, seedMeta bool, proxyRows int, warns []string) ([]string, error) {
 	var done sealPlan
-	err = s.Tx(ctx, func(tx contractsdb.Tx) error {
+	err := s.Tx(ctx, func(tx contractsdb.Tx) error {
 		if seedMeta {
 			if err := s.seedMeta(tx); err != nil {
 				return err

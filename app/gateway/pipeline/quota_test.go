@@ -9,6 +9,7 @@ import (
 	"github.com/tidwall/gjson"
 
 	"rllmx/app/gateway/account"
+	"rllmx/app/store/document"
 	"rllmx/app/store/repository"
 	"rllmx/tests"
 )
@@ -45,6 +46,16 @@ func (q *fakeQuota) Succeeded(account, model string) {
 	q.mu.Lock()
 	q.log = append(q.log, "ok:"+account+":"+model)
 	q.mu.Unlock()
+}
+
+// storedDoc is the stored data of a connection, as the dashboard reads it.
+func (r *rig) storedDoc(id string) document.Doc {
+	r.t.Helper()
+	c, ok, err := r.st.Connections().Get(context.Background(), id)
+	if err != nil || !ok {
+		r.t.Fatalf("get %s: %v %v", id, ok, err)
+	}
+	return c.Doc()
 }
 
 // lockedFor reports a lock on a model of a stored connection, read the way the
@@ -97,6 +108,22 @@ func TestASpentAntigravityAccountIsPassedOverWithoutALockAndTheNextServes(t *tes
 	}
 	if len(q.log) < 2 || q.log[0][:8] != "refused:" || q.log[len(q.log)-1][:3] != "ok:" {
 		t.Fatalf("%v", q.log)
+	}
+}
+
+// A request refused for its key's budget names the account the real pick would
+// reach, so an Antigravity account the quota gate holds is not the one named.
+func TestARefusedBudgetNamesTheAntigravityAccountThePickWouldReach(t *testing.T) {
+	r := newRig(t, tests.Reply{ContentType: "application/json", Body: geminiAnswer})
+	a, b := r.agy("TOK-A"), r.agy("TOK-B")
+	r.p.d.Quota = &fakeQuota{held: map[string]time.Time{a.ID: time.Now().Add(time.Hour)}}
+	r.p.d.Budget = refused()
+	out, _ := r.do("/v1/chat/completions", agyBody)
+	if out.Status != 429 {
+		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+	if got := r.last().ConnectionID; got != b.ID {
+		t.Fatalf("the row names %q, want the account the gate leaves open, %q", got, b.ID)
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"rllmx/app/gateway/saver"
 	"rllmx/app/gateway/skill"
 	"rllmx/app/llm/translate"
+	"rllmx/app/llm/upstream"
 	"rllmx/app/store/analytics"
 )
 
@@ -37,6 +38,37 @@ func TestTheRouteLineNamesTheAskedModelTheTargetAndTheComboWithoutAnyText(t *tes
 	}
 	if strings.Contains(line, "SECRET-PROMPT-TEXT") {
 		t.Fatalf("the route line carries prompt text: %s", line)
+	}
+}
+
+// The line says the image was dropped only when the drop rule drops it: a model
+// the tables say nothing about is sent the image, and the line must not claim
+// otherwise.
+func TestTheRouteLineSaysImageOmittedOnlyWhenTheImageIsDropped(t *testing.T) {
+	reg, err := upstream.Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	caps, err := upstream.LoadCapabilities(reg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	img := translate.Message{Role: translate.RoleUser, Content: []translate.Part{{Type: translate.PartImage, Data: "AAAA", MediaType: "image/png"}}}
+	for name, tc := range map[string]struct {
+		provider, model string
+		omitted         bool
+	}{
+		"a model no table names":      {"forced", "never-heard-of-it", false},
+		"a table that says no vision": {"deepseek", "deepseek-chat", true},
+		"a vision model":              {"openai", "gpt-4o", false},
+	} {
+		c := logCall()
+		c.p = &Pipeline{d: Deps{Caps: caps}}
+		c.dest = destination{provider: tc.provider, model: tc.model, format: "openai"}
+		c.req.Messages = append(c.req.Messages, img)
+		if got := strings.Contains(c.routeLine(), "IMAGE omitted"); got != tc.omitted {
+			t.Errorf("%s: omitted line %v, want %v: %s", name, got, tc.omitted, c.routeLine())
+		}
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	nethttp "net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
@@ -35,6 +36,9 @@ type HeadroomController struct {
 	Client func(host string) *nethttp.Client
 	// DefaultURL is the configured address used when the settings row holds none.
 	DefaultURL string
+
+	mu      sync.Mutex
+	clients map[string]*nethttp.Client
 }
 
 // headroomStatus is the answer to GET /api/headroom/status.
@@ -62,7 +66,11 @@ func (c *HeadroomController) probe(ctx contractshttp.Context, base string) bool 
 	if err != nil {
 		return false
 	}
-	res, err := c.client(base).Do(req)
+	cl := c.client(base)
+	if cl == nil {
+		return false
+	}
+	res, err := cl.Do(req)
 	if err != nil {
 		return false
 	}
@@ -92,7 +100,11 @@ func (c *HeadroomController) Proxy(ctx contractshttp.Context) contractshttp.Resp
 	}
 	copyProxyHeaders(out.Header, origin.Header)
 	out.Host = ""
-	res, err := c.client(target).Do(out)
+	cl := c.client(target)
+	if cl == nil {
+		return flat(ctx, nethttp.StatusServiceUnavailable, "The sidecar address is not usable")
+	}
+	res, err := cl.Do(out)
 	if err != nil {
 		return flat(ctx, nethttp.StatusBadGateway, "The sidecar did not answer")
 	}
@@ -122,15 +134,28 @@ func (c *HeadroomController) target(ctx contractshttp.Context) (string, bool) {
 	return text.FirstNonEmpty(strings.TrimSpace(d.Str("headroomUrl", "")), strings.TrimSpace(c.DefaultURL), headroom.DefaultURL), true
 }
 
+// client is the guarded client for the sidecar's host, built once per host: a
+// new one per call would leave an idle pool behind on every status and proxy.
 func (c *HeadroomController) client(target string) *nethttp.Client {
 	if c.Client == nil {
-		return nethttp.DefaultClient
+		return nil
 	}
 	u, err := url.Parse(target)
 	if err != nil {
-		return nethttp.DefaultClient
+		return nil
 	}
-	return c.Client(u.Hostname())
+	host := u.Hostname()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if made, ok := c.clients[host]; ok {
+		return made
+	}
+	made := c.Client(host)
+	if c.clients == nil {
+		c.clients = map[string]*nethttp.Client{}
+	}
+	c.clients[host] = made
+	return made
 }
 
 // proxyBody streams the request body under a cap, or nothing for a method that

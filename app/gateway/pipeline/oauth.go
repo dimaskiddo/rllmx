@@ -55,7 +55,9 @@ func (c *call) mintFailed(ctx context.Context, err error) *accountFail {
 	}
 	c.logRefresh(err)
 	if oauth.ClassOf(err) == oauth.ClassTransport {
-		return &accountFail{status: http.StatusBadGateway, class: "network", text: "The upstream could not be reached"}
+		// The token service is unreachable for every account at once, so the
+		// failure is passed over without a cooldown, as media does.
+		return &accountFail{status: http.StatusBadGateway, class: "network", text: "The upstream could not be reached", noReport: true}
 	}
 	return &accountFail{status: http.StatusUnauthorized, class: "auth", text: "no credentials"}
 }

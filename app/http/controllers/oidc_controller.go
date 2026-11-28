@@ -150,11 +150,36 @@ func (c *OIDCController) Callback(ctx contractshttp.Context) contractshttp.Respo
 		return c.fail(ctx, base, sso.CodeNotConfigured)
 	}
 
-	doc, err := oidc.Discover(r.Context(), c.Client, c.Cache, set.Issuer)
-	if err != nil {
+	claims, failure := c.exchange(r.Context(), set, pending, base, code)
+	if failure != "" {
 		c.countFailure(key)
+		return c.fail(ctx, base, failure)
+	}
+
+	email, exactOnly, ok := oidc.Email(claims)
+	if !ok {
+		c.countFailure(key)
+		return c.fail(ctx, base, sso.CodeNoEmail)
+	}
+
+	cookie, issued := c.Auth.IssueSSO(r.Context(), auth.MethodOIDC, email, oidc.FullName(claims), exactOnly, oidc.MailUnproven(claims), c.Trust.SecureRequest(r))
+	if !issued {
+		c.countFailure(key)
+		return c.fail(ctx, base, sso.CodeNoAccount)
+	}
+	c.Auth.Limiter.Succeed(key)
+	ctx.Response().Cookie(cookie)
+	ctx.Response().Cookie(contractshttp.Cookie{Name: sso.BindCookie, Value: "", Path: "/api/auth/oidc", MaxAge: -1, HttpOnly: true, SameSite: "lax"})
+	return c.redirect(ctx, sso.CleanURL(base, "/"))
+}
+
+// exchange trades the authorization code for an ID token and verifies it. A
+// failure comes back as the code the sign-in page shows, already logged.
+func (c *OIDCController) exchange(ctx context.Context, set oidc.Settings, pending sso.State, base, code string) (oidc.Claims, string) {
+	doc, err := oidc.Discover(ctx, c.Client, c.Cache, set.Issuer)
+	if err != nil {
 		sso.Debugf(c.Log, "oidc discovery failed on the callback: %v", err)
-		return c.fail(ctx, base, sso.CodeIDPError)
+		return oidc.Claims{}, sso.CodeIDPError
 	}
 
 	form := url.Values{}
@@ -169,45 +194,26 @@ func (c *OIDCController) Callback(ctx contractshttp.Context) contractshttp.Respo
 		IDToken     string `json:"id_token"`
 		AccessToken string `json:"access_token"`
 	}
-	if err := c.Client.PostForm(r.Context(), doc.TokenEndpoint, form, &tokens); err != nil {
-		c.countFailure(key)
+	if err := c.Client.PostForm(ctx, doc.TokenEndpoint, form, &tokens); err != nil {
 		sso.Debugf(c.Log, "oidc token exchange failed: %v", err)
-		return c.fail(ctx, base, sso.CodeIDPError)
+		return oidc.Claims{}, sso.CodeIDPError
 	}
 
-	set2, err := c.jwks(r.Context(), doc)
+	keys, err := c.jwks(ctx, doc)
 	if err != nil {
-		c.countFailure(key)
-		return c.fail(ctx, base, sso.CodeIDPError)
+		return oidc.Claims{}, sso.CodeIDPError
 	}
-	claims, err := oidc.VerifyIDToken(tokens.IDToken, set2, doc.Issuer, oidc.Expect{
+	claims, err := oidc.VerifyIDToken(tokens.IDToken, keys, doc.Issuer, oidc.Expect{
 		ClientID: set.ClientID, Nonce: pending.Nonce, AccessToken: tokens.AccessToken, Now: c.Auth.Now(),
 	})
 	if err != nil {
-		c.countFailure(key)
 		sso.Debugf(c.Log, "oidc id token refused: %v", err)
 		if err == oidc.ErrUnverified {
-			return c.fail(ctx, base, sso.CodeUnverified)
+			return oidc.Claims{}, sso.CodeUnverified
 		}
-		return c.fail(ctx, base, sso.CodeInvalid)
+		return oidc.Claims{}, sso.CodeInvalid
 	}
-	sso.Debugf(c.Log, "oidc sign-in for issuer %s subject %s", sso.ShortHash(claims.Issuer), sso.ShortHash(claims.Subject))
-
-	email, exactOnly, ok := oidc.Email(claims)
-	if !ok {
-		c.countFailure(key)
-		return c.fail(ctx, base, sso.CodeNoEmail)
-	}
-
-	cookie, issued := c.Auth.IssueSSO(r.Context(), auth.MethodOIDC, email, oidc.FullName(claims), exactOnly, c.Trust.SecureRequest(r))
-	if !issued {
-		c.countFailure(key)
-		return c.fail(ctx, base, sso.CodeNoAccount)
-	}
-	c.Auth.Limiter.Succeed(key)
-	ctx.Response().Cookie(cookie)
-	ctx.Response().Cookie(contractshttp.Cookie{Name: sso.BindCookie, Value: "", Path: "/api/auth/oidc", MaxAge: -1, HttpOnly: true, SameSite: "lax"})
-	return c.redirect(ctx, sso.CleanURL(base, "/"))
+	return claims, ""
 }
 
 // settings reads the provider configuration from the settings row.

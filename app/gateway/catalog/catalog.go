@@ -114,6 +114,19 @@ func (c *Catalog) List(ctx context.Context, caller identity.Caller) ([]Entry, er
 	// A combo comes first: a client reads the list in order, and a name it can
 	// call should be ahead of the models that name routes through.
 	out := combos
+	out, err = c.providerEntries(ctx, out, byProvider, custom, aliases)
+	if err != nil {
+		return nil, err
+	}
+	out, err = c.nodeEntries(ctx, out, byProvider, custom, aliases)
+	if err != nil {
+		return nil, err
+	}
+	return c.visible(ctx, caller, dedupe(out))
+}
+
+// providerEntries adds the built-in providers' models to out.
+func (c *Catalog) providerEntries(ctx context.Context, out []Entry, byProvider map[string][]repository.Connection, custom, aliases map[string]string) ([]Entry, error) {
 	for _, e := range c.Registry.All() {
 		cs := byProvider[e.ID]
 		if len(cs) == 0 {
@@ -135,7 +148,11 @@ func (c *Catalog) List(ctx context.Context, caller identity.Caller) ([]Entry, er
 		}
 		out = append(out, c.entries(e.ID, owner, merge(baseModels(e), names, custom, aliases, off), cs)...)
 	}
+	return out, nil
+}
 
+// nodeEntries adds the models of the operator's provider nodes to out.
+func (c *Catalog) nodeEntries(ctx context.Context, out []Entry, byProvider map[string][]repository.Connection, custom, aliases map[string]string) ([]Entry, error) {
 	nodes, err := c.Nodes.List(ctx, "")
 	if err != nil {
 		return nil, err
@@ -161,7 +178,7 @@ func (c *Catalog) List(ctx context.Context, caller identity.Caller) ([]Entry, er
 		}
 		out = append(out, c.entries(n.ID, owner, merge(lists[i], names, custom, aliases, off), cs)...)
 	}
-	return c.visible(ctx, caller, dedupe(out))
+	return out, nil
 }
 
 // Get finds one callable model by the id List reports.

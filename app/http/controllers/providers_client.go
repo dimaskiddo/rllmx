@@ -21,8 +21,8 @@ const (
 
 // Client answers GET /api/providers/client: the connections a quota reading
 // answers for, with the filters and pages the usage page asks for.
-func (p *ProvidersController) Client(ctx contractshttp.Context) contractshttp.Response {
-	st := p.store()
+func (c *ProvidersController) Client(ctx contractshttp.Context) contractshttp.Response {
+	st := c.store()
 	if st == nil {
 		return storageDown(ctx)
 	}

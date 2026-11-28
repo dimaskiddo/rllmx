@@ -11,6 +11,7 @@ import (
 	"time"
 
 	appfile "rllmx/app/platform/file"
+	"rllmx/app/platform/network"
 )
 
 // SameSite reports a poll address on the provider's own site: the same host, or
@@ -138,6 +139,11 @@ const imageCap = 10 << 20
 func FetchImage(ctx context.Context, c Client, target string) (string, error) {
 	if c == nil {
 		return "", errors.New("no client")
+	}
+	// The client may carry an allowance the operator gave for another purpose, so
+	// a caller-named address is checked before it is dialled.
+	if err := network.CheckPublic(ctx, target, nil); err != nil {
+		return "", BadRequestf("the source image could not be fetched")
 	}
 	status, _, body, err := Capped(ctx, c, http.MethodGet, target, nil, nil, imageCap)
 	if ctx.Err() != nil {

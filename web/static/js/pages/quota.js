@@ -28,14 +28,14 @@ function windowName(clear) {
   switch (clear) {
     case "five_hour":
     case "session":
-      return "Session (5h)";
+      return t("quota.windowSession");
     case "seven_day":
     case "weekly":
     case "seven_day_overage_included":
-      return "Weekly (7d)";
+      return t("quota.windowWeekly");
   }
   if (clear.startsWith("seven_day_")) {
-    return "Weekly " + clear.slice("seven_day_".length) + " (7d)";
+    return t("quota.windowWeeklyPrefix") + " " + clear.slice("seven_day_".length) + " " + t("quota.windowWeekSuffix");
   }
   return windowTitle(clear);
 }

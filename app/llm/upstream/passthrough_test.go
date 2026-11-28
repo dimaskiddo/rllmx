@@ -70,3 +70,12 @@ func TestBadTimeoutAndRegionValuesFailTheLoad(t *testing.T) {
 		}
 	}
 }
+
+// A data file is a contract: an unknown key means the file and the code no
+// longer agree, and reading it as if they did would silently drop the setting.
+func TestAnUnknownKeyInADataFileIsRefused(t *testing.T) {
+	const file = `{"id":"p","category":"apikey","display":{"name":"P"},"transport":{"baseUrl":"https://p.example/v1","format":"openai","noSuchKey":true},"models":[{"id":"m"}]}`
+	if _, err := Load(fstest.MapFS{"p.json": {Data: []byte(file)}}, "."); err == nil {
+		t.Fatal("a data file with an unknown key was accepted")
+	}
+}

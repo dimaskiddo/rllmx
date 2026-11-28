@@ -103,6 +103,9 @@ func init() {
 		// Which sinks a channel writes to: the file, the standard output or
 		// both. Boot refuses an unknown value.
 		"output": config.Env("LOG_OUTPUT", "both"),
+		// The value as written, so a typo can be reported; the channels carry the
+		// cleaned one.
+		"level": config.Env("LOG_LEVEL", "info"),
 
 		// Log Channels
 		//

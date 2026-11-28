@@ -8,6 +8,20 @@ import (
 	"rllmx/app/store/repository"
 )
 
+// CustomModel is the stored shape of a custom model, the one the catalog and the
+// reference both read.
+type CustomModel struct {
+	ProviderAlias string          `json:"providerAlias"`
+	ID            string          `json:"id"`
+	Type          string          `json:"type"`
+	Name          string          `json:"name"`
+	Caps          map[string]bool `json:"caps,omitempty"`
+	Transport     string          `json:"transport,omitempty"`
+}
+
+// CustomKey is the key a custom model is stored under.
+func CustomKey(owner, id, kind string) string { return owner + "|" + id + "|" + kind }
+
 // LoadDeclared reads the capability flags an operator stored for custom models
 // into the resolver. The models page refreshes them after a write; a runner
 // calls this once when the stores open, so a stored flag decides routing and
@@ -23,11 +37,7 @@ func LoadDeclared(ctx context.Context, kv KV, caps *upstream.Capabilities) error
 	}
 	all := make(map[string]upstream.Declared, len(raw))
 	for _, body := range raw {
-		var stored struct {
-			ProviderAlias string          `json:"providerAlias"`
-			ID            string          `json:"id"`
-			Caps          map[string]bool `json:"caps"`
-		}
+		var stored CustomModel
 		if json.Unmarshal([]byte(body), &stored) != nil || stored.ProviderAlias == "" || stored.ID == "" {
 			continue
 		}

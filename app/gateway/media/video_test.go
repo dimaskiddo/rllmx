@@ -131,9 +131,11 @@ func TestAVideoCreateRotatesOnAQuotaRefusal(t *testing.T) {
 	}
 }
 
+// A media failure is stored with its reason, the same as the chat route: a lock
+// with no lastError leaves the dashboard explaining nothing.
 func TestAVideoCreateIsNotSentAgainAfterAServerError(t *testing.T) {
 	var calls int
-	p, _, _ := videoRig(t, func(w http.ResponseWriter, r *http.Request) {
+	p, _, conns := videoRigWithStore(t, func(w http.ResponseWriter, r *http.Request) {
 		calls++
 		w.WriteHeader(http.StatusInternalServerError)
 	}, "FIRST", "SECOND")
@@ -143,6 +145,18 @@ func TestAVideoCreateIsNotSentAgainAfterAServerError(t *testing.T) {
 	}
 	if out.Status != http.StatusInternalServerError {
 		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+	stored, err := conns.List(context.Background(), repository.ConnFilter{Provider: "xai"})
+	if err != nil || len(stored) == 0 {
+		t.Fatalf("%d %v", len(stored), err)
+	}
+	for _, c := range stored {
+		if c.Name != "FIRST" {
+			continue
+		}
+		if reason, set := c.Doc().GetString("lastError"); !set || reason == "" {
+			t.Errorf("connection %s recorded no reason for its failure", c.Name)
+		}
 	}
 }
 

@@ -240,7 +240,7 @@ func TestASuccessfulSignInIssuesTheSession(t *testing.T) {
 	if !ok || claims.Method != auth.MethodSAML || claims.Email != "ops@example.com" || claims.UID == "" {
 		t.Fatalf("%+v ok=%v", claims, ok)
 	}
-	if !r.auth.Session(req) {
+	if _, ok := r.auth.SessionInfo(req); !ok {
 		t.Fatal("a fresh SAML session does not validate")
 	}
 }
@@ -335,4 +335,22 @@ func relayOf(loc string) string {
 		return ""
 	}
 	return u.Query().Get("RelayState")
+}
+
+// A settings row that names no email attribute reads Entra's `mail` as a
+// fallback, which a guest can edit, so it may still sign in as a standard user
+// but can never match a @domain admin entry.
+func TestASAMLAddressFromAFallbackAttributeNeverMatchesADomainAdmin(t *testing.T) {
+	r := newSAMLRig(t)
+	if err := r.sq.Settings().Patch(context.Background(), map[string]string{"samlAttributeEmail": `""`}); err != nil {
+		t.Fatal(err)
+	}
+	r.auth.Store.Changed()
+	r.auth.SSOAdmin = sso.ParseAdmins("@example.com").IsAdmin
+	rec, _ := r.flow(t, nil)
+	req := httptest.NewRequest(nethttp.MethodGet, "/", nil)
+	req.AddCookie(&nethttp.Cookie{Name: auth.CookieName, Value: sessionCookie(rec)})
+	if info, ok := r.auth.SessionInfo(req); !ok || info.Role != auth.RoleUser {
+		t.Fatalf("%+v %v: a fallback mail claim became the admin", info, ok)
+	}
 }

@@ -575,6 +575,35 @@ func TestEveryComponentClassIsUsedSomewhere(t *testing.T) {
 	}
 }
 
+var markupClass = regexp.MustCompile(`class="([^"]*)"`)
+
+// The other direction: a class a page names that no stylesheet defines does
+// nothing, and reads as if it did. Each rl- class in markup must have a rule.
+func TestEveryMarkupClassHasARule(t *testing.T) {
+	var css strings.Builder
+	ours(t, func(name, body string) {
+		if strings.HasSuffix(name, ".css") {
+			css.WriteString(body)
+		}
+	})
+	defined := map[string]bool{}
+	for _, m := range cssClass.FindAllStringSubmatch(css.String(), -1) {
+		defined[m[1]] = true
+	}
+	ours(t, func(name, body string) {
+		if !strings.HasSuffix(name, ".html") {
+			return
+		}
+		for _, m := range markupClass.FindAllStringSubmatch(body, -1) {
+			for _, c := range strings.Fields(m[1]) {
+				if strings.HasPrefix(c, "rl-") && !defined[c] {
+					t.Errorf("%s: class %q has no rule in any stylesheet", name, c)
+				}
+			}
+		}
+	})
+}
+
 // A mapped icon nothing draws is a request the browser never makes and a line
 // every reader of icons.js has to explain.
 func TestEveryMappedIconIsDrawnSomewhere(t *testing.T) {
@@ -1753,9 +1782,21 @@ func TestTheExpiryDialogIsWideAndNamesItsWindows(t *testing.T) {
 	if expiry := methodBody(js, "async openExpiry"); !strings.Contains(expiry, `clears || []).map(windowName)`) {
 		t.Error("the expiry table prints a raw window id")
 	}
-	for _, want := range []string{`case "five_hour":`, `case "seven_day":`, `startsWith("seven_day_")`, `"Session (5h)"`, `"Weekly (7d)"`} {
+	for _, want := range []string{`case "five_hour":`, `case "seven_day":`, `startsWith("seven_day_")`, `t("quota.windowSession")`, `t("quota.windowWeekly")`, `t("quota.windowWeeklyPrefix")`, `t("quota.windowWeekSuffix")`} {
 		if !strings.Contains(js, want) {
 			t.Errorf("windowName lacks %q", want)
+		}
+	}
+	// The words are the locale's, and the English ones are the table's own.
+	en := readWeb(t, "static/i18n/en.json")
+	for _, want := range []string{`"quota.windowSession": "Session (5h)"`, `"quota.windowWeekly": "Weekly (7d)"`} {
+		if !strings.Contains(en, want) {
+			t.Errorf("en.json lacks %q", want)
+		}
+	}
+	for _, literal := range []string{`"Session (5h)"`, `"Weekly (7d)"`} {
+		if strings.Contains(js, literal) {
+			t.Errorf("quota.js still spells %s in one language", literal)
 		}
 	}
 }
@@ -3083,11 +3124,12 @@ func TestSmallHelpersHaveOneImplementation(t *testing.T) {
 		"setCheckedField":       regexp.MustCompile(`(?m)^  setCheckedField\(path, event\) \{`),
 		"nodeLabel(card)":       regexp.MustCompile(`(?m)^  nodeLabel\(card\) \{`),
 		"closeResults()":        regexp.MustCompile(`(?m)^  closeResults\(\) \{`),
+		"isAdmin()":             regexp.MustCompile(`(?m)^  isAdmin\(\) \{`),
 	}
 	owner := map[string]string{
 		"label(key)": "static/js/ui/format.js", "num(value)": "static/js/ui/format.js", "setField(path, event)": "static/js/ui/fields.js",
 		"setCheckedField": "static/js/pages/provider-card.js", "nodeLabel(card)": "static/js/pages/provider-card.js",
-		"closeResults()": "static/js/pages/provider-card.js",
+		"closeResults()": "static/js/pages/providers.js", "isAdmin()": "static/js/ui/session.js",
 	}
 	ours(t, func(name, body string) {
 		if !strings.HasSuffix(name, ".js") {

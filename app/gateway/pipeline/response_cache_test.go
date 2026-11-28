@@ -310,6 +310,22 @@ func TestAForcedStreamProviderIsStillCachedForANonStreamClient(t *testing.T) {
 	}
 }
 
+func TestACutForcedStreamAnswerIsNotDeliveredOrCached(t *testing.T) {
+	r := newCacheRig(t, tests.Reply{ContentType: "text/event-stream", Chunks: sseChunks()[:2]})
+	r.conn("forced", "fk")
+	in := r.use(`{"model":"forced/fm","messages":[{"role":"user","content":"hi"}]}`)
+	first, _ := r.send(in)
+	if first.Status != 502 || first.Header.Get(CacheHeader) == "miss" {
+		t.Fatalf("a cut answer was delivered: %d %v %s", first.Status, first.Header, first.Body)
+	}
+	if got := r.last().ErrorClass; got != "truncated" {
+		t.Fatalf("class %q, want truncated", got)
+	}
+	if second, _ := r.send(in); second.Header.Get(CacheHeader) == "hit" {
+		t.Fatal("a cut answer was cached")
+	}
+}
+
 func TestEveryClientFormatCanHit(t *testing.T) {
 	bodies := map[string]string{
 		"/v1/messages":                     `{"model":"m","max_tokens":5,"messages":[{"role":"user","content":"hi"}]}`,

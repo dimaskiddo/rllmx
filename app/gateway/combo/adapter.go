@@ -73,7 +73,7 @@ func AdapterKinds(n translate.Needs) []string {
 func KindMet(kind string, c upstream.Capability) bool {
 	switch kind {
 	case "vision":
-		return c.Vision || !c.VisionSet
+		return c.ReadsImages()
 	case "pdf":
 		return c.PDF
 	case "audioInput":

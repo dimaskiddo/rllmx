@@ -19,25 +19,17 @@ import (
 func (r *runner) passthrough(ctx context.Context) {
 	reader := newTextReader(r.j.UpstreamFormat)
 	n := &normalizer{seen: map[int64]bool{}}
-	terminal := false
 	for {
 		ev, err := r.pull.next(ctx, nil, r.keepC())
 		if errors.Is(err, errKeepalive) {
-			if !r.wrote && !r.j.OpenWhenQuiet {
-				// The client's stream is not open, and this window belongs to
-				// failover: a comment here would open it.
-				r.resetKeep()
-				continue
-			}
-			if !r.keepalive() {
+			if !r.quiet() {
 				return
 			}
-			r.resetKeep()
 			continue
 		}
 		r.resetKeep()
 		if errors.Is(err, io.EOF) {
-			r.endPassthrough(terminal)
+			r.endPassthrough()
 			return
 		}
 		if err != nil {
@@ -70,12 +62,11 @@ func (r *runner) passthrough(ctx context.Context) {
 			data = r.j.Rewrite(ev.Name, data)
 		}
 		r.track.Feed(data)
-		reader.count(r.track, data)
+		r.streamed += reader.count(r.track, data)
 		if f := reader.finish(data); f != "" {
 			r.finish = f
 		}
 		if r.j.UpstreamFormat == translate.FormatResponses && isResponsesTerminal(ev.Name, data) {
-			terminal = true
 			r.ended = true
 		}
 		if !r.send([]translate.Frame{{Event: ev.Name, Data: data}}) {
@@ -88,22 +79,21 @@ func (r *runner) passthrough(ctx context.Context) {
 // without a finish is a cut answer, so the client is told instead of being
 // handed an ending the upstream never sent. OpenAI streams end with one
 // [DONE]; Gemini and Ollama have no end marker.
-func (r *runner) endPassthrough(terminal bool) {
-	cut := r.cut(r.track.ContentLen())
+func (r *runner) endPassthrough() {
 	switch r.j.UpstreamFormat {
 	case translate.FormatResponses:
-		if cut || !terminal {
+		if !r.ended {
 			r.fail(ErrTruncated, ReasonText(ErrTruncated))
 		}
 		r.send([]translate.Frame{{Done: true}})
 	case translate.FormatOpenAI:
-		if cut {
+		if r.cut(r.streamed) {
 			r.fail(ErrTruncated, ReasonText(ErrTruncated))
 			return
 		}
 		r.send([]translate.Frame{{Done: true}})
 	default:
-		if cut {
+		if r.cut(r.streamed) {
 			r.fail(ErrTruncated, ReasonText(ErrTruncated))
 		}
 	}
@@ -116,7 +106,7 @@ func isResponsesTerminal(name string, data []byte) bool {
 		typ = name
 	}
 	switch typ {
-	case "response.completed", "response.done", "response.failed", "error":
+	case "response.completed", "response.done", "response.failed":
 		return true
 	}
 	return false
@@ -235,24 +225,40 @@ func newTextReader(format string) *textReader { return &textReader{format: forma
 // The readers below look each path up with GetBytes, which scans the event in
 // place; ParseBytes would copy the whole event for every call.
 
-func (t *textReader) count(tr *Tracker, data []byte) {
+// count feeds the estimate with the text the event carried and returns every
+// byte a client would be waiting on: that text plus reasoning and tool-call
+// arguments, the same measure the translate loop keeps, so a cut is judged alike.
+func (t *textReader) count(tr *Tracker, data []byte) int {
 	get := func(path string) gjson.Result { return gjson.GetBytes(data, path) }
+	text, extra := 0, 0
 	switch t.format {
 	case translate.FormatOpenAI:
-		tr.AddText(len(get("choices.0.delta.content").String()) + len(get("choices.0.delta.reasoning_content").String()))
+		text = len(get("choices.0.delta.content").String()) + len(get("choices.0.delta.reasoning_content").String())
+		extra = len(get("choices.0.delta.reasoning").String())
+		for _, c := range get("choices.0.delta.tool_calls").Array() {
+			extra += len(c.Get("function.arguments").String())
+		}
 	case translate.FormatClaude:
-		tr.AddText(len(get("delta.text").String()) + len(get("delta.thinking").String()))
+		text = len(get("delta.text").String()) + len(get("delta.thinking").String())
+		extra = len(get("delta.partial_json").String())
 	case translate.FormatResponses:
-		if typ := get("type").String(); typ == "response.output_text.delta" || typ == "response.reasoning_summary_text.delta" {
-			tr.AddText(len(get("delta").String()))
+		switch get("type").String() {
+		case "response.output_text.delta", "response.reasoning_summary_text.delta":
+			text = len(get("delta").String())
+		case "response.function_call_arguments.delta":
+			extra = len(get("delta").String())
 		}
 	case translate.FormatGemini, translate.FormatCloudCode, translate.FormatVertex:
 		for _, p := range get("candidates.0.content.parts").Array() {
-			tr.AddText(len(p.Get("text").String()))
+			text += len(p.Get("text").String())
+			extra += len(p.Get("functionCall").Raw)
 		}
 	case translate.FormatOllama:
-		tr.AddText(len(get("message.content").String()) + len(get("message.thinking").String()))
+		text = len(get("message.content").String()) + len(get("message.thinking").String())
+		extra = len(get("message.tool_calls").Raw)
 	}
+	tr.AddText(text)
+	return text + extra
 }
 
 func (t *textReader) finish(data []byte) string {
@@ -261,7 +267,9 @@ func (t *textReader) finish(data []byte) string {
 	case translate.FormatOpenAI:
 		return get("choices.0.finish_reason").String()
 	case translate.FormatClaude:
-		return translate.FinishFromClaude(get("delta.stop_reason").String())
+		if reason := get("delta.stop_reason").String(); reason != "" {
+			return translate.FinishFromClaude(reason)
+		}
 	case translate.FormatGemini, translate.FormatCloudCode, translate.FormatVertex:
 		if f := get("candidates.0.finishReason").String(); f != "" {
 			return translate.FinishFromGemini(f)
@@ -286,7 +294,8 @@ func (t *textReader) failed(name string, data []byte) bool {
 	case translate.FormatClaude:
 		return get("type").String() == "error"
 	case translate.FormatResponses:
-		return get("type").String() == "response.failed" || get("type").String() == "error"
+		typ := get("type").String()
+		return typ == "response.failed" || typ == "error"
 	case translate.FormatOllama:
 		return get("error").Exists() && !get("message").Exists()
 	}

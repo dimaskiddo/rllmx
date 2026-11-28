@@ -158,6 +158,12 @@ type call struct {
 	// mayFailover is true while a later combo member can still answer, so the
 	// client's stream stays closed until this one writes.
 	mayFailover bool
+	// moreAccounts is true while another account of the provider can still
+	// answer this attempt's failure.
+	moreAccounts bool
+	// budgetPassed records a budget check the key passed, so the planner's check
+	// and the target's are one read.
+	budgetPassed bool
 
 	// The semantic layer's bucket and the request's vector, kept for remember.
 	cacheVec    []float32

@@ -254,19 +254,6 @@ func (m *ModelsController) CustomModels(ctx contractshttp.Context) contractshttp
 	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"models": out})
 }
 
-// customModel is the stored shape of a custom model, the one the catalog and the
-// reference both read.
-type customModel struct {
-	ProviderAlias string          `json:"providerAlias"`
-	ID            string          `json:"id"`
-	Type          string          `json:"type"`
-	Name          string          `json:"name"`
-	Caps          map[string]bool `json:"caps,omitempty"`
-	Transport     string          `json:"transport,omitempty"`
-}
-
-func customKey(owner, id, kind string) string { return owner + "|" + id + "|" + kind }
-
 // refreshDeclared reloads what the operator declared about custom models, so a
 // vision or reasoning custom model sorts and adapts as one. A read failure
 // leaves the previous set alone.
@@ -278,7 +265,9 @@ func (m *ModelsController) refreshDeclared(rc context.Context) {
 	if st == nil {
 		return
 	}
-	_ = catalog.LoadDeclared(rc, st.KV(), m.Caps)
+	if err := catalog.LoadDeclared(rc, st.KV(), m.Caps); err != nil && m.Log != nil {
+		m.Log.Warningf("models: reloading custom model capabilities failed: %v", err)
+	}
 }
 
 // AddCustomModel answers POST /api/models/custom: one upsert.
@@ -303,8 +292,8 @@ func (m *ModelsController) AddCustomModel(ctx contractshttp.Context) contractsht
 		return flat(ctx, nethttp.StatusBadRequest, msg)
 	}
 	rc := ctx.Request().Origin().Context()
-	key := customKey(owner, id, kind)
-	stored := customModel{}
+	key := catalog.CustomKey(owner, id, kind)
+	stored := catalog.CustomModel{}
 	existing, ok, err := st.KV().Get(rc, repository.ScopeCustomModels, key)
 	if err != nil {
 		return storageDown(ctx)
@@ -359,7 +348,7 @@ func (m *ModelsController) DeleteCustomModel(ctx contractshttp.Context) contract
 		return flat(ctx, nethttp.StatusBadRequest, msg)
 	}
 	rc := ctx.Request().Origin().Context()
-	if err := st.KV().Delete(rc, repository.ScopeCustomModels, customKey(owner, id, kind)); err != nil {
+	if err := st.KV().Delete(rc, repository.ScopeCustomModels, catalog.CustomKey(owner, id, kind)); err != nil {
 		return flat(ctx, nethttp.StatusInternalServerError, "Failed to delete custom model")
 	}
 	m.refreshDeclared(rc)

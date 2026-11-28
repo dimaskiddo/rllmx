@@ -54,63 +54,17 @@ func collectUpTo(ctx context.Context, body io.ReadCloser, src Source, format str
 	defer p.stop()
 	track := NewTracker(format)
 
-	var out Collected
-	var text, reasoning, signature strings.Builder
-	calls := map[int]*callBuf{}
-	total := 0
-	absorb := func(ch translate.Chunk) error {
-		if ch.Err != nil {
-			return ErrStreamFailed
-		}
-		total += len(ch.Text) + len(ch.Reasoning) + len(ch.Signature)
-		for _, d := range ch.ToolCalls {
-			total += len(d.Arguments)
-		}
-		if total > limit {
-			return ErrCollectedTooLarge
-		}
-		if ch.ID != "" && out.Response.ID == "" {
-			out.Response.ID = ch.ID
-		}
-		if ch.Model != "" && out.Response.Model == "" {
-			out.Response.Model = ch.Model
-		}
-		if ch.Created != 0 && out.Response.Created == 0 {
-			out.Response.Created = ch.Created
-		}
-		text.WriteString(ch.Text)
-		reasoning.WriteString(ch.Reasoning)
-		track.AddText(len(ch.Text) + len(ch.Reasoning))
-		signature.WriteString(ch.Signature)
-		out.Response.Message.Content = append(out.Response.Message.Content, ch.Images...)
-		for _, d := range ch.ToolCalls {
-			cb := calls[d.Index]
-			if cb == nil {
-				cb = &callBuf{}
-				calls[d.Index] = cb
-			}
-			if d.ID != "" {
-				cb.ID = d.ID
-			}
-			if d.Name != "" {
-				cb.Name = d.Name
-			}
-			if d.Signature != "" {
-				cb.Signature = d.Signature
-			}
-			cb.Custom = cb.Custom || d.Custom
-			cb.args.WriteString(d.Arguments)
-		}
-		if ch.FinishReason != "" {
-			out.Finish = ch.FinishReason
-		}
-		return nil
-	}
+	col := &collector{limit: limit, track: track, calls: map[int]*callBuf{}}
+	ended := false
 	for {
 		ev, err := p.next(ctx, nil, nil)
 		if errors.Is(err, io.EOF) {
+			// Judged before Flush, which makes up a finish the upstream never sent.
+			if !ended && col.out.Finish == "" && col.total > 0 {
+				return Collected{}, ErrTruncated
+			}
 			for _, ch := range reader.Flush() {
-				if err := absorb(ch); err != nil {
+				if err := col.absorb(ch); err != nil {
 					return Collected{}, err
 				}
 			}
@@ -120,37 +74,103 @@ func collectUpTo(ctx context.Context, body io.ReadCloser, src Source, format str
 			return Collected{}, err
 		}
 		track.Feed(ev.Data)
+		ended = ended || isDone(format, ev.Data)
 		for _, ch := range reader.Read(ev.Name, ev.Data) {
-			if err := absorb(ch); err != nil {
+			if err := col.absorb(ch); err != nil {
 				return Collected{}, err
 			}
 		}
 	}
 
+	return col.finish(requestBytes), nil
+}
+
+// collector folds a stream's chunks into one answer.
+type collector struct {
+	out                        Collected
+	text, reasoning, signature strings.Builder
+	calls                      map[int]*callBuf
+	total, limit               int
+	track                      *Tracker
+}
+
+func (k *collector) absorb(ch translate.Chunk) error {
+	if ch.Err != nil {
+		return ErrStreamFailed
+	}
+	k.total += len(ch.Text) + len(ch.Reasoning) + len(ch.Signature)
+	for _, d := range ch.ToolCalls {
+		k.total += len(d.Arguments)
+	}
+	if k.total > k.limit {
+		return ErrCollectedTooLarge
+	}
+	resp := &k.out.Response
+	if ch.ID != "" && resp.ID == "" {
+		resp.ID = ch.ID
+	}
+	if ch.Model != "" && resp.Model == "" {
+		resp.Model = ch.Model
+	}
+	if ch.Created != 0 && resp.Created == 0 {
+		resp.Created = ch.Created
+	}
+	k.text.WriteString(ch.Text)
+	k.reasoning.WriteString(ch.Reasoning)
+	k.track.AddText(len(ch.Text) + len(ch.Reasoning))
+	k.signature.WriteString(ch.Signature)
+	resp.Message.Content = append(resp.Message.Content, ch.Images...)
+	for _, d := range ch.ToolCalls {
+		cb := k.calls[d.Index]
+		if cb == nil {
+			cb = &callBuf{}
+			k.calls[d.Index] = cb
+		}
+		if d.ID != "" {
+			cb.ID = d.ID
+		}
+		if d.Name != "" {
+			cb.Name = d.Name
+		}
+		if d.Signature != "" {
+			cb.Signature = d.Signature
+		}
+		cb.Custom = cb.Custom || d.Custom
+		cb.args.WriteString(d.Arguments)
+	}
+	if ch.FinishReason != "" {
+		k.out.Finish = ch.FinishReason
+	}
+	return nil
+}
+
+// finish builds the answer once the stream has ended.
+func (k *collector) finish(requestBytes int) Collected {
+	out := k.out
 	msg := &out.Response.Message
 	msg.Role = translate.RoleAssistant
-	msg.Reasoning = reasoning.String()
-	msg.ReasoningSignature = signature.String()
-	if text.Len() > 0 {
-		msg.Content = append(translate.TextPart(text.String()), msg.Content...)
+	msg.Reasoning = k.reasoning.String()
+	msg.ReasoningSignature = k.signature.String()
+	if k.text.Len() > 0 {
+		msg.Content = append(translate.TextPart(k.text.String()), msg.Content...)
 	}
-	idx := make([]int, 0, len(calls))
-	for i := range calls {
+	idx := make([]int, 0, len(k.calls))
+	for i := range k.calls {
 		idx = append(idx, i)
 	}
 	sort.Ints(idx)
 	for _, i := range idx {
-		call := calls[i].ToolCall
-		call.Arguments = calls[i].args.String()
+		call := k.calls[i].ToolCall
+		call.Arguments = k.calls[i].args.String()
 		if call.Arguments == "" {
 			call.Arguments = "{}"
 		}
 		msg.ToolCalls = append(msg.ToolCalls, call)
 	}
 	out.Finish = translate.FinishWithCalls(out.Finish, len(msg.ToolCalls))
-	out.Usage = track.Final(requestBytes)
-	out.ContentLen = track.ContentLen()
+	out.Usage = k.track.Final(requestBytes)
+	out.ContentLen = k.track.ContentLen()
 	out.Response.FinishReason = out.Finish
 	out.Response.Usage = out.Usage
-	return out, nil
+	return out
 }

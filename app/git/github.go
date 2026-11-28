@@ -134,26 +134,11 @@ func extract(r io.Reader, parent string, max int64) (string, error) {
 		if h.Typeflag == tar.TypeXGlobalHeader {
 			continue
 		}
-		// A backslash or a drive colon steps out of the folder on Windows, where
-		// path.Clean does not see it.
-		if strings.ContainsAny(h.Name, `\:`) {
-			return "", errors.New("git: the tarball steps out of its folder")
+		rest, skip, err := entryPath(h.Name, &top)
+		if err != nil {
+			return "", err
 		}
-		name := path.Clean(strings.TrimPrefix(h.Name, "./"))
-		if name == "." || name == "" {
-			continue
-		}
-		if strings.HasPrefix(name, "/") || name == ".." || strings.HasPrefix(name, "../") {
-			return "", errors.New("git: the tarball steps out of its folder")
-		}
-		first, rest, _ := strings.Cut(name, "/")
-		if top == "" {
-			top = first
-		}
-		if first != top {
-			return "", errors.New("git: the tarball has more than one root folder")
-		}
-		if rest == "" {
+		if skip {
 			continue
 		}
 		target := filepath.Join(dir, filepath.FromSlash(rest))
@@ -177,6 +162,31 @@ func extract(r io.Reader, parent string, max int64) (string, error) {
 	}
 	keep = true
 	return dir, nil
+}
+
+// entryPath checks one tarball entry name and returns its path below the single
+// root folder. skip is true for the root folder itself.
+func entryPath(raw string, top *string) (rest string, skip bool, err error) {
+	// A backslash or a drive colon steps out of the folder on Windows, where
+	// path.Clean does not see it.
+	if strings.ContainsAny(raw, `\:`) {
+		return "", false, errors.New("git: the tarball steps out of its folder")
+	}
+	name := path.Clean(strings.TrimPrefix(raw, "./"))
+	if name == "." || name == "" {
+		return "", true, nil
+	}
+	if strings.HasPrefix(name, "/") || name == ".." || strings.HasPrefix(name, "../") {
+		return "", false, errors.New("git: the tarball steps out of its folder")
+	}
+	first, rest, _ := strings.Cut(name, "/")
+	if *top == "" {
+		*top = first
+	}
+	if first != *top {
+		return "", false, errors.New("git: the tarball has more than one root folder")
+	}
+	return rest, rest == "", nil
 }
 
 func writeEntry(target string, r io.Reader, size int64) error {

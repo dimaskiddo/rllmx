@@ -5,6 +5,14 @@ import { api } from "/static/js/ui/api.js";
 
 let pending = null;
 
+// roleMethods is the one reading of the role a page holds in `this.role`: every
+// role but "user" is shown the administrator's controls.
+export const roleMethods = {
+  isAdmin() {
+    return this.role !== "user";
+  },
+};
+
 export function session() {
   if (!pending) {
     pending = api("/api/auth/status").then(

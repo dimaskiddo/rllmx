@@ -4,6 +4,16 @@ import (
 	"strings"
 )
 
+// MailUnproven reports a token whose `email` rests on no `email_verified`
+// claim: some providers (Entra v2) send none, and an address they let a user
+// edit is then no proof of the domain. The sign-in treats it as exact-only, the
+// way it treats `preferred_username` for the admin match. It still signs in as a
+// standard user, because a provider that never sends the claim would otherwise
+// lock every user out.
+func MailUnproven(c Claims) bool {
+	return strings.TrimSpace(c.Email) != "" && len(c.EmailVerified) == 0
+}
+
 // Email picks the address a sign-in is for. `email` wins. When it is absent,
 // `preferred_username` counts only if it holds exactly one `@`, because that
 // claim is a user name at some providers and an address at others.

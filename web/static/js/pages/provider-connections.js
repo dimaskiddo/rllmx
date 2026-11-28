@@ -396,7 +396,7 @@ export const connectionMethods = {
   editBody() {
     const body = {
       name: this.edit.name,
-      defaultModel: this.edit.defaultModel,
+      defaultModel: this.edit.defaultModel === "" ? null : this.edit.defaultModel,
       priority: Number(this.edit.priority) || 1,
       isActive: this.edit.isActive,
       providerSpecificData: psdBody(this.edit.psd, this.edit.psdKeys),

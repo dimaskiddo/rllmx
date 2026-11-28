@@ -209,11 +209,7 @@ func buildHTTP(app foundation.Application) (*HTTP, error) {
 	if err != nil {
 		return nil, err
 	}
-	registry, err := upstream.Default()
-	if err != nil {
-		return nil, err
-	}
-	capabilities, err := upstream.LoadCapabilities(registry)
+	registry, capabilities, err := loadUpstreamData()
 	if err != nil {
 		return nil, err
 	}
@@ -262,17 +258,37 @@ func buildHTTP(app foundation.Application) (*HTTP, error) {
 		Metrics:       rest.metrics,
 		Meter:         metrics.New(time.Now),
 	}
-	if rest.captcha.Enabled() {
-		h.CaptchaKey = rest.captcha.SiteKey
-		h.Captcha = captcha.New(rest.captcha.Provider, rest.captcha.Secret, network.NewClient(network.Options{
-			ConnectTimeout: upstreamCfg.ConnectTimeout, MaxRedirects: -1, BodyCap: 64 << 10,
-		}))
-	}
+	wireCaptcha(h, rest.captcha, upstreamCfg)
 	h.Quota = newQuotaReader(h, cacheOrNil(app))
 	if err := wireCatalogSync(h, app, cfg); err != nil {
 		return nil, err
 	}
 	return h, nil
+}
+
+// loadUpstreamData reads the provider registry and the capability tables built
+// from it.
+func loadUpstreamData() (*upstream.Registry, *upstream.Capabilities, error) {
+	registry, err := upstream.Default()
+	if err != nil {
+		return nil, nil, err
+	}
+	capabilities, err := upstream.LoadCapabilities(registry)
+	if err != nil {
+		return nil, nil, err
+	}
+	return registry, capabilities, nil
+}
+
+// wireCaptcha gives the server its sign-in verifier when one is configured.
+func wireCaptcha(h *HTTP, c *settings.Captcha, up *settings.Upstream) {
+	if !c.Enabled() {
+		return
+	}
+	h.CaptchaKey = c.SiteKey
+	h.Captcha = captcha.New(c.Provider, c.Secret, network.NewClient(network.Options{
+		ConnectTimeout: up.ConnectTimeout, MaxRedirects: -1, BodyCap: 64 << 10,
+	}))
 }
 
 // serverSettings are the stream, login, media and saver settings, which only

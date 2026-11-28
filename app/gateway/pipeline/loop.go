@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"time"
 
 	"rllmx/app/gateway/account"
 	"rllmx/app/llm/catalog"
@@ -72,55 +71,16 @@ func (c *call) serveFail(ctx context.Context) (Output, *accountFail) {
 	tried := 0
 	noAuth := c.noAuthConn()
 	for {
-		var sel account.Selection
-		if noAuth != nil {
-			sel = account.Selection{Conn: *noAuth}
-		} else {
-			found, err := c.p.d.Selector.Select(ctx, account.Request{
-				Provider: c.dest.provider, Model: c.dest.model, RequestedModel: c.requested, Exclude: exclude,
-				Hold: c.hold(), Prefer: c.in.Connection,
-			})
-			if err != nil {
-				out := c.noAccount(ctx, err, last, sawExpired)
-				// A request that found no account did not answer, so a combo moves to
-				// its next member rather than treating it as served.
-				if last == nil {
-					last = &accountFail{status: out.Status, class: "no_account"}
-				}
-				return out, last
-			}
-			sel = found
-		}
-		if c.in.Connection != "" && sel.Conn.ID != c.in.Connection {
-			// The pinned connection is not a candidate, and a pinned request never
-			// spends on another account.
-			out := c.fail(http.StatusServiceUnavailable, "no_account",
-				"["+c.dest.provider+"/"+c.dest.model+"] The pinned connection is not available")
-			return out, &accountFail{status: http.StatusServiceUnavailable, class: "no_account"}
+		sel, out, fail, ok := c.nextAccount(ctx, noAuth, exclude, last, sawExpired)
+		if !ok {
+			return out, fail
 		}
 		tried++
+		c.moreAccounts = sel.More
 		c.beginAttempt(sel.Conn.ID, tried > 1)
 		c.logRoute()
-		// A model the account's own provider does not list is the client's
-		// mistake, not the account's: it ends the request here, before a send,
-		// so no lock is written and no other account is tried for it.
-		if c.p.d.Catalog != nil && c.p.d.Catalog.Known(ctx, c.dest.provider, sel.Conn, c.dest.model) == catalog.Unknown {
-			return c.fail(http.StatusBadRequest, "invalid_request", "Model not found"), &accountFail{status: http.StatusBadRequest, class: "invalid_request"}
-		}
-		// Pacing comes after every local check and before the send, so a request
-		// that will not go out never takes a slot in the queue.
-		if c.p.d.Pacer != nil {
-			if err := c.p.d.Pacer.Wait(ctx, sel.Conn.ID); err != nil {
-				if ctx.Err() != nil {
-					return c.stopped(ctx), nil
-				}
-				if c.p.d.Log != nil {
-					c.p.d.Log.Warningf("pipeline: %v", err)
-				}
-				out := c.fail(http.StatusServiceUnavailable, "capacity", "["+c.dest.provider+"/"+c.dest.model+"] No capacity right now")
-				out.Header.Set("Retry-After", "1")
-				return out, nil
-			}
+		if out, fail, ok := c.preSend(ctx, sel); !ok {
+			return out, fail
 		}
 		out, f := c.attempted(ctx, sel.Conn)
 		if f == nil {
@@ -144,6 +104,13 @@ func (c *call) serveFail(ctx context.Context) (Output, *accountFail) {
 			// No content is not the account's fault: it ends the request as it
 			// always did, and nothing is locked.
 			return c.upstreamFail(f), f
+		}
+		if f.noReport {
+			// Not this account's fault, and not another account's fix: pass over it
+			// without a stored lock and try the next.
+			exclude[sel.Conn.ID] = true
+			last = f
+			continue
 		}
 		if ctx.Err() != nil {
 			// The caller's own deadline ran out, not the account's: a probe or an
@@ -214,8 +181,7 @@ func (c *call) upstreamFail(f *accountFail) Output {
 	// A client that is told when to come back stops guessing, and a provider's
 	// own hint is better than a backoff we would invent.
 	if at := f.resetAt; retryable(f.status) && at.After(c.p.d.Now()) {
-		secs := max(int64((at.Sub(c.p.d.Now())+time.Second-1)/time.Second), 1)
-		out.Header.Set("Retry-After", strconv.FormatInt(secs, 10))
+		out.Header.Set("Retry-After", strconv.FormatInt(failure.RetryAfterSeconds(at.Sub(c.p.d.Now())), 10))
 	}
 	return out
 }
@@ -235,4 +201,60 @@ func retryable(status int) bool {
 // help: a 401 would make the client discard a good router key.
 func (c *call) expired() Output {
 	return c.fail(http.StatusServiceUnavailable, "expired", "["+c.dest.provider+"/"+c.dest.model+"] "+oauth.ReconnectMessage)
+}
+
+// nextAccount picks the connection to try, or answers why none is left. A
+// provider that needs no credential has one virtual account and no selector.
+func (c *call) nextAccount(ctx context.Context, noAuth *repository.Connection, exclude map[string]bool, last *accountFail, sawExpired bool) (account.Selection, Output, *accountFail, bool) {
+	if noAuth != nil {
+		return account.Selection{Conn: *noAuth}, Output{}, nil, true
+	}
+	found, err := c.p.d.Selector.Select(ctx, account.Request{
+		Provider: c.dest.provider, Model: c.dest.model, RequestedModel: c.requested, Exclude: exclude,
+		Hold: c.hold(c.dest.provider, c.dest.model), Prefer: c.in.Connection,
+	})
+	if err != nil {
+		out := c.noAccount(ctx, err, last, sawExpired)
+		// A request that found no account did not answer, so a combo moves to its
+		// next member rather than treating it as served.
+		if last == nil {
+			last = &accountFail{status: out.Status, class: "no_account"}
+		}
+		return account.Selection{}, out, last, false
+	}
+	if c.in.Connection != "" && found.Conn.ID != c.in.Connection {
+		// The pinned connection is not a candidate, and a pinned request never
+		// spends on another account.
+		out := c.fail(http.StatusServiceUnavailable, "no_account",
+			"["+c.dest.provider+"/"+c.dest.model+"] The pinned connection is not available")
+		return account.Selection{}, out, &accountFail{status: http.StatusServiceUnavailable, class: "no_account"}, false
+	}
+	return found, Output{}, nil, true
+}
+
+// preSend runs the checks that come after the pick and before the send.
+func (c *call) preSend(ctx context.Context, sel account.Selection) (Output, *accountFail, bool) {
+	// A model the account's own provider does not list is the client's mistake,
+	// not the account's: it ends the request here, before a send, so no lock is
+	// written and no other account is tried for it.
+	if c.p.d.Catalog != nil && c.p.d.Catalog.Known(ctx, c.dest.provider, sel.Conn, c.dest.model) == catalog.Unknown {
+		return c.fail(http.StatusBadRequest, "invalid_request", "Model not found"), &accountFail{status: http.StatusBadRequest, class: "invalid_request"}, false
+	}
+	// Pacing comes after every local check and before the send, so a request
+	// that will not go out never takes a slot in the queue.
+	if c.p.d.Pacer == nil {
+		return Output{}, nil, true
+	}
+	if err := c.p.d.Pacer.Wait(ctx, sel.Conn.ID); err != nil {
+		if ctx.Err() != nil {
+			return c.stopped(ctx), nil, false
+		}
+		if c.p.d.Log != nil {
+			c.p.d.Log.Warningf("pipeline: %v", err)
+		}
+		out := c.fail(http.StatusServiceUnavailable, "capacity", "["+c.dest.provider+"/"+c.dest.model+"] No capacity right now")
+		out.Header.Set("Retry-After", "1")
+		return out, nil, false
+	}
+	return Output{}, nil, true
 }

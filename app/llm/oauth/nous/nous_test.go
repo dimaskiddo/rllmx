@@ -173,6 +173,7 @@ func TestAMintFailureSaysWhyItFailed(t *testing.T) {
 	}{
 		"an unreachable service":  {target: url, client: client, want: oauth.ClassTransport},
 		"a refusing service":      {serve: func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusForbidden) }, want: oauth.ClassRejected},
+		"a failing service":       {serve: func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusBadGateway) }, want: oauth.ClassTransport},
 		"a body that is not json": {serve: func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("<html>")) }, want: oauth.ClassMalformed},
 		"an answer with no key":   {serve: func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`{}`)) }, want: oauth.ClassMalformed},
 	} {

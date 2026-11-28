@@ -56,7 +56,6 @@ type Capability struct {
 	ThinkingOffType         string   `json:"thinkingOffType,omitempty"`
 	RelaxToolChoice         bool     `json:"relaxToolChoice,omitempty"`
 	DropOutputConfig        bool     `json:"dropOutputConfig,omitempty"`
-	KeepContextMgmt         bool     `json:"keepContextManagement,omitempty"`
 	ClaudeToolTypes         []string `json:"claudeSupportedToolTypes,omitempty"`
 	// LongDecode marks a model that returns at most MaxOutput tokens per call but
 	// continues on a token, so a request may ask for up to LongDecodeCeiling.
@@ -207,6 +206,27 @@ func NewCapabilities(capData, thinkData, visionData, paramData []byte, reg *Regi
 	if err := strictDecode("params.json", paramData, &p); err != nil {
 		return nil, err
 	}
+	if err := c.compileCapabilities(); err != nil {
+		return nil, err
+	}
+	if err := c.compileThinking(); err != nil {
+		return nil, err
+	}
+	var err error
+	if c.visionNo, err = joinRegexp("vision.json not", v.Not); err != nil {
+		return nil, err
+	}
+	if c.visionOk, err = joinRegexp("vision.json name", v.Name); err != nil {
+		return nil, err
+	}
+	if err := c.compileParams(p.Rules); err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+// compileCapabilities checks every capability row and compiles the patterns.
+func (c *Capabilities) compileCapabilities() error {
 	probe := defaultCapability()
 	check := func(raw json.RawMessage) error {
 		cp := probe
@@ -223,61 +243,64 @@ func NewCapabilities(capData, thinkData, visionData, paramData []byte, reg *Regi
 	for prov, models := range c.caps.Providers {
 		for model, raw := range models {
 			if err := check(raw); err != nil {
-				return nil, fmt.Errorf("upstream: capabilities.json: provider %q model %q: %w", prov, model, err)
+				return fmt.Errorf("upstream: capabilities.json: provider %q model %q: %w", prov, model, err)
 			}
 		}
 	}
 	for model, raw := range c.caps.Models {
 		if err := check(raw); err != nil {
-			return nil, fmt.Errorf("upstream: capabilities.json: model %q: %w", model, err)
+			return fmt.Errorf("upstream: capabilities.json: model %q: %w", model, err)
 		}
 	}
 	for i, r := range c.caps.Patterns {
 		if r.Pattern == "" {
-			return nil, fmt.Errorf("upstream: capabilities.json: pattern %d is empty", i)
+			return fmt.Errorf("upstream: capabilities.json: pattern %d is empty", i)
 		}
 		if err := check(r.Set); err != nil {
-			return nil, fmt.Errorf("upstream: capabilities.json: pattern %q: %w", r.Pattern, err)
+			return fmt.Errorf("upstream: capabilities.json: pattern %q: %w", r.Pattern, err)
 		}
 		c.capRules = append(c.capRules, compiledRule{provider: r.Provider, re: compileGlob(r.Pattern), set: r.Set})
 	}
+	return nil
+}
+
+// compileThinking checks the thinking rules, budgets and placeholder signatures.
+func (c *Capabilities) compileThinking() error {
 	for i, r := range c.thinking.Rules {
 		if r.Pattern == "" || len(r.Levels) == 0 {
-			return nil, fmt.Errorf("upstream: thinking.json: rule %d needs a pattern and levels", i)
+			return fmt.Errorf("upstream: thinking.json: rule %d needs a pattern and levels", i)
 		}
 		c.thinkRe = append(c.thinkRe, compileGlob(r.Pattern))
 	}
 	for level, n := range c.thinking.Budgets {
 		if n < 0 || n > 1_000_000 {
-			return nil, fmt.Errorf("upstream: thinking.json: budget for %q is out of range", level)
+			return fmt.Errorf("upstream: thinking.json: budget for %q is out of range", level)
 		}
 	}
 	if c.thinking.ClaudeSignature == "" || c.thinking.GeminiSignature == "" {
-		return nil, errors.New("upstream: thinking.json: both placeholder signatures are required")
+		return errors.New("upstream: thinking.json: both placeholder signatures are required")
 	}
 	if c.thinking.GeminiCLISignature == "" || c.thinking.AntigravitySignature == "" || c.thinking.VertexSignature == "" {
-		return nil, errors.New("upstream: thinking.json: the Gemini CLI, Antigravity and Vertex signatures are required")
+		return errors.New("upstream: thinking.json: the Gemini CLI, Antigravity and Vertex signatures are required")
 	}
-	var err error
-	if c.visionNo, err = joinRegexp("vision.json not", v.Not); err != nil {
-		return nil, err
-	}
-	if c.visionOk, err = joinRegexp("vision.json name", v.Name); err != nil {
-		return nil, err
-	}
-	for i, r := range p.Rules {
+	return nil
+}
+
+// compileParams checks and compiles the parameter rules.
+func (c *Capabilities) compileParams(rules []ParamRule) error {
+	for i, r := range rules {
 		if len(r.Drop) == 0 && len(r.Rename) == 0 && len(r.DropMessageFields) == 0 && !r.FlattenContent && r.CapOutput == 0 {
-			return nil, fmt.Errorf("upstream: params.json: rule %d does nothing", i)
+			return fmt.Errorf("upstream: params.json: rule %d does nothing", i)
 		}
 		if r.CapOutput < 0 {
-			return nil, fmt.Errorf("upstream: params.json: rule %d has a negative cap", i)
+			return fmt.Errorf("upstream: params.json: rule %d has a negative cap", i)
 		}
 		if r.Exclude != "" && r.Pattern == "" {
-			return nil, fmt.Errorf("upstream: params.json: rule %d has an exclusion and no pattern", i)
+			return fmt.Errorf("upstream: params.json: rule %d has an exclusion and no pattern", i)
 		}
 		for _, f := range append(append([]string{}, r.Drop...), r.DropMessageFields...) {
 			if !safeToDrop(f) {
-				return nil, fmt.Errorf("upstream: params.json: rule %d names a credential-shaped field", i)
+				return fmt.Errorf("upstream: params.json: rule %d names a credential-shaped field", i)
 			}
 		}
 		pc := paramCompiled{ParamRule: r}
@@ -289,7 +312,7 @@ func NewCapabilities(capData, thinkData, visionData, paramData []byte, reg *Regi
 		}
 		c.params = append(c.params, pc)
 	}
-	return c, nil
+	return nil
 }
 
 // dropSafeFields are names that read like a credential but are a cache hint, so
@@ -398,6 +421,11 @@ func (c *Capabilities) SetCustom(all map[string]Declared) {
 	c.custom.Store(&all)
 }
 
+// ReadsImages reports whether a turn carrying an image is sent as it is. A model
+// the tables say nothing about is tried: a table that never named it is not
+// evidence that it cannot read one.
+func (c Capability) ReadsImages() bool { return c.Vision || !c.VisionSet }
+
 // Declare records one capability a request proved a custom model has, keeping
 // every other entry as it is.
 func (c *Capabilities) Declare(provider, model string, d Declared) {
@@ -410,7 +438,16 @@ func (c *Capabilities) Declare(provider, model string, d Declared) {
 			next[k] = v
 		}
 	}
+	// The dashboard stores a custom model under the provider's alias and a
+	// request names the registry id: merge into the entry that already exists,
+	// so a learned flag never shadows the operator's.
 	key := provider + "/" + model
+	for _, o := range c.owners(provider) {
+		if _, ok := next[o+"/"+model]; ok {
+			key = o + "/" + model
+			break
+		}
+	}
 	d.Vision, d.Reasoning = mergeFlag(next[key].Vision, d.Vision), mergeFlag(next[key].Reasoning, d.Reasoning)
 	d.Audio = mergeFlag(next[key].Audio, d.Audio)
 	next[key] = d

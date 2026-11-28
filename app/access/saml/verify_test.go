@@ -67,7 +67,7 @@ func TestTheWrappingAttackYieldsNoSession(t *testing.T) {
 	if got.ID != "assert-1" {
 		t.Fatalf("the wrapped assertion %q was read instead of the signed one", got.ID)
 	}
-	email, _, ok := Email(got, Settings{})
+	email, _, _, ok := Email(got, Settings{})
 	if !ok || email == "attacker@evil.example" {
 		t.Fatalf("the forged address became the identity: %q", email)
 	}
@@ -272,7 +272,7 @@ func TestASignedAssertionHiddenInAdviceIsNotTheIdentity(t *testing.T) {
 		// Refusing the document outright is a correct answer too.
 		return
 	}
-	email, _, ok := Email(got, Settings{})
+	email, _, _, ok := Email(got, Settings{})
 	if !ok || email != "ops@example.com" {
 		t.Fatalf("identity %q; the signed assertion carries ops@example.com", email)
 	}

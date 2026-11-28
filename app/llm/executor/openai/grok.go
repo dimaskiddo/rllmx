@@ -15,6 +15,7 @@ import (
 	"github.com/tidwall/sjson"
 
 	"rllmx/app/llm/executor"
+	"rllmx/app/platform/text"
 	"rllmx/app/store/dialect"
 	"rllmx/app/store/document"
 )
@@ -109,7 +110,7 @@ func headerSafe(field string, req executor.Request) string {
 		return ""
 	}
 	v := strings.TrimSpace(req.Account(field))
-	if v == "" || len(v) > grokMaxHeader || strings.ContainsFunc(v, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
+	if v == "" || len(v) > grokMaxHeader || text.HasASCIIControl(v) {
 		return ""
 	}
 	return v

@@ -27,15 +27,21 @@ const maxClaimBytes = 320
 
 // Email picks the address a sign-in is for. exactOnly reports that it came from
 // the NameID rather than a mail attribute, so only a listed spelling admits it:
-// a NameID is whatever the provider made it.
-func Email(a Assertion, set Settings) (addr string, exactOnly bool, ok bool) {
+// a NameID is whatever the provider made it. unproven marks an address from a
+// common attribute spelling rather than the one the operator configured:
+// Entra's `mail` carries a guest's user-editable address.
+func Email(a Assertion, set Settings) (addr string, exactOnly, unproven bool, ok bool) {
 	if v, ok := attribute(a, set.AttributeEmail, emailAttributes); ok && looksLikeEmail(v) {
-		return v, false, true
+		// The operator's own attribute is trusted; a missing one that fell back to
+		// a common spelling is not.
+		_, configured := valueOf(a, set.AttributeEmail)
+		configured = set.AttributeEmail != "" && configured
+		return v, false, !configured, true
 	}
 	if v := strings.TrimSpace(a.Subject.NameID.Value); looksLikeEmail(v) {
-		return v, true, true
+		return v, true, true, true
 	}
-	return "", false, false
+	return "", false, false, false
 }
 
 // Name is the full name the assertion carries, or empty when it carries none.

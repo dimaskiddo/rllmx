@@ -30,20 +30,6 @@ type Config struct {
 	MaxWait time.Duration
 }
 
-// Valid reports why a configuration cannot be used. A zero RPM is valid and
-// means off.
-func (c Config) Valid() error {
-	switch {
-	case c.RPM < 0:
-		return errors.New("the rate limit must not be negative")
-	case c.RPM > 0 && c.Burst < 1:
-		return errors.New("the rate limit burst must be at least 1")
-	case c.MaxWait < 0:
-		return errors.New("the rate limit wait must not be negative")
-	}
-	return nil
-}
-
 // Bucket is one key's token bucket. It is safe for concurrent use.
 type Bucket struct {
 	mu     sync.Mutex

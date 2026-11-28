@@ -117,13 +117,14 @@ func (c *call) learnVision(ctx context.Context) {
 	on := true
 	lctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), learnBudget)
 	defer cancel()
-	if err := c.p.d.Declarer.Remember(lctx, c.dest.provider, c.dest.model, upstream.Declared{Vision: &on}); err != nil {
+	found, err := c.p.d.Declarer.Remember(lctx, c.dest.provider, c.dest.model, upstream.Declared{Vision: &on})
+	if err != nil {
 		if c.p.d.Log != nil {
 			c.p.d.Log.Warningf("pipeline: recording a learned capability failed: %v", err)
 		}
 		return
 	}
-	if c.p.d.Log != nil {
+	if found && c.p.d.Log != nil {
 		c.p.d.Log.Infof("caps: %s/%s now reads images", logName(c.dest.provider), logName(c.dest.model))
 	}
 }
@@ -215,11 +216,7 @@ func hasContent(r *translate.Response) bool {
 }
 
 func streamFail(err error) *accountFail {
-	status := http.StatusBadGateway
-	if errors.Is(err, stream.ErrStall) || errors.Is(err, stream.ErrFirstChunk) {
-		status = http.StatusGatewayTimeout
-	}
-	return &accountFail{status: status, class: streamClass(err), text: stream.ReasonText(err)}
+	return &accountFail{status: stream.Status(err), class: streamClass(err), text: stream.ReasonText(err)}
 }
 
 // relay streams the answer to the client. The client's stream is opened by the
@@ -244,7 +241,7 @@ func (c *call) relay(ctx context.Context, resp executor.Response, src stream.Sou
 		Body: resp.Body, Source: src, UpstreamFormat: c.dest.format, ClientFormat: c.format, Ctx: c.tctx,
 		Client: client, Timers: c.timers(), RequestBytes: len(c.body), Buffer: true, Now: c.p.d.Now,
 		Keepalive:            keep,
-		OpenWhenQuiet:        !c.mayFailover,
+		OpenWhenQuiet:        !c.mayFailover && !c.moreAccounts,
 		Rewrite:              c.restoreEvent(),
 		ReasoningAliasFields: c.dest.entry.Transport.Quirks.ReasoningAliasFields,
 	})

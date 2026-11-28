@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	nethttp "net/http"
 	"strings"
 	"sync/atomic"
@@ -25,6 +24,7 @@ import (
 	"rllmx/app/gateway/skill"
 	"rllmx/app/http/controllers"
 	"rllmx/app/http/middleware"
+	appfile "rllmx/app/platform/file"
 	"rllmx/app/platform/network"
 	"rllmx/app/platform/upgrade"
 	"rllmx/app/providers"
@@ -213,7 +213,13 @@ func guardedFetch(version, accept string, cap int64) func(context.Context, strin
 		if res.StatusCode != nethttp.StatusOK {
 			return nil, fmt.Errorf("fetch: status %d", res.StatusCode)
 		}
-		return io.ReadAll(io.LimitReader(res.Body, cap))
+		// A release body larger than the cap is refused, not cut: a cut archive
+		// would pass the size check below and fail its checksum instead.
+		body, err := appfile.ReadCapped(res.Body, cap)
+		if err != nil {
+			return nil, err
+		}
+		return body, nil
 	}
 }
 

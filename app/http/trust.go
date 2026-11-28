@@ -38,8 +38,8 @@ func peerAddr(r *nethttp.Request) (netip.Addr, bool) {
 	return ap.Addr().Unmap().WithZone(""), true
 }
 
-// PeerTrusted reports whether the socket peer of r is a trusted proxy.
-func (t Trust) PeerTrusted(r *nethttp.Request) bool {
+// peerTrusted reports whether the socket peer of r is a trusted proxy.
+func (t Trust) peerTrusted(r *nethttp.Request) bool {
 	a, ok := peerAddr(r)
 	return ok && t.contains(a)
 }
@@ -75,7 +75,7 @@ func (t Trust) SecureRequest(r *nethttp.Request) bool {
 	if r.TLS != nil {
 		return true
 	}
-	if !t.PeerTrusted(r) {
+	if !t.peerTrusted(r) {
 		return false
 	}
 	v := r.Header.Get("X-Forwarded-Proto")

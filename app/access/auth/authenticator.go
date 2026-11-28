@@ -86,12 +86,6 @@ func NewAuthenticator(store *Store, keys *Keys, hasher frameworkhash.Hash, initi
 	}
 }
 
-// Session reports whether a request carries a valid session cookie.
-func (a *Authenticator) Session(r *nethttp.Request) bool {
-	_, ok := a.SessionInfo(r)
-	return ok
-}
-
 // SessionInfo names the signed-in caller and their role. The `pv` claim must
 // still match, so a password change ends the sessions it applied to; a standard
 // user is read from the user list on every request, so deleting or demoting
@@ -241,13 +235,15 @@ func (a *Authenticator) IsSSOAdmin(email string, exactOnly bool) bool {
 // IssueSSO signs a session started through a provider. An address on the admin
 // list is the admin; every other address is a standard user, provisioned on its
 // first sign-in with a password nobody knows. An empty name means the provider
-// sent none, and leaves a stored name alone.
-func (a *Authenticator) IssueSSO(ctx context.Context, method, email, name string, exactOnly, secure bool) (contractshttp.Cookie, bool) {
+// sent none, and leaves a stored name alone. unproven marks an address the
+// provider did not vouch for: it can still be a standard user, but only an
+// exact admin entry can make it the admin.
+func (a *Authenticator) IssueSSO(ctx context.Context, method, email, name string, exactOnly, unproven, secure bool) (contractshttp.Cookie, bool) {
 	mode := a.Mode(ctx)
 	if (method == MethodOIDC && !mode.OIDC) || (method == MethodSAML && !mode.SAML) || method == MethodPassword {
 		return contractshttp.Cookie{}, false
 	}
-	if a.IsSSOAdmin(email, exactOnly) {
+	if a.IsSSOAdmin(email, exactOnly || unproven) {
 		if name == "" {
 			name = email
 		}
@@ -269,7 +265,7 @@ func (a *Authenticator) ssoUser(ctx context.Context, email, name string, exactOn
 	}
 	name = CleanFullName(name)
 	if u, ok := a.Users.ByEmail(ctx, email); ok {
-		if u.Provisioned && name != "" {
+		if u.Provisioned && name != "" && (u.FullName != name || u.SSOName != name) {
 			next := u
 			next.FullName, next.SSOName = name, name
 			// A failed write keeps the old name and the next sign-in retries; it

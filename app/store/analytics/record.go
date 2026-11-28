@@ -2,6 +2,7 @@ package analytics
 
 import (
 	"math"
+	"net/http"
 	"strings"
 	"time"
 
@@ -85,6 +86,16 @@ func nonNeg(n int64) int64 {
 	}
 	return n
 }
+
+// Served reports whether a status is one a key's request budget counts: the
+// provider answered. A row at 400 or above spends no request, whatever it cost
+// in tokens. The SQL that sums "errors" holds the same bound.
+func Served(status int) bool { return status < http.StatusBadRequest }
+
+// Sanitize returns the record as it would be stored: every free-form field
+// bounded and an unknown error class made "unknown". It is idempotent, so a
+// caller that counts a record before the writer sees it counts what is stored.
+func Sanitize(r Record) Record { return sanitize(r) }
 
 // sanitize bounds every free-form field and maps an unknown error class to
 // "unknown". It is the only place a value from a request becomes a stored one.

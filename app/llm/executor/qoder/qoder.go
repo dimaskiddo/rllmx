@@ -544,5 +544,5 @@ func qoderCut(s string, n int) string {
 	if len(r) <= n {
 		return s
 	}
-	return string(r[:n]) + "..."
+	return text.CutRunes(s, n) + "..."
 }

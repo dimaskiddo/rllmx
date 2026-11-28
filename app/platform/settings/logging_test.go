@@ -48,8 +48,8 @@ func TestCheckLoggingWarnsAndKeepsTheDefaults(t *testing.T) {
 		t.Fatalf("a readable value warned: %v", n.Warnings)
 	}
 	CheckLogging(tests.Config{Values: map[string]any{
-		"logging.output":                "terminal",
-		"logging.channels.single.level": "verbose",
+		"logging.output": "terminal",
+		"logging.level":  "verbose",
 	}}, &n)
 	if len(n.Warnings) != 2 {
 		t.Fatalf("warnings = %v, want LOG_OUTPUT and LOG_LEVEL", n.Warnings)

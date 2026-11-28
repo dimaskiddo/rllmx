@@ -301,12 +301,15 @@ func (s *hopStream) Close() error {
 // it was being opened.
 func (s *hopStream) swap(body io.ReadCloser) bool {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.closed {
+		s.mu.Unlock()
+		// The drain is a read, so it runs outside the lock: Close and isClosed
+		// must not wait on a peer that has stopped sending.
 		Drain(body)
 		return false
 	}
 	s.live = body
+	s.mu.Unlock()
 	return true
 }
 

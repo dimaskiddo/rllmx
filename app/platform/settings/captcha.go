@@ -3,6 +3,7 @@ package settings
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -11,6 +12,10 @@ import (
 
 // captchaProviders names the challenge a sign-in may be asked to pass.
 var captchaProviders = []string{"turnstile", "recaptcha"}
+
+// CaptchaProviders lists the names AUTH_CAPTCHA_PROVIDER accepts, for a check
+// that each one has a verifier.
+func CaptchaProviders() []string { return slices.Clone(captchaProviders) }
 
 const maxKeyLen = 256
 
@@ -39,11 +44,7 @@ func LoadCaptcha(cfg config.Config) (*Captcha, error) {
 	if c.Provider == "" {
 		return c, nil
 	}
-	ok := false
-	for _, p := range captchaProviders {
-		ok = ok || c.Provider == p
-	}
-	if !ok {
+	if !slices.Contains(captchaProviders, c.Provider) {
 		return nil, fmt.Errorf("settings: AUTH_CAPTCHA_PROVIDER: must be one of %s", strings.Join(captchaProviders, ", "))
 	}
 	if err := checkPrint(c.SiteKey, "AUTH_CAPTCHA_SITE_KEY"); err != nil {

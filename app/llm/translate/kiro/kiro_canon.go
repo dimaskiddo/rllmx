@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strconv"
 	"strings"
+
+	"rllmx/app/platform/text"
 )
 
 // kiroCanonical is a conversation Kiro accepts: alternating turns, a last user
@@ -186,14 +188,14 @@ func kiroToolID(raw string, turn, index int, name string, used map[string]bool) 
 			b.WriteRune(r)
 		}
 	}
-	id := cutRunes(b.String(), kiroToolIDMax)
+	id := text.CutRunes(b.String(), kiroToolIDMax)
 	if id == "" {
-		id = cutRunes("call_msg"+strconv.Itoa(turn)+"_tc"+strconv.Itoa(index)+"_"+name, kiroToolIDMax)
+		id = text.CutRunes("call_msg"+strconv.Itoa(turn)+"_tc"+strconv.Itoa(index)+"_"+name, kiroToolIDMax)
 	}
 	base := id
 	for n := 2; used[base]; n++ {
 		suffix := "_" + strconv.Itoa(n)
-		base = cutRunes(id, kiroToolIDMax-len(suffix)) + suffix
+		base = text.CutRunes(id, kiroToolIDMax-len(suffix)) + suffix
 	}
 	used[base] = true
 	return base

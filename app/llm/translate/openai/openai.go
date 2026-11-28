@@ -83,7 +83,7 @@ func ReadOpenAIMessage(m gjson.Result) translate.Message {
 	if msg.Role == "developer" {
 		msg.Role = translate.RoleSystem
 	}
-	msg.Content = ReadOpenAIContent(m.Get("content"))
+	msg.Content = readOpenAIContent(m.Get("content"))
 	// An agent client may put the picture beside the content instead of in it:
 	// Ollama and Hermes use `images`, the Vercel AI SDK uses `attachments` or
 	// `experimental_attachments`. An image that is not read here is an image no
@@ -173,7 +173,7 @@ func ArgsText(r gjson.Result) string {
 	return r.Raw
 }
 
-func ReadOpenAIContent(c gjson.Result) []translate.Part {
+func readOpenAIContent(c gjson.Result) []translate.Part {
 	switch {
 	case c.Type == gjson.String:
 		if c.String() == "" {

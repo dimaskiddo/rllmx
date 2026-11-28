@@ -383,7 +383,7 @@ func TestTheSessionFromAProviderCarriesItsMethod(t *testing.T) {
 	if !ok || claims.Method != auth.MethodOIDC || claims.Email != "ops@example.com" || claims.UID == "" {
 		t.Fatalf("%+v ok=%v", claims, ok)
 	}
-	if !r.auth.Session(req) {
+	if _, ok := r.auth.SessionInfo(req); !ok {
 		t.Fatal("a fresh provider session does not validate")
 	}
 }
@@ -415,14 +415,14 @@ func TestSwitchingTheModeOffEndsAProviderSession(t *testing.T) {
 	rec, _ := r.flow(t, nil)
 	req := httptest.NewRequest(nethttp.MethodGet, "/", nil)
 	req.AddCookie(&nethttp.Cookie{Name: auth.CookieName, Value: sessionCookie(rec)})
-	if !r.auth.Session(req) {
+	if _, ok := r.auth.SessionInfo(req); !ok {
 		t.Fatal("the session does not validate")
 	}
 	if err := r.sq.Settings().Patch(contextBackground(), map[string]string{"authMode": `"password"`}); err != nil {
 		t.Fatal(err)
 	}
 	r.auth.Store.Changed()
-	if r.auth.Session(req) {
+	if _, ok := r.auth.SessionInfo(req); ok {
 		t.Fatal("a provider session outlived the mode that allowed it")
 	}
 }
@@ -465,5 +465,53 @@ func TestAStandardUsersSessionOutlivesTheAdminList(t *testing.T) {
 	r.auth.SSOAdmin = sso.ParseAdmins("someone-else@example.com").IsAdmin
 	if info, ok := r.auth.SessionInfo(req); !ok || info.Role != auth.RoleUser {
 		t.Fatalf("%+v %v", info, ok)
+	}
+}
+
+// flowWith runs a sign-in whose token the test shapes.
+func (r *oidcRig) flowWith(t *testing.T, shape func(map[string]any)) *httptest.ResponseRecorder {
+	t.Helper()
+	start := r.get("/api/auth/oidc/start", nil)
+	state := queryParam(location(start), "state")
+	claims := claimsFor(t, r.idp.issuer, queryParam(location(start), "nonce"))
+	shape(claims)
+	r.idp.claims = claims
+	return r.get("/api/auth/oidc/callback?code=an-auth-code&state="+state, map[string]string{"Cookie": sso.BindCookie + "=" + bindOf(start)})
+}
+
+func roleOf(t *testing.T, r *oidcRig, rec *httptest.ResponseRecorder) (string, bool) {
+	t.Helper()
+	cookie := sessionCookie(rec)
+	if cookie == "" {
+		return "", false
+	}
+	req := httptest.NewRequest(nethttp.MethodGet, "/", nil)
+	req.AddCookie(&nethttp.Cookie{Name: auth.CookieName, Value: cookie})
+	info, ok := r.auth.SessionInfo(req)
+	return info.Role, ok
+}
+
+// A token with no `email_verified` proves nothing about the address, so a
+// @domain admin entry cannot be matched by it; an exact entry still can, and
+// the address still signs in as a standard user.
+func TestAnUnprovenAddressNeverMatchesADomainAdminEntry(t *testing.T) {
+	noClaim := func(c map[string]any) { delete(c, "email_verified") }
+	for name, tc := range map[string]struct {
+		admins string
+		shape  func(map[string]any)
+		role   string
+	}{
+		"domain entry, claim absent": {"@example.com", noClaim, auth.RoleUser},
+		"domain entry, claim true":   {"@example.com", func(map[string]any) {}, auth.RoleAdmin},
+		"exact entry, claim absent":  {"ops@example.com", noClaim, auth.RoleAdmin},
+		"no entry, claim absent":     {"", noClaim, auth.RoleUser},
+	} {
+		r := newOIDCRig(t, nil)
+		r.auth.SSOAdmin = sso.ParseAdmins(tc.admins).IsAdmin
+		rec := r.flowWith(t, tc.shape)
+		role, ok := roleOf(t, r, rec)
+		if !ok || role != tc.role {
+			t.Errorf("%s: role %q ok %v, want %q", name, role, ok, tc.role)
+		}
 	}
 }

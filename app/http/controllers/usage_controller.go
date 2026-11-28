@@ -64,7 +64,7 @@ type UsageController struct {
 	Log   log.Log
 	// Users holds the standard-user accounts, so a user's read is narrowed to
 	// the keys assigned to them. Nil leaves every read unscoped.
-	Users *auth.Users
+	Users apphttp.KeyLister
 	// Loc and Now pin the clock in a test; nil reads time.Local and time.Now.
 	Loc         *time.Location
 	Now         func() time.Time

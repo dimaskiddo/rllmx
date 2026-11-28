@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"io"
 	"net"
 	nethttp "net/http"
 	"net/http/httptest"
@@ -356,4 +357,69 @@ func mustAllow(t *testing.T, hosts ...string) *Allow {
 		t.Fatal(err)
 	}
 	return a
+}
+
+func protoClient(t *testing.T, tlsCfg *tls.Config) *nethttp.Client {
+	t.Helper()
+	allow, _ := ParseAllow("127.0.0.1")
+	return NewClient(Options{ConnectTimeout: time.Second, Allow: allow, HTTP3: true, TLS: tlsCfg})
+}
+
+func TestACustomProviderOnPlainHTTPIsServedOverHTTP1(t *testing.T) {
+	var got string
+	srv := httptest.NewServer(nethttp.HandlerFunc(func(w nethttp.ResponseWriter, r *nethttp.Request) {
+		b, _ := io.ReadAll(r.Body)
+		got = string(b)
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+	resp, err := protoClient(t, nil).Post(srv.URL+"/v1/chat/completions", "application/json", strings.NewReader(`{"model":"m"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.ProtoMajor != 1 || got != `{"model":"m"}` {
+		t.Fatalf("proto %d body %q", resp.ProtoMajor, got)
+	}
+}
+
+func TestAnHTTPSProviderThatOnlySpeaksHTTP1IsServedWithoutAQUICWait(t *testing.T) {
+	srv := httptest.NewTLSServer(nethttp.HandlerFunc(func(w nethttp.ResponseWriter, _ *nethttp.Request) {
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+	c := protoClient(t, srv.Client().Transport.(*nethttp.Transport).TLSClientConfig)
+	start := time.Now()
+	for range 3 {
+		resp, err := c.Get(srv.URL + "/")
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+		if resp.ProtoMajor != 1 {
+			t.Fatalf("proto %d, want HTTP/1.1", resp.ProtoMajor)
+		}
+	}
+	if time.Since(start) > time.Second {
+		t.Fatalf("three calls took %v: a QUIC attempt was waited on", time.Since(start))
+	}
+}
+
+func TestAnHTTPSProviderOnHTTP2IsServedOverHTTP2(t *testing.T) {
+	srv := httptest.NewUnstartedServer(nethttp.HandlerFunc(func(w nethttp.ResponseWriter, _ *nethttp.Request) {
+		_, _ = w.Write([]byte("ok"))
+	}))
+	srv.EnableHTTP2 = true
+	srv.StartTLS()
+	defer srv.Close()
+	cfg := srv.Client().Transport.(*nethttp.Transport).TLSClientConfig.Clone()
+	resp, err := protoClient(t, cfg).Get(srv.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.ProtoMajor != 2 {
+		t.Fatalf("proto %d, want HTTP/2", resp.ProtoMajor)
+	}
 }

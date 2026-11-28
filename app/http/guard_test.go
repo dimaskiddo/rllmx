@@ -26,7 +26,6 @@ type fakeAuth struct {
 	requireKey bool
 }
 
-func (f fakeAuth) Session(*nethttp.Request) bool { return f.session }
 func (f fakeAuth) SessionInfo(*nethttp.Request) (auth.Session, bool) {
 	if !f.session {
 		return auth.Session{}, false

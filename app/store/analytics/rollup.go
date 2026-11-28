@@ -36,7 +36,7 @@ func aggregate(rows []row, bucket func(time.Time) int64) map[rollupKey]*rollupSu
 			out[k] = v
 		}
 		v.requests++
-		if r.Status >= 400 {
+		if !Served(r.Status) {
 			v.errors++
 		}
 		v.prompt += r.PromptTokens

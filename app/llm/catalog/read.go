@@ -8,6 +8,7 @@ import (
 
 	"github.com/tidwall/gjson"
 
+	"rllmx/app/platform/file"
 	"rllmx/app/store/document"
 	"rllmx/app/store/repository"
 )
@@ -39,11 +40,9 @@ func readGet(ctx context.Context, client *http.Client, url, token string, extra 
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxList))
 		return nil, ErrNoCatalog
 	}
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxList))
-	if err != nil {
-		return nil, err
-	}
-	return raw, nil
+	// A list larger than the bound is refused, not cut: half a list read as a
+	// whole one drops every model after the cut.
+	return file.ReadCapped(resp.Body, maxList)
 }
 
 // accountValue reads one text field of a connection, its API key first.

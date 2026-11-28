@@ -86,7 +86,7 @@ func (c *call) routeLine() string {
 		}
 		// The one case an image does not reach the model: a table that says the
 		// model cannot read it. The line names no content, only the decision.
-		if translate.DetectNeeds(c.req).Vision && !c.p.d.Caps.For(c.dest.provider, c.dest.model).Vision {
+		if translate.DetectNeeds(c.req).Vision && !c.p.d.Caps.For(c.dest.provider, c.dest.model).ReadsImages() {
 			b.WriteString(" · IMAGE omitted")
 		}
 	}

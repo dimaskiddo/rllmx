@@ -110,7 +110,33 @@ func Apply(reg *Registry, r *translate.Request, o Options) Stats {
 	if reg == nil || r == nil {
 		return st
 	}
-	var always, smart []Manifest
+	always, smart := partitionSkills(reg, o)
+	ap := &applier{reg: reg, r: r, o: o, seen: map[string]bool{}}
+	if o.Notice {
+		ap.st.Notice = r.AppendSystem(failoverNotice)
+	}
+	for _, m := range always {
+		ap.inject(m, "", false)
+	}
+	if len(smart) > 0 || o.ECC.Enabled {
+		query := LatestUser(r)
+		for _, match := range ClassifyLocal(reg, smart, query) {
+			if m, ok := reg.Find(match.ID); ok {
+				ap.inject(m, routerLocal, true)
+			}
+		}
+		for _, match := range ClassifyECC(reg, query, o.ECC) {
+			if m, ok := reg.Find(match.ID); ok {
+				ap.inject(m, routerECC, true)
+			}
+		}
+	}
+	return ap.st
+}
+
+// partitionSkills splits the enabled system-prompt skills into those that go on
+// every request and those a topic score decides.
+func partitionSkills(reg *Registry, o Options) (always, smart []Manifest) {
 	for _, m := range reg.List() {
 		if m.Hook != "system-prompt" {
 			continue
@@ -128,68 +154,58 @@ func Apply(reg *Registry, r *translate.Request, o Options) Stats {
 		}
 		smart = append(smart, m)
 	}
-	seen := map[string]bool{}
-	inject := func(m Manifest, router string, routable bool) {
-		if seen[m.ID] {
-			return
-		}
-		if routable && o.Prior[InjectedKey(router, m.ID)] {
-			if r.AppendSystem(reminder(m.Name, routerPrefix(router))) {
-				seen[m.ID] = true
-				st.Reminded = append(st.Reminded, m.ID)
-			}
-			return
-		}
-		prompt := reg.Prompt(m.ID)
-		// REA replaces the client's own security-policy paragraph before its
-		// guidance goes in, so the two never travel together.
-		if m.ID == reaSkillID {
-			stripSafetyParagraphs(r)
-		}
-		if o.Replace != nil {
-			if text, ok := o.Replace(m.ID); ok {
-				if text == "" {
-					return
-				}
-				prompt = text
-			}
-		}
-		body := Render(m, prompt, o.Value)
-		if body == "" || !r.AppendSystem(body) {
-			return
-		}
-		seen[m.ID] = true
-		st.Skills = append(st.Skills, m.ID)
-		st.Session = append(st.Session, InjectedKey(router, m.ID))
-		if st.Via == nil {
-			st.Via = map[string]string{}
-		}
-		via := router
-		if via == "" {
-			via = "always"
-		}
-		st.Via[m.ID] = via
+	return always, smart
+}
+
+// applier carries one Apply call's state: what has been injected and the stats.
+type applier struct {
+	reg  *Registry
+	r    *translate.Request
+	o    Options
+	seen map[string]bool
+	st   Stats
+}
+
+func (a *applier) inject(m Manifest, router string, routable bool) {
+	if a.seen[m.ID] {
+		return
 	}
-	if o.Notice {
-		st.Notice = r.AppendSystem(failoverNotice)
-	}
-	for _, m := range always {
-		inject(m, "", false)
-	}
-	if len(smart) > 0 || o.ECC.Enabled {
-		query := LatestUser(r)
-		for _, match := range ClassifyLocal(reg, smart, query) {
-			if m, ok := reg.Find(match.ID); ok {
-				inject(m, routerLocal, true)
-			}
+	if routable && a.o.Prior[injectedKey(router, m.ID)] {
+		if a.r.AppendSystem(reminder(m.Name, routerPrefix(router))) {
+			a.seen[m.ID] = true
+			a.st.Reminded = append(a.st.Reminded, m.ID)
 		}
-		for _, match := range ClassifyECC(reg, query, o.ECC) {
-			if m, ok := reg.Find(match.ID); ok {
-				inject(m, routerECC, true)
+		return
+	}
+	prompt := a.reg.Prompt(m.ID)
+	// REA replaces the client's own security-policy paragraph before its
+	// guidance goes in, so the two never travel together.
+	if m.ID == reaSkillID {
+		stripSafetyParagraphs(a.r)
+	}
+	if a.o.Replace != nil {
+		if text, ok := a.o.Replace(m.ID); ok {
+			if text == "" {
+				return
 			}
+			prompt = text
 		}
 	}
-	return st
+	body := Render(m, prompt, a.o.Value)
+	if body == "" || !a.r.AppendSystem(body) {
+		return
+	}
+	a.seen[m.ID] = true
+	a.st.Skills = append(a.st.Skills, m.ID)
+	a.st.Session = append(a.st.Session, injectedKey(router, m.ID))
+	if a.st.Via == nil {
+		a.st.Via = map[string]string{}
+	}
+	via := router
+	if via == "" {
+		via = "always"
+	}
+	a.st.Via[m.ID] = via
 }
 
 // The two routers' names in the per-session table and the reminder's prefix.
@@ -201,9 +217,9 @@ const (
 // failoverNotice is the reference's text, carried verbatim.
 const failoverNotice = "--- Failover Notice: Upstream model/account switched. Check prior turns for existing tool results before searching again. ---"
 
-// InjectedKey names one skill in the per-session table, split by which router
+// injectedKey names one skill in the per-session table, split by which router
 // matched it, as the reference does.
-func InjectedKey(router, id string) string {
+func injectedKey(router, id string) string {
 	return router + "-" + id
 }
 

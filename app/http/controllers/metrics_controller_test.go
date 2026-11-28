@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
 
@@ -115,5 +116,35 @@ func TestTheRefusalNamesTheBasicRealmAndCountsTowardTheLock(t *testing.T) {
 	}
 	if rec := scrape(h, basicAuth("prom", "wrong-password-x")); rec.Code != nethttp.StatusTooManyRequests {
 		t.Fatalf("a guessing address was not locked: %d", rec.Code)
+	}
+}
+
+func TestAScrapeNeitherClearsNorSpendsTheSignInBudget(t *testing.T) {
+	lim := auth.NewLimiter()
+	h := metricsHandler(t, &MetricsController{Reg: metrics.New(nil), Token: testToken, Limiter: lim, Trust: apphttp.NewTrust(nil)})
+	now := time.Now()
+	key := auth.Key("203.0.113.9:5000")
+	for i := 0; i < auth.FreeAttempts-1; i++ {
+		lim.Fail(key, now)
+	}
+	if rec := scrape(h, map[string]string{"Authorization": "Bearer " + testToken}); rec.Code != nethttp.StatusOK {
+		t.Fatalf("%d", rec.Code)
+	}
+	// One more failed sign-in locks the address only if the scrape left the
+	// earlier failures standing.
+	if _, locked := lim.Fail(key, now); locked == 0 {
+		t.Fatal("a good scrape wiped the password sign-in's failures")
+	}
+
+	fresh := auth.NewLimiter()
+	h = metricsHandler(t, &MetricsController{Reg: metrics.New(nil), Token: testToken, Limiter: fresh, Trust: apphttp.NewTrust(nil)})
+	for i := 0; i < auth.FreeAttempts+1; i++ {
+		scrape(h, map[string]string{"Authorization": "Bearer wrong"})
+	}
+	if fresh.Locked(key, now) != 0 {
+		t.Fatal("bad scrapes locked the address's password sign-in")
+	}
+	if fresh.Locked("metrics:"+key, now) == 0 {
+		t.Fatal("bad scrapes were not counted against the scrape itself")
 	}
 }

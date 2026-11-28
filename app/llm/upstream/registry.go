@@ -178,54 +178,9 @@ func (r *Registry) add(e Entry) error {
 			return err
 		}
 	}
-	seen := map[string]bool{}
-	seenKind := map[string]string{}
-	chatModels := map[string]bool{}
-	for _, m := range e.Models {
-		if m.ID == "" || len(m.ID) > maxNameBytes {
-			return errors.New("a model id is empty or over 256 bytes")
-		}
-		if m.Kind != "" && !mediaKinds[m.Kind] {
-			return errors.New("a model has an unknown kind")
-		}
-		if m.Kind == "" || m.Kind == KindLLM {
-			chatModels[m.ID] = true
-		}
-		if m.Dimensions < 0 || m.Dimensions > 1<<20 || len(m.Params) > 32 || len(m.Transport) > 64 || text.HasASCIIControl(m.Transport) {
-			return errors.New("a model has a bad media field")
-		}
-		if m.ContextLength < 0 || m.ContextLength > maxOverlayLimit {
-			return errors.New("a model has a bad context length")
-		}
-		if err := validateVoices(m.Voices); err != nil {
-			return err
-		}
-		for _, p := range m.Params {
-			if p == "" || len(p) > 64 || text.HasASCIIControl(p) {
-				return errors.New("a model has a bad parameter name")
-			}
-		}
-		// One id may name a chat model and a media model (a provider that serves
-		// both under the same name); two models of one kind may not share it.
-		if prev, dup := seenKind[m.ID]; dup && prev == m.Kind {
-			return errors.New("duplicate model id")
-		}
-		seenKind[m.ID] = m.Kind
-		if m.TargetFormat != "" && !formats[m.TargetFormat] {
-			return errors.New("a model has an unknown target format")
-		}
-		if len(m.UpstreamID) > maxNameBytes || text.HasASCIIControl(m.UpstreamID) {
-			return errors.New("a model has a bad upstream id")
-		}
-		if len(m.Levels) > len(effortLevels) {
-			return errors.New("a model has too many levels")
-		}
-		for _, l := range m.Levels {
-			if !effortLevels[l] {
-				return errors.New("a model has an unknown level")
-			}
-		}
-		seen[m.ID] = true
+	chatModels, err := validateModels(e.Models)
+	if err != nil {
+		return err
 	}
 	if err := e.Media.validate(chatModels); err != nil {
 		return err
@@ -249,6 +204,59 @@ func (r *Registry) add(e Entry) error {
 	r.order = append(r.order, e.ID)
 	r.indexMedia(e)
 	return nil
+}
+
+// validateModels checks one provider's model rows and returns the ids of its
+// chat models, which a media block may refer to.
+func validateModels(models []Model) (map[string]bool, error) {
+	seenKind := map[string]string{}
+	chatModels := map[string]bool{}
+	for _, m := range models {
+		if m.ID == "" || len(m.ID) > maxNameBytes {
+			return nil, errors.New("a model id is empty or over 256 bytes")
+		}
+		if m.Kind != "" && !mediaKinds[m.Kind] {
+			return nil, errors.New("a model has an unknown kind")
+		}
+		if m.Kind == "" || m.Kind == KindLLM {
+			chatModels[m.ID] = true
+		}
+		if m.Dimensions < 0 || m.Dimensions > 1<<20 || len(m.Params) > 32 || len(m.Transport) > 64 || text.HasASCIIControl(m.Transport) {
+			return nil, errors.New("a model has a bad media field")
+		}
+		if m.ContextLength < 0 || m.ContextLength > maxOverlayLimit {
+			return nil, errors.New("a model has a bad context length")
+		}
+		if err := validateVoices(m.Voices); err != nil {
+			return nil, err
+		}
+		for _, p := range m.Params {
+			if p == "" || len(p) > 64 || text.HasASCIIControl(p) {
+				return nil, errors.New("a model has a bad parameter name")
+			}
+		}
+		// One id may name a chat model and a media model (a provider that serves
+		// both under the same name); two models of one kind may not share it.
+		if prev, dup := seenKind[m.ID]; dup && prev == m.Kind {
+			return nil, errors.New("duplicate model id")
+		}
+		seenKind[m.ID] = m.Kind
+		if m.TargetFormat != "" && !formats[m.TargetFormat] {
+			return nil, errors.New("a model has an unknown target format")
+		}
+		if len(m.UpstreamID) > maxNameBytes || text.HasASCIIControl(m.UpstreamID) {
+			return nil, errors.New("a model has a bad upstream id")
+		}
+		if len(m.Levels) > len(effortLevels) {
+			return nil, errors.New("a model has too many levels")
+		}
+		for _, l := range m.Levels {
+			if !effortLevels[l] {
+				return nil, errors.New("a model has an unknown level")
+			}
+		}
+	}
+	return chatModels, nil
 }
 
 // ByID returns the provider with that canonical id.

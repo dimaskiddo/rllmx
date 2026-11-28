@@ -9,6 +9,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"rllmx/app/access/sso"
 	"rllmx/app/store/repository"
 	"rllmx/tests/store"
 )
@@ -60,7 +61,7 @@ func TestAUserSessionNamesThatUser(t *testing.T) {
 	if info.Admin() {
 		t.Fatal("a standard user is reported as the admin")
 	}
-	if a.Session(withCookie(cookie.Value)) != true {
+	if _, ok := a.SessionInfo(withCookie(cookie.Value)); !ok {
 		t.Fatal("Session did not agree with SessionInfo")
 	}
 }
@@ -140,7 +141,7 @@ func TestSingleSignOnProvisionsAnUnlistedAddressAsAStandardUser(t *testing.T) {
 	ctx := context.Background()
 	enableOIDC(t, a, s)
 
-	cookie, ok := a.IssueSSO(ctx, MethodOIDC, "Anyone@Example.com", "Anyone", false, false)
+	cookie, ok := a.IssueSSO(ctx, MethodOIDC, "Anyone@Example.com", "Anyone", false, false, false)
 	if !ok {
 		t.Fatal("an unlisted address was refused")
 	}
@@ -154,7 +155,7 @@ func TestSingleSignOnProvisionsAnUnlistedAddressAsAStandardUser(t *testing.T) {
 	}
 
 	// The second sign-in reuses the row.
-	again, ok := a.IssueSSO(ctx, MethodOIDC, "anyone@example.com", "Anyone", false, false)
+	again, ok := a.IssueSSO(ctx, MethodOIDC, "anyone@example.com", "Anyone", false, false, false)
 	if !ok {
 		t.Fatal("the second sign-in was refused")
 	}
@@ -166,6 +167,40 @@ func TestSingleSignOnProvisionsAnUnlistedAddressAsAStandardUser(t *testing.T) {
 	}
 }
 
+// A sign-in that brings the name already stored writes nothing, so the cached
+// user list is not dropped on every sign-in: a row added behind its back stays
+// unseen until the cache expires, and one real change drops it.
+func TestAnUnchangedSingleSignOnNameWritesNothing(t *testing.T) {
+	a, s := newUserAuth(t)
+	ctx := context.Background()
+	enableOIDC(t, a, s)
+	if _, ok := a.IssueSSO(ctx, MethodOIDC, "same@example.com", "Same Name", false, false, false); !ok {
+		t.Fatal("the sign-in was refused")
+	}
+	a.Users.All(ctx)
+	if err := NewUserRepo(func() *repository.Store { return s.Store }, 0).Put(ctx, User{ID: "u9", Username: "late", Hash: "h"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := a.IssueSSO(ctx, MethodOIDC, "same@example.com", "Same Name", false, false, false); !ok {
+		t.Fatal("the second sign-in was refused")
+	}
+	for _, u := range a.Users.All(ctx) {
+		if u.Username == "late" {
+			t.Fatal("an unchanged sign-in dropped the cached user list")
+		}
+	}
+	if _, ok := a.IssueSSO(ctx, MethodOIDC, "same@example.com", "New Name", false, false, false); !ok {
+		t.Fatal("the third sign-in was refused")
+	}
+	seen := false
+	for _, u := range a.Users.All(ctx) {
+		seen = seen || u.Username == "late"
+	}
+	if !seen {
+		t.Fatal("a changed name did not refresh the list")
+	}
+}
+
 // The provider's full name is stored beside the username, refreshed on every
 // sign-in, and shown as the session name.
 func TestSingleSignOnKeepsTheProvidersFullName(t *testing.T) {
@@ -173,7 +208,7 @@ func TestSingleSignOnKeepsTheProvidersFullName(t *testing.T) {
 	ctx := context.Background()
 	enableOIDC(t, a, s)
 
-	cookie, ok := a.IssueSSO(ctx, MethodOIDC, "anyone@example.com", "Anyone Smith", false, false)
+	cookie, ok := a.IssueSSO(ctx, MethodOIDC, "anyone@example.com", "Anyone Smith", false, false, false)
 	if !ok {
 		t.Fatal("the sign-in was refused")
 	}
@@ -186,7 +221,7 @@ func TestSingleSignOnKeepsTheProvidersFullName(t *testing.T) {
 	}
 
 	// A later sign-in replaces the stored name; an empty one leaves it.
-	again, ok := a.IssueSSO(ctx, MethodOIDC, "anyone@example.com", "A. Smith", false, false)
+	again, ok := a.IssueSSO(ctx, MethodOIDC, "anyone@example.com", "A. Smith", false, false, false)
 	if !ok {
 		t.Fatal("the second sign-in was refused")
 	}
@@ -196,7 +231,7 @@ func TestSingleSignOnKeepsTheProvidersFullName(t *testing.T) {
 	if info, _ := a.SessionInfo(withCookie(again.Value)); info.Name != "A. Smith" {
 		t.Fatalf("session name = %q", info.Name)
 	}
-	if _, ok := a.IssueSSO(ctx, MethodOIDC, "anyone@example.com", "", false, false); !ok {
+	if _, ok := a.IssueSSO(ctx, MethodOIDC, "anyone@example.com", "", false, false, false); !ok {
 		t.Fatal("a sign-in with no name was refused")
 	}
 	if u, _ = a.Users.ByEmail(ctx, "anyone@example.com"); u.FullName != "A. Smith" {
@@ -205,7 +240,7 @@ func TestSingleSignOnKeepsTheProvidersFullName(t *testing.T) {
 
 	// A password user the address matches keeps its own name.
 	addStandardUser(t, a, "u2", "Boss", "boss@example.com")
-	if _, ok := a.IssueSSO(ctx, MethodOIDC, "boss@example.com", "The Boss", false, false); !ok {
+	if _, ok := a.IssueSSO(ctx, MethodOIDC, "boss@example.com", "The Boss", false, false, false); !ok {
 		t.Fatal("a password user was refused")
 	}
 	if u, _ := a.Users.ByEmail(ctx, "boss@example.com"); u.FullName != "" {
@@ -218,14 +253,14 @@ func TestAnEditableClaimNeverSignsInAsAnAccount(t *testing.T) {
 	ctx := context.Background()
 	enableOIDC(t, a, s)
 
-	if _, ok := a.IssueSSO(ctx, MethodOIDC, "claim@example.com", "", true, false); ok {
+	if _, ok := a.IssueSSO(ctx, MethodOIDC, "claim@example.com", "", true, false, false); ok {
 		t.Fatal("a user-editable claim provisioned an account")
 	}
 	addStandardUser(t, a, "u1", "Claim", "claim@example.com")
-	if _, ok := a.IssueSSO(ctx, MethodOIDC, "CLAIM@example.com", "", true, false); ok {
+	if _, ok := a.IssueSSO(ctx, MethodOIDC, "CLAIM@example.com", "", true, false, false); ok {
 		t.Fatal("a user-editable claim signed in as the account that owns that address")
 	}
-	if _, ok := a.IssueSSO(ctx, MethodOIDC, "CLAIM@example.com", "", false, false); !ok {
+	if _, ok := a.IssueSSO(ctx, MethodOIDC, "CLAIM@example.com", "", false, false, false); !ok {
 		t.Fatal("a verified address was refused for its own account")
 	}
 }
@@ -236,7 +271,7 @@ func TestAListedAddressSignsInAsTheAdmin(t *testing.T) {
 	enableOIDC(t, a, s)
 	a.SSOAdmin = func(email string, exact bool) bool { return strings.EqualFold(email, "ops@example.com") }
 
-	cookie, ok := a.IssueSSO(ctx, MethodOIDC, "Ops@Example.com", "Ops", false, false)
+	cookie, ok := a.IssueSSO(ctx, MethodOIDC, "Ops@Example.com", "Ops", false, false, false)
 	if !ok {
 		t.Fatal("a listed address was refused")
 	}
@@ -248,7 +283,7 @@ func TestAListedAddressSignsInAsTheAdmin(t *testing.T) {
 	}
 
 	// Any other address is still a standard user.
-	other, ok := a.IssueSSO(ctx, MethodOIDC, "other@example.com", "Other", false, false)
+	other, ok := a.IssueSSO(ctx, MethodOIDC, "other@example.com", "Other", false, false, false)
 	if !ok {
 		t.Fatal("an unlisted address was refused")
 	}
@@ -265,7 +300,7 @@ func TestProvisioningRespectsTheUserCap(t *testing.T) {
 	if err := a.Users.Put(ctx, User{ID: "u1", Username: "seed", Hash: "h"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := a.IssueSSO(ctx, MethodOIDC, "new@example.com", "", false, false); ok {
+	if _, ok := a.IssueSSO(ctx, MethodOIDC, "new@example.com", "", false, false, false); ok {
 		t.Fatal("an account was provisioned past the cap")
 	}
 }
@@ -275,7 +310,7 @@ func TestALongAddressStillSignsIn(t *testing.T) {
 	ctx := context.Background()
 	enableOIDC(t, a, s)
 	long := strings.Repeat("a", 70) + "@example.com"
-	cookie, ok := a.IssueSSO(ctx, MethodOIDC, long, "", false, false)
+	cookie, ok := a.IssueSSO(ctx, MethodOIDC, long, "", false, false, false)
 	if !ok {
 		t.Fatal("an address over the username limit was refused")
 	}
@@ -289,7 +324,7 @@ func TestAPasswordUserNamedLikeAnAddressDoesNotBlockItsSignIn(t *testing.T) {
 	ctx := context.Background()
 	enableOIDC(t, a, s)
 	addStandardUser(t, a, "u1", "boss@example.com", "")
-	cookie, ok := a.IssueSSO(ctx, MethodOIDC, "boss@example.com", "", false, false)
+	cookie, ok := a.IssueSSO(ctx, MethodOIDC, "boss@example.com", "", false, false, false)
 	if !ok {
 		t.Fatal("the address was refused because a password user already holds that name")
 	}
@@ -332,5 +367,29 @@ func TestAnUnsetLifetimeIsTheDefault(t *testing.T) {
 	cookie, ok := a.Issue(context.Background(), MethodPassword, "", "", false)
 	if !ok || cookie.MaxAge != int(SessionTTL.Seconds()) {
 		t.Fatalf("%v %d", ok, cookie.MaxAge)
+	}
+}
+
+// An address the provider did not vouch for may still be a standard user, but
+// only an exact admin entry can make it the admin: a @domain entry cannot.
+func TestAnUnprovenAddressOnlyEverMatchesAnExactAdminEntry(t *testing.T) {
+	a, s := newUserAuth(t)
+	ctx := context.Background()
+	enableOIDC(t, a, s)
+	a.SSOAdmin = sso.ParseAdmins("@example.com").IsAdmin
+	role := func(cookie string) string {
+		if info, ok := a.SessionInfo(withCookie(cookie)); ok {
+			return info.Role
+		}
+		return ""
+	}
+	cookie, ok := a.IssueSSO(ctx, MethodOIDC, "guest@example.com", "Guest", false, true, false)
+	if !ok || role(cookie.Value) != RoleUser {
+		t.Fatalf("an unproven address: ok %v role %q, want a standard user", ok, role(cookie.Value))
+	}
+	a.SSOAdmin = sso.ParseAdmins("guest@example.com").IsAdmin
+	admin, ok := a.IssueSSO(ctx, MethodOIDC, "guest@example.com", "Guest", false, true, false)
+	if !ok || role(admin.Value) != RoleAdmin {
+		t.Fatalf("an unproven address on an exact entry: ok %v role %q, want the admin", ok, role(admin.Value))
 	}
 }

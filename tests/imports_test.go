@@ -278,3 +278,30 @@ func TestTheLoginEngineImportsNoExecutor(t *testing.T) {
 		}
 	}
 }
+
+// facadeRoots are the packages a framework facade may be reached from: the
+// wiring, the two entry points and the configuration.
+var facadeRoots = []string{"app/http/", "app/console/", "app/providers/", "bootstrap/", "config/"}
+
+// A product package takes the facade's interface from a test fake's world
+// instead: one import of the facade in a domain folder would bind the code to
+// the running application.
+func TestOnlyTheAllowedPackagesReachAFacade(t *testing.T) {
+	for name, path := range goFiles(t) {
+		if strings.HasSuffix(name, "_test.go") || strings.HasPrefix(name, "app/facades/") {
+			continue
+		}
+		allowed := false
+		for _, root := range facadeRoots {
+			allowed = allowed || strings.HasPrefix(name, root)
+		}
+		if allowed {
+			continue
+		}
+		for _, imp := range importsOf(t, path) {
+			if imp == "rllmx/app/facades" {
+				t.Errorf("%s imports the facades package", name)
+			}
+		}
+	}
+}

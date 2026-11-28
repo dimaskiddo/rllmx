@@ -235,60 +235,72 @@ type createErr struct {
 	conflict *repository.ErrNameConflict
 }
 
-// createConn runs one create after the request is bound and the store is known.
-// Both the single add and the bulk add go through it, so a line of a pasted list
-// is created exactly the way a filled form is.
-func (c *ProvidersController) createConn(rc context.Context, st *repository.Store, b createBody) (repository.Connection, *createErr) {
-
-	provider := strings.TrimSpace(b.Provider)
-	if id, ok := c.Registry.Resolve(provider); ok {
-		provider = id
-	}
-	cookie := false
-	var node *repository.Node
-	switch {
-	case upstream.NodeKind(provider) != "":
+// createTarget says what a new connection attaches to: a provider node, or a
+// registry entry that takes a key or a cookie. cookie is true for the latter kind
+// of secret.
+func (c *ProvidersController) createTarget(rc context.Context, st *repository.Store, provider string) (node *repository.Node, cookie bool, _ *createErr) {
+	if upstream.NodeKind(provider) != "" {
 		n, found, err := st.Nodes().Get(rc, provider)
 		if err != nil {
-			return repository.Connection{}, &createErr{status: nethttp.StatusServiceUnavailable, msg: "Storage is not available"}
+			return nil, false, &createErr{status: nethttp.StatusServiceUnavailable, msg: "Storage is not available"}
 		}
 		if !found {
-			return repository.Connection{}, &createErr{status: nethttp.StatusNotFound, msg: "Provider node not found"}
+			return nil, false, &createErr{status: nethttp.StatusNotFound, msg: "Provider node not found"}
 		}
-		node = &n
-	default:
-		e, ok := c.Registry.ByID(provider)
-		if !ok {
-			return repository.Connection{}, &createErr{status: nethttp.StatusBadRequest, msg: "Invalid provider"}
-		}
-		switch e.Category {
-		case upstream.CategoryAPIKey, upstream.CategoryFreeTier:
-		case upstream.CategoryCookie:
-			cookie = true
-		default:
-			return repository.Connection{}, &createErr{status: nethttp.StatusBadRequest, msg: "Invalid provider"}
-		}
+		return &n, false, nil
 	}
+	e, ok := c.Registry.ByID(provider)
+	if !ok {
+		return nil, false, &createErr{status: nethttp.StatusBadRequest, msg: "Invalid provider"}
+	}
+	switch e.Category {
+	case upstream.CategoryAPIKey, upstream.CategoryFreeTier:
+		return nil, false, nil
+	case upstream.CategoryCookie:
+		return nil, true, nil
+	}
+	return nil, false, &createErr{status: nethttp.StatusBadRequest, msg: "Invalid provider"}
+}
 
+// cleanSecret validates the pasted key or cookie and returns what is stored.
+func cleanSecret(raw string, cookie bool) (string, *createErr) {
 	secretName := "API Key"
 	if cookie {
 		secretName = "Cookie value"
 	}
-	if strings.TrimSpace(b.APIKey) == "" {
-		return repository.Connection{}, &createErr{status: nethttp.StatusBadRequest, msg: secretName + " is required"}
+	if strings.TrimSpace(raw) == "" {
+		return "", &createErr{status: nethttp.StatusBadRequest, msg: secretName + " is required"}
 	}
-	if len(b.APIKey) > maxSecretBytes || text.HasControl(b.APIKey) {
-		return repository.Connection{}, &createErr{status: nethttp.StatusBadRequest, msg: "Invalid " + strings.ToLower(secretName)}
+	if len(raw) > maxSecretBytes || text.HasControl(raw) {
+		return "", &createErr{status: nethttp.StatusBadRequest, msg: "Invalid " + strings.ToLower(secretName)}
 	}
-	secret := b.APIKey
-	if cookie {
-		// A pasted web credential is normalized before it is sealed: a bare
-		// token stays as it is, a cookie header loses its spare spacing.
-		parsed, ok := upstream.ParseWebCredential(secret)
-		if !ok {
-			return repository.Connection{}, &createErr{status: nethttp.StatusBadRequest, msg: "Invalid cookie value"}
-		}
-		secret = parsed
+	if !cookie {
+		return raw, nil
+	}
+	// A pasted web credential is normalized before it is sealed: a bare token
+	// stays as it is, a cookie header loses its spare spacing.
+	parsed, ok := upstream.ParseWebCredential(raw)
+	if !ok {
+		return "", &createErr{status: nethttp.StatusBadRequest, msg: "Invalid cookie value"}
+	}
+	return parsed, nil
+}
+
+// createConn runs one create after the request is bound and the store is known.
+// Both the single add and the bulk add go through it, so a line of a pasted list
+// is created exactly the way a filled form is.
+func (c *ProvidersController) createConn(rc context.Context, st *repository.Store, b createBody) (repository.Connection, *createErr) {
+	provider := strings.TrimSpace(b.Provider)
+	if id, ok := c.Registry.Resolve(provider); ok {
+		provider = id
+	}
+	node, cookie, cerr := c.createTarget(rc, st, provider)
+	if cerr != nil {
+		return repository.Connection{}, cerr
+	}
+	secret, cerr := cleanSecret(b.APIKey, cookie)
+	if cerr != nil {
+		return repository.Connection{}, cerr
 	}
 
 	if text.HasControl(b.Name) || text.HasControl(b.DisplayName) || text.HasControl(b.Provider) {
@@ -472,72 +484,16 @@ func (c *ProvidersController) Update(ctx contractshttp.Context) contractshttp.Re
 	var psdSet map[string]string
 	var psdRemove []string
 	for key, val := range raw {
-		switch key {
-		case "name":
-			var s string
-			if json.Unmarshal(val, &s) != nil || strings.TrimSpace(s) == "" || len(s) > maxNameBytes || text.HasControl(s) {
-				return flat(ctx, nethttp.StatusBadRequest, "Invalid name")
-			}
-			s = strings.TrimSpace(s)
-			patch.Name = &s
-		case "isActive":
-			var v bool
-			if json.Unmarshal(val, &v) != nil {
-				return flat(ctx, nethttp.StatusBadRequest, "Invalid isActive")
-			}
-			patch.IsActive = &v
-		case "priority":
-			var v int64
-			if json.Unmarshal(val, &v) != nil || v < 1 || v > 1_000_000 {
-				return flat(ctx, nethttp.StatusBadRequest, "Invalid priority")
-			}
-			patch.Priority = &v
-		case "globalPriority":
-			var v *int64
-			if json.Unmarshal(val, &v) != nil || (v != nil && (*v < 0 || *v > 1_000_000)) {
-				return flat(ctx, nethttp.StatusBadRequest, "Invalid globalPriority")
-			}
-			if v == nil {
-				patch.Fields[key] = "null"
-			} else {
-				patch.Fields[key] = strconv.FormatInt(*v, 10)
-			}
-		case "defaultModel", "displayName":
-			var v *string
-			if json.Unmarshal(val, &v) != nil || (v != nil && (len(*v) > maxNameBytes || text.HasControl(*v))) {
-				return flat(ctx, nethttp.StatusBadRequest, "Invalid "+key)
-			}
-			if v == nil {
-				patch.Fields[key] = "null"
-			} else {
-				patch.Fields[key] = document.Encode(*v)
-			}
-		case "apiKey":
-			var v string
-			if json.Unmarshal(val, &v) != nil || len(v) > maxSecretBytes || text.HasControl(v) {
-				return flat(ctx, nethttp.StatusBadRequest, "Invalid api key")
-			}
-			// An empty key keeps the saved one: the edit form cannot read it back.
-			// A cookie row rotates like a key row; its value is normalized the same
-			// way a new one is.
-			if v != "" && (existing.AuthType == "apikey" || existing.AuthType == "cookie") {
-				if existing.AuthType == "cookie" {
-					parsed, ok := upstream.ParseWebCredential(v)
-					if !ok {
-						return flat(ctx, nethttp.StatusBadRequest, "Invalid cookie value")
-					}
-					v = parsed
-				}
-				patch.Fields["apiKey"] = document.Encode(v)
-			}
-		case "providerSpecificData":
+		if key == "providerSpecificData" {
 			set, remove, msg := splitPSD(val)
 			if msg != "" {
 				return flat(ctx, nethttp.StatusBadRequest, msg)
 			}
 			psdSet, psdRemove = set, remove
-		default:
-			// Anything else is dropped rather than stored: the list is fixed.
+			continue
+		}
+		if msg := patchField(&patch, existing, key, val); msg != "" {
+			return flat(ctx, nethttp.StatusBadRequest, msg)
 		}
 	}
 	if len(psdSet) > 0 || len(psdRemove) > 0 {
@@ -566,6 +522,79 @@ func (c *ProvidersController) Update(ctx contractshttp.Context) contractshttp.Re
 		c.enqueue(updated.ID)
 	}
 	return ctx.Response().Json(nethttp.StatusOK, contractshttp.Json{"connection": connectionView(updated)})
+}
+
+// patchField folds one edited field into patch. It returns the refusal text,
+// or "" when the field was taken or is not one the edit form may change.
+func patchField(patch *repository.ConnPatch, existing repository.Connection, key string, val json.RawMessage) string {
+	switch key {
+	case "name":
+		var s string
+		if json.Unmarshal(val, &s) != nil || strings.TrimSpace(s) == "" || len(s) > maxNameBytes || text.HasControl(s) {
+			return "Invalid name"
+		}
+		s = strings.TrimSpace(s)
+		patch.Name = &s
+	case "isActive":
+		var v bool
+		if json.Unmarshal(val, &v) != nil {
+			return "Invalid isActive"
+		}
+		patch.IsActive = &v
+	case "priority":
+		var v int64
+		if json.Unmarshal(val, &v) != nil || v < 1 || v > 1_000_000 {
+			return "Invalid priority"
+		}
+		patch.Priority = &v
+	case "globalPriority":
+		var v *int64
+		if json.Unmarshal(val, &v) != nil || (v != nil && (*v < 0 || *v > 1_000_000)) {
+			return "Invalid globalPriority"
+		}
+		if v == nil {
+			patch.Fields[key] = "null"
+		} else {
+			patch.Fields[key] = strconv.FormatInt(*v, 10)
+		}
+	case "defaultModel", "displayName":
+		var v *string
+		if json.Unmarshal(val, &v) != nil || (v != nil && (len(*v) > maxNameBytes || text.HasControl(*v))) {
+			return "Invalid " + key
+		}
+		if v == nil {
+			patch.Fields[key] = "null"
+		} else {
+			patch.Fields[key] = document.Encode(*v)
+		}
+	case "apiKey":
+		return patchAPIKey(patch, existing, val)
+	default:
+		// Anything else is dropped rather than stored: the list is fixed.
+	}
+	return ""
+}
+
+// patchAPIKey rotates the stored secret. An empty key keeps the saved one: the
+// edit form cannot read it back. A cookie row rotates like a key row; its value
+// is normalized the same way a new one is.
+func patchAPIKey(patch *repository.ConnPatch, existing repository.Connection, val json.RawMessage) string {
+	var v string
+	if json.Unmarshal(val, &v) != nil || len(v) > maxSecretBytes || text.HasControl(v) {
+		return "Invalid api key"
+	}
+	if v == "" || (existing.AuthType != "apikey" && existing.AuthType != "cookie") {
+		return ""
+	}
+	if existing.AuthType == "cookie" {
+		parsed, ok := upstream.ParseWebCredential(v)
+		if !ok {
+			return "Invalid cookie value"
+		}
+		v = parsed
+	}
+	patch.Fields["apiKey"] = document.Encode(v)
+	return ""
 }
 
 func updateFailed(ctx contractshttp.Context, err error) contractshttp.Response {

@@ -2,7 +2,7 @@ package pipeline
 
 import (
 	"context"
-	"errors"
+	nethttp "net/http"
 	"strings"
 	"sync"
 	"testing"
@@ -212,14 +212,37 @@ func TestAMintThatFailsSendsNothingAndLeaksNothing(t *testing.T) {
 	}
 }
 
-func TestAMintFailureMovesOnToTheNextAccount(t *testing.T) {
+// An unreachable token service is down for every account at once: each is
+// passed over without being reported, so no account carries a reason and none
+// is locked when the service comes back.
+func TestAMintFailureMovesOnWithoutReportingAnAccount(t *testing.T) {
 	r := newRig(t, tests.Reply{ContentType: "application/json", Body: okJSON})
-	r.p.d.Minter = &fakeMinter{err: errors.New("down")}
-	r.copilot("a@x.test")
-	r.copilot("b@x.test")
+	r.p.d.Minter = &fakeMinter{err: &oauth.Error{Class: oauth.ClassTransport}}
+	a := r.copilot("a@x.test")
+	b := r.copilot("b@x.test")
+	out, _ := r.do("/v1/chat/completions", copilotChat)
+	if len(r.up.Calls()) != 0 || out.Status != nethttp.StatusBadGateway {
+		t.Fatalf("%d calls, %d %s", len(r.up.Calls()), out.Status, out.Body)
+	}
+	for _, id := range []string{a.ID, b.ID} {
+		if _, set := r.storedDoc(id).GetString("lastError"); set {
+			t.Error("a token-service outage was written to the account")
+		}
+		if r.lockedFor(id, "cm-chat") {
+			t.Error("a token-service outage stored a lock")
+		}
+	}
+}
+
+// A refusal the provider gave is the account's own: it reaches the reporter, so
+// the dashboard can say why.
+func TestARefusedMintIsReportedAgainstItsAccount(t *testing.T) {
+	r := newRig(t, tests.Reply{ContentType: "application/json", Body: okJSON})
+	r.p.d.Minter = &fakeMinter{err: &oauth.Error{Class: oauth.ClassRejected}}
+	a := r.copilot("a@x.test")
 	r.do("/v1/chat/completions", copilotChat)
-	if len(r.up.Calls()) != 0 {
-		t.Fatalf("%d calls", len(r.up.Calls()))
+	if _, set := r.storedDoc(a.ID).GetString("lastError"); !set {
+		t.Fatal("a refused mint left no reason on the account")
 	}
 }
 

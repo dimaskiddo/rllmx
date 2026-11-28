@@ -244,14 +244,7 @@ func applyFields(d *document.Doc, fields map[string]string) error {
 	if err := d.SetInt("backoffLevel", 0); err != nil {
 		return err
 	}
-	for _, k := range d.Keys() {
-		if strings.HasPrefix(k, modelLockPrefix) {
-			if err := d.SetNull(k); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+	return clearAllLocks(d)
 }
 
 func psdOf(c Connection) gjson.Result { return gjson.Get(c.Data, "providerSpecificData") }
@@ -325,26 +318,12 @@ func (r *ConnectionsRepo) Create(ctx context.Context, in ConnInput, allowOverwri
 	if in.AuthType == "" {
 		in.AuthType = "oauth"
 	}
-	var psd gjson.Result
-	if in.PSD != "" {
-		if !gjson.Valid(in.PSD) || !gjson.Parse(in.PSD).IsObject() {
-			return Connection{}, errors.New("repository: providerSpecificData is not a JSON object")
-		}
-		psd = gjson.Parse(in.PSD)
-	}
-	fields := map[string]string{}
-	for _, f := range connectionFields {
-		if v, ok := in.Fields[f]; ok && v != "null" {
-			fields[f] = v
-		}
-	}
-	for _, v := range fields {
-		if !gjson.Valid(v) {
-			return Connection{}, errors.New("repository: connection field is not valid JSON")
-		}
+	psd, fields, err := prepareCreate(in)
+	if err != nil {
+		return Connection{}, err
 	}
 	var out Connection
-	err := r.s.Tx(ctx, func(tx contractsdb.Tx) error {
+	err = r.s.Tx(ctx, func(tx contractsdb.Tx) error {
 		var candidates []Connection
 		var err error
 		switch {
@@ -378,31 +357,62 @@ func (r *ConnectionsRepo) Create(ctx context.Context, in ConnInput, allowOverwri
 			return err
 		}
 
-		var stats []poolStats
-		if err := r.s.sel(tx, &stats, `SELECT COUNT(*) AS size, COALESCE(MAX("priority"),0) AS maxPrio FROM "providerConnections" WHERE "provider" = ?`, dialect.StripNUL(in.Provider)); err != nil {
-			return err
-		}
-		if len(stats) != 1 {
-			return fmt.Errorf("repository: pool statistics returned %d rows", len(stats))
-		}
-		d, _ := document.ParseDoc("{}")
-		if err := applyCreate(&d, fields, psd); err != nil {
-			return err
-		}
-		ts := dialect.Now()
-		out = Connection{
-			ID: dialect.NewID(), Provider: dialect.StripNUL(in.Provider), AuthType: dialect.StripNUL(in.AuthType),
-			Name: connectionName(in, psd, stats[0].Size), Email: in.Email, Priority: stats[0].MaxPrio + 1, IsActive: in.IsActive == nil || *in.IsActive,
-			Data: d.String(), CreatedAt: ts, UpdatedAt: ts,
-		}
-		sealed, err := r.s.SealConnectionData(out.ID, dialect.StripNUL(out.Data))
-		if err != nil {
-			return err
-		}
-		out.stored = sealed
-		return r.s.stmt(tx, `INSERT INTO "providerConnections"(`+connCols+`) VALUES(?,?,?,?,?,?,?,?,?,?)`,
-			out.ID, out.Provider, out.AuthType, dialect.NullText(out.Name), dialect.NullText(out.Email), out.Priority, dialect.BoolInt(out.IsActive), sealed, ts, ts)
+		out, err = r.insertNew(tx, in, psd, fields)
+		return err
 	})
+	return out, err
+}
+
+// prepareCreate checks the parts of a create that need no transaction: the
+// providerSpecificData object and the stored fields.
+func prepareCreate(in ConnInput) (psd gjson.Result, fields map[string]string, err error) {
+	if in.PSD != "" {
+		if !gjson.Valid(in.PSD) || !gjson.Parse(in.PSD).IsObject() {
+			return psd, nil, errors.New("repository: providerSpecificData is not a JSON object")
+		}
+		psd = gjson.Parse(in.PSD)
+	}
+	fields = map[string]string{}
+	for _, f := range connectionFields {
+		if v, ok := in.Fields[f]; ok && v != "null" {
+			fields[f] = v
+		}
+	}
+	for _, v := range fields {
+		if !gjson.Valid(v) {
+			return psd, nil, errors.New("repository: connection field is not valid JSON")
+		}
+	}
+	return psd, fields, nil
+}
+
+// insertNew writes a connection no existing row matched, at the end of its
+// provider's priority order.
+func (r *ConnectionsRepo) insertNew(tx contractsdb.Tx, in ConnInput, psd gjson.Result, fields map[string]string) (out Connection, err error) {
+	var stats []poolStats
+	if err := r.s.sel(tx, &stats, `SELECT COUNT(*) AS size, COALESCE(MAX("priority"),0) AS maxPrio FROM "providerConnections" WHERE "provider" = ?`, dialect.StripNUL(in.Provider)); err != nil {
+		return out, err
+	}
+	if len(stats) != 1 {
+		return out, fmt.Errorf("repository: pool statistics returned %d rows", len(stats))
+	}
+	d, _ := document.ParseDoc("{}")
+	if err := applyCreate(&d, fields, psd); err != nil {
+		return out, err
+	}
+	ts := dialect.Now()
+	out = Connection{
+		ID: dialect.NewID(), Provider: dialect.StripNUL(in.Provider), AuthType: dialect.StripNUL(in.AuthType),
+		Name: connectionName(in, psd, stats[0].Size), Email: in.Email, Priority: stats[0].MaxPrio + 1, IsActive: in.IsActive == nil || *in.IsActive,
+		Data: d.String(), CreatedAt: ts, UpdatedAt: ts,
+	}
+	sealed, err := r.s.SealConnectionData(out.ID, dialect.StripNUL(out.Data))
+	if err != nil {
+		return out, err
+	}
+	out.stored = sealed
+	err = r.s.stmt(tx, `INSERT INTO "providerConnections"(`+connCols+`) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+		out.ID, out.Provider, out.AuthType, dialect.NullText(out.Name), dialect.NullText(out.Email), out.Priority, dialect.BoolInt(out.IsActive), sealed, ts, ts)
 	return out, err
 }
 

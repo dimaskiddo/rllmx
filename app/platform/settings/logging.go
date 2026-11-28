@@ -7,7 +7,11 @@ import (
 	"github.com/goravel/framework/contracts/config"
 )
 
-const logOutputKey = "logging.output"
+const (
+	logOutputKey = "logging.output"
+	// logLevelKey holds LOG_LEVEL as written; the channels hold the cleaned one.
+	logLevelKey = "logging.level"
+)
 
 // LogOutput is where a log entry goes: the file, the standard output, or both.
 type LogOutput struct {
@@ -53,7 +57,7 @@ func CheckLogging(cfg config.Config, n *Notices) {
 	if _, err := ParseLogOutput(cfg.GetString(logOutputKey, "both")); err != nil {
 		n.warn("LOG_OUTPUT", "must be file, stdout or both", "both")
 	}
-	if _, err := ParseLogLevel(cfg.GetString("logging.channels.single.level", "info")); err != nil {
+	if _, err := ParseLogLevel(cfg.GetString(logLevelKey, "info")); err != nil {
 		n.warn("LOG_LEVEL", "must be debug, info, warning or error", "info")
 	}
 }

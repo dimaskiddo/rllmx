@@ -2,11 +2,14 @@ package providers
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
 	"rllmx/app/gateway/probe"
 	"rllmx/app/store/repository"
+	"rllmx/tests"
 )
 
 func TestTheQueueCollapsesDuplicates(t *testing.T) {
@@ -89,7 +92,7 @@ func TestAConnectionWithNoModelGetsItsKeyChecked(t *testing.T) {
 		probeThenCheck(context.Background(), tc.prober, repository.Connection{ID: "c1"}, func(context.Context) error {
 			checked++
 			return nil
-		})
+		}, nil)
 		if got := checked > 0; got != tc.check {
 			t.Errorf("%s: checked %v, want %v", name, got, tc.check)
 		}
@@ -112,5 +115,15 @@ func TestTheRunnerEndsWhenShutdownCancelsIt(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("the runner did not end at shutdown")
+	}
+}
+
+func TestAKeyCheckThatCouldNotRunIsLogged(t *testing.T) {
+	lg := &tests.Log{}
+	probeThenCheck(context.Background(), emptyProber{}, repository.Connection{ID: "c1"}, func(context.Context) error {
+		return errors.New("store unavailable")
+	}, lg)
+	if !strings.Contains(strings.Join(lg.Lines(), "\n"), "store unavailable") {
+		t.Fatalf("the failure left no trace: %q", strings.Join(lg.Lines(), "\n"))
 	}
 }

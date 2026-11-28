@@ -545,12 +545,11 @@ func (p *Pipeline) binary(ctx context.Context, body []byte) ([]byte, map[string]
 // stopped answers a request whose context ended: a cancel is the client
 // leaving, while a passed deadline is the call's own budget running out.
 func stopped(ctx context.Context, row *analytics.Record) Output {
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		row.Status, row.ErrorClass = http.StatusGatewayTimeout, "timeout"
-		return failureOutput(http.StatusGatewayTimeout, "The provider did not answer in time")
+	row.Status, row.ErrorClass = appfailure.Stopped(ctx.Err())
+	if row.Status == http.StatusGatewayTimeout {
+		return failureOutput(row.Status, "The provider did not answer in time")
 	}
-	row.Status, row.ErrorClass = 499, "client_closed"
-	return failureOutput(499, "The client closed the request")
+	return failureOutput(row.Status, "The client closed the request")
 }
 
 func (p *Pipeline) noAccount(ctx context.Context, err error, provider, model string, row *analytics.Record) Output {
@@ -765,7 +764,7 @@ func (p *Pipeline) accountFailed(ctx context.Context, conn repository.Connection
 		return p.refusalOutput(status, row, out, msg), true
 	}
 	res, err := p.d.Reporter.Fail(ctx, account.FailInput{
-		ConnID: conn.ID, Provider: ref.Provider, Model: lockModel, Status: status,
+		ConnID: conn.ID, Provider: ref.Provider, Model: lockModel, Status: status, Text: msg,
 	})
 	if err == nil && res.Fallback {
 		row.Status, row.ErrorClass = appfailure.ClientStatus(status), appfailure.ClassOf(status)

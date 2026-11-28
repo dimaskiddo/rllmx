@@ -6,7 +6,8 @@ import (
 	"regexp"
 	"rllmx/app/protocol/cosy"
 	"strings"
-	"unicode"
+
+	"rllmx/app/platform/text"
 )
 
 const (
@@ -64,7 +65,7 @@ func (t *Transport) validate(executor, authHeader string, mediaOnly bool) error 
 			return errors.New("transport.headers has an invalid name")
 		case ReservedHeader(name) || (authHeader != "" && strings.EqualFold(name, authHeader)):
 			return errors.New("transport.headers names a credential or framing header")
-		case len(value) > maxHeaderBytes || strings.IndexFunc(value, unicode.IsControl) >= 0:
+		case len(value) > maxHeaderBytes || text.HasControl(value):
 			return errors.New("transport.headers has an invalid value")
 		}
 	}
@@ -177,7 +178,7 @@ func (t *Transport) validateLanes() error {
 		}
 		for name, value := range l.Headers {
 			if !HeaderName(name) || ReservedHeader(name) || (authHeader != "" && strings.EqualFold(name, authHeader)) ||
-				len(value) > maxHeaderBytes || strings.IndexFunc(value, unicode.IsControl) >= 0 {
+				len(value) > maxHeaderBytes || text.HasControl(value) {
 				return errors.New("a transport lane has an invalid header")
 			}
 		}

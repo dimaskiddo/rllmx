@@ -17,7 +17,7 @@ var ErrUnknownTarget = errors.New("pipeline: the provider does not serve this mo
 // same for every account of the provider.
 func (c *call) liveFormat(ctx context.Context, d destination) (string, Output, bool) {
 	sel, err := c.p.d.Selector.Select(ctx, account.Request{
-		Provider: d.provider, Model: d.model, RequestedModel: c.requested, Hold: c.hold(),
+		Provider: d.provider, Model: d.model, RequestedModel: c.requested, Hold: c.hold(d.provider, d.model),
 	})
 	if err != nil {
 		return "", c.noAccount(ctx, err, nil, false), false

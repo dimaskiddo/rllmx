@@ -379,3 +379,21 @@ func base64Header(h string) string {
 }
 
 func errorsIs(err, want error) bool { return errors.Is(err, want) }
+
+// A provider that sends no `email_verified` (Entra v2 does not) gives no proof
+// the address is the user's own, so the sign-in must be told.
+func TestAnAddressWithNoVerifiedClaimIsMarkedUnproven(t *testing.T) {
+	for name, tc := range map[string]struct {
+		c    Claims
+		want bool
+	}{
+		"absent":          {Claims{Email: "a@b.test"}, true},
+		"true":            {Claims{Email: "a@b.test", EmailVerified: []byte("true")}, false},
+		"true as string":  {Claims{Email: "a@b.test", EmailVerified: []byte(`"true"`)}, false},
+		"no email at all": {Claims{PreferredUsername: "a@b.test"}, false},
+	} {
+		if got := MailUnproven(tc.c); got != tc.want {
+			t.Errorf("%s: %v, want %v", name, got, tc.want)
+		}
+	}
+}

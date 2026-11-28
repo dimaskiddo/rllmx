@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"rllmx/app/llm/translate"
+	"rllmx/app/platform/text"
 )
 
 // Bounds Kiro puts on what it accepts, from its own schema.
@@ -94,7 +95,7 @@ func kiroSpecs(tools []translate.Tool) ([]kiroToolSpec, map[string]string) {
 		names[raw] = name
 		var spec kiroToolSpec
 		spec.ToolSpecification.Name = name
-		spec.ToolSpecification.Description = cutRunes(orDefault(t.Description, "Tool: "+raw), kiroToolDescriptionMax)
+		spec.ToolSpecification.Description = text.CutRunes(orDefault(t.Description, "Tool: "+raw), kiroToolDescriptionMax)
 		spec.ToolSpecification.InputSchema.JSON = kiroRootSchema(t.Parameters)
 		specs = append(specs, spec)
 	}
@@ -114,14 +115,14 @@ func kiroToolName(raw string, index int, used map[string]bool) string {
 			b.WriteByte('_')
 		}
 	}
-	name := cutRunes(strings.Trim(b.String(), "_"), kiroToolNameMax)
+	name := text.CutRunes(strings.Trim(b.String(), "_"), kiroToolNameMax)
 	if name == "" {
 		name = "tool_" + strconv.Itoa(index)
 	}
 	base := name
 	for n := 2; used[base]; n++ {
 		suffix := "_" + strconv.Itoa(n)
-		base = cutRunes(name, kiroToolNameMax-len(suffix)) + suffix
+		base = text.CutRunes(name, kiroToolNameMax-len(suffix)) + suffix
 	}
 	used[base] = true
 	return base
@@ -202,21 +203,6 @@ func cleanSchema(v any) any {
 func orDefault(s, def string) string {
 	if strings.TrimSpace(s) == "" {
 		return def
-	}
-	return s
-}
-
-// cutRunes shortens s to at most n runes, never splitting one.
-func cutRunes(s string, n int) string {
-	if n <= 0 {
-		return ""
-	}
-	count := 0
-	for i := range s {
-		if count == n {
-			return s[:i]
-		}
-		count++
 	}
 	return s
 }

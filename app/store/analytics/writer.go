@@ -2,7 +2,6 @@ package analytics
 
 import (
 	"context"
-	"net/http"
 	"rllmx/app/store/dialect"
 	"sync"
 	"sync/atomic"
@@ -128,7 +127,7 @@ func (w *Writer) addPending(r row) {
 	defer w.pendingMu.Unlock()
 	p := w.pending[r.APIKeyID]
 	p.rows++
-	if r.Status < http.StatusBadRequest {
+	if Served(r.Status) {
 		p.totals.Requests++
 	}
 	p.totals.Tokens += r.PromptTokens + r.CompletionTokens
@@ -147,7 +146,7 @@ func (w *Writer) subPending(batch []row) {
 		}
 		t := w.pending[r.APIKeyID]
 		t.rows--
-		if r.Status < http.StatusBadRequest {
+		if Served(r.Status) {
 			t.totals.Requests--
 		}
 		t.totals.Tokens -= r.PromptTokens + r.CompletionTokens

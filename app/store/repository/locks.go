@@ -6,6 +6,7 @@ import (
 
 	contractsdb "github.com/goravel/framework/contracts/database/db"
 
+	"rllmx/app/platform/text"
 	"rllmx/app/store/dialect"
 	"rllmx/app/store/document"
 	"strings"
@@ -38,9 +39,7 @@ func (r *ConnectionsRepo) LockFromLevel(ctx context.Context, id, model string, s
 		if !ok {
 			return nil
 		}
-		if runes := []rune(reason); len(runes) > maxReasonRunes {
-			reason = string(runes[:maxReasonRunes])
-		}
+		reason = text.CutRunes(reason, maxReasonRunes)
 		steps := []func() error{
 			func() error { return dropEndedLocks(&d, time.Now()) },
 			func() error { return d.SetString(LockKey(model), dialect.FormatTimestamp(until)) },
@@ -62,6 +61,17 @@ func (r *ConnectionsRepo) LockFromLevel(ctx context.Context, id, model string, s
 		return nil
 	})
 	return locked, err
+}
+
+// resetHealth clears what a failure left on a connection: its error fields and
+// its backoff. The locks are cleared separately, because a caller may keep them.
+func resetHealth(d *document.Doc) error {
+	for _, k := range []string{"lastError", "lastErrorAt", "errorCode", "rateLimitedUntil"} {
+		if err := d.SetNull(k); err != nil {
+			return err
+		}
+	}
+	return d.SetInt("backoffLevel", 0)
 }
 
 // clearAllLocks nulls every per-model and account lock, so a passed check starts
@@ -133,15 +143,10 @@ func (r *ConnectionsRepo) ClearLocks(ctx context.Context, id, model string, at, 
 			}
 		}
 		if !active {
-			for _, k := range []string{"lastError", "lastErrorAt", "errorCode", "rateLimitedUntil"} {
-				if err := d.SetNull(k); err != nil {
-					return err
-				}
-			}
-			if err := d.SetString("testStatus", "active"); err != nil {
+			if err := resetHealth(&d); err != nil {
 				return err
 			}
-			if err := d.SetInt("backoffLevel", 0); err != nil {
+			if err := d.SetString("testStatus", "active"); err != nil {
 				return err
 			}
 		}

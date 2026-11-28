@@ -1,6 +1,7 @@
 package failure
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -474,5 +475,34 @@ func TestTheRateLimitHeadersSayAllowedUntilTheBudgetIsSpent(t *testing.T) {
 	}
 	if none := RateLimitHeaders(false, time.Time{}); none.Get("Anthropic-Ratelimit-Unified-Reset") != "" {
 		t.Fatalf("a budget that never resets named a reset: %v", none)
+	}
+}
+
+func TestACancelIsTheClientLeavingAndADeadlineIsATimeout(t *testing.T) {
+	cases := []struct {
+		err    error
+		status int
+		class  string
+	}{
+		{context.Canceled, 499, "client_closed"},
+		{context.DeadlineExceeded, 504, "timeout"},
+		{fmt.Errorf("wrapped: %w", context.DeadlineExceeded), 504, "timeout"},
+		{nil, 499, "client_closed"},
+	}
+	for _, c := range cases {
+		if status, class := Stopped(c.err); status != c.status || class != c.class {
+			t.Errorf("%v: %d %s, want %d %s", c.err, status, class, c.status, c.class)
+		}
+	}
+}
+
+func TestARetryAfterIsRoundedUpAndNeverZero(t *testing.T) {
+	for wait, want := range map[time.Duration]int64{
+		time.Nanosecond: 1, 999 * time.Millisecond: 1, time.Second: 1,
+		1001 * time.Millisecond: 2, 90 * time.Second: 90, 0: 1, -time.Hour: 1,
+	} {
+		if got := RetryAfterSeconds(wait); got != want {
+			t.Errorf("%v: %d, want %d", wait, got, want)
+		}
 	}
 }

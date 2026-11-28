@@ -62,10 +62,12 @@ type Compressor struct {
 	clients map[string]*http.Client
 }
 
-// client is the guarded client for a host, built once per host seen.
+// client is the guarded client for a host, built once per host seen. An
+// unwired compressor gets none: the unguarded default client would reach past
+// the outbound guard.
 func (c *Compressor) client(host string) *http.Client {
 	if c.Client == nil {
-		return http.DefaultClient
+		return nil
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -154,7 +156,11 @@ func (c *Compressor) post(ctx context.Context, endpoint, model string, o Options
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	res, err := c.client(req.URL.Hostname()).Do(req)
+	cl := c.client(req.URL.Hostname())
+	if cl == nil {
+		return nil, errors.New("saver: no client")
+	}
+	res, err := cl.Do(req)
 	if err != nil {
 		return nil, err
 	}

@@ -66,9 +66,7 @@ func StripUnreadable(r *Request, c upstream.Capability) {
 func readable(p Part, c upstream.Capability) bool {
 	switch p.Type {
 	case PartImage:
-		// A model we know nothing about is tried with the image: a table that
-		// never named it is not evidence that it cannot read one.
-		return c.Vision || !c.VisionSet
+		return c.ReadsImages()
 	case PartAudio:
 		return c.AudioInput
 	case PartFile:

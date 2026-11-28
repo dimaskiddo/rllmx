@@ -105,7 +105,6 @@ type chatChunk struct {
 	Created int64        `json:"created"`
 	Model   string       `json:"model"`
 	Choices []chatChoice `json:"choices"`
-	Usage   *chatUsage   `json:"usage,omitempty"`
 }
 
 type chatChoice struct {
@@ -130,12 +129,6 @@ type chatToolDelta struct {
 type chatFunction struct {
 	Name      string `json:"name,omitempty"`
 	Arguments string `json:"arguments,omitempty"`
-}
-
-type chatUsage struct {
-	PromptTokens     int64 `json:"prompt_tokens"`
-	CompletionTokens int64 `json:"completion_tokens"`
-	TotalTokens      int64 `json:"total_tokens"`
 }
 
 // encodeChunks writes the deltas as SSE frames, then the turn's closing frame

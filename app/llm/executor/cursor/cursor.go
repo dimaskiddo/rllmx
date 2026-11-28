@@ -215,7 +215,20 @@ func (c *Cursor) readStart(r *turnRead) (executor.Response, bool, error) {
 		return executor.Response{Status: http.StatusOK, Header: streamHeader(), Body: http.NoBody}, true, nil
 	}
 	return executor.Response{Status: http.StatusOK, Header: streamHeader(),
-		Body: turnBody{Reader: io.MultiReader(bytes.NewReader(prefix.Bytes()), reader), close: r.Close}}, false, nil
+		Body: handOver(prefix.Bytes(), reader, r.Close)}, false, nil
+}
+
+// handOver is the answer once the start has been read ahead. Closing it ends the
+// read-ahead too: r.Close alone stops the source's read but leaves the pump
+// waiting to hand over a chunk nobody will take.
+func handOver(prefix []byte, reader *startReader, closeTurn func() error) turnBody {
+	return turnBody{
+		Reader: io.MultiReader(bytes.NewReader(prefix), reader),
+		close: func() error {
+			reader.close()
+			return closeTurn()
+		},
+	}
 }
 
 // turnBody is the answer: what was read ahead, then the rest of the turn. Its

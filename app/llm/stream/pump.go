@@ -158,6 +158,21 @@ func (r *runner) keepalive() bool {
 	return true
 }
 
+// quiet handles a keepalive tick and reports whether the stream goes on. While
+// the client's stream is closed and failover may still answer, the tick is
+// skipped: a comment there would open it.
+func (r *runner) quiet() bool {
+	if !r.wrote && !r.j.OpenWhenQuiet {
+		r.resetKeep()
+		return true
+	}
+	if !r.keepalive() {
+		return false
+	}
+	r.resetKeep()
+	return true
+}
+
 func (r *runner) limit() int {
 	if r.j.MaxBytes > 0 {
 		return r.j.MaxBytes
@@ -196,10 +211,7 @@ func (r *runner) send(frames []translate.Frame) bool {
 // fail ends the stream with the client's own error frame. The status is 504
 // only for a stall, and 502 for everything else that breaks a stream.
 func (r *runner) fail(cause error, msg string) {
-	status := http.StatusBadGateway
-	if errors.Is(cause, ErrStall) || errors.Is(cause, ErrFirstChunk) {
-		status = http.StatusGatewayTimeout
-	}
+	status := Status(cause)
 	r.err, r.status = cause, status
 	if errors.Is(cause, ErrClientGone) {
 		return
@@ -211,6 +223,15 @@ func (r *runner) fail(cause error, msg string) {
 	if r.j.Client.Raw(frame) == nil {
 		r.wrote = true
 	}
+}
+
+// Status is the status a broken stream is filed under: 504 when the upstream
+// went quiet or never started, 502 for any other break.
+func Status(cause error) int {
+	if errors.Is(cause, ErrStall) || errors.Is(cause, ErrFirstChunk) {
+		return http.StatusGatewayTimeout
+	}
+	return http.StatusBadGateway
 }
 
 // ReasonText is the fixed message a client sees for each way a stream breaks.
@@ -281,16 +302,9 @@ func (r *runner) translate(ctx context.Context) {
 	for {
 		ev, err := r.pull.next(ctx, usageDeadline, r.keepC())
 		if errors.Is(err, errKeepalive) {
-			if !r.wrote && !r.j.OpenWhenQuiet {
-				// The client's stream is not open, and this window belongs to
-				// failover: a comment here would open it.
-				r.resetKeep()
-				continue
-			}
-			if !r.keepalive() {
+			if !r.quiet() {
 				return
 			}
-			r.resetKeep()
 			continue
 		}
 		r.resetKeep()

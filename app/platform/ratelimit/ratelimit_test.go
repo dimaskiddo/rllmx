@@ -104,20 +104,3 @@ func TestTheBucketMapStaysBounded(t *testing.T) {
 		t.Fatalf("%d buckets, want at most %d", len(g.byKey), maxKeys)
 	}
 }
-
-func TestConfigValidation(t *testing.T) {
-	for _, c := range []struct {
-		cfg Config
-		ok  bool
-	}{
-		{Config{RPM: 60, Burst: 1}, true},
-		{Config{RPM: 0}, true},
-		{Config{RPM: -1}, false},
-		{Config{RPM: 60, Burst: 0}, false},
-		{Config{RPM: 60, Burst: 1, MaxWait: -time.Second}, false},
-	} {
-		if err := c.cfg.Valid(); (err == nil) != c.ok {
-			t.Errorf("%+v: %v", c.cfg, err)
-		}
-	}
-}

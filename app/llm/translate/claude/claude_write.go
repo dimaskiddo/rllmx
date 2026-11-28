@@ -123,7 +123,7 @@ func (ClaudeCodec) WriteRequest(r *translate.Request, c *translate.Ctx) ([]byte,
 	if c.Caps.DropOutputConfig {
 		delete(extra, "output_config")
 	}
-	if !c.Caps.KeepContextMgmt && !c.Entry.Transport.Quirks.KeepContextManagement {
+	if !c.Entry.Transport.Quirks.KeepContextManagement {
 		delete(extra, "context_management")
 	}
 	return json.Marshal(translate.WithExtra(o, extra))

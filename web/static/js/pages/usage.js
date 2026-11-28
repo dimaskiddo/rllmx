@@ -1,6 +1,6 @@
 // Usage: the period totals, the live feed, the charts and the request log.
 import { api } from "/static/js/ui/api.js";
-import { session } from "/static/js/ui/session.js";
+import { roleMethods, session } from "/static/js/ui/session.js";
 import { t } from "/static/js/ui/i18n.js";
 import { usageChartMethods } from "./usage-charts.js";
 import { formatMethods } from "/static/js/ui/format.js";
@@ -150,10 +150,6 @@ window.Alpine.data("usagePage", () => Object.assign({
       this.startLogTimer();
     }
     this.$nextTick(() => this.drawAll());
-  },
-
-  isAdmin() {
-    return this.role !== "user";
   },
 
 
@@ -551,4 +547,4 @@ window.Alpine.data("usagePage", () => Object.assign({
     this.stopLogTimer();
     this.dropCharts();
   },
-}, usageChartMethods, formatMethods));
+}, usageChartMethods, formatMethods, roleMethods));

@@ -12,7 +12,7 @@ import (
 
 // statusClientClosed is the status stored for a client that left; nothing is
 // written to it.
-const statusClientClosed = 499
+const statusClientClosed = failure.StatusClientClosed
 
 // accountFail is a failure that may be the account's fault. The loop reports it
 // and, when the account is locked, tries the next one with the answer in hand.
@@ -31,6 +31,10 @@ type accountFail struct {
 	// empty marks an answer with no content: it ends a single-model request as it
 	// always did, and is never reported, because no account failed.
 	empty bool
+	// noReport marks a failure that is nobody's account's fault, so the request
+	// moves on without storing a lock or a cooldown: a token service that cannot
+	// be reached is down for every account at once.
+	noReport bool
 }
 
 func streamClass(err error) string {
@@ -39,8 +43,6 @@ func streamClass(err error) string {
 		return "stream_stall"
 	case errors.Is(err, stream.ErrFirstChunk):
 		return "timeout"
-	case errors.Is(err, stream.ErrClientGone):
-		return "client_closed"
 	case errors.Is(err, stream.ErrTruncated):
 		return "truncated"
 	}
@@ -61,8 +63,8 @@ func (c *call) closed() Output {
 // leaving; a passed deadline belongs to whoever set it — a probe, the router's
 // own question, a combo wait — and is a timeout.
 func (c *call) stopped(ctx context.Context) Output {
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return c.fail(http.StatusGatewayTimeout, "timeout", "The request ran out of time")
+	if status, class := failure.Stopped(ctx.Err()); status == http.StatusGatewayTimeout {
+		return c.fail(status, class, "The request ran out of time")
 	}
 	return c.closed()
 }

@@ -123,6 +123,9 @@ func Convert(from, to string, body []byte, c *Ctx) ([]byte, *Request, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	if from != to {
+		req.Extra = nil
+	}
 	out, err := dst.WriteRequest(req, c)
 	return out, req, err
 }

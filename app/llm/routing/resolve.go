@@ -6,9 +6,9 @@ import (
 	"errors"
 	"slices"
 	"strings"
-	"unicode"
 
 	"rllmx/app/llm/upstream"
+	"rllmx/app/platform/text"
 )
 
 const maxInput = 256
@@ -49,7 +49,7 @@ func (r *Resolver) Resolve(ctx context.Context, input string) (Target, error) {
 	if len(input) > maxInput {
 		return Target{}, ErrTooLong
 	}
-	if strings.IndexFunc(input, unicode.IsControl) >= 0 {
+	if text.HasControl(input) {
 		return Target{}, ErrBadInput
 	}
 	name, marker, thinking := splitSuffixes(input)

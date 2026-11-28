@@ -10,6 +10,8 @@ import (
 	"sync"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
+
+	"rllmx/app/platform/text"
 )
 
 // PagesController serves the dashboard's embedded files: the page a provider
@@ -47,10 +49,8 @@ func assetName(file string) (name, kind string, ok bool) {
 			return "", "", false
 		}
 	}
-	for _, r := range file {
-		if r < 0x20 || r == 0x7f {
-			return "", "", false
-		}
+	if text.HasASCIIControl(file) {
+		return "", "", false
 	}
 	kind, ok = assetTypes[strings.ToLower(path.Ext(file))]
 	if !ok || (strings.HasSuffix(file, ".html") && !strings.HasPrefix(file, "pages/")) {

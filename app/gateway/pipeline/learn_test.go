@@ -17,9 +17,9 @@ type recordingDeclarer struct {
 	err error
 }
 
-func (d *recordingDeclarer) Remember(_ context.Context, provider, model string, _ upstream.Declared) error {
+func (d *recordingDeclarer) Remember(_ context.Context, provider, model string, _ upstream.Declared) (bool, error) {
 	d.got = append(d.got, provider+"/"+model)
-	return d.err
+	return d.err == nil, d.err
 }
 
 func imageInput(model string) Input {

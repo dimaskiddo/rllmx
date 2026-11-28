@@ -82,13 +82,15 @@ func (v *Verifier) Verify(ctx context.Context, token, remoteIP string) error {
 		return ErrUnavailable
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	// An unwired verifier is unavailable, never reached over the unguarded
+	// default client.
 	client := v.Client
 	if client == nil {
-		client = http.DefaultClient
+		return ErrUnavailable
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return ErrUnavailable
+		return fmt.Errorf("%w: %v", ErrUnavailable, err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxReply))

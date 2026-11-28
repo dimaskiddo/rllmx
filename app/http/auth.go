@@ -12,7 +12,6 @@ import (
 // Authenticator judges who is calling and which checks apply. The guard asks
 // it and nothing else about logins and keys.
 type Authenticator interface {
-	Session(r *nethttp.Request) bool
 	// SessionInfo names the signed-in caller and their role.
 	SessionInfo(r *nethttp.Request) (auth.Session, bool)
 	// APIKey judges the key the request presents.
@@ -35,7 +34,6 @@ type keyLimiter interface {
 // in, no key is valid, and both requirements are on.
 type denyAll struct{}
 
-func (denyAll) Session(*nethttp.Request) bool { return false }
 func (denyAll) SessionInfo(*nethttp.Request) (auth.Session, bool) {
 	return auth.Session{}, false
 }

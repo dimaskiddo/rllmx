@@ -56,9 +56,6 @@ func (g *Guard) resolve(ctx context.Context, host string) ([]netip.Addr, error) 
 	return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
 }
 
-// Timeout is the dial timeout the guard was built with.
-func (g *Guard) Timeout() time.Duration { return g.dialer.Timeout }
-
 // targets resolves addr and returns the permitted IP literals to try, in the
 // resolver's order. A name on the list skips the Internal check for every
 // address it returns, which is what lets a listed private-network IdP work. A

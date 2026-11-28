@@ -53,5 +53,5 @@ func DetectNeeds(r *Request) Needs {
 // by a model the tables say nothing about, because the request tries it rather
 // than stripping the image.
 func (n Needs) Met(c upstream.Capability) bool {
-	return (!n.Vision || c.Vision || !c.VisionSet) && (!n.PDF || c.PDF) && (!n.Audio || c.AudioInput) && (!n.Video || c.VideoInput)
+	return (!n.Vision || c.ReadsImages()) && (!n.PDF || c.PDF) && (!n.Audio || c.AudioInput) && (!n.Video || c.VideoInput)
 }

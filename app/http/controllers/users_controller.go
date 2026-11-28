@@ -93,7 +93,7 @@ func (c *UsersController) Create(ctx contractshttp.Context) contractshttp.Respon
 		return flat(ctx, nethttp.StatusInternalServerError, "Could not store the password")
 	}
 	u, err := c.Users.Add(ctx.Request().Origin().Context(), func(id string) auth.User {
-		return auth.User{ID: id, Username: name, Email: email, Hash: hash, FullName: auth.CleanFullName(b.FullName)}
+		return auth.User{ID: id, Username: name, Email: email, Hash: hash, FullName: b.FullName}
 	})
 	if err != nil {
 		return userRefused(ctx, err)
@@ -125,7 +125,7 @@ func (c *UsersController) Update(ctx contractshttp.Context) contractshttp.Respon
 		u.Username = *b.Name
 	}
 	if b.FullName != nil {
-		u.FullName = auth.CleanFullName(*b.FullName)
+		u.FullName = *b.FullName
 	}
 	if b.Email != nil {
 		u.Email = *b.Email

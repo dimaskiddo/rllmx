@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"rllmx/app/llm/upstream"
+	appfile "rllmx/app/platform/file"
 	"rllmx/app/store/repository"
 	"rllmx/tests/store"
 )
@@ -228,5 +229,20 @@ func TestLiveReadsTheProvidersOwnList(t *testing.T) {
 	}
 	if _, ok := g.Live(context.Background(), "openai", repository.Connection{}); ok {
 		t.Fatal("a provider with no fetcher answered live")
+	}
+}
+
+// A list larger than the bound is refused, not cut: half a list read as a whole
+// one silently drops every model after the cut.
+func TestAnOversizedListIsRefusedNotCut(t *testing.T) {
+	big := make([]byte, maxList+1)
+	for i := range big {
+		big[i] = ' '
+	}
+	copy(big, `{"models":[]}`)
+	up := testsUpstream(t, string(big))
+	defer up.Server.Close()
+	if _, err := readGet(context.Background(), http.DefaultClient, up.Server.URL, "tok", nil); !errors.Is(err, appfile.ErrTooLarge) {
+		t.Fatalf("err = %v, want ErrTooLarge", err)
 	}
 }

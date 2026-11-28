@@ -107,7 +107,7 @@ func (c *AuthController) challenge(ctx contractshttp.Context, r *http.Request, t
 		return nil
 	case errors.Is(err, captcha.ErrUnavailable):
 		if c.Log != nil {
-			c.Log.Warning("captcha: the provider could not be reached: %v", err)
+			c.Log.Warningf("captcha: %v", err)
 		}
 		return flat(ctx, http.StatusServiceUnavailable, "The CAPTCHA check could not be completed; try again")
 	default:

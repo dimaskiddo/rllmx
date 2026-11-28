@@ -6,7 +6,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"unicode"
+
+	"rllmx/app/platform/text"
 )
 
 // Key schemes a provider's probe can use.
@@ -167,7 +168,7 @@ func (a *Auth) validate(transportURL string) error {
 			return errors.New("auth.headers has an invalid name")
 		case ReservedHeader(name) || strings.EqualFold(name, a.Header):
 			return errors.New("auth.headers names a credential or framing header")
-		case len(value) > maxHeaderBytes || strings.IndexFunc(value, unicode.IsControl) >= 0:
+		case len(value) > maxHeaderBytes || text.HasControl(value):
 			return errors.New("auth.headers has an invalid value")
 		}
 	}

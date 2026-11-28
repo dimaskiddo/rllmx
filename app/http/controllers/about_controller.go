@@ -9,6 +9,8 @@ import (
 	"time"
 
 	contractshttp "github.com/goravel/framework/contracts/http"
+
+	"rllmx/app/platform/text"
 )
 
 // ReleasesURL is the newest release of this repository. It is a constant, like
@@ -100,18 +102,11 @@ func (c *AboutController) RunUpgrade(ctx contractshttp.Context) contractshttp.Re
 // versionOf trims a tag and cuts the "v" a release tag carries, so one spelling
 // of the same version compares equal.
 func versionOf(v string) string {
-	v = strings.TrimSpace(v)
-	if len(v) > maxReleaseField {
-		v = v[:maxReleaseField]
-	}
+	v = text.CutBytes(strings.TrimSpace(v), maxReleaseField)
 	return strings.TrimPrefix(v, "v")
 }
 
 // cutField bounds what the page shows, so a hostile answer cannot fill it.
 func cutField(v string) string {
-	v = strings.TrimSpace(v)
-	if len(v) > maxReleaseField {
-		v = v[:maxReleaseField]
-	}
-	return v
+	return text.CutBytes(strings.TrimSpace(v), maxReleaseField)
 }

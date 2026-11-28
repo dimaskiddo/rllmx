@@ -46,7 +46,9 @@ func (c *MetricsController) Index(ctx contractshttp.Context) contractshttp.Respo
 	if c.Now != nil {
 		now = c.Now
 	}
-	key := auth.Key(c.Trust.ClientAddr(r))
+	// Its own key: a scrape that succeeds must not clear a password guesser's
+	// failures, and a bad scrape must not lock the admin's sign-in.
+	key := "metrics:" + auth.Key(c.Trust.ClientAddr(r))
 	if c.Limiter != nil {
 		if wait := c.Limiter.Locked(key, now()); wait > 0 {
 			return tooMany(ctx, wait)

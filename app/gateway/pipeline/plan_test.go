@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"rllmx/app/access/identity"
+	"rllmx/app/access/quota"
 	"rllmx/app/gateway/combo"
 	"rllmx/app/gateway/conversation"
 	"rllmx/app/gateway/skill"
@@ -326,6 +327,30 @@ func TestTheCodeComboAnswersTheRequest(t *testing.T) {
 	}
 	if planCall := lastBody(t, r, 0); !strings.Contains(planCall, "vendor/long-name") {
 		t.Fatalf("the plan did not go to the planning combo: %s", planCall)
+	}
+}
+
+// countingBudget counts the reads and answers "not spent".
+type countingBudget struct{ n int }
+
+func (b *countingBudget) Check(context.Context, string) (quota.Refusal, error) {
+	b.n++
+	return quota.Refusal{}, nil
+}
+
+// A request the planner declines reads the key's budget once: the check that
+// guards the plan is the one the target resolution needed anyway.
+func TestARequestThePlannerDeclinesReadsTheBudgetOnce(t *testing.T) {
+	r := planRig(t, planSettings(), codeReply())
+	r.conn("forced", "fk")
+	b := &countingBudget{}
+	r.p.d.Budget = b
+	out, _ := r.do("/v1/chat/completions", chatJSON("forced/fm", "fix the typo"))
+	if out.Status != http.StatusOK {
+		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+	if b.n != 1 {
+		t.Fatalf("the budget was read %d times, want 1", b.n)
 	}
 }
 

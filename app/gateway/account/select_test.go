@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -244,6 +245,21 @@ func TestAPeekNamesTheAccountWithoutRecordingTheUse(t *testing.T) {
 	}
 	if n, _ := r.get(t, a.ID).Doc().GetInt("consecutiveUseCount"); n != 1 {
 		t.Fatalf("a peek moved the rotation count to %d", n)
+	}
+}
+
+// The provider lock orders the writes of a round-robin pick; a peek writes
+// nothing, so a refused request does not queue behind real picks.
+func TestAPeekDoesNotWaitForTheProviderLock(t *testing.T) {
+	r := newRig(t, `{"fallbackStrategy":"round-robin","stickyRoundRobinLimit":2}`)
+	r.add(t, "p", "a", nil)
+	lock := r.sel.providerLock("p")
+	lock <- struct{}{}
+	defer func() { <-lock }()
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	if _, err := r.sel.Peek(ctx, Request{Provider: "p", Model: "m"}); err != nil {
+		t.Fatalf("a peek waited for a lock it does not need: %v", err)
 	}
 }
 
@@ -615,14 +631,7 @@ func anyLine(lines []string, sub string) bool {
 	return false
 }
 
-func contains(s, sub string) bool {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
-}
+func contains(s, sub string) bool { return strings.Contains(s, sub) }
 
 func TestAccountWideLockBlocksEveryModel(t *testing.T) {
 	r := newRig(t, `{}`)

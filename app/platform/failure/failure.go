@@ -6,6 +6,7 @@ package failure
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net"
@@ -189,9 +190,15 @@ func QuotaHeaders(requests, tokens, cost float64, reset time.Duration) http.Head
 		}
 	}
 	if reset > 0 {
-		h.Set("Retry-After", strconv.FormatInt(int64((reset+time.Second-1)/time.Second), 10))
+		h.Set("Retry-After", strconv.FormatInt(RetryAfterSeconds(reset), 10))
 	}
 	return h
+}
+
+// RetryAfterSeconds is a wait as the whole seconds a Retry-After header carries:
+// rounded up, and at least 1, so a client never comes back early or at once.
+func RetryAfterSeconds(wait time.Duration) int64 {
+	return max(int64((wait+time.Second-1)/time.Second), 1)
 }
 
 // RateLimitHeaders are the unified rate-limit headers a Claude client reads to
@@ -291,7 +298,6 @@ func writeJSON(w http.ResponseWriter, status int, body []byte, extra http.Header
 // extra carries the upstream's own hints, such as rate-limit counters; the
 // router's Retry-After replaces any it holds.
 func Unavailable(f Format, msg string, retryAt, now time.Time, extra http.Header) ([]byte, http.Header) {
-	secs := max(int64((retryAt.Sub(now)+time.Second-1)/time.Second), 1)
 	body := Body(f, http.StatusServiceUnavailable, msg)
 	if out, ok := withRetryAfter(body, retryAt.UTC().Format(time.RFC3339)); ok {
 		body = out
@@ -300,7 +306,7 @@ func Unavailable(f Format, msg string, retryAt, now time.Time, extra http.Header
 	if h == nil {
 		h = http.Header{}
 	}
-	h.Set("Retry-After", strconv.FormatInt(secs, 10))
+	h.Set("Retry-After", strconv.FormatInt(RetryAfterSeconds(retryAt.Sub(now)), 10))
 	return body, h
 }
 
@@ -366,6 +372,20 @@ func ClassOf(status int) string {
 		return "upstream_5xx"
 	}
 	return "invalid_request"
+}
+
+// StatusClientClosed is the status stored for a client that left. It is not an
+// HTTP status; nothing is written to a connection that is gone.
+const StatusClientClosed = 499
+
+// Stopped says how a request whose context ended is filed: a passed deadline is
+// the call's own time running out, a timeout; anything else is the client
+// leaving. Both gateways use it, so a cancel reads the same on either route.
+func Stopped(err error) (status int, class string) {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return http.StatusGatewayTimeout, "timeout"
+	}
+	return StatusClientClosed, "client_closed"
 }
 
 // ClientStatus is the status a client sees for an upstream status. A refused

@@ -124,6 +124,31 @@ func TestAComboKeepsTheStreamClosedWhileAMemberRemains(t *testing.T) {
 	}
 }
 
+// While another account can still answer, the stream stays closed: a comment
+// would commit the answer to the silent account and end its failover.
+func TestASilentAccountWithAnotherLeftKeepsTheStreamClosed(t *testing.T) {
+	r := newRig(t,
+		tests.Reply{ContentType: "text/event-stream", Silent: true},
+		tests.Reply{ContentType: "text/event-stream", Chunks: sseChunks()})
+	r.conn("forced", "k1")
+	r.conn("forced", "k2")
+	r.p.d.Keepalive = 5 * time.Millisecond
+	c := &rawRecorder{}
+	out := <-openRecorded(t, r, "/v1/chat/completions", `{"model":"forced/fm","stream":true,"messages":[{"role":"user","content":"hi"}]}`, c, context.Background())
+	if out.Status != 200 {
+		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+	if c.sawKeepalive() {
+		t.Fatal("the stream opened while another account could still answer")
+	}
+	if !c.sawFrame() {
+		t.Fatal("the second account did not answer")
+	}
+	if calls := len(r.up.Calls()); calls != 2 {
+		t.Fatalf("%d upstream calls, want 2", calls)
+	}
+}
+
 // NDJSON has no comment line, so an Ollama answer must never get one.
 func TestAnOllamaStreamGetsNoComment(t *testing.T) {
 	// The upstream speaks OpenAI SSE; the client asked for Ollama's NDJSON.

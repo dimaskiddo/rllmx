@@ -276,6 +276,24 @@ func TestADeclaredCustomModelCarriesItsCapabilities(t *testing.T) {
 	}
 }
 
+func TestALearnedFlagKeepsWhatTheOperatorStoredUnderTheAlias(t *testing.T) {
+	reg, err := Default()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := LoadCapabilities(reg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	on := true
+	c.SetCustom(map[string]Declared{"cc/claude-custom": {Reasoning: &on, Audio: &on}})
+	c.Declare("claude", "claude-custom", Declared{Vision: &on})
+	got := c.For("claude", "claude-custom")
+	if !got.Vision || !got.Reasoning || !got.AudioInput {
+		t.Fatalf("a learned vision flag hid the stored ones: %+v", got)
+	}
+}
+
 // Neon and Hydrogen take a fourth level above high, and Antigravity's Claude 5.5
 // takes max, so the picker offers them and a request for one is not turned into
 // something else. Argon and Carbon stay at three.

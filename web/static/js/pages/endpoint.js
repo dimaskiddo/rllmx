@@ -1,7 +1,7 @@
 // Endpoint & Keys: the address a client calls, the dashboard's settings that
 // guard it, and this machine's API keys.
 import { api, patchSettings } from "/static/js/ui/api.js";
-import { session } from "/static/js/ui/session.js";
+import { roleMethods, session } from "/static/js/ui/session.js";
 import { ask } from "/static/js/ui/dialog.js";
 import { copy } from "/static/js/ui/copy.js";
 import { t } from "/static/js/ui/i18n.js";
@@ -39,10 +39,6 @@ window.Alpine.data("endpointPage", () => Object.assign({
   edit: null,
   choices: [],
 
-
-  isAdmin() {
-    return this.role !== "user";
-  },
 
   // ownerText is the address the owner signs in with, or their username when
   // they have none, so a key always says whose it is.
@@ -367,4 +363,4 @@ window.Alpine.data("endpointPage", () => Object.assign({
     }
   },
 
-}, formatMethods, fieldMethods));
+}, formatMethods, fieldMethods, roleMethods));

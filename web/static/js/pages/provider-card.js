@@ -27,9 +27,4 @@ export const cardMethods = {
     this.setField(path, event);
     this.add.check = null;
   },
-
-  closeResults() {
-    this.$refs.resultsDlg.close();
-    this.results = null;
-  },
 };

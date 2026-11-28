@@ -108,7 +108,7 @@ Both histograms use the buckets `0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300` sec
 
 - **Counters restart at zero.** The registry is in memory, so a restart resets every series. `rate()` and `increase()` handle the reset; for a total older than the process, read the analytics database or the Usage page.
 - **The request log is not a metric.** The per-request rows the Usage page lists are rows in the analytics table; a log pipeline is the outside route for them.
-- **The tuple is capped** at 20000 series. A new tuple past the cap keeps its `provider` and `model` and files `connection_id`, `api_key_id` and `endpoint` under `other`; each fold increments `rllmx_metrics_series_folded_total`. In practice the cap is far above a normal deployment's key and account count.
+- **The tuple is capped** at 20000 series. A new tuple past the cap keeps its `provider` and `model` and files `connection_id`, `api_key_id` and `endpoint` under `other`; each fold increments `rllmx_metrics_series_folded_total`. The provider and model names are capped too, at 2000 pairs: a pair past it is counted as `other`/`other` in every family, because a client chooses the model it names. Every label is the stored value, bounded the way the usage row is. In practice both caps are far above a normal deployment.
 - **Nothing secret is exported.** No key value, no prompt text, no error message. Account names, which can be email addresses, are exported, which is why the endpoint needs a credential.
 
 ## Query cookbook

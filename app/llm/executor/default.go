@@ -30,6 +30,29 @@ type Default struct {
 	Sleep func(time.Duration) <-chan time.Time
 }
 
+// bounded returns d, or a copy whose client carries the provider's own wait
+// bound: the client's timeout for the whole exchange, and its transport's header
+// timeout, because a client timeout alone lets a written body wait on headers
+// forever. The shared client is never mutated.
+func (d *Default) bounded(timeout time.Duration) *Default {
+	if timeout <= 0 || d.Client == nil {
+		return d
+	}
+	strict := *d.Client
+	strict.Timeout = timeout
+	switch t := strict.Transport.(type) {
+	case *http.Transport:
+		copied := t.Clone()
+		copied.ResponseHeaderTimeout = timeout
+		strict.Transport = copied
+	case interface {
+		WithResponseHeaderTimeout(time.Duration) http.RoundTripper
+	}:
+		strict.Transport = t.WithResponseHeaderTimeout(timeout)
+	}
+	return &Default{Client: &strict, Retry: d.Retry, Sleep: d.Sleep}
+}
+
 // Execute sends req. A status in the retry table is tried again in place, with
 // the earlier body drained first; the last answer is returned as it is, so the
 // caller sees the real status. A network failure follows the 502 rule.
@@ -43,25 +66,7 @@ func (d *Default) Execute(ctx context.Context, req Request) (Response, error) {
 		return Response{}, err
 	}
 	req.URL = target
-	// A provider that bounds its own wait gets a client copy with that bound:
-	// the client's timeout for the whole exchange, and its transport's header
-	// timeout, because a client timeout alone lets a written body wait on
-	// headers forever. The shared client is never mutated.
-	if req.Timeout > 0 && d.Client != nil {
-		strict := *d.Client
-		strict.Timeout = req.Timeout
-		switch t := strict.Transport.(type) {
-		case *http.Transport:
-			copied := t.Clone()
-			copied.ResponseHeaderTimeout = req.Timeout
-			strict.Transport = copied
-		case interface {
-			WithResponseHeaderTimeout(time.Duration) http.RoundTripper
-		}:
-			strict.Transport = t.WithResponseHeaderTimeout(req.Timeout)
-		}
-		d = &Default{Client: &strict, Retry: d.Retry, Sleep: d.Sleep}
-	}
+	d = d.bounded(req.Timeout)
 	tries := map[int]int{}
 	replayed := false
 	// addresses are the provider's other addresses, tried in data order when

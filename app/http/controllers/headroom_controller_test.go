@@ -154,3 +154,47 @@ func TestTheMaskedAddressKeepsNoCredential(t *testing.T) {
 		t.Fatalf("masked to %q", got)
 	}
 }
+
+// One client per sidecar host: a new one per call would leave an idle pool
+// behind on every status and every proxied request.
+func TestTheSidecarClientIsBuiltOncePerHost(t *testing.T) {
+	srv := sidecar(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	m := newMgmtRig(t)
+	if err := m.st.Store.Settings().Patch(context.Background(), map[string]string{"headroomUrl": `""`}); err != nil {
+		t.Fatal(err)
+	}
+	built := 0
+	m.headroomRoutes(&HeadroomController{
+		DB: func() *repository.Store { return m.st.Store },
+		Client: func(string) *http.Client {
+			built++
+			return srv.Client()
+		},
+		DefaultURL: srv.URL,
+	})
+	for i := 0; i < 3; i++ {
+		if code, _, raw := m.call(http.MethodGet, "/api/headroom/status", "", true); code != 200 {
+			t.Fatalf("%d %s", code, raw)
+		}
+	}
+	if built != 1 {
+		t.Fatalf("the client was built %d times", built)
+	}
+}
+
+// A controller wired without a client is not allowed to fall back to the
+// unguarded default one: the proxy refuses and the status reports unreachable.
+func TestAnUnwiredHeadroomControllerRefuses(t *testing.T) {
+	srv := sidecar(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	m := newMgmtRig(t)
+	if err := m.st.Store.Settings().Patch(context.Background(), map[string]string{"headroomUrl": `""`}); err != nil {
+		t.Fatal(err)
+	}
+	m.headroomRoutes(&HeadroomController{DB: func() *repository.Store { return m.st.Store }, DefaultURL: srv.URL})
+	if code, out, raw := m.call(http.MethodGet, "/api/headroom/status", "", true); code != 200 || out["reachable"] != false {
+		t.Fatalf("%d %v %s", code, out, raw)
+	}
+	if code, _, _ := m.call(http.MethodGet, "/api/headroom/proxy/health", "", true); code != http.StatusServiceUnavailable {
+		t.Fatalf("an unwired proxy answered %d", code)
+	}
+}

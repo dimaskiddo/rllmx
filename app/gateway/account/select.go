@@ -63,6 +63,9 @@ type Selection struct {
 	Conn repository.Connection
 	// Skipped counts rows whose stored data could not be read.
 	Skipped int
+	// More is true when another connection was still usable beside the chosen
+	// one, so a failure of this one can be answered by the next.
+	More bool
 }
 
 // ConnReader is what the selector reads and writes on connections.
@@ -152,7 +155,7 @@ func (s *Selector) pick(ctx context.Context, req Request, write bool) (Selection
 	if err := ctx.Err(); err != nil {
 		return Selection{}, err
 	}
-	if s.needsLock(ctx, req.Provider) {
+	if write && s.needsLock(ctx, req.Provider) {
 		lock := s.providerLock(req.Provider)
 		select {
 		case lock <- struct{}{}:
@@ -209,7 +212,7 @@ func (s *Selector) pick(ctx context.Context, req Request, write bool) (Selection
 	if req.Prefer != "" {
 		for _, c := range usable {
 			if c.ID == req.Prefer {
-				return Selection{Conn: c, Skipped: skipped}, nil
+				return Selection{Conn: c, Skipped: skipped, More: len(usable) > 1}, nil
 			}
 		}
 	}
@@ -218,7 +221,7 @@ func (s *Selector) pick(ctx context.Context, req Request, write bool) (Selection
 	if err != nil {
 		return Selection{}, err
 	}
-	return Selection{Conn: conn, Skipped: skipped}, nil
+	return Selection{Conn: conn, Skipped: skipped, More: len(usable) > 1}, nil
 }
 
 // Expired reports a connection whose refresh token was refused for good.

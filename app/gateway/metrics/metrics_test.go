@@ -101,6 +101,36 @@ func TestASeriesPastTheCapFoldsIntoOtherAndKeepsItsProviderAndModel(t *testing.T
 	}
 }
 
+func TestInventedModelNamesCannotGrowTheSeriesWithoutEnd(t *testing.T) {
+	r := New(fixed)
+	rec := record()
+	for i := 0; i < maxPairs+500; i++ {
+		rec.Provider, rec.Model = "p"+strconv.Itoa(i), "m"+strconv.Itoa(i)
+		r.Observe(rec)
+	}
+	out := render(t, r, Info{})
+	if !strings.Contains(out, `provider="other",model="other"`) {
+		t.Fatalf("no folded name:\n%s", tail(out))
+	}
+	r.mu.Lock()
+	pairs, hists := len(r.pairs), len(r.latency)
+	r.mu.Unlock()
+	if pairs > maxPairs || hists > maxPairs+1 {
+		t.Fatalf("%d pairs and %d histograms past the cap %d", pairs, hists, maxPairs)
+	}
+}
+
+func TestTheSinkBoundsALabelBeforeItIsCounted(t *testing.T) {
+	reg := New(fixed)
+	s := Sink{Next: &countingSink{}, Reg: reg}
+	rec := record()
+	rec.Model = strings.Repeat("x", 1<<20)
+	s.Enqueue(rec)
+	if out := render(t, reg, Info{}); len(out) > 64<<10 {
+		t.Fatalf("a megabyte model name reached the scrape: %d bytes", len(out))
+	}
+}
+
 // tail shortens a huge scrape to its last few hundred bytes for a failure.
 func tail(s string) string {
 	if len(s) < 400 {

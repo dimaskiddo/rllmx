@@ -9,6 +9,7 @@ import (
 	contractsdb "github.com/goravel/framework/contracts/database/db"
 
 	"fmt"
+	"rllmx/app/platform/text"
 	"rllmx/app/store/dialect"
 	"rllmx/app/store/document"
 	"slices"
@@ -144,12 +145,7 @@ func (r *ConnectionsRepo) RecordTest(ctx context.Context, id string, ok bool, me
 			if err := clearAllLocks(&d); err != nil {
 				return err
 			}
-			for _, k := range []string{"lastError", "lastErrorAt", "errorCode", "rateLimitedUntil"} {
-				if err := d.SetNull(k); err != nil {
-					return err
-				}
-			}
-			if err := d.SetInt("backoffLevel", 0); err != nil {
+			if err := resetHealth(&d); err != nil {
 				return err
 			}
 		default:
@@ -158,10 +154,7 @@ func (r *ConnectionsRepo) RecordTest(ctx context.Context, id string, ok bool, me
 					return err
 				}
 			}
-			if runes := []rune(message); len(runes) > maxReasonRunes {
-				message = string(runes[:maxReasonRunes])
-			}
-			if err := d.SetString("lastError", message); err != nil {
+			if err := d.SetString("lastError", text.CutRunes(message, maxReasonRunes)); err != nil {
 				return err
 			}
 			if err := d.SetString("lastErrorAt", stamp); err != nil {

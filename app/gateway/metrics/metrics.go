@@ -17,9 +17,16 @@ import (
 	"rllmx/app/store/analytics"
 )
 
-// maxTuples bounds the series a hostile or unusual client can create. A tuple
-// past the cap keeps its provider and model and files the rest under "other".
-const maxTuples = 20000
+const (
+	// maxTuples bounds the series a hostile or unusual client can create. A
+	// tuple past the cap keeps its provider and model and files the rest under
+	// "other".
+	maxTuples = 20000
+	// maxPairs bounds the provider and model names themselves, which a client
+	// chooses: a pair past the cap is filed as "other" everywhere, so neither
+	// the series nor the histograms grow with invented names.
+	maxPairs = 2000
+)
 
 // Families are the metric names this package writes. The operator guide is
 // checked against it, so a family added here cannot go undocumented.
@@ -63,6 +70,7 @@ type Registry struct {
 
 	mu       sync.Mutex
 	seen     map[dimsKey]struct{}
+	pairs    map[histKey]struct{}
 	folded   uint64
 	requests map[reqKey]uint64
 	tokens   map[tokKey]uint64
@@ -80,6 +88,7 @@ func New(now func() time.Time) *Registry {
 	return &Registry{
 		start:    now(),
 		seen:     map[dimsKey]struct{}{},
+		pairs:    map[histKey]struct{}{},
 		requests: map[reqKey]uint64{},
 		tokens:   map[tokKey]uint64{},
 		cost:     map[dimsKey]float64{},
@@ -89,22 +98,25 @@ func New(now func() time.Time) *Registry {
 	}
 }
 
+// tokenKinds is the order the token counters are written in; a fixed array
+// keeps the hot path from allocating a map per request.
+var tokenKinds = [...]string{"prompt", "completion", "cached", "cache_write", "reasoning"}
+
 // Observe records one finished request. No field of the record is a body, a
 // header or prompt text, so nothing here can carry one out.
 func (r *Registry) Observe(rec analytics.Record) {
 	if r == nil {
 		return
 	}
+	counts := [len(tokenKinds)]int64{rec.PromptTokens, rec.CompletionTokens, rec.CachedTokens, rec.CacheWriteTokens, rec.ReasoningTokens}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	d := r.tuple(rec)
+	name := r.name(rec)
+	d := r.tuple(name, rec)
 	r.requests[reqKey{d, codeOf(rec.Status), rec.Cached}]++
-	for kind, n := range map[string]int64{
-		"prompt": rec.PromptTokens, "completion": rec.CompletionTokens,
-		"cached": rec.CachedTokens, "cache_write": rec.CacheWriteTokens, "reasoning": rec.ReasoningTokens,
-	} {
+	for i, n := range counts {
 		if n > 0 {
-			r.tokens[tokKey{d, kind}] += uint64(n)
+			r.tokens[tokKey{d, tokenKinds[i]}] += uint64(n)
 		}
 	}
 	if rec.CostKnown {
@@ -113,17 +125,31 @@ func (r *Registry) Observe(rec analytics.Record) {
 		r.unknown[d]++
 	}
 	if rec.LatencyMs > 0 {
-		r.hist(r.latency, histKey{rec.Provider, rec.Model}).observe(float64(rec.LatencyMs) / 1000)
+		r.hist(r.latency, name).observe(float64(rec.LatencyMs) / 1000)
 	}
 	if rec.TTFBMs > 0 {
-		r.hist(r.ttfb, histKey{rec.Provider, rec.Model}).observe(float64(rec.TTFBMs) / 1000)
+		r.hist(r.ttfb, name).observe(float64(rec.TTFBMs) / 1000)
 	}
+}
+
+// name returns the provider and model a record is counted under, folding a new
+// pair past the cap into "other". The caller holds the lock.
+func (r *Registry) name(rec analytics.Record) histKey {
+	k := histKey{rec.Provider, rec.Model}
+	if _, ok := r.pairs[k]; ok {
+		return k
+	}
+	if len(r.pairs) >= maxPairs {
+		return histKey{"other", "other"}
+	}
+	r.pairs[k] = struct{}{}
+	return k
 }
 
 // tuple returns the record's dimension tuple, folding a new one past the cap.
 // The caller holds the lock.
-func (r *Registry) tuple(rec analytics.Record) dimsKey {
-	d := dimsKey{rec.Provider, rec.Model, rec.ConnectionID, rec.APIKeyID, rec.Endpoint}
+func (r *Registry) tuple(name histKey, rec analytics.Record) dimsKey {
+	d := dimsKey{name.provider, name.model, rec.ConnectionID, rec.APIKeyID, rec.Endpoint}
 	if _, ok := r.seen[d]; ok {
 		return d
 	}
@@ -135,7 +161,7 @@ func (r *Registry) tuple(rec analytics.Record) dimsKey {
 	return d
 }
 
-// hist returns the histogram for a key, creating it. The caller holds the lock.
+// hist returns the histogram for a pair, creating it. The caller holds the lock.
 func (r *Registry) hist(m map[histKey]*histogram, k histKey) *histogram {
 	h, ok := m[k]
 	if !ok {
@@ -378,9 +404,10 @@ func pair(name, value string) string {
 	if value == "" {
 		return ""
 	}
-	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`)
-	return `,` + name + `="` + r.Replace(value) + `"`
+	return `,` + name + `="` + labelEscaper.Replace(value) + `"`
 }
+
+var labelEscaper = strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`)
 
 // num formats a float without an exponent or trailing zeros.
 func num(v float64) string { return strconv.FormatFloat(v, 'g', -1, 64) }
@@ -392,8 +419,10 @@ type Sink struct {
 }
 
 // Enqueue observes the record, then forwards it. The forward result is the
-// sink's own, so a full queue still reads as full.
+// sink's own, so a full queue still reads as full. The record is bounded first,
+// so a label counted here is one the stored row would also hold.
 func (s Sink) Enqueue(r analytics.Record) bool {
+	r = analytics.Sanitize(r)
 	s.Reg.Observe(r)
 	return s.Next.Enqueue(r)
 }

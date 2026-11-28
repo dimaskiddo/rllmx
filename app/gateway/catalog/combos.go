@@ -44,8 +44,10 @@ func (c *Catalog) comboEntries(ctx context.Context) ([]Entry, error) {
 }
 
 // comboCaps aggregates the members' capabilities. Any member may answer, so a
-// limit is the smallest one any of them knows, and a modality the combo keeps
-// is one every member has: tools, above all.
+// limit is the smallest one any of them knows. A modality is offered when any
+// member has it, because the walk sends a turn to a member that can read it;
+// tools are kept only when every member has them, since one that cannot call a
+// tool may be the one that answers.
 func (c *Catalog) comboCaps(ctx context.Context, name string) upstream.Capability {
 	members, err := c.Combos.Expand(ctx, name)
 	if err != nil {

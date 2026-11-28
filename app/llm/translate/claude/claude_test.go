@@ -378,7 +378,7 @@ func TestForcedToolChoiceIsRelaxedWhileThinking(t *testing.T) {
 	}
 }
 
-func TestOutputConfigAndContextManagementFollowTheCapabilityRowAndTheTransportQuirk(t *testing.T) {
+func TestOutputConfigFollowsTheCapabilityRowAndContextManagementTheTransportQuirk(t *testing.T) {
 	body := `{"model":"m","max_tokens":9,"messages":[{"role":"user","content":"x"}],"output_config":{"format":"x"},"context_management":{"edits":[]}}`
 	c := cctx()
 	c.Caps.DropOutputConfig = true
@@ -388,12 +388,6 @@ func TestOutputConfigAndContextManagementFollowTheCapabilityRowAndTheTransportQu
 		t.Errorf("both should go: %s", out)
 	}
 	c.Caps.DropOutputConfig = false
-	c.Caps.KeepContextMgmt = true
-	out, _ = claudeCodec(t).WriteRequest(req, c)
-	if !strings.Contains(string(out), "output_config") || !strings.Contains(string(out), "context_management") {
-		t.Errorf("both should stay: %s", out)
-	}
-	c.Caps.KeepContextMgmt = false
 	c.Entry.Transport.Quirks.KeepContextManagement = true
 	out, _ = claudeCodec(t).WriteRequest(req, c)
 	if !strings.Contains(string(out), "context_management") {

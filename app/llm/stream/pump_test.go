@@ -456,6 +456,46 @@ func TestACutPassthroughStreamIsNotFinished(t *testing.T) {
 	}
 }
 
+func TestACutClaudePassthroughStreamIsNotFinished(t *testing.T) {
+	c := &fakeClient{}
+	body := sseBody("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":3}}}\n\n" +
+		"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"hi\"}}\n\n")
+	res := Run(context.Background(), job(body, "claude", "claude", c))
+	if !errors.Is(res.Err, ErrTruncated) || res.Status != 502 {
+		t.Fatalf("%+v", res)
+	}
+}
+
+func TestAFinishedClaudePassthroughStreamIsNotCut(t *testing.T) {
+	c := &fakeClient{}
+	body := sseBody("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":3}}}\n\n" +
+		"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"hi\"}}\n\n" +
+		"event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":1}}\n\n")
+	res := Run(context.Background(), job(body, "claude", "claude", c))
+	if res.Err != nil || res.Finish != "stop" {
+		t.Fatalf("%+v", res)
+	}
+}
+
+func TestACutToolCallPassthroughStreamIsNotFinished(t *testing.T) {
+	c := &fakeClient{}
+	body := sseBody("data: {\"id\":\"chatcmpl-abc12345\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c1\",\"function\":{\"name\":\"f\",\"arguments\":\"{\\\"a\\\"\"}}]}}]}\n\n")
+	res := Run(context.Background(), job(body, "openai", "openai", c))
+	if !errors.Is(res.Err, ErrTruncated) || c.dones() != 0 {
+		t.Fatalf("%+v dones %d", res, c.dones())
+	}
+}
+
+func TestACutReasoningPassthroughStreamIsNotFinished(t *testing.T) {
+	c := &fakeClient{}
+	body := sseBody("data: {\"id\":\"chatcmpl-abc12345\",\"choices\":[{\"delta\":{\"reasoning\":\"thinking\"}}]}\n\n")
+	j := job(body, "openai", "openai", c)
+	res := Run(context.Background(), j)
+	if !errors.Is(res.Err, ErrTruncated) {
+		t.Fatalf("%+v", res)
+	}
+}
+
 func TestAnEmptyPassthroughStreamIsNotCut(t *testing.T) {
 	c := &fakeClient{}
 	res := Run(context.Background(), job(sseBody("data: [DONE]\n\n"), "openai", "openai", c))
@@ -685,7 +725,7 @@ func TestCollectStopsPastItsCap(t *testing.T) {
 			t.Errorf("%s: reason %q", name, got)
 		}
 	}
-	body := sseBody(cases["text"])
+	body := sseBody(cases["text"] + "data: [DONE]\n\n")
 	if _, err := collectUpTo(context.Background(), body, NewReader(body), "openai", translate.NewCtx("", "openai"), Timers{}, 0, 20); err != nil {
 		t.Fatalf("an answer exactly at the cap failed: %v", err)
 	}
@@ -697,7 +737,7 @@ func TestCollectJoinsManySmallArgumentFragments(t *testing.T) {
 	for range 500 {
 		in.WriteString("data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"1,\"}}]}}]}\n\n")
 	}
-	in.WriteString("data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"2]\"}}]}}]}\n\n")
+	in.WriteString("data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"2]\"}}]}}]}\n\ndata: [DONE]\n\n")
 	body := sseBody(in.String())
 	got, err := Collect(context.Background(), body, NewReader(body), "openai", translate.NewCtx("", "openai"), Timers{}, 0)
 	if err != nil {
@@ -712,7 +752,7 @@ func TestCollectJoinsManySmallArgumentFragments(t *testing.T) {
 func TestCollectKeepsToolCallsInTheirOrder(t *testing.T) {
 	body := sseBody("data: {\"id\":\"chatcmpl-abc12345\",\"choices\":[{\"delta\":{\"role\":\"assistant\",\"tool_calls\":[{\"index\":2,\"id\":\"c2\",\"function\":{\"name\":\"third\",\"arguments\":\"{}\"}}]}}]}\n\n" +
 		"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c0\",\"function\":{\"name\":\"first\",\"arguments\":\"{}\"}}]}}]}\n\n" +
-		"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,\"id\":\"c1\",\"function\":{\"name\":\"second\"}}]}}]}\n\n")
+		"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,\"id\":\"c1\",\"function\":{\"name\":\"second\"}}]}}]}\n\ndata: [DONE]\n\n")
 	got, err := Collect(context.Background(), body, NewReader(body), "openai", translate.NewCtx("", "openai"), Timers{}, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -726,6 +766,21 @@ func TestCollectKeepsToolCallsInTheirOrder(t *testing.T) {
 	}
 	if strings.Join(names, ",") != "first,second,third" {
 		t.Fatalf("%v", names)
+	}
+}
+
+func TestCollectFailsOnAStreamThatStopsWithoutAFinish(t *testing.T) {
+	body := sseBody("data: {\"id\":\"chatcmpl-abc12345\",\"choices\":[{\"delta\":{\"content\":\"half\"}}]}\n\n")
+	if _, err := Collect(context.Background(), body, NewReader(body), "openai", translate.NewCtx("", "openai"), Timers{}, 0); !errors.Is(err, ErrTruncated) {
+		t.Fatalf("err %v, want ErrTruncated", err)
+	}
+	done := sseBody("data: {\"id\":\"chatcmpl-abc12345\",\"choices\":[{\"delta\":{\"content\":\"all\"}}]}\n\ndata: [DONE]\n\n")
+	if _, err := Collect(context.Background(), done, NewReader(done), "openai", translate.NewCtx("", "openai"), Timers{}, 0); err != nil {
+		t.Fatalf("a stream closed by [DONE] was failed: %v", err)
+	}
+	empty := sseBody("")
+	if _, err := Collect(context.Background(), empty, NewReader(empty), "openai", translate.NewCtx("", "openai"), Timers{}, 0); err != nil {
+		t.Fatalf("an empty stream is the caller's to judge: %v", err)
 	}
 }
 
@@ -839,5 +894,15 @@ func TestTheReasoningAliasIsLiftedInPassthrough(t *testing.T) {
 	Run(context.Background(), job(sseBody(body), "openai", "openai", c2))
 	if strings.Contains(c2.text(), `"reasoning_content":"think"`) {
 		t.Fatalf("lifted without the quirk: %s", c2.text())
+	}
+}
+
+func TestOnlyASilentUpstreamIsATimeout(t *testing.T) {
+	for err, want := range map[error]int{
+		ErrStall: 504, ErrFirstChunk: 504, ErrTruncated: 502, ErrUpstream: 502, ErrEventTooLarge: 502, errors.New("boom"): 502,
+	} {
+		if got := Status(err); got != want {
+			t.Errorf("%v: %d, want %d", err, got, want)
+		}
 	}
 }

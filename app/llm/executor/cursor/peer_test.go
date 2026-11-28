@@ -77,3 +77,33 @@ func TestAnAbandonedTurnLeavesNoReaderBehind(t *testing.T) {
 		t.Fatalf("goroutines: %d before, %d after twenty abandoned turns", before, got)
 	}
 }
+
+// The answer a client holds is the read-ahead and the rest of the turn; closing
+// it must end the read-ahead, or one goroutine stays blocked on a chunk nobody
+// will read for every abandoned stream.
+func TestClosingTheHandedOverAnswerEndsTheReadAhead(t *testing.T) {
+	before := runtime.NumGoroutine()
+	for i := 0; i < 20; i++ {
+		src := &slowSource{chunks: 1000, closed: make(chan struct{})}
+		reader := newStartReader(src)
+		buf := make([]byte, 16)
+		if _, err := reader.Wait(buf, time.Second); err != nil {
+			t.Fatal(err)
+		}
+		closed := false
+		body := handOver([]byte("read-ahead"), reader, func() error { closed = true; return nil })
+		if err := body.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if !closed {
+			t.Fatal("the turn itself was not closed")
+		}
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && runtime.NumGoroutine() > before+2 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := runtime.NumGoroutine(); got > before+2 {
+		t.Fatalf("goroutines: %d before, %d after twenty abandoned handovers", before, got)
+	}
+}

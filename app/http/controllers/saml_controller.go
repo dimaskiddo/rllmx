@@ -153,13 +153,13 @@ func (c *SAMLController) ACS(ctx contractshttp.Context) contractshttp.Response {
 	}
 	sso.Debugf(c.Log, "saml sign-in for issuer %s assertion %s", sso.ShortHash(set.IDPEntityID), sso.ShortHash(assertion.ID))
 
-	email, exactOnly, ok := saml.Email(assertion, set)
+	email, exactOnly, unproven, ok := saml.Email(assertion, set)
 	if !ok {
 		c.countFailure(key)
 		return c.fail(ctx, base, sso.CodeNoEmail)
 	}
 
-	cookie, issued := c.Auth.IssueSSO(r.Context(), auth.MethodSAML, email, saml.Name(assertion, set), exactOnly, c.Trust.SecureRequest(r))
+	cookie, issued := c.Auth.IssueSSO(r.Context(), auth.MethodSAML, email, saml.Name(assertion, set), exactOnly, unproven, c.Trust.SecureRequest(r))
 	if !issued {
 		c.countFailure(key)
 		return c.fail(ctx, base, sso.CodeNoAccount)

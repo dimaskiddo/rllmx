@@ -13,6 +13,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"rllmx/app/platform/text"
 	"rllmx/app/store/dialect"
 )
 
@@ -76,7 +77,7 @@ func validToken(b []byte) (string, error) {
 		return "", ErrDecrypt
 	}
 	s := strings.TrimSpace(string(b))
-	if s == "" || strings.ContainsFunc(s, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
+	if s == "" || text.HasASCIIControl(s) {
 		return "", ErrDecrypt
 	}
 	return s, nil

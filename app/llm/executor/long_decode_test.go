@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -419,4 +421,53 @@ func (zeroes) Read(p []byte) (int, error) {
 		p[i] = 'x'
 	}
 	return len(p), nil
+}
+
+// blockBody is a hop body whose read blocks until it is closed.
+type blockBody struct {
+	entered, released chan struct{}
+	once              sync.Once
+}
+
+func newBlockBody() *blockBody {
+	return &blockBody{entered: make(chan struct{}, 1), released: make(chan struct{})}
+}
+
+func (b *blockBody) Read(p []byte) (int, error) {
+	select {
+	case b.entered <- struct{}{}:
+	default:
+	}
+	<-b.released
+	return 0, io.EOF
+}
+
+func (b *blockBody) Close() error { b.once.Do(func() { close(b.released) }); return nil }
+
+// A stream closed while a hop is being opened drains that hop, and the drain is
+// a read: nobody else may wait on it to ask whether the stream is closed.
+func TestAClosedStreamDoesNotWaitOnAHopsDrain(t *testing.T) {
+	s := &hopStream{closed: true}
+	body := newBlockBody()
+	done := make(chan bool, 1)
+	go func() { done <- s.swap(body) }()
+	select {
+	case <-body.entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the abandoned hop was never read")
+	}
+	answered := make(chan bool, 1)
+	go func() { answered <- s.isClosed() }()
+	select {
+	case closed := <-answered:
+		if !closed {
+			t.Fatal("a closed stream read as open")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("asking whether the stream is closed waited on a body read")
+	}
+	_ = body.Close()
+	if swapped := <-done; swapped {
+		t.Fatal("a closed stream took a new hop")
+	}
 }

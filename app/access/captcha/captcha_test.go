@@ -60,9 +60,15 @@ func TestAnUnreachableOrErroringProviderIsUnavailable(t *testing.T) {
 	if err := v2.Verify(context.Background(), "token", ""); !errors.Is(err, ErrRejected) {
 		t.Fatalf("junk: err %v", err)
 	}
-	dead := &Verifier{Provider: Turnstile, URL: "http://127.0.0.1:1/", Client: &http.Client{}}
-	if err := dead.Verify(context.Background(), "token", ""); !errors.Is(err, ErrUnavailable) {
+	dead := &Verifier{Provider: Turnstile, Secret: "the-secret-value", URL: "http://127.0.0.1:1/", Client: &http.Client{}}
+	err := dead.Verify(context.Background(), "the-answer-token", "")
+	if !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("refused connection: err %v", err)
+	}
+	// The cause is kept for the log; the form that carried the secret and the
+	// answer is not part of it.
+	if msg := err.Error(); strings.Contains(msg, "the-secret-value") || strings.Contains(msg, "the-answer-token") || !strings.Contains(msg, "refused") {
+		t.Fatalf("the error reads %q", msg)
 	}
 }
 
@@ -112,5 +118,23 @@ func TestThePolicyAddsOnlyTheProviderHosts(t *testing.T) {
 	}
 	if Policy(base, "") != base {
 		t.Error("a sign-in with no provider gets another policy")
+	}
+}
+
+// An unwired verifier has no client, and the unguarded default one is not a
+// fallback: the check fails closed.
+func TestAnUnwiredVerifierIsUnavailable(t *testing.T) {
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		_, _ = w.Write([]byte(`{"success":true}`))
+	}))
+	defer srv.Close()
+	v := &Verifier{Provider: Turnstile, Secret: "s", URL: srv.URL}
+	if err := v.Verify(context.Background(), "token", ""); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("err = %v", err)
+	}
+	if hits != 0 {
+		t.Fatalf("an unwired verifier reached the provider %d times", hits)
 	}
 }

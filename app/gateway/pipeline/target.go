@@ -47,14 +47,8 @@ func (c *call) resolve(ctx context.Context) (Output, bool) {
 	// The key is checked on the resolved target, before the response cache and
 	// before any account: a check after the cache would let a restricted key read
 	// an answer cached for a model it may not call.
-	if c.in.Caller.Restricted {
-		allow, err := routing.NewAllow(ctx, c.p.d.Resolver, c.in.Caller.Allow)
-		if err != nil {
-			return c.internal(ctx, err), false
-		}
-		if !allow.Target(t) {
-			return c.refuseModel(), false
-		}
+	if out, ok := c.checkKey(ctx, t); !ok {
+		return out, false
 	}
 	if out, ok := c.budget(ctx); !ok {
 		c.nameIntendedAccount(ctx, t)
@@ -95,6 +89,32 @@ func (c *call) resolve(ctx context.Context) (Output, bool) {
 	}
 	c.dest = dest
 
+	c.shapeTranslation(dest, t)
+
+	c.upStream = c.clientStream || dest.entry.ForceStream
+	if out, hit := c.cached(ctx); hit {
+		return out, false
+	}
+	return c.build(ctx, dest)
+}
+
+// checkKey refuses a restricted key a target outside its allow list.
+func (c *call) checkKey(ctx context.Context, t routing.Target) (Output, bool) {
+	if !c.in.Caller.Restricted {
+		return Output{}, true
+	}
+	allow, err := routing.NewAllow(ctx, c.p.d.Resolver, c.in.Caller.Allow)
+	if err != nil {
+		return c.internal(ctx, err), false
+	}
+	if !allow.Target(t) {
+		return c.refuseModel(), false
+	}
+	return Output{}, true
+}
+
+// shapeTranslation fills the translation context for the chosen destination.
+func (c *call) shapeTranslation(dest destination, t routing.Target) {
 	caps := onLane(c.p.d.Caps.For(dest.provider, dest.model), dest.lane)
 	tc := c.tctx
 	tc.TargetFormat, tc.Provider, tc.Model, tc.Caps, tc.Entry = dest.format, dest.provider, dest.model, caps, dest.entry
@@ -104,12 +124,6 @@ func (c *call) resolve(ctx context.Context) (Output, bool) {
 		tc.Calls = store
 	}
 	tc.Thinking = translate.ResolveThinking(t.Thinking, c.req.Thinking, translate.ModelThinking{}, caps)
-
-	c.upStream = c.clientStream || dest.entry.ForceStream
-	if out, hit := c.cached(ctx); hit {
-		return out, false
-	}
-	return c.build(ctx, dest)
 }
 
 func (c *call) destinationOf(ctx context.Context, t routing.Target) (destination, Output, bool) {

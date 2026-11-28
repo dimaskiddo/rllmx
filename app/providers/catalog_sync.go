@@ -15,6 +15,7 @@ import (
 
 	"rllmx/app/llm/upstream"
 	appfile "rllmx/app/platform/file"
+	"rllmx/app/platform/text"
 )
 
 const (
@@ -145,10 +146,7 @@ func (s *CatalogSync) done(res upstream.SyncResult, o *upstream.Overlay, size in
 }
 
 func (s *CatalogSync) failed(err error) {
-	msg := strings.TrimSpace(err.Error())
-	if len(msg) > maxErrorText {
-		msg = msg[:maxErrorText]
-	}
+	msg := text.CutBytes(strings.TrimSpace(err.Error()), maxErrorText)
 	s.mu.Lock()
 	s.state.LastError = msg
 	s.mu.Unlock()

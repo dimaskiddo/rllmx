@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/goravel/framework/contracts/log"
@@ -14,6 +13,7 @@ import (
 	"rllmx/app/llm/executor/freebuff"
 	"rllmx/app/platform/cache"
 	"rllmx/app/platform/file"
+	"rllmx/app/platform/text"
 	"rllmx/app/store/dialect"
 )
 
@@ -100,7 +100,7 @@ func (s *Sessions) claim(ctx context.Context, token, model string) ([]byte, erro
 		return []byte(""), nil
 	case "active":
 		id := gjson.GetBytes(raw, "instanceId").String()
-		if id == "" || len(id) > 256 || strings.ContainsFunc(id, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
+		if id == "" || len(id) > 256 || text.HasASCIIControl(id) {
 			return nil, executor.ErrAccountSession
 		}
 		return []byte(id), nil
