@@ -23,7 +23,7 @@ func (r *runner) passthrough(ctx context.Context) {
 	for {
 		ev, err := r.pull.next(ctx, nil, r.keepC())
 		if errors.Is(err, errKeepalive) {
-			if !r.wrote {
+			if !r.wrote && !r.j.OpenWhenQuiet {
 				// The client's stream is not open, and this window belongs to
 				// failover: a comment here would open it.
 				r.resetKeep()

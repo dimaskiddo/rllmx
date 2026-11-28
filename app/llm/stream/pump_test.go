@@ -286,6 +286,54 @@ func TestNoKeepaliveBeforeTheFirstFrame(t *testing.T) {
 	}
 }
 
+func TestAQuietStartOpensTheStreamWhenNoFailoverRemains(t *testing.T) {
+	body, pw := newSlowBody()
+	c := &fakeClient{}
+	j := job(body, "openai", "claude", c)
+	j.Keepalive = 5 * time.Millisecond
+	j.OpenWhenQuiet = true
+	done := make(chan Result, 1)
+	go func() { done <- Run(context.Background(), j) }()
+	deadline := time.Now().Add(2 * time.Second)
+	for !c.sawKeepalive() && time.Now().Before(deadline) {
+		time.Sleep(2 * time.Millisecond)
+	}
+	if !c.sawKeepalive() {
+		t.Fatal("a quiet start with no failover sent no comment")
+	}
+	if _, err := pw.Write([]byte("data: {\"id\":\"chatcmpl-abc12345\",\"choices\":[{\"delta\":{\"content\":\"a\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")); err != nil {
+		t.Fatal(err)
+	}
+	_ = pw.Close()
+	if res := <-done; res.Err != nil || !res.Wrote {
+		t.Fatalf("%+v", res)
+	}
+}
+
+func TestAQuietPassthroughStartOpensTheStreamWhenNoFailoverRemains(t *testing.T) {
+	body, pw := newSlowBody()
+	c := &fakeClient{}
+	j := job(body, "openai", "openai", c)
+	j.Keepalive = 5 * time.Millisecond
+	j.OpenWhenQuiet = true
+	done := make(chan Result, 1)
+	go func() { done <- Run(context.Background(), j) }()
+	deadline := time.Now().Add(2 * time.Second)
+	for !c.sawKeepalive() && time.Now().Before(deadline) {
+		time.Sleep(2 * time.Millisecond)
+	}
+	if !c.sawKeepalive() {
+		t.Fatal("a quiet passthrough start with no failover sent no comment")
+	}
+	if _, err := pw.Write([]byte("data: {\"id\":\"chatcmpl-abc12345\",\"choices\":[{\"delta\":{\"content\":\"a\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")); err != nil {
+		t.Fatal(err)
+	}
+	_ = pw.Close()
+	if res := <-done; res.Err != nil || !res.Wrote {
+		t.Fatalf("%+v", res)
+	}
+}
+
 func TestASilentOpenStreamSendsAKeepaliveComment(t *testing.T) {
 	body, pw := newSlowBody()
 	c := &fakeClient{}

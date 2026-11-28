@@ -294,6 +294,32 @@ func TestAFusionWithNoAnswerIsAServiceError(t *testing.T) {
 	}
 }
 
+func TestAFusionOfOneMemberNamesItInTheRow(t *testing.T) {
+	r := fusionRig(t, `{"comboStrategies":{"chain":{"fallbackStrategy":"fusion"}}}`, []string{"forced/fm"},
+		tests.Reply{ContentType: "application/json", Body: okJSON})
+	r.conn("forced", "k1")
+	out, _ := r.do("/v1/chat/completions", comboAsk)
+	if out.Status != 200 {
+		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+	if row := r.last(); row.Provider != "forced" || row.Model != "fm" {
+		t.Fatalf("a one-member fusion row names the combo: %+v", row)
+	}
+}
+
+func TestAFailedFusionAnswerNamesItsMember(t *testing.T) {
+	r := fusionRig(t, `{"comboStrategies":{"chain":{"fallbackStrategy":"fusion"}}}`, []string{"forced/fm"},
+		tests.Reply{Status: 429, Body: `{"error":{"message":"slow down"}}`})
+	r.conn("forced", "k1")
+	out, _ := r.do("/v1/chat/completions", comboAsk)
+	if out.Status < 400 {
+		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+	if row := r.last(); row.Provider != "forced" || row.Model != "fm" {
+		t.Fatalf("the failed fusion answer does not name its member: %+v", row)
+	}
+}
+
 func TestAFusionWithOneAnswerRerunsThatMemberWithoutAJudge(t *testing.T) {
 	// Only forced answers; the judge is named as wire, which must never be called
 	// when a single answer has to be re-run with the client's own request.
@@ -367,6 +393,9 @@ func TestAnEmptyLastMemberOutranksAnEarlierRefusal(t *testing.T) {
 	if out.Status != http.StatusBadGateway {
 		t.Fatalf("%d %s", out.Status, out.Body)
 	}
+	if row := r.last(); row.Provider != "forced" || row.Model != "fm" {
+		t.Fatalf("the empty last member's row does not name it: %+v", row)
+	}
 }
 
 func TestAComboReturnsAnEmptyAnswerThatIsTheLastMember(t *testing.T) {
@@ -409,6 +438,28 @@ func TestAComboThatFailsEverywhereAnswersAFailureNotASuccess(t *testing.T) {
 	}
 	if calls := len(r.up.Calls()); calls != 2 {
 		t.Fatalf("%d upstream calls, want both members tried", calls)
+	}
+	row := r.last()
+	if row.Provider != "gem" || row.Model != "g-vision" {
+		t.Fatalf("the row does not name the member whose failure answered: %+v", row)
+	}
+}
+
+func TestAComboReturningAnEarlierRefusalNamesThatMember(t *testing.T) {
+	// The first member refuses the request (kept as the answer), the second
+	// fails as a fallback: the row must name the member whose failure answers,
+	// not the one tried after it.
+	r := comboRig(t, []string{"forced/fm", "wire/short"},
+		tests.Reply{Status: 400, Body: `{"error":{"message":"bad"}}`},
+		tests.Reply{Status: 429, Body: `{"error":{"message":"slow down"}}`})
+	r.conn("forced", "k1")
+	r.conn("wire", "k3")
+	out, _ := r.do("/v1/chat/completions", comboAsk)
+	if out.Status < 400 {
+		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+	if row := r.last(); row.Provider != "forced" || row.Model != "fm" {
+		t.Fatalf("the row names the member tried after the answer: %+v", row)
 	}
 }
 

@@ -282,9 +282,7 @@ func (p *Pipeline) run(ctx context.Context, kind string, in Input, req parsed) O
 	if !p.mayCall(in.Caller, ref) {
 		return bad(http.StatusForbidden, appfailure.NotAllowed(model))
 	}
-	if out, ok := p.budget(ctx, in.Caller); !ok {
-		// The key's own budget, not the provider's pace: the row says which.
-		row.Status, row.ErrorClass = out.Status, "key_quota"
+	if out, ok := p.budget(ctx, in.Caller, row); !ok {
 		p.nameIntendedAccount(ctx, ref.Provider, ref.Model, model, in.ConnectionID, row)
 		return out
 	}
@@ -320,21 +318,30 @@ func (p *Pipeline) mayCall(caller identity.Caller, ref upstream.MediaRef) bool {
 }
 
 // budget answers a key whose budget is spent, or fails closed when the usage
-// cannot be read. ok is false when the request must stop.
-func (p *Pipeline) budget(ctx context.Context, caller identity.Caller) (Output, bool) {
+// cannot be read. ok is false when the request must stop; the row carries the
+// status and class either way.
+func (p *Pipeline) budget(ctx context.Context, caller identity.Caller, row *analytics.Record) (Output, bool) {
 	if p.d.Budget == nil || caller.ID == "" || caller.Anonymous {
 		return Output{}, true
 	}
+	if ctx.Err() != nil {
+		return stopped(ctx, row), false
+	}
 	ref, err := p.d.Budget.Check(ctx, caller.ID)
 	if err != nil {
+		if ctx.Err() != nil {
+			return stopped(ctx, row), false
+		}
 		if p.d.Log != nil {
 			p.d.Log.Warningf("media: a key's budget cannot be checked: %v", err)
 		}
+		row.Status, row.ErrorClass = http.StatusServiceUnavailable, "budget_unavailable"
 		return failureOutput(http.StatusServiceUnavailable, "The request budget cannot be checked"), false
 	}
 	if !ref.Refused {
 		return Output{}, true
 	}
+	row.Status, row.ErrorClass = http.StatusTooManyRequests, "key_quota"
 	h := failureHeaders()
 	for k, v := range appfailure.QuotaHeaders(ref.Remaining.Requests, ref.Remaining.Tokens, ref.Remaining.Cost, ref.RetryAfter) {
 		if len(v) > 0 {

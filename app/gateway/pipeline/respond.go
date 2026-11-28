@@ -244,6 +244,7 @@ func (c *call) relay(ctx context.Context, resp executor.Response, src stream.Sou
 		Body: resp.Body, Source: src, UpstreamFormat: c.dest.format, ClientFormat: c.format, Ctx: c.tctx,
 		Client: client, Timers: c.timers(), RequestBytes: len(c.body), Buffer: true, Now: c.p.d.Now,
 		Keepalive:            keep,
+		OpenWhenQuiet:        !c.mayFailover,
 		Rewrite:              c.restoreEvent(),
 		ReasoningAliasFields: c.dest.entry.Transport.Quirks.ReasoningAliasFields,
 	})
@@ -292,6 +293,14 @@ func (s stripClient) Raw(b []byte) error {
 	return s.Client.Raw(text.StripInvisible(b))
 }
 
+// Open passes the pump's request to open the stream through to the lazy client.
+func (s stripClient) Open() error {
+	if o, ok := s.Client.(stream.Opener); ok {
+		return o.Open()
+	}
+	return nil
+}
+
 // stripInvisible is the watermark remover's answer half. A settings read that
 // fails leaves the answer as it came.
 func (c *call) stripInvisible(ctx context.Context) bool {
@@ -333,6 +342,10 @@ func (l *lazyClient) Raw(b []byte) error {
 	}
 	return l.client.Raw(b)
 }
+
+// Open opens the client's stream before any frame, so a keepalive can reach a
+// request with no failover left.
+func (l *lazyClient) Open() error { return l.start() }
 
 // restoreEvent undoes the disguise on a passthrough stream: the one event that
 // names a tool, the start of a tool_use block, gets the client's name back. It

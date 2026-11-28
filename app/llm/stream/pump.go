@@ -19,6 +19,12 @@ type Client interface {
 	Raw([]byte) error
 }
 
+// Opener is a client that can open its stream before its first frame, so a
+// keepalive can reach a request with no failover left.
+type Opener interface {
+	Open() error
+}
+
 // Job is one stream to run.
 type Job struct {
 	// Body is the upstream body; Run closes it.
@@ -48,6 +54,10 @@ type Job struct {
 	// is already open, so a client or a proxy does not time it out while the
 	// upstream is thinking. Zero sends none; an NDJSON client must leave it 0.
 	Keepalive time.Duration
+	// OpenWhenQuiet lets the first keepalive tick open the client's stream when
+	// no member is left to fail over to. False keeps it closed until the first
+	// frame, so a failure can still be answered elsewhere.
+	OpenWhenQuiet bool
 	// ReasoningAliasFields copies a string `reasoning` into `reasoning_content`
 	// on each passed-through OpenAI delta that carries none of its own.
 	ReasoningAliasFields bool
@@ -129,10 +139,22 @@ func (r *runner) resetKeep() {
 // keepalive answers a quiet open stream with one comment line and reports
 // whether the client took it.
 func (r *runner) keepalive() bool {
+	// A closed client takes no raw bytes; when it can be opened, the comment
+	// itself is the reason to open it.
+	if !r.wrote {
+		if o, ok := r.j.Client.(Opener); ok {
+			if err := o.Open(); err != nil {
+				r.err = ErrClientGone
+				return false
+			}
+		}
+	}
 	if err := r.j.Client.Raw([]byte(KeepaliveFrame)); err != nil {
 		r.err = ErrClientGone
 		return false
 	}
+	// A comment is a byte on the wire, so a failover is no longer possible.
+	r.wrote = true
 	return true
 }
 
@@ -259,7 +281,7 @@ func (r *runner) translate(ctx context.Context) {
 	for {
 		ev, err := r.pull.next(ctx, usageDeadline, r.keepC())
 		if errors.Is(err, errKeepalive) {
-			if !r.wrote {
+			if !r.wrote && !r.j.OpenWhenQuiet {
 				// The client's stream is not open, and this window belongs to
 				// failover: a comment here would open it.
 				r.resetKeep()

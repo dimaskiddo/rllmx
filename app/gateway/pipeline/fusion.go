@@ -33,11 +33,7 @@ func (c *call) fusion(ctx context.Context, p combo.Policy, order []routing.Membe
 		return c.fail(http.StatusBadRequest, "invalid_request", "The combo names no model")
 	}
 	if len(order) == 1 {
-		out, fail := c.comboMember(ctx, order[0], nil)
-		if fail != nil {
-			return c.upstreamFail(fail)
-		}
-		return out
+		return c.fusionAnswer(ctx, order[0], nil, panelSpend{})
 	}
 	served := c.runPanel(ctx, p, order, panelQuorum(p, len(order)))
 	// The client's one row carries the whole spend: the panel's, then the one
@@ -144,13 +140,14 @@ func (s *panelSpend) add(r panelResult) {
 // spend to its row, after the member's own counts replaced what the row held.
 func (c *call) fusionAnswer(ctx context.Context, m routing.Member, shape func(*translate.Request), spent panelSpend) Output {
 	out, fail := c.comboMember(ctx, m, shape)
+	// The row names the member that answered, or the one whose failure it is.
+	c.row.Provider, c.row.Model = m.Provider, m.Model
 	c.row.PromptTokens += spent.prompt
 	c.row.CompletionTokens += spent.completion
 	c.row.Cost += spent.cost
 	if fail != nil {
 		return c.upstreamFail(fail)
 	}
-	c.row.Provider, c.row.Model = m.Provider, m.Model
 	return out
 }
 

@@ -104,6 +104,34 @@ func TestAPendingRowCountsBeforeItIsFlushed(t *testing.T) {
 	}
 }
 
+func TestAPendingErrorRowDoesNotSpendARequest(t *testing.T) {
+	s := newStore(t)
+	w := s.NewWriter(WriterOptions{FlushEvery: time.Hour, FlushRows: 1000})
+	failed := sameKey(rec(0, t0))
+	failed.Status, failed.ErrorClass = 500, "upstream_5xx"
+	if !w.Enqueue(failed) {
+		t.Fatal("enqueue refused")
+	}
+	if got := w.Pending("k0"); got.Requests != 0 {
+		t.Fatalf("pending = %+v, want no request for a row the provider never served", got)
+	}
+	_ = w.Close(context.Background())
+}
+
+func TestAPendingFailedStreamStillCountsItsTokens(t *testing.T) {
+	s := newStore(t)
+	w := s.NewWriter(WriterOptions{FlushEvery: time.Hour, FlushRows: 1000})
+	r := sameKey(rec(0, t0))
+	r.Status, r.ErrorClass = 502, "upstream_5xx"
+	if !w.Enqueue(r) {
+		t.Fatal("enqueue refused")
+	}
+	if got := w.Pending("k0"); got.Requests != 0 || got.Tokens != 15 || diff(got.Cost, 0.001) > 1e-9 {
+		t.Fatalf("pending = %+v, want the tokens but no request", got)
+	}
+	_ = w.Close(context.Background())
+}
+
 func TestADroppedRowNeverCounts(t *testing.T) {
 	s := newStore(t)
 	// One row is in flight (the flusher is held), one waits in the queue, and

@@ -21,12 +21,20 @@ func (c *call) budget(ctx context.Context) (Output, bool) {
 	if c.p.d.Budget == nil || c.in.Caller.ID == "" || c.in.Caller.Anonymous {
 		return Output{}, true
 	}
+	// A request whose context ended never reaches the provider: report the
+	// client's cancel (or the call's own deadline) rather than a store fault.
+	if ctx.Err() != nil {
+		return c.stopped(ctx), false
+	}
 	ref, err := c.p.d.Budget.Check(ctx, c.in.Caller.ID)
 	if err != nil {
+		if ctx.Err() != nil {
+			return c.stopped(ctx), false
+		}
 		if c.p.d.Log != nil {
 			c.p.d.Log.Warningf("pipeline: a key's budget cannot be checked: %v", err)
 		}
-		return c.fail(http.StatusServiceUnavailable, "unknown", "The request budget cannot be checked"), false
+		return c.fail(http.StatusServiceUnavailable, "budget_unavailable", "The request budget cannot be checked"), false
 	}
 	if !ref.Refused {
 		return Output{}, true

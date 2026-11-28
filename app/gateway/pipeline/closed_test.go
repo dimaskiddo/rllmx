@@ -64,6 +64,25 @@ func (blockedPacer) Wait(ctx context.Context, _ string) error {
 	return ctx.Err()
 }
 
+func TestACancelledComboNamesTheMemberItReached(t *testing.T) {
+	r := comboRig(t, []string{"forced/fm", "wire/short"})
+	r.conn("forced", "k1")
+	r.conn("wire", "k3")
+	r.p.d.Pacer = blockedPacer{}
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(20*time.Millisecond, cancel)
+	defer cancel()
+	in := Input{Path: "/v1/chat/completions", Body: []byte(`{"model":"chain","messages":[{"role":"user","content":"hi"}]}`),
+		Caller: identity.Caller{ID: "key-1", Name: "ci"}, RequestID: "rid-12"}
+	out := r.p.Handle(ctx, in, func() (stream.Client, error) { return nil, errors.New("never") })
+	if out.Status != 499 {
+		t.Fatalf("status %d, want 499", out.Status)
+	}
+	if row := r.last(); row.Provider != "forced" || row.Model != "fm" {
+		t.Fatalf("the row lost the member it reached: %+v", row)
+	}
+}
+
 func TestADeadlineIsATimeoutAndACancelIsAClosedClient(t *testing.T) {
 	for _, tt := range []struct {
 		name   string

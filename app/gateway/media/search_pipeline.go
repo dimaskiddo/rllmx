@@ -72,9 +72,7 @@ func (p *Pipeline) service(ctx context.Context, kind string, in Input) Output {
 	if !p.mayCall(in.Caller, upstream.MediaRef{Provider: id, Kind: kind}) {
 		return bad(http.StatusForbidden, appfailure.NotAllowed(name))
 	}
-	if out, ok := p.budget(ctx, in.Caller); !ok {
-		// The key's own budget, not the provider's pace: the row says which.
-		row.Status, row.ErrorClass = out.Status, "key_quota"
+	if out, ok := p.budget(ctx, in.Caller, row); !ok {
 		p.nameIntendedAccount(ctx, id, "", name, in.ConnectionID, row)
 		return out
 	}

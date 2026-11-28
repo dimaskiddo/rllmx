@@ -652,6 +652,7 @@
   "usage.cachedTokens": "Token cache",
   "usage.class.access_denied": "Akses Ditolak",
   "usage.class.auth": "Autentikasi Penyedia Gagal",
+  "usage.class.budget_unavailable": "Anggaran Tidak Tersedia",
   "usage.class.capacity": "Antrean Penuh",
   "usage.class.client_closed": "Klien Terputus",
   "usage.class.expired": "Login Kedaluwarsa",

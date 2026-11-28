@@ -20,6 +20,7 @@ const failureWords = {
   key_quota: "usage.class.key_quota",
   quota: "usage.class.quota",
   auth: "usage.class.auth",
+  budget_unavailable: "usage.class.budget_unavailable",
   access_denied: "usage.class.access_denied",
   expired: "usage.class.expired",
   no_account: "usage.class.no_account",

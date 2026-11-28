@@ -155,6 +155,9 @@ type call struct {
 	dest         destination
 	body         []byte
 	upStream     bool
+	// mayFailover is true while a later combo member can still answer, so the
+	// client's stream stays closed until this one writes.
+	mayFailover bool
 
 	// The semantic layer's bucket and the request's vector, kept for remember.
 	cacheVec    []float32

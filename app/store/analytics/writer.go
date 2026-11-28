@@ -2,6 +2,7 @@ package analytics
 
 import (
 	"context"
+	"net/http"
 	"rllmx/app/store/dialect"
 	"sync"
 	"sync/atomic"
@@ -45,12 +46,19 @@ type Writer struct {
 	// so a budget check sees this second's spend. A row leaves it when its batch
 	// is flushed, written or dropped.
 	pendingMu sync.Mutex
-	pending   map[string]Totals
+	pending   map[string]pendingTotal
 
 	dropped atomic.Uint64
 	failed  atomic.Uint64
 	flushed atomic.Uint64
 	lastLog atomic.Int64
+}
+
+// pendingTotal is one key's queued spend, plus how many rows are still waiting,
+// so the entry is dropped only when the last one leaves.
+type pendingTotal struct {
+	totals Totals
+	rows   int64
 }
 
 // NewWriter starts the flush goroutine, so a caller that never closes it leaves one running.
@@ -64,7 +72,7 @@ func (s *Store) NewWriter(o WriterOptions) *Writer {
 	if o.FlushEvery <= 0 {
 		o.FlushEvery = defaultFlushEvery
 	}
-	w := &Writer{s: s, ch: make(chan row, o.QueueSize), opts: o, done: make(chan struct{}), pending: map[string]Totals{}}
+	w := &Writer{s: s, ch: make(chan row, o.QueueSize), opts: o, done: make(chan struct{}), pending: map[string]pendingTotal{}}
 	w.ctx, w.cancel = context.WithCancel(context.Background())
 	go w.run()
 	return w
@@ -106,23 +114,26 @@ func (w *Writer) enqueue(r row) bool {
 func (w *Writer) Pending(keyID string) Totals {
 	w.pendingMu.Lock()
 	defer w.pendingMu.Unlock()
-	return w.pending[keyID]
+	return w.pending[keyID].totals
 }
 
-// addPending counts one queued row against its key.
+// addPending counts one queued row against its key, under the same rule as
+// KeyTotals: a row the provider never served spends no request, while tokens
+// and cost count on every row.
 func (w *Writer) addPending(r row) {
 	if r.APIKeyID == "" {
 		return
 	}
 	w.pendingMu.Lock()
 	defer w.pendingMu.Unlock()
-	t := w.pending[r.APIKeyID]
-	t.Requests++
-	// Tokens and cost count every row, as the rollup sums them; only the request
-	// itself is taken back out for a failure, matching KeyTotals.
-	t.Tokens += r.PromptTokens + r.CompletionTokens
-	t.Cost += r.Cost
-	w.pending[r.APIKeyID] = t
+	p := w.pending[r.APIKeyID]
+	p.rows++
+	if r.Status < http.StatusBadRequest {
+		p.totals.Requests++
+	}
+	p.totals.Tokens += r.PromptTokens + r.CompletionTokens
+	p.totals.Cost += r.Cost
+	w.pending[r.APIKeyID] = p
 }
 
 // subPending takes a flushed batch back off the delta, whether it was written or
@@ -135,10 +146,13 @@ func (w *Writer) subPending(batch []row) {
 			continue
 		}
 		t := w.pending[r.APIKeyID]
-		t.Requests--
-		t.Tokens -= r.PromptTokens + r.CompletionTokens
-		t.Cost -= r.Cost
-		if t.Requests <= 0 {
+		t.rows--
+		if r.Status < http.StatusBadRequest {
+			t.totals.Requests--
+		}
+		t.totals.Tokens -= r.PromptTokens + r.CompletionTokens
+		t.totals.Cost -= r.Cost
+		if t.rows <= 0 {
 			delete(w.pending, r.APIKeyID)
 			continue
 		}

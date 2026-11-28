@@ -82,10 +82,14 @@ func (c *call) comboOrder(ctx context.Context, name string) (policy combo.Policy
 func (c *call) walkCombo(ctx context.Context, order []routing.Member) Output {
 	var firstRequestScoped, last *comboFailure
 	for i, m := range order {
+		// A later member can still answer, so the client's stream stays closed
+		// until this one writes.
+		c.mayFailover = i < len(order)-1
+		// The row names the member being tried, so a failure before an answer
+		// still says which model the request reached.
+		c.row.Provider, c.row.Model = m.Provider, m.Model
 		out, fail := c.comboMember(ctx, m, nil)
 		if fail == nil {
-			// Answered. The row names the member that served it.
-			c.row.Provider, c.row.Model = m.Provider, m.Model
 			return out
 		}
 		if ctx.Err() != nil {
@@ -94,7 +98,7 @@ func (c *call) walkCombo(ctx context.Context, order []routing.Member) Output {
 		if out.Status == 0 {
 			out = c.upstreamFail(fail)
 		}
-		last = &comboFailure{out: out, class: c.errClass}
+		last = &comboFailure{out: out, class: c.errClass, member: m}
 		if fail.expired || fail.gated {
 			continue
 		}
@@ -142,14 +146,16 @@ func (c *call) settleRetry(ctx context.Context, fail *accountFail, out Output, l
 
 // comboFailure is a member's answer and the error class its row would carry.
 type comboFailure struct {
-	out   Output
-	class string
+	out    Output
+	class  string
+	member routing.Member
 }
 
-// settle answers with a failure and gives the row its class, not the class of
-// a member tried after it.
+// settle answers with a failure and gives the row its class and the member
+// whose failure it is, not the class of a member tried after it.
 func (c *call) settle(f *comboFailure) Output {
 	c.errClass = f.class
+	c.row.Provider, c.row.Model = f.member.Provider, f.member.Model
 	return f.out
 }
 

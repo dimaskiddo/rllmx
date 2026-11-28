@@ -82,6 +82,48 @@ func TestAStreamedAnswerKeepsAnSseClientAlive(t *testing.T) {
 	}
 }
 
+// A single-target stream opens on the first quiet tick: no other member can
+// answer, so staying silent would only lose the client.
+func TestASilentUpstreamLetsAnAloneStreamOpen(t *testing.T) {
+	r := newRig(t, tests.Reply{ContentType: "text/event-stream", Silent: true})
+	r.conn("forced", "k1")
+	r.p.d.Keepalive = 5 * time.Millisecond
+	c := &rawRecorder{}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := openRecorded(t, r, "/v1/chat/completions", `{"model":"forced/fm","stream":true,"messages":[{"role":"user","content":"hi"}]}`, c, ctx)
+	deadline := time.Now().Add(2 * time.Second)
+	for !c.sawKeepalive() && time.Now().Before(deadline) {
+		time.Sleep(2 * time.Millisecond)
+	}
+	cancel()
+	<-done
+	if !c.sawKeepalive() {
+		t.Fatal("a stream with no failover left stayed silent")
+	}
+}
+
+// While a later member can still answer, the stream stays closed: a comment
+// here would commit the answer to the silent member.
+func TestAComboKeepsTheStreamClosedWhileAMemberRemains(t *testing.T) {
+	r := comboRig(t, []string{"forced/fm", "wire/short"},
+		tests.Reply{ContentType: "text/event-stream", Silent: true},
+		tests.Reply{ContentType: "text/event-stream", Chunks: sseChunks()})
+	r.conn("forced", "k1")
+	r.conn("wire", "k3")
+	r.p.d.Keepalive = 5 * time.Millisecond
+	c := &rawRecorder{}
+	out := <-openRecorded(t, r, "/v1/chat/completions", `{"model":"chain","stream":true,"messages":[{"role":"user","content":"hi"}]}`, c, context.Background())
+	if out.Status != 200 {
+		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+	if c.sawKeepalive() {
+		t.Fatal("a combo opened the stream while a member could still answer")
+	}
+	if row := r.last(); row.Provider != "wire" || row.Model != "short" {
+		t.Fatalf("the row does not name the member that answered: %+v", row)
+	}
+}
+
 // NDJSON has no comment line, so an Ollama answer must never get one.
 func TestAnOllamaStreamGetsNoComment(t *testing.T) {
 	// The upstream speaks OpenAI SSE; the client asked for Ollama's NDJSON.

@@ -100,13 +100,42 @@ func TestASpentBudgetStopsASearchBeforeAnyCall(t *testing.T) {
 }
 
 func TestABudgetThatCannotBeReadFailsClosed(t *testing.T) {
-	p, _ := budgetPipeline(t, "openai", budgetImageEntry, spend{err: errors.New("analytics is down")})
+	p, rows := budgetPipeline(t, "openai", budgetImageEntry, spend{err: errors.New("analytics is down")})
 	out := p.Images(context.Background(), gatewaymedia.Input{
 		Path: "/v1/images/generations", Body: []byte(`{"model":"gpt-image-1","prompt":"p"}`),
 		Caller: identity.Caller{ID: "k1"},
 	})
 	if out.Status != http.StatusServiceUnavailable {
 		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+	if got := rows.All(); len(got) != 1 || got[0].ErrorClass != "budget_unavailable" {
+		t.Fatalf("rows %+v", got)
+	}
+}
+
+// stalled blocks until the request ends, the way a store read holds the caller
+// while the connection behind it closes.
+type stalled struct{}
+
+func (stalled) Check(ctx context.Context, _ string) (quota.Refusal, error) {
+	<-ctx.Done()
+	return quota.Refusal{}, ctx.Err()
+}
+
+func TestABudgetCheckTheClientAbandonedIsNotAServerFault(t *testing.T) {
+	p, rows := budgetPipeline(t, "openai", budgetImageEntry, stalled{})
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(20*time.Millisecond, cancel)
+	defer cancel()
+	out := p.Images(ctx, gatewaymedia.Input{
+		Path: "/v1/images/generations", Body: []byte(`{"model":"gpt-image-1","prompt":"p"}`),
+		Caller: identity.Caller{ID: "k1"},
+	})
+	if out.Status != 499 {
+		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+	if got := rows.All(); len(got) != 1 || got[0].ErrorClass != "client_closed" {
+		t.Fatalf("rows %+v", got)
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 
 	"rllmx/app/access/identity"
 	"rllmx/app/access/quota"
+	"rllmx/app/llm/stream"
 	"rllmx/tests"
 )
 
@@ -73,6 +74,21 @@ func TestASpentBudgetIsAnsweredBeforeAnyCall(t *testing.T) {
 	}
 }
 
+func TestAComboRefusedByItsBudgetKeepsTheComboName(t *testing.T) {
+	r := comboRig(t, []string{"forced/fm", "wire/short"})
+	r.conn("forced", "k1")
+	r.conn("wire", "k3")
+	r.p.d.Budget = refused()
+	out, _ := r.do("/v1/chat/completions", comboAsk)
+	if out.Status != http.StatusTooManyRequests {
+		t.Fatalf("%d %s", out.Status, out.Body)
+	}
+	// No member was chosen, so the row names the combo rather than inventing one.
+	if row := r.last(); row.Model != "chain" || row.Provider != "" {
+		t.Fatalf("a pre-walk refusal named a member it never chose: %+v", row)
+	}
+}
+
 func TestABudgetThatCannotBeReadFailsClosed(t *testing.T) {
 	r := newRig(t, tests.Reply{ContentType: "application/json", Body: okJSON})
 	r.conn("forced", "k1")
@@ -83,6 +99,56 @@ func TestABudgetThatCannotBeReadFailsClosed(t *testing.T) {
 	}
 	if len(r.up.Calls()) != 0 {
 		t.Fatal("the request went through without a budget check")
+	}
+	if row := r.last(); row.ErrorClass != "budget_unavailable" {
+		t.Fatalf("a failed read is filed as %q", row.ErrorClass)
+	}
+}
+
+// stalledBudget blocks until the request ends, the way a store read holds the
+// caller while the connection behind it closes.
+type stalledBudget struct{}
+
+func (stalledBudget) Check(ctx context.Context, _ string) (quota.Refusal, error) {
+	<-ctx.Done()
+	return quota.Refusal{}, ctx.Err()
+}
+
+func TestABudgetCheckTheRequestAbandonedIsNotAServerFault(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		status int
+		class  string
+		ctx    func() (context.Context, context.CancelFunc)
+	}{
+		{"the client leaves", 499, "client_closed", func() (context.Context, context.CancelFunc) {
+			ctx, cancel := context.WithCancel(context.Background())
+			time.AfterFunc(20*time.Millisecond, cancel)
+			return ctx, cancel
+		}},
+		{"the call's deadline passes", http.StatusGatewayTimeout, "timeout", func() (context.Context, context.CancelFunc) {
+			return context.WithTimeout(context.Background(), 20*time.Millisecond)
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			r := newRig(t, tests.Reply{ContentType: "application/json", Body: okJSON})
+			r.conn("forced", "k1")
+			r.p.d.Budget = stalledBudget{}
+			ctx, cancel := tt.ctx()
+			defer cancel()
+			in := Input{Path: "/v1/chat/completions", Body: []byte(`{"model":"forced/fm","messages":[{"role":"user","content":"hi"}]}`),
+				Caller: identity.Caller{ID: "key-1", Name: "ci"}, RequestID: "rid-13"}
+			out := r.p.Handle(ctx, in, func() (stream.Client, error) { return nil, errors.New("never") })
+			if out.Status != tt.status {
+				t.Fatalf("status %d, want %d", out.Status, tt.status)
+			}
+			if row := r.last(); row.ErrorClass != tt.class {
+				t.Fatalf("class %q, want %q", row.ErrorClass, tt.class)
+			}
+			if len(r.up.Calls()) != 0 {
+				t.Fatal("a request whose context ended reached the provider")
+			}
+		})
 	}
 }
 
